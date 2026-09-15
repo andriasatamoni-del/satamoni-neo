@@ -26,6 +26,7 @@ import type {
   GoodsReceiptsTable,
   GoodsReceiptItemsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
+import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
 
 export interface Database {
   users: UsersTable;
@@ -47,4 +48,6 @@ export interface Database {
   purchase_order_items: PurchaseOrderItemsTable;
   goods_receipts: GoodsReceiptsTable;
   goods_receipt_items: GoodsReceiptItemsTable;
+  orders: OrdersTable;
+  order_items: OrderItemsTable;
 }

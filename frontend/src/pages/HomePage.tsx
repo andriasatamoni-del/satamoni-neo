@@ -16,6 +16,7 @@ export function HomePage() {
         <li><Link to="/inventory">المخزون</Link></li>
         <li><Link to="/catalog">قائمة الطعام</Link></li>
         <li><Link to="/procurement">المشتريات والموردين</Link></li>
+        <li><Link to="/orders">الطلبات (POS)</Link></li>
       </ul>
       <button onClick={logout} style={{ padding: "8px 16px" }}>
         تسجيل خروج
