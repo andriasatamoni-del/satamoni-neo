@@ -6,6 +6,7 @@ import { IdentityAccessModule } from "./contexts/identity-access/identity-access
 import { CrmModule } from "./contexts/crm/crm.module";
 import { BranchesModule } from "./contexts/branches/branches.module";
 import { InventoryModule } from "./contexts/inventory/inventory.module";
+import { CatalogModule } from "./contexts/catalog/catalog.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { InventoryModule } from "./contexts/inventory/inventory.module";
     BranchesModule,
     CrmModule,
     InventoryModule,
+    CatalogModule,
   ],
 })
 export class AppModule {}

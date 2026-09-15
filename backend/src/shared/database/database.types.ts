@@ -11,6 +11,14 @@ import type {
   StockMovementsTable,
   BranchStockBalancesTable,
 } from "../../contexts/inventory/infrastructure/persistence/stock-movement.schema";
+import type {
+  MenuCategoriesTable,
+  MenuItemsTable,
+  MenuItemVariantsTable,
+  RecipesTable,
+  RecipeVersionsTable,
+  RecipeIngredientsTable,
+} from "../../contexts/catalog/infrastructure/persistence/catalog.schema";
 
 export interface Database {
   users: UsersTable;
@@ -21,4 +29,10 @@ export interface Database {
   inventory_items: InventoryItemsTable;
   stock_movements: StockMovementsTable;
   branch_stock_balances: BranchStockBalancesTable;
+  menu_categories: MenuCategoriesTable;
+  menu_items: MenuItemsTable;
+  menu_item_variants: MenuItemVariantsTable;
+  recipes: RecipesTable;
+  recipe_versions: RecipeVersionsTable;
+  recipe_ingredients: RecipeIngredientsTable;
 }

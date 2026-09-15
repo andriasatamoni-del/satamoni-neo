@@ -5,6 +5,7 @@ import { HomePage } from "./pages/HomePage";
 import { CrmPage } from "./pages/CrmPage";
 import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
+import { CatalogPage } from "./pages/CatalogPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -46,6 +47,14 @@ export function App() {
         element={
           <RequireAuth>
             <InventoryPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/catalog"
+        element={
+          <RequireAuth>
+            <CatalogPage />
           </RequireAuth>
         }
       />
