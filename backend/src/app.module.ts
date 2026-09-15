@@ -5,8 +5,17 @@ import { PermissionsModule } from "./shared/permissions/permissions.module";
 import { IdentityAccessModule } from "./contexts/identity-access/identity-access.module";
 import { CrmModule } from "./contexts/crm/crm.module";
 import { BranchesModule } from "./contexts/branches/branches.module";
+import { InventoryModule } from "./contexts/inventory/inventory.module";
 
 @Module({
-  imports: [DatabaseModule, EventsModule, PermissionsModule, IdentityAccessModule, BranchesModule, CrmModule],
+  imports: [
+    DatabaseModule,
+    EventsModule,
+    PermissionsModule,
+    IdentityAccessModule,
+    BranchesModule,
+    CrmModule,
+    InventoryModule,
+  ],
 })
 export class AppModule {}

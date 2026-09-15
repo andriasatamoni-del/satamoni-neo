@@ -14,7 +14,8 @@
     "test:integration": "jest --config jest.integration.config.js --runInBand",
     "import:branches": "ts-node scripts/import-branches-from-legacy.ts",
     "import:users": "ts-node scripts/import-users-from-legacy.ts",
-    "import:crm": "ts-node scripts/import-crm-from-legacy.ts"
+    "import:crm": "ts-node scripts/import-crm-from-legacy.ts",
+    "import:inventory": "ts-node scripts/import-inventory-from-legacy.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

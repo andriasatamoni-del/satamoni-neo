@@ -6,6 +6,11 @@ import type { EventOutboxTable } from "../events/event-outbox.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
 import type { BranchesTable } from "../../contexts/branches/infrastructure/persistence/branch.schema";
+import type { InventoryItemsTable } from "../../contexts/inventory/infrastructure/persistence/inventory-item.schema";
+import type {
+  StockMovementsTable,
+  BranchStockBalancesTable,
+} from "../../contexts/inventory/infrastructure/persistence/stock-movement.schema";
 
 export interface Database {
   users: UsersTable;
@@ -13,4 +18,7 @@ export interface Database {
   customer_followups: CustomerFollowupsTable;
   complaints: ComplaintsTable;
   branches: BranchesTable;
+  inventory_items: InventoryItemsTable;
+  stock_movements: StockMovementsTable;
+  branch_stock_balances: BranchStockBalancesTable;
 }

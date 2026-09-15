@@ -13,6 +13,7 @@ export function HomePage() {
       <ul>
         <li><Link to="/crm">متابعة العملاء والشكاوى (CRM)</Link></li>
         <li><Link to="/branches">الفروع</Link></li>
+        <li><Link to="/inventory">المخزون</Link></li>
       </ul>
       <button onClick={logout} style={{ padding: "8px 16px" }}>
         تسجيل خروج
