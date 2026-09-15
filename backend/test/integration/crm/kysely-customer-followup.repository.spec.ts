@@ -69,4 +69,28 @@ describe("KyselyCustomerFollowupRepository", () => {
     expect(found!.callResult).toBe("answered");
     expect(found!.hasComplaint).toBe(true);
   });
+
+  // كان فيه باج فعلي هنا: doUpdateSet كان ناقصه branch_id (وlegacy_order_id/customer_phone) - يعني
+  // إعادة استيراد نفس الصف بعد ما الفرع يتربط (Branches context) كانت بتفشل تحدّث branch_id بصمت
+  test("save بيحدّث branch_id على صف موجود (مش بس وقت الإنشاء الأول)", async () => {
+    const followup = CustomerFollowup.register({ legacyOrderId: 404, customerPhone: "01000000099", callResult: "answered" });
+    await repo.save(followup);
+    expect((await repo.findById(followup.id))!.branchId).toBeNull();
+
+    const withBranch = CustomerFollowup.reconstitute(followup.id, {
+      legacyOrderId: followup.legacyOrderId,
+      branchId: "11111111-1111-1111-1111-111111111111",
+      customerPhone: followup.customerPhone,
+      callResult: followup.callResult,
+      satisfactionRating: followup.satisfactionRating,
+      notes: followup.notes,
+      hasComplaint: followup.hasComplaint,
+      calledBy: followup.calledBy,
+      calledAt: followup.calledAt,
+      legacyFollowupId: followup.legacyFollowupId,
+    });
+    await repo.save(withBranch);
+
+    expect((await repo.findById(followup.id))!.branchId).toBe("11111111-1111-1111-1111-111111111111");
+  });
 });

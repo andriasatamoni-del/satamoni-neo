@@ -6,17 +6,17 @@
 // SERIAL IDs متداخلة) - لو الصف موجود من تشغيلة قبل كده، بيتحدّث (overwrite كامل بحالة الريبو القديم
 // الحالية) مش يتكرر.
 //
-// لازم يشتغل بعد استيراد المستخدمين (import-users-from-legacy.ts) - called_by/created_by/assigned_to/
-// resolved_by بيتترجموا من legacy user id لـUUID الجديد عن طريق users.legacy_user_id، فلو المستخدم
-// لسه ما اتستوردش، هيترجم NULL بدل ما يوقف الاستيراد كله.
-//
-// branch_id: زي استيراد المستخدمين بالظبط - لسه مفيش Branches context، فبيتسيب NULL دلوقتي.
+// لازم يشتغل بعد استيراد المستخدمين والفروع (import-users-from-legacy.ts وimport-branches-from-legacy.ts)
+// - called_by/created_by/assigned_to/resolved_by بيتترجموا من legacy user id لـUUID الجديد عن طريق
+// users.legacy_user_id، وbranch_id بيتترجم عن طريق branches.legacy_branch_id، فلو أي مرجع لسه ما
+// اتستوردش، هيترجم NULL بدل ما يوقف الاستيراد كله.
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "../src/shared/database/database.types";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { KyselyCustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
 import { KyselyComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
 import { CustomerFollowup, CALL_RESULTS, SATISFACTION_RATINGS } from "../src/contexts/crm/domain/customer-followup.aggregate";
@@ -79,6 +79,7 @@ export interface CrmImportResult {
 
 export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<CrmImportResult> {
   const userRepo = new KyselyUserRepository(neoDb);
+  const branchRepo = new KyselyBranchRepository(neoDb);
   const followupRepo = new KyselyCustomerFollowupRepository(neoDb);
   const complaintRepo = new KyselyComplaintRepository(neoDb);
 
@@ -89,6 +90,16 @@ export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Databa
     const user = await userRepo.findByLegacyUserId(legacyUserId);
     const id = user?.id ?? null;
     userIdCache.set(legacyUserId, id);
+    return id;
+  }
+
+  const branchIdCache = new Map<number, string | null>();
+  async function resolveBranchId(legacyBranchId: number | null): Promise<string | null> {
+    if (legacyBranchId == null) return null;
+    if (branchIdCache.has(legacyBranchId)) return branchIdCache.get(legacyBranchId)!;
+    const branch = await branchRepo.findByLegacyBranchId(legacyBranchId);
+    const id = branch?.id ?? null;
+    branchIdCache.set(legacyBranchId, id);
     return id;
   }
 
@@ -117,10 +128,11 @@ export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Databa
     }
 
     const calledBy = await resolveUserId(row.called_by);
+    const branchId = await resolveBranchId(row.branch_id);
     const existing = await followupRepo.findByLegacyFollowupId(row.id);
     const followup = CustomerFollowup.reconstitute(existing ? existing.id : randomUUID(), {
       legacyOrderId: row.order_id,
-      branchId: null,
+      branchId,
       customerPhone: row.customer_phone,
       callResult: row.call_result as (typeof CALL_RESULTS)[number],
       satisfactionRating: row.satisfaction_rating as (typeof SATISFACTION_RATINGS)[number] | null,
@@ -156,12 +168,13 @@ export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Databa
 
     const createdBy = await resolveUserId(row.created_by);
     const resolvedBy = await resolveUserId(row.resolved_by);
+    const branchId = await resolveBranchId(row.branch_id);
     const followupId = row.followup_id != null ? (followupIdMap.get(row.followup_id) ?? null) : null;
     const existing = await complaintRepo.findByLegacyComplaintId("customer_complaints", row.id);
     const complaint = Complaint.reconstitute(existing ? existing.id : randomUUID(), {
       channel: "phone_followup",
       legacyOrderId: row.order_id,
-      branchId: null,
+      branchId,
       followupId,
       customerPhone: row.customer_phone,
       category: row.category as (typeof CATEGORIES)[number],

@@ -17,8 +17,14 @@ export class KyselyComplaintRepository implements ComplaintRepositoryPort {
       .values(row)
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
+          legacy_order_id: row.legacy_order_id,
+          branch_id: row.branch_id,
+          followup_id: row.followup_id,
+          category: row.category,
+          description: row.description,
           status: row.status,
           resolution_notes: row.resolution_notes,
+          created_by: row.created_by,
           assigned_to: row.assigned_to,
           resolved_by: row.resolved_by,
           resolved_at: row.resolved_at,

@@ -17,6 +17,9 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
       .values(row)
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
+          legacy_order_id: row.legacy_order_id,
+          branch_id: row.branch_id,
+          customer_phone: row.customer_phone,
           call_result: row.call_result,
           satisfaction_rating: row.satisfaction_rating,
           notes: row.notes,

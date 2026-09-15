@@ -12,6 +12,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "jest --runInBand",
     "test:integration": "jest --config jest.integration.config.js --runInBand",
+    "import:branches": "ts-node scripts/import-branches-from-legacy.ts",
     "import:users": "ts-node scripts/import-users-from-legacy.ts",
     "import:crm": "ts-node scripts/import-crm-from-legacy.ts"
   },

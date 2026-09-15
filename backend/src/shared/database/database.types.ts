@@ -5,10 +5,12 @@ import type { UsersTable } from "../../contexts/identity-access/infrastructure/p
 import type { EventOutboxTable } from "../events/event-outbox.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
+import type { BranchesTable } from "../../contexts/branches/infrastructure/persistence/branch.schema";
 
 export interface Database {
   users: UsersTable;
   event_outbox: EventOutboxTable;
   customer_followups: CustomerFollowupsTable;
   complaints: ComplaintsTable;
+  branches: BranchesTable;
 }

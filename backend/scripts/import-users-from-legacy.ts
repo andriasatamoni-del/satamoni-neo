@@ -6,14 +6,15 @@
 // هاش الباسورد (bcryptjs) والـPIN متوافقين حرفيًا بين النظامين (نفس المكتبة، نفس الطريقة) - مفيش
 // داعي لإعادة تعيين باسورد إجباري زي ما الخطة افترضت كاحتياط، بننقل الـhash زي ما هو.
 //
-// branch_id: النظام الجديد لسه مفيهوش Bounded Context اسمه "الفروع" (لسه معمول بس Identity & Access +
-// CRM قريب - راجع خطة إعادة البناء §5). فبنسيب branch_id فاضي (NULL) لكل المستخدمين المستوردين دلوقتي -
-// لما الـcontext ده يتبني، هيتعمل backfill من legacy_user_id -> الريبو القديم (لسه موجود كمرجع) تاني.
+// branch_id: بعد ما اتبنى Branches context، بقى ممكن نترجم legacy branch_id (رقم) لـUUID الفرع الحقيقي
+// في النظام الجديد عن طريق legacy_branch_id - شرط إن import-branches-from-legacy.ts يكون اتشغّل قبل
+// كده. لو الفرع مش لاقيه (لسه ما اتستوردش)، بيتسيب NULL بدل ما يوقف الاستيراد كله.
 import "dotenv/config";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "../src/shared/database/database.types";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { User } from "../src/contexts/identity-access/domain/user.aggregate";
 import { isValidRole } from "../src/contexts/identity-access/domain/role";
 
@@ -44,11 +45,22 @@ function asStringArray(value: unknown): string[] {
 // قواعد بيانات وهمية (fixtures) من غير الحاجة للريبو القديم الحقيقي
 export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportResult> {
   const repo = new KyselyUserRepository(neoDb);
+  const branchRepo = new KyselyBranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyUserRow>(
     `SELECT id, branch_id, name, email, password_hash, role, pin_hash,
             permission_grants, permission_revokes, is_active
      FROM users ORDER BY id`
   );
+
+  const branchIdCache = new Map<number, string | null>();
+  async function resolveBranchId(legacyBranchId: number | null): Promise<string | null> {
+    if (legacyBranchId == null) return null;
+    if (branchIdCache.has(legacyBranchId)) return branchIdCache.get(legacyBranchId)!;
+    const branch = await branchRepo.findByLegacyBranchId(legacyBranchId);
+    const id = branch?.id ?? null;
+    branchIdCache.set(legacyBranchId, id);
+    return id;
+  }
 
   let created = 0;
   let updated = 0;
@@ -64,9 +76,11 @@ export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Kysely<Data
     const existing = await repo.findByLegacyUserId(row.id);
     const grants = asStringArray(row.permission_grants);
     const revokes = asStringArray(row.permission_revokes);
+    const branchId = await resolveBranchId(row.branch_id);
 
     if (existing) {
       existing.changeRole(row.role);
+      existing.changeBranch(branchId);
       existing.setPasswordHash(row.password_hash);
       existing.setPinHash(row.pin_hash);
       existing.setPermissionOverrides(grants, revokes);
@@ -80,6 +94,7 @@ export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Kysely<Data
         email: row.email,
         passwordHash: row.password_hash,
         role: row.role,
+        branchId,
         legacyUserId: row.id,
       });
       user.setPinHash(row.pin_hash);

@@ -82,4 +82,33 @@ describe("KyselyComplaintRepository", () => {
     expect((await repo.findByLegacyComplaintId("customer_complaints", 5))?.id).toBe(fromPhone.id);
     expect((await repo.findByLegacyComplaintId("whatsapp_complaints", 5))?.id).toBe(fromWhatsapp.id);
   });
+
+  // كان فيه باج فعلي هنا زي الـfollowups بالظبط - doUpdateSet كان ناقصه branch_id وحقول تانية
+  test("save بيحدّث branch_id على صف موجود (مش بس وقت الإنشاء الأول)", async () => {
+    const complaint = Complaint.register({ channel: "whatsapp", customerPhone: "01000000011", category: "other" });
+    await repo.save(complaint);
+    expect((await repo.findById(complaint.id))!.branchId).toBeNull();
+
+    const withBranch = Complaint.reconstitute(complaint.id, {
+      channel: complaint.channel,
+      legacyOrderId: complaint.legacyOrderId,
+      branchId: "11111111-1111-1111-1111-111111111111",
+      followupId: complaint.followupId,
+      customerPhone: complaint.customerPhone,
+      category: complaint.category,
+      description: complaint.description,
+      status: complaint.status,
+      resolutionNotes: complaint.resolutionNotes,
+      createdBy: complaint.createdBy,
+      assignedTo: complaint.assignedTo,
+      resolvedBy: complaint.resolvedBy,
+      resolvedAt: complaint.resolvedAt,
+      createdAt: complaint.createdAt,
+      legacyComplaintId: complaint.legacyComplaintId,
+      legacySource: complaint.legacySource,
+    });
+    await repo.save(withBranch);
+
+    expect((await repo.findById(complaint.id))!.branchId).toBe("11111111-1111-1111-1111-111111111111");
+  });
 });
