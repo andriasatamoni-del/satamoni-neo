@@ -13,6 +13,8 @@ import {
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { OrderRegisteredEvent } from "../../domain/events/order-registered.event";
 
 export interface RegisterOrderCommand {
   branchId: string;
@@ -41,7 +43,8 @@ export class RegisterOrderHandler {
     @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepositoryPort,
     @Inject(RECIPE_REPOSITORY) private readonly recipes: RecipeRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
-    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort
+    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    private readonly eventBus: EventBusService
   ) {}
 
   async execute(command: RegisterOrderCommand): Promise<Order> {
@@ -93,6 +96,10 @@ export class RegisterOrderHandler {
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
     }
+
+    // بعد ما الطلب اتسجّل ونجح خالص (بما فيه استهلاك المخزون) - مش قبل كده. فشل subscriber هنا
+    // (زي ترحيل القيد المحاسبي) مبيرجّعش الطلب نفسه فاشل (راجع تعليق EventBusService.publish)
+    await this.eventBus.publish(new OrderRegisteredEvent(order.id, order.branchId, order.total, command.createdBy ?? null));
 
     return order;
   }

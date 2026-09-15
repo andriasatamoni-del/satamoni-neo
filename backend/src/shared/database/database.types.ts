@@ -31,6 +31,11 @@ import type {
   DriversTable,
   DeliveryAssignmentsTable,
 } from "../../contexts/delivery/infrastructure/persistence/delivery.schema";
+import type {
+  AccountsTable,
+  JournalEntriesTable,
+  JournalEntryLinesTable,
+} from "../../contexts/accounting/infrastructure/persistence/accounting.schema";
 
 export interface Database {
   users: UsersTable;
@@ -56,4 +61,7 @@ export interface Database {
   order_items: OrderItemsTable;
   drivers: DriversTable;
   delivery_assignments: DeliveryAssignmentsTable;
+  accounts: AccountsTable;
+  journal_entries: JournalEntriesTable;
+  journal_entry_lines: JournalEntryLinesTable;
 }

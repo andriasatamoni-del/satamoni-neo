@@ -37,9 +37,17 @@ export class EventBusService {
       })
       .execute();
 
+    // فشل subscriber واحد مايفشلش الناشر نفسه - الناشر (زي RegisterOrderHandler) بيكون خلّص عمله
+    // الأساسي ونجح بالفعل (الطلب اتسجّل، المخزون اتحدّث) قبل ما ينشر الحدث ده، فمفيش سبب منطقي إن فشل
+    // مستهلك تاني (زي ترحيل قيد محاسبي) يرجّع الطلب نفسه فشل. بيتسجل الخطأ بس، مش بيتعدّي لفوق.
     const subscribers = this.handlers.get(event.eventName) || [];
     for (const handler of subscribers) {
-      await handler(event);
+      try {
+        await handler(event);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(`⚠ فشل subscriber لحدث ${event.eventName}:`, err);
+      }
     }
   }
 }
