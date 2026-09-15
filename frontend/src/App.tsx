@@ -8,6 +8,7 @@ import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { DeliveryPage } from "./pages/DeliveryPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -73,6 +74,14 @@ export function App() {
         element={
           <RequireAuth>
             <OrdersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/delivery"
+        element={
+          <RequireAuth>
+            <DeliveryPage />
           </RequireAuth>
         }
       />

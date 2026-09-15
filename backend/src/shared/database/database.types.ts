@@ -27,6 +27,10 @@ import type {
   GoodsReceiptItemsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
 import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
+import type {
+  DriversTable,
+  DeliveryAssignmentsTable,
+} from "../../contexts/delivery/infrastructure/persistence/delivery.schema";
 
 export interface Database {
   users: UsersTable;
@@ -50,4 +54,6 @@ export interface Database {
   goods_receipt_items: GoodsReceiptItemsTable;
   orders: OrdersTable;
   order_items: OrderItemsTable;
+  drivers: DriversTable;
+  delivery_assignments: DeliveryAssignmentsTable;
 }

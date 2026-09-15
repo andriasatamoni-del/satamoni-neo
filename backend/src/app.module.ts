@@ -9,6 +9,7 @@ import { InventoryModule } from "./contexts/inventory/inventory.module";
 import { CatalogModule } from "./contexts/catalog/catalog.module";
 import { ProcurementModule } from "./contexts/procurement/procurement.module";
 import { OrdersModule } from "./contexts/orders/orders.module";
+import { DeliveryModule } from "./contexts/delivery/delivery.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { OrdersModule } from "./contexts/orders/orders.module";
     CatalogModule,
     ProcurementModule,
     OrdersModule,
+    DeliveryModule,
   ],
 })
 export class AppModule {}

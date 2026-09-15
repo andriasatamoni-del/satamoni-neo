@@ -18,7 +18,8 @@
     "import:inventory": "ts-node scripts/import-inventory-from-legacy.ts",
     "import:catalog": "ts-node scripts/import-catalog-from-legacy.ts",
     "import:procurement": "ts-node scripts/import-procurement-from-legacy.ts",
-    "import:orders": "ts-node scripts/import-orders-from-legacy.ts"
+    "import:orders": "ts-node scripts/import-orders-from-legacy.ts",
+    "import:drivers": "ts-node scripts/import-drivers-from-legacy.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
