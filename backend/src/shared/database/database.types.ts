@@ -19,6 +19,13 @@ import type {
   RecipeVersionsTable,
   RecipeIngredientsTable,
 } from "../../contexts/catalog/infrastructure/persistence/catalog.schema";
+import type {
+  SuppliersTable,
+  PurchaseOrdersTable,
+  PurchaseOrderItemsTable,
+  GoodsReceiptsTable,
+  GoodsReceiptItemsTable,
+} from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
 
 export interface Database {
   users: UsersTable;
@@ -35,4 +42,9 @@ export interface Database {
   recipes: RecipesTable;
   recipe_versions: RecipeVersionsTable;
   recipe_ingredients: RecipeIngredientsTable;
+  suppliers: SuppliersTable;
+  purchase_orders: PurchaseOrdersTable;
+  purchase_order_items: PurchaseOrderItemsTable;
+  goods_receipts: GoodsReceiptsTable;
+  goods_receipt_items: GoodsReceiptItemsTable;
 }

@@ -7,6 +7,7 @@ import { CrmModule } from "./contexts/crm/crm.module";
 import { BranchesModule } from "./contexts/branches/branches.module";
 import { InventoryModule } from "./contexts/inventory/inventory.module";
 import { CatalogModule } from "./contexts/catalog/catalog.module";
+import { ProcurementModule } from "./contexts/procurement/procurement.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CatalogModule } from "./contexts/catalog/catalog.module";
     CrmModule,
     InventoryModule,
     CatalogModule,
+    ProcurementModule,
   ],
 })
 export class AppModule {}
