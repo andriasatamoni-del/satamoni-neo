@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../shared/auth/AuthContext";
 
 export function HomePage() {
@@ -9,7 +10,9 @@ export function HomePage() {
       <p>
         أهلاً <strong>{user?.name}</strong> ({user?.role})
       </p>
-      <p>ده placeholder home page - أول bounded context هيتبني هنا هو CRM &amp; Complaints.</p>
+      <ul>
+        <li><Link to="/crm">متابعة العملاء والشكاوى (CRM)</Link></li>
+      </ul>
       <button onClick={logout} style={{ padding: "8px 16px" }}>
         تسجيل خروج
       </button>
