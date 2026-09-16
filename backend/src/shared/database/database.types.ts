@@ -36,6 +36,12 @@ import type {
   JournalEntriesTable,
   JournalEntryLinesTable,
 } from "../../contexts/accounting/infrastructure/persistence/accounting.schema";
+import type {
+  PaymentMethodsTable,
+  PaymentsTable,
+  PaymentAdjustmentRequestsTable,
+  PaymentReconciliationRecordsTable,
+} from "../../contexts/payment-control/infrastructure/persistence/payment-control.schema";
 
 export interface Database {
   users: UsersTable;
@@ -64,4 +70,8 @@ export interface Database {
   accounts: AccountsTable;
   journal_entries: JournalEntriesTable;
   journal_entry_lines: JournalEntryLinesTable;
+  payment_methods: PaymentMethodsTable;
+  payments: PaymentsTable;
+  payment_adjustment_requests: PaymentAdjustmentRequestsTable;
+  payment_reconciliation_records: PaymentReconciliationRecordsTable;
 }

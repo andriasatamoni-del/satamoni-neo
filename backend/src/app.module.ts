@@ -11,6 +11,7 @@ import { ProcurementModule } from "./contexts/procurement/procurement.module";
 import { OrdersModule } from "./contexts/orders/orders.module";
 import { DeliveryModule } from "./contexts/delivery/delivery.module";
 import { AccountingModule } from "./contexts/accounting/accounting.module";
+import { PaymentControlModule } from "./contexts/payment-control/payment-control.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AccountingModule } from "./contexts/accounting/accounting.module";
     OrdersModule,
     DeliveryModule,
     AccountingModule,
+    PaymentControlModule,
   ],
 })
 export class AppModule {}

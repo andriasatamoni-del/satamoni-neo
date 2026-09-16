@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "../shared/api/client";
 interface Branch { id: string; name: string; }
 interface MenuItemVariant { id: string; label: string; price: number; }
 interface MenuItem { id: string; name: string; variants: MenuItemVariant[]; }
+interface PaymentMethod { id: string; name: string; }
 interface OrderLine { menuItemId: string; variantId: string; quantity: number; unitPrice: number; lineTotal: number; }
 interface Order {
   id: string;
@@ -15,6 +16,7 @@ interface Order {
   total: number;
   status: string;
   kitchenStatus: string;
+  paymentMethodId: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -26,8 +28,9 @@ export function OrdersPage() {
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const ordersQuery = useQuery({ queryKey: ["orders"], queryFn: () => apiRequest<Order[]>("/orders") });
+  const paymentMethodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
 
-  const [form, setForm] = useState({ branchId: "", orderType: "takeaway", variantId: "", quantity: "1" });
+  const [form, setForm] = useState({ branchId: "", orderType: "takeaway", variantId: "", quantity: "1", paymentMethodId: "" });
   const [error, setError] = useState<string | null>(null);
 
   const createOrder = useMutation({
@@ -38,6 +41,7 @@ export function OrdersPage() {
           branchId: form.branchId,
           orderType: form.orderType,
           items: [{ variantId: form.variantId, quantity: Number(form.quantity) }],
+          paymentMethodId: form.paymentMethodId || undefined,
         },
       }),
     onSuccess: () => {
@@ -90,6 +94,10 @@ export function OrdersPage() {
               {allVariants.map((v) => <option key={v.id} value={v.id}>{v.itemName} ({v.label}) - {v.price}ج</option>)}
             </select>
             <input required type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} style={{ padding: 6 }} />
+            <select value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })} style={{ padding: 6 }}>
+              <option value="">طريقة الدفع (اختياري)</option>
+              {paymentMethodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
           </div>
           {error && <p style={{ color: "crimson" }}>{error}</p>}
           <button type="submit" disabled={createOrder.isPending} style={{ padding: "8px 16px", marginTop: 8 }}>

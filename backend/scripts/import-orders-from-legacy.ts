@@ -136,6 +136,9 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       createdBy: await resolveUserId(row.created_by),
       createdAt: row.created_at,
       legacyOrderId: row.id,
+      // مش هنعمل backfill لـpayment_method_id هنا - جدول payments بتاع Payment Control (سكريبت استيراد
+      // منفصل) بيحمل نفس الربط (order_id -> payment_method_id) للطلبات التاريخية بالكامل بالفعل
+      paymentMethodId: null,
     });
     await orderRepo.save(order);
     result.created++;

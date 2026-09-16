@@ -41,6 +41,11 @@ export interface OrderProps {
   createdBy: string | null;
   createdAt: Date;
   legacyOrderId: number | null;
+  // مرجع لطريقة الدفع المختارة وقت تسجيل الطلب - مش FK جوّاني في order.aggregate.ts (Payment Control
+  // context تاني بيمتلك مفهوم PaymentMethod نفسه)، بس Orders لازم يحمله عشان Payment Control يقدر
+  // يقفل Payment فوره وقت تسجيل الطلب (نفس فلسفة الريبو القديم بالظبط - "قفل طريقة الدفع فور اختيار
+  // الكاشير ليها"). لو معندش قيمة، مفيش Payment هيتسجّل خالص (نفس القيد الموروث من الريبو القديم).
+  paymentMethodId: string | null;
 }
 
 // Order - نفس مفهوم orders+order_items في الريبو القديم، بس مبسّط للسلايس الأول (Phase 3): من غير
@@ -66,6 +71,7 @@ export class Order {
     discount?: number;
     createdBy?: string | null;
     legacyOrderId?: number | null;
+    paymentMethodId?: string | null;
   }): Order {
     if (!ORDER_TYPES.includes(input.orderType as OrderType)) throw new UnknownOrderTypeError(input.orderType);
     if (input.items.length === 0) throw new EmptyOrderError();
@@ -97,6 +103,7 @@ export class Order {
       createdBy: input.createdBy ?? null,
       createdAt: new Date(),
       legacyOrderId: input.legacyOrderId ?? null,
+      paymentMethodId: input.paymentMethodId ?? null,
     });
   }
 
@@ -132,4 +139,5 @@ export class Order {
   get createdBy(): string | null { return this.props.createdBy; }
   get createdAt(): Date { return this.props.createdAt; }
   get legacyOrderId(): number | null { return this.props.legacyOrderId; }
+  get paymentMethodId(): string | null { return this.props.paymentMethodId; }
 }

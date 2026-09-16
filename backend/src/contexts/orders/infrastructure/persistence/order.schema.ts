@@ -16,6 +16,7 @@ export interface OrdersTable {
   created_by: string | null;
   created_at: Generated<Date>;
   legacy_order_id: number | null;
+  payment_method_id: string | null;
 }
 
 export interface OrderItemsTable {

@@ -10,7 +10,8 @@ export class OrderRegisteredEvent extends DomainEvent {
     public readonly orderId: string,
     public readonly branchId: string,
     public readonly total: number,
-    public readonly createdBy: string | null
+    public readonly createdBy: string | null,
+    public readonly paymentMethodId: string | null = null
   ) {
     super();
   }

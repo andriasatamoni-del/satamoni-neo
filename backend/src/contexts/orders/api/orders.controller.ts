@@ -56,5 +56,6 @@ function toPublicOrder(order: Order) {
     status: order.status,
     kitchenStatus: order.kitchenStatus,
     createdAt: order.createdAt,
+    paymentMethodId: order.paymentMethodId,
   };
 }

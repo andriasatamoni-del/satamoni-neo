@@ -30,6 +30,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           created_by: order.createdBy,
           created_at: order.createdAt,
           legacy_order_id: order.legacyOrderId,
+          payment_method_id: order.paymentMethodId,
         })
         .onConflict((oc) => oc.column("id").doUpdateSet({ status: order.status, kitchen_status: order.kitchenStatus }))
         .execute();
@@ -101,6 +102,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
       createdBy: row.created_by,
       createdAt: row.created_at,
       legacyOrderId: row.legacy_order_id,
+      paymentMethodId: row.payment_method_id,
     });
   }
 }

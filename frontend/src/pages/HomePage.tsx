@@ -19,6 +19,7 @@ export function HomePage() {
         <li><Link to="/orders">الطلبات (POS)</Link></li>
         <li><Link to="/delivery">التوصيل والسائقين</Link></li>
         <li><Link to="/accounting">المحاسبة</Link></li>
+        <li><Link to="/payment-control">التحكم في المدفوعات والمطابقة</Link></li>
       </ul>
       <button onClick={logout} style={{ padding: "8px 16px" }}>
         تسجيل خروج

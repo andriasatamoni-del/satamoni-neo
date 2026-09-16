@@ -29,6 +29,7 @@ export interface RegisterOrderCommand {
   // موافقة صريحة تسمح باستهلاك يخلي رصيد صنف معينه ALLOW_WITH_APPROVAL يروح سالب - نفس فلسفة
   // Inventory/Procurement بالظبط
   stockApproved?: boolean;
+  paymentMethodId?: string | null;
 }
 
 // بيسجّل الطلب ويستهلك المخزون النظري (عن طريق الوصفة النشطة لكل حجم) في نفس الطلب - مرحلتين:
@@ -99,7 +100,9 @@ export class RegisterOrderHandler {
 
     // بعد ما الطلب اتسجّل ونجح خالص (بما فيه استهلاك المخزون) - مش قبل كده. فشل subscriber هنا
     // (زي ترحيل القيد المحاسبي) مبيرجّعش الطلب نفسه فاشل (راجع تعليق EventBusService.publish)
-    await this.eventBus.publish(new OrderRegisteredEvent(order.id, order.branchId, order.total, command.createdBy ?? null));
+    await this.eventBus.publish(
+      new OrderRegisteredEvent(order.id, order.branchId, order.total, command.createdBy ?? null, order.paymentMethodId)
+    );
 
     return order;
   }
