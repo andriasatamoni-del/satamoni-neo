@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
 import { EventsModule } from "./shared/events/events.module";
 import { PermissionsModule } from "./shared/permissions/permissions.module";
@@ -31,5 +32,6 @@ import { HrPayrollModule } from "./contexts/hr-payroll/hr-payroll.module";
     PaymentControlModule,
     HrPayrollModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

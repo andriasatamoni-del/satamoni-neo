@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "./database.types";
+import { pgSslOption } from "./pg-ssl";
 
 export const KYSELY = Symbol("KYSELY");
 
@@ -20,7 +21,7 @@ export const KYSELY = Symbol("KYSELY");
           throw new Error("لازم تحدد DATABASE_URL في متغيرات البيئة");
         }
         const dialect = new PostgresDialect({
-          pool: new Pool({ connectionString, max: 10 }),
+          pool: new Pool({ connectionString, max: 10, ssl: pgSslOption() }),
         });
         return new Kysely<Database>({ dialect });
       },

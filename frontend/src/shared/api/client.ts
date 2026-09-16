@@ -1,5 +1,11 @@
 const TOKEN_STORAGE_KEY = "satamoni-neo:token";
 
+// محليًا: فاضي عمدًا - "/api/..." بترجع لـproxy فايت (vite.config.ts) اللي بيوجّهها للباك إند.
+// الإنتاج: لو الفرونت والباك إند اتنشروا كـservices منفصلة (Render static site + web service مثلًا)،
+// VITE_API_BASE_URL بيتحدد وقت البناء برابط الباك إند الفعلي (راجع DEPLOYMENT.md) - الباك إند مفعّل
+// عليه CORS بالفعل (main.ts) فمفيش داعي لـrewrite/proxy في الإنتاج
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
 }
@@ -24,7 +30,7 @@ export async function apiRequest<T>(
   options: { method?: string; body?: unknown } = {}
 ): Promise<T> {
   const token = getToken();
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",

@@ -1,0 +1,38 @@
+# Blueprint لـRender - مجهود مبذول بأفضل معرفة متاحة، لكن غير مُتحقَّق منه ضد توثيق Render الحالي
+# (egress لـrender.com محظور في بيئة التطوير دي وقت كتابة الملف ده). لو "New + -> Blueprint" رفض
+# الملف أو جزء منه، ارجع لـDEPLOYMENT.md (الخطوات اليدوية عبر لوحة تحكم Render - مضمونة ومتحقَّق منها
+# فعليًا بتشغيل نسخة production محلية).
+databases:
+  - name: satamoni-neo-db
+    plan: free
+    databaseName: satamoni_neo
+    user: satamoni_neo
+
+services:
+  - type: web
+    name: satamoni-neo-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run migrate && npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: satamoni-neo-db
+          property: connectionString
+      - key: PGSSL
+        value: "false" # Render Internal Database URL - مش لازم SSL. لو استخدمت External URL بدّلها true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: "12h"
+
+  - type: web
+    name: satamoni-neo-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false # حدّده يدوي بعد ما الباك إند يتنشر ويبقى معروف رابطه (راجع DEPLOYMENT.md)

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { promises as fs } from "node:fs";
 import { Kysely, Migrator, FileMigrationProvider, PostgresDialect } from "kysely";
 import { Pool } from "pg";
+import { pgSslOption } from "../shared/database/pg-ssl";
 
 async function main() {
   const direction = process.argv[2] === "down" ? "down" : "up";
@@ -10,7 +11,7 @@ async function main() {
   if (!connectionString) throw new Error("لازم تحدد DATABASE_URL");
 
   const db = new Kysely<unknown>({
-    dialect: new PostgresDialect({ pool: new Pool({ connectionString }) }),
+    dialect: new PostgresDialect({ pool: new Pool({ connectionString, ssl: pgSslOption() }) }),
   });
 
   const migrator = new Migrator({
