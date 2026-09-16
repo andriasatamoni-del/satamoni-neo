@@ -42,6 +42,11 @@ import type {
   PaymentAdjustmentRequestsTable,
   PaymentReconciliationRecordsTable,
 } from "../../contexts/payment-control/infrastructure/persistence/payment-control.schema";
+import type {
+  EmployeesTable,
+  PayrollRunsTable,
+  PayrollRunEmployeesTable,
+} from "../../contexts/hr-payroll/infrastructure/persistence/hr-payroll.schema";
 
 export interface Database {
   users: UsersTable;
@@ -74,4 +79,7 @@ export interface Database {
   payments: PaymentsTable;
   payment_adjustment_requests: PaymentAdjustmentRequestsTable;
   payment_reconciliation_records: PaymentReconciliationRecordsTable;
+  employees: EmployeesTable;
+  payroll_runs: PayrollRunsTable;
+  payroll_run_employees: PayrollRunEmployeesTable;
 }

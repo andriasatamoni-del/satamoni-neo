@@ -10,10 +10,12 @@ import { RegisterAccountHandler } from "./application/commands/register-account.
 import { RegisterJournalEntryHandler } from "./application/commands/register-journal-entry.handler";
 import { ReverseJournalEntryHandler } from "./application/commands/reverse-journal-entry.handler";
 import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-order-sale-journal-entry.handler";
+import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
+import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -25,6 +27,7 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     RegisterJournalEntryHandler,
     ReverseJournalEntryHandler,
     PostOrderSaleJournalEntryHandler,
+    PostPayrollJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -34,7 +37,8 @@ export class AccountingModule implements OnModuleInit {
   constructor(
     private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
-    private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler
+    private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
+    private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -52,6 +56,11 @@ export class AccountingModule implements OnModuleInit {
     // Orders يعرف حاجة عن وجود Accounting أصلًا (نفس فايدة الفصل اللي الـbus اتصمم لأجلها من الأول)
     this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) =>
       this.postOrderSaleJournalEntry.handle(event)
+    );
+    // تالت مستهلك حقيقي للـevent bus (بعد Accounting نفسه على OrderRegistered) - نفس الفلسفة
+    // بالظبط، Accounting هنا بيشترك في حدث HR & Payroll من غير ما HrPayroll يعرف حاجة عن وجوده
+    this.eventBus.subscribe<PayrollRunApprovedEvent>("PayrollRunApproved", (event) =>
+      this.postPayrollJournalEntry.handle(event)
     );
   }
 }
