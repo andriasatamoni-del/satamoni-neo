@@ -11,6 +11,7 @@
 // كده. لو الفرع مش لاقيه (لسه ما اتستوردش)، بيتسيب NULL بدل ما يوقف الاستيراد كله.
 import "dotenv/config";
 import { Pool } from "pg";
+import { pgSslOption } from "../src/shared/database/pg-ssl";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "../src/shared/database/database.types";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
@@ -114,8 +115,8 @@ async function main() {
   if (!legacyUrl) throw new Error("لازم تحدد LEGACY_DATABASE_URL");
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
-  const legacyPool = new Pool({ connectionString: legacyUrl });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl }) }) });
+  const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
+  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
 
   const result = await importUsersFromLegacy(legacyPool, neoDb);
   console.log(`✅ الاستيراد خلص: ${result.created} جديد، ${result.updated} اتحدّث، ${result.skipped} اتخطّى`);

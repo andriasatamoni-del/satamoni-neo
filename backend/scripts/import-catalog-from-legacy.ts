@@ -7,6 +7,7 @@
 // أصلًا "لسه مش نافذة فعليًا" في النظام الجديد المبسّط ده).
 import "dotenv/config";
 import { Pool } from "pg";
+import { pgSslOption } from "../src/shared/database/pg-ssl";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "../src/shared/database/database.types";
 import { KyselyMenuCategoryRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository";
@@ -206,8 +207,8 @@ async function main() {
   if (!legacyUrl) throw new Error("لازم تحدد LEGACY_DATABASE_URL");
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
-  const legacyPool = new Pool({ connectionString: legacyUrl });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl }) }) });
+  const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
+  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
 
   const result = await importCatalogFromLegacy(legacyPool, neoDb);
   console.log(

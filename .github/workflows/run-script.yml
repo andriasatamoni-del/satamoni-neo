@@ -1,0 +1,31 @@
+name: Run one-off backend script
+
+# ليه الملف ده موجود: بيئة التطوير اللي بيتم بيها بناء النظام محظور عليها الاتصال المباشر (TCP خام)
+# بقاعدة بيانات الإنتاج على Render - HTTPS بس هو المسموح. الـworkflow ده بيشغّل أي سكريبت في backend/scripts
+# (زي create-test-admin.ts أو أي import-*-from-legacy.ts) من جوه GitHub Actions اللي عنده اتصال شبكة عادي،
+# بدل ما نحتاج جهاز/سيرفر تاني. شغّله يدوي من تبويب Actions -> Run one-off backend script -> Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      script_path:
+        description: "المسار النسبي جوه backend/ للسكريبت (مثال: scripts/create-test-admin.ts)"
+        required: true
+        default: "scripts/create-test-admin.ts"
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx ts-node "${{ github.event.inputs.script_path }}"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEGACY_DATABASE_URL: ${{ secrets.LEGACY_DATABASE_URL }}
+          PGSSL: "true"
