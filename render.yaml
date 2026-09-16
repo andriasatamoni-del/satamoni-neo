@@ -33,6 +33,11 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html # لازم لأي SPA بـclient-side routing (React Router) - من غيرها أي
+        # رابط غير "/" (زي "/login") بيرجّع 404 من سيرفر الاستضافة نفسه قبل ما الـJS يشتغل أصلًا
     envVars:
       - key: VITE_API_BASE_URL
         sync: false # حدّده يدوي بعد ما الباك إند يتنشر ويبقى معروف رابطه (راجع DEPLOYMENT.md)

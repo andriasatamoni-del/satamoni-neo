@@ -40,7 +40,12 @@
 5. **Environment Variables**:
    - `VITE_API_BASE_URL` = رابط الباك إند بتاع الخطوة 2 بالظبط (من غير `/` في الآخر) - مثلًا
      `https://satamoni-neo-backend.onrender.com`
-6. Deploy. الفرونت بيكلّم الباك إند مباشرة (CORS مفعّل بالفعل في `main.ts`).
+6. **Redirects/Rewrites** (لازم - من غيرها أي رابط غير `/` زي `/login` بيرجّع 404): في صفحة السيرفس
+   نفسه، تبويب **Redirects/Rewrites → Add Rule**:
+   - Source: `/*`
+   - Destination: `/index.html`
+   - Action: **Rewrite** (مش Redirect)
+7. Deploy. الفرونت بيكلّم الباك إند مباشرة (CORS مفعّل بالفعل في `main.ts`).
 
 ## 4. الاستيراد النهائي (قبل التحويل الفعلي مباشرة)
 
