@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { StatusBadge } from "../shared/ui/Badge";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface Employee { id: string; name: string; department: string | null; jobTitle: string | null; baseSalary: number; wageType: string; status: string; }
 interface PayrollRunEmployeeLine { employeeId: string; employeeName: string; grossPay: number; advances: number; penalties: number; bonuses: number; netPay: number; }
@@ -79,105 +84,136 @@ export function HrPayrollPage() {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   }
 
+  const employees = employeesQuery.data ?? [];
+  const payrollRuns = payrollRunsQuery.data ?? [];
+
   return (
-    <div style={{ maxWidth: 1000, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>الموارد البشرية والرواتب</h1>
+    <div>
+      <PageHeader title="الموارد البشرية والرواتب" description="الموظفين وقوائم الرواتب الشهرية" />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة موظف</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createEmployee.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8 }}
-        >
-          <input required placeholder="اسم الموظف" value={employeeForm.name} onChange={(e) => setEmployeeForm({ ...employeeForm, name: e.target.value })} style={{ padding: 6 }} />
-          <input placeholder="القسم (اختياري)" value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} style={{ padding: 6 }} />
-          <input type="number" placeholder="الراتب الأساسي" value={employeeForm.baseSalary} onChange={(e) => setEmployeeForm({ ...employeeForm, baseSalary: e.target.value })} style={{ padding: 6 }} />
-          <button type="submit" disabled={createEmployee.isPending}>إضافة</button>
-        </form>
-      </section>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>إضافة موظف</CardTitle></CardHeader>
+          <CardBody>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEmployee.mutate(); }} className="space-y-4">
+              <Field label="اسم الموظف">
+                <Input required value={employeeForm.name} onChange={(e) => setEmployeeForm({ ...employeeForm, name: e.target.value })} />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="القسم (اختياري)">
+                  <Input value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} />
+                </Field>
+                <Field label="الراتب الأساسي">
+                  <Input type="number" value={employeeForm.baseSalary} onChange={(e) => setEmployeeForm({ ...employeeForm, baseSalary: e.target.value })} />
+                </Field>
+              </div>
+              <Button type="submit" disabled={createEmployee.isPending}>إضافة</Button>
+            </form>
+          </CardBody>
+        </Card>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>الموظفين</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الاسم</th><th>القسم</th><th>الراتب الأساسي</th><th>الحالة</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employeesQuery.data?.map((e) => (
-              <tr key={e.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{e.name}</td>
-                <td>{e.department ?? "-"}</td>
-                <td>{e.baseSalary}</td>
-                <td>{STATUS_LABELS[e.status] ?? e.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+        <Card>
+          <CardHeader><CardTitle>الموظفين ({employees.length})</CardTitle></CardHeader>
+          <CardBody className="max-h-72 overflow-y-auto p-0">
+            <Table>
+              <THead>
+                <TR><TH>الاسم</TH><TH>القسم</TH><TH>الراتب</TH><TH>الحالة</TH></TR>
+              </THead>
+              <TBody>
+                {employees.map((e) => (
+                  <TR key={e.id}>
+                    <TD className="font-semibold text-slate-900">{e.name}</TD>
+                    <TD>{e.department ?? "-"}</TD>
+                    <TD>{e.baseSalary}ج</TD>
+                    <TD><StatusBadge status={STATUS_LABELS[e.status] ?? e.status} /></TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      </div>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>قائمة رواتب جديدة</h2>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRun.mutate(); }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-            <input required type="number" placeholder="السنة" value={runForm.year} onChange={(e) => setRunForm({ ...runForm, year: e.target.value })} style={{ padding: 6 }} />
-            <input required type="number" min="1" max="12" placeholder="الشهر" value={runForm.month} onChange={(e) => setRunForm({ ...runForm, month: e.target.value })} style={{ padding: 6 }} />
-          </div>
-          {lines.map((line, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-              <select value={line.employeeId} onChange={(e) => updateLine(i, { employeeId: e.target.value })} style={{ padding: 6 }}>
-                <option value="">اختر موظف</option>
-                {employeesQuery.data?.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-              <input type="number" placeholder="الراتب الإجمالي" value={line.grossPay} onChange={(e) => updateLine(i, { grossPay: e.target.value })} style={{ padding: 6 }} />
-              <input type="number" placeholder="سلف" value={line.advances} onChange={(e) => updateLine(i, { advances: e.target.value })} style={{ padding: 6 }} />
-              <input type="number" placeholder="خصومات" value={line.penalties} onChange={(e) => updateLine(i, { penalties: e.target.value })} style={{ padding: 6 }} />
-              <input type="number" placeholder="مكافآت" value={line.bonuses} onChange={(e) => updateLine(i, { bonuses: e.target.value })} style={{ padding: 6 }} />
+      <Card className="mb-6">
+        <CardHeader><CardTitle>قائمة رواتب جديدة</CardTitle></CardHeader>
+        <CardBody>
+          <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRun.mutate(); }} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 sm:max-w-xs">
+              <Field label="السنة">
+                <Input required type="number" value={runForm.year} onChange={(e) => setRunForm({ ...runForm, year: e.target.value })} />
+              </Field>
+              <Field label="الشهر">
+                <Input required type="number" min="1" max="12" value={runForm.month} onChange={(e) => setRunForm({ ...runForm, month: e.target.value })} />
+              </Field>
             </div>
-          ))}
-          <button type="button" onClick={() => setLines((prev) => [...prev, { employeeId: "", grossPay: "", advances: "", penalties: "", bonuses: "" }])} style={{ marginBottom: 8 }}>
-            + موظف
-          </button>
-          {runError && <p style={{ color: "crimson" }}>{runError}</p>}
-          <div>
-            <button type="submit" disabled={createRun.isPending}>تسجيل القائمة</button>
-          </div>
-        </form>
-      </section>
 
-      <section>
-        <h2>قوائم الرواتب</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الشهر</th><th>الموظفين</th><th>إجمالي صافي الرواتب</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payrollRunsQuery.data?.map((run) => (
-              <tr key={run.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{run.month}/{run.year}</td>
-                <td>{run.employees.map((e) => `${e.employeeName} (${e.netPay})`).join("، ") || "-"}</td>
-                <td>{run.totalNetPay}</td>
-                <td>{RUN_STATUS_LABELS[run.status] ?? run.status}</td>
-                <td>
-                  {run.status === "DRAFT" && (
-                    <>
-                      <button onClick={() => approveRun.mutate(run.id)} disabled={approveRun.isPending}>اعتماد</button>{" "}
-                      <button onClick={() => deleteDraftRun.mutate(run.id)} disabled={deleteDraftRun.isPending}>حذف</button>
-                    </>
-                  )}
-                  {run.status === "APPROVED" && (
-                    <button onClick={() => cancelRun.mutate(run.id)} disabled={cancelRun.isPending}>إلغاء</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            <div className="space-y-2">
+              {lines.map((line, i) => (
+                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+                  <Select value={line.employeeId} onChange={(e) => updateLine(i, { employeeId: e.target.value })}>
+                    <option value="">اختر موظف</option>
+                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </Select>
+                  <Input type="number" placeholder="الراتب الإجمالي" value={line.grossPay} onChange={(e) => updateLine(i, { grossPay: e.target.value })} />
+                  <Input type="number" placeholder="سلف" value={line.advances} onChange={(e) => updateLine(i, { advances: e.target.value })} />
+                  <Input type="number" placeholder="خصومات" value={line.penalties} onChange={(e) => updateLine(i, { penalties: e.target.value })} />
+                  <Input type="number" placeholder="مكافآت" value={line.bonuses} onChange={(e) => updateLine(i, { bonuses: e.target.value })} />
+                </div>
+              ))}
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setLines((prev) => [...prev, { employeeId: "", grossPay: "", advances: "", penalties: "", bonuses: "" }])}
+            >
+              + موظف
+            </Button>
+
+            {runError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{runError}</p>}
+
+            <div>
+              <Button type="submit" disabled={createRun.isPending}>تسجيل القائمة</Button>
+            </div>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>قوائم الرواتب ({payrollRuns.length})</CardTitle></CardHeader>
+        <CardBody className="p-0">
+          <Table>
+            <THead>
+              <TR><TH>الشهر</TH><TH>الموظفين</TH><TH>إجمالي صافي الرواتب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+            </THead>
+            <TBody>
+              {payrollRuns.map((run) => (
+                <TR key={run.id}>
+                  <TD className="font-semibold text-slate-900">{run.month}/{run.year}</TD>
+                  <TD className="max-w-sm truncate">{run.employees.map((e) => `${e.employeeName} (${e.netPay})`).join("، ") || "-"}</TD>
+                  <TD className="font-bold text-slate-900">{run.totalNetPay}ج</TD>
+                  <TD><StatusBadge status={RUN_STATUS_LABELS[run.status] ?? run.status} /></TD>
+                  <TD>
+                    <div className="flex gap-1.5">
+                      {run.status === "DRAFT" && (
+                        <>
+                          <Button size="sm" onClick={() => approveRun.mutate(run.id)} disabled={approveRun.isPending}>اعتماد</Button>
+                          <Button size="sm" variant="danger" onClick={() => deleteDraftRun.mutate(run.id)} disabled={deleteDraftRun.isPending}>حذف</Button>
+                        </>
+                      )}
+                      {run.status === "APPROVED" && (
+                        <Button size="sm" variant="danger" onClick={() => cancelRun.mutate(run.id)} disabled={cancelRun.isPending}>إلغاء</Button>
+                      )}
+                    </div>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+          {payrollRuns.length === 0 && <EmptyState>مفيش قوائم رواتب لسه</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }

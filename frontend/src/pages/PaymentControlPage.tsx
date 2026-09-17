@@ -1,7 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { Badge, StatusBadge } from "../shared/ui/Badge";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { Tabs } from "../shared/ui/Tabs";
 
 interface PaymentMethod { id: string; name: string; kind: string; settlementChannel: string | null; isActive: boolean; }
 interface Payment { id: string; orderId: string; branchId: string; methodKind: string; settlementChannel: string | null; amount: number; lockedAt: string; }
@@ -25,8 +31,16 @@ const SOURCE_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = { PENDING: "معلّق", APPROVED: "معتمد", REJECTED: "مرفوض" };
 const MATCH_STATUS_LABELS: Record<string, string> = { UNMATCHED: "غير متطابق", MATCHED: "متطابق", IGNORED: "متجاهل" };
 
+const TABS = [
+  { key: "payments", label: "الدفعات المقفولة" },
+  { key: "adjustments", label: "طلبات التعديل" },
+  { key: "reconciliation", label: "المطابقة" },
+  { key: "exceptions", label: "الاستثناءات" },
+];
+
 export function PaymentControlPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState("payments");
   const methodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
   const paymentsQuery = useQuery({ queryKey: ["payment-control", "payments"], queryFn: () => apiRequest<Payment[]>("/payment-control/payments") });
   const requestsQuery = useQuery({ queryKey: ["payment-control", "requests"], queryFn: () => apiRequest<AdjustmentRequest[]>("/payment-control/adjustment-requests") });
@@ -93,161 +107,213 @@ export function PaymentControlPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["payment-control", "records"] }),
   });
 
+  const payments = paymentsQuery.data ?? [];
+  const requests = requestsQuery.data ?? [];
+  const records = recordsQuery.data ?? [];
+  const exceptions = exceptionsQuery.data ?? [];
+
   return (
-    <div style={{ maxWidth: 1000, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>التحكم في المدفوعات والمطابقة</h1>
+    <div>
+      <PageHeader title="التحكم في المدفوعات والمطابقة" description="الدفعات، طلبات التعديل، والمطابقة مع كشوف الحساب" />
+      <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>الدفعات المقفولة</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الطلب</th><th>الطريقة</th><th>القناة</th><th>المبلغ</th><th>وقت القفل</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paymentsQuery.data?.map((p) => (
-              <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{p.orderId.slice(0, 8)}</td>
-                <td>{KIND_LABELS[p.methodKind] ?? p.methodKind}</td>
-                <td>{p.settlementChannel ?? "-"}</td>
-                <td>{p.amount}</td>
-                <td>{new Date(p.lockedAt).toLocaleString("ar-EG")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      {tab === "payments" && (
+        <Card>
+          <CardHeader><CardTitle>الدفعات المقفولة ({payments.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR><TH>الطلب</TH><TH>الطريقة</TH><TH>القناة</TH><TH>المبلغ</TH><TH>وقت القفل</TH></TR>
+              </THead>
+              <TBody>
+                {payments.map((p) => (
+                  <TR key={p.id}>
+                    <TD className="font-mono text-xs">{p.orderId.slice(0, 8)}</TD>
+                    <TD>{KIND_LABELS[p.methodKind] ?? p.methodKind}</TD>
+                    <TD>{p.settlementChannel ?? "-"}</TD>
+                    <TD className="font-bold text-slate-900">{p.amount}ج</TD>
+                    <TD>{new Date(p.lockedAt).toLocaleString("ar-EG")}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {payments.length === 0 && <EmptyState>مفيش دفعات لسه</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>طلب تعديل دفعة</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createAdjustment.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8 }}
-        >
-          <select required value={adjustmentForm.paymentId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, paymentId: e.target.value })} style={{ padding: 6 }}>
-            <option value="">اختر دفعة</option>
-            {paymentsQuery.data?.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
-          </select>
-          <select value={adjustmentForm.proposedPaymentMethodId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedPaymentMethodId: e.target.value })} style={{ padding: 6 }}>
-            <option value="">نفس الطريقة (تصحيح مبلغ بس)</option>
-            {methodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <input required type="number" placeholder="المبلغ المقترح" value={adjustmentForm.proposedAmount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedAmount: e.target.value })} style={{ padding: 6 }} />
-          <input placeholder="السبب" value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} style={{ padding: 6 }} />
-          <button type="submit" disabled={createAdjustment.isPending}>طلب</button>
-        </form>
-        {adjustmentError && <p style={{ color: "crimson" }}>{adjustmentError}</p>}
+      {tab === "adjustments" && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader><CardTitle>طلب تعديل دفعة</CardTitle></CardHeader>
+            <CardBody>
+              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAdjustment.mutate(); }} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="الدفعة">
+                    <Select required value={adjustmentForm.paymentId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, paymentId: e.target.value })}>
+                      <option value="">اختر دفعة</option>
+                      {payments.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الطريقة المقترحة">
+                    <Select value={adjustmentForm.proposedPaymentMethodId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedPaymentMethodId: e.target.value })}>
+                      <option value="">نفس الطريقة (تصحيح مبلغ بس)</option>
+                      {methodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="المبلغ المقترح">
+                    <Input required type="number" value={adjustmentForm.proposedAmount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedAmount: e.target.value })} />
+                  </Field>
+                  <Field label="السبب">
+                    <Input value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} />
+                  </Field>
+                </div>
+                {adjustmentError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
+                <Button type="submit" disabled={createAdjustment.isPending}>طلب</Button>
+              </form>
+            </CardBody>
+          </Card>
 
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الدفعة</th><th>المبلغ المقترح</th><th>الفرق</th><th>السبب</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requestsQuery.data?.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{r.paymentId.slice(0, 8)}</td>
-                <td>{r.proposedAmount}</td>
-                <td>{r.amountDelta}</td>
-                <td>{r.reason ?? "-"}</td>
-                <td>{STATUS_LABELS[r.status] ?? r.status}</td>
-                <td>
-                  {r.status === "PENDING" && (
-                    <>
-                      <button onClick={() => decideAdjustment.mutate({ id: r.id, action: "approve" })} disabled={decideAdjustment.isPending}>اعتماد</button>{" "}
-                      <button onClick={() => decideAdjustment.mutate({ id: r.id, action: "reject" })} disabled={decideAdjustment.isPending}>رفض</button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+          <Card>
+            <CardHeader><CardTitle>الطلبات ({requests.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              <Table>
+                <THead>
+                  <TR><TH>الدفعة</TH><TH>المبلغ المقترح</TH><TH>الفرق</TH><TH>السبب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+                </THead>
+                <TBody>
+                  {requests.map((r) => (
+                    <TR key={r.id}>
+                      <TD className="font-mono text-xs">{r.paymentId.slice(0, 8)}</TD>
+                      <TD>{r.proposedAmount}ج</TD>
+                      <TD>{r.amountDelta}ج</TD>
+                      <TD>{r.reason ?? "-"}</TD>
+                      <TD><StatusBadge status={STATUS_LABELS[r.status] ?? r.status} /></TD>
+                      <TD>
+                        {r.status === "PENDING" && (
+                          <div className="flex gap-1.5">
+                            <Button size="sm" onClick={() => decideAdjustment.mutate({ id: r.id, action: "approve" })} disabled={decideAdjustment.isPending}>اعتماد</Button>
+                            <Button size="sm" variant="danger" onClick={() => decideAdjustment.mutate({ id: r.id, action: "reject" })} disabled={decideAdjustment.isPending}>رفض</Button>
+                          </div>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {requests.length === 0 && <EmptyState>مفيش طلبات تعديل لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </div>
+      )}
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>مطابقة كشوف الحساب الخارجية</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createRecord.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8, marginBottom: 12 }}
-        >
-          <select value={recordForm.source} onChange={(e) => setRecordForm({ ...recordForm, source: e.target.value })} style={{ padding: 6 }}>
-            {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <input required type="number" placeholder="المبلغ" value={recordForm.externalAmount} onChange={(e) => setRecordForm({ ...recordForm, externalAmount: e.target.value })} style={{ padding: 6 }} />
-          <input required type="date" value={recordForm.externalDate} onChange={(e) => setRecordForm({ ...recordForm, externalDate: e.target.value })} style={{ padding: 6 }} />
-          <input placeholder="مرجع خارجي" value={recordForm.externalReference} onChange={(e) => setRecordForm({ ...recordForm, externalReference: e.target.value })} style={{ padding: 6 }} />
-          <button type="submit" disabled={createRecord.isPending}>تسجيل</button>
-        </form>
-        <button onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending} style={{ marginBottom: 12 }}>
-          مطابقة تلقائية (إنستاباي/أورانج كاش)
-        </button>
-        {autoMatch.data && <p>اتطابق: {autoMatch.data.matched} | فضل غير متطابق: {autoMatch.data.leftUnmatched}</p>}
+      {tab === "reconciliation" && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader><CardTitle>تسجيل سطر مطابقة</CardTitle></CardHeader>
+            <CardBody>
+              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRecord.mutate(); }} className="mb-4 space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="المصدر">
+                    <Select value={recordForm.source} onChange={(e) => setRecordForm({ ...recordForm, source: e.target.value })}>
+                      {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="المبلغ">
+                    <Input required type="number" value={recordForm.externalAmount} onChange={(e) => setRecordForm({ ...recordForm, externalAmount: e.target.value })} />
+                  </Field>
+                  <Field label="التاريخ">
+                    <Input required type="date" value={recordForm.externalDate} onChange={(e) => setRecordForm({ ...recordForm, externalDate: e.target.value })} />
+                  </Field>
+                  <Field label="مرجع خارجي">
+                    <Input value={recordForm.externalReference} onChange={(e) => setRecordForm({ ...recordForm, externalReference: e.target.value })} />
+                  </Field>
+                </div>
+                <Button type="submit" disabled={createRecord.isPending}>تسجيل</Button>
+              </form>
+              <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+                <Button variant="secondary" onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending}>
+                  مطابقة تلقائية (إنستاباي/أورانج كاش)
+                </Button>
+                {autoMatch.data && (
+                  <span className="text-sm text-slate-600">
+                    اتطابق: <strong>{autoMatch.data.matched}</strong> | فضل غير متطابق: <strong>{autoMatch.data.leftUnmatched}</strong>
+                  </span>
+                )}
+              </div>
+            </CardBody>
+          </Card>
 
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>المصدر</th><th>المرجع</th><th>المبلغ</th><th>التاريخ</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recordsQuery.data?.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{SOURCE_LABELS[r.source] ?? r.source}</td>
-                <td>{r.externalReference ?? "-"}</td>
-                <td>{r.externalAmount}</td>
-                <td>{new Date(r.externalDate).toLocaleDateString("ar-EG")}</td>
-                <td>{MATCH_STATUS_LABELS[r.matchStatus] ?? r.matchStatus}</td>
-                <td>
-                  {r.matchStatus === "UNMATCHED" && (
-                    <>
-                      <select
-                        value={matchPaymentId[r.id] ?? ""}
-                        onChange={(e) => setMatchPaymentId({ ...matchPaymentId, [r.id]: e.target.value })}
-                      >
-                        <option value="">اختر دفعة</option>
-                        {paymentsQuery.data?.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
-                      </select>{" "}
-                      <button
-                        disabled={!matchPaymentId[r.id] || matchRecord.isPending}
-                        onClick={() => matchRecord.mutate({ id: r.id, paymentId: matchPaymentId[r.id] })}
-                      >
-                        مطابقة
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+          <Card>
+            <CardHeader><CardTitle>سطور المطابقة ({records.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              <Table>
+                <THead>
+                  <TR><TH>المصدر</TH><TH>المرجع</TH><TH>المبلغ</TH><TH>التاريخ</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+                </THead>
+                <TBody>
+                  {records.map((r) => (
+                    <TR key={r.id}>
+                      <TD>{SOURCE_LABELS[r.source] ?? r.source}</TD>
+                      <TD>{r.externalReference ?? "-"}</TD>
+                      <TD>{r.externalAmount}ج</TD>
+                      <TD>{new Date(r.externalDate).toLocaleDateString("ar-EG")}</TD>
+                      <TD><StatusBadge status={MATCH_STATUS_LABELS[r.matchStatus] ?? r.matchStatus} /></TD>
+                      <TD>
+                        {r.matchStatus === "UNMATCHED" && (
+                          <div className="flex items-center gap-2">
+                            <Select
+                              className="w-auto"
+                              value={matchPaymentId[r.id] ?? ""}
+                              onChange={(e) => setMatchPaymentId({ ...matchPaymentId, [r.id]: e.target.value })}
+                            >
+                              <option value="">اختر دفعة</option>
+                              {payments.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
+                            </Select>
+                            <Button
+                              size="sm"
+                              disabled={!matchPaymentId[r.id] || matchRecord.isPending}
+                              onClick={() => matchRecord.mutate({ id: r.id, paymentId: matchPaymentId[r.id] })}
+                            >
+                              مطابقة
+                            </Button>
+                          </div>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {records.length === 0 && <EmptyState>مفيش سطور مطابقة لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </div>
+      )}
 
-      <section>
-        <h2>الاستثناءات ونقاط المخاطر</h2>
-        {exceptionsQuery.data?.length === 0 && <p>مفيش استثناءات حاليًا.</p>}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الطلب</th><th>القناة</th><th>المبلغ</th><th>السبب</th><th>مستوى الخطورة</th>
-            </tr>
-          </thead>
-          <tbody>
-            {exceptionsQuery.data?.map((e) => (
-              <tr key={e.paymentId} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{e.orderId.slice(0, 8)}</td>
-                <td>{e.settlementChannel}</td>
-                <td>{e.amount}</td>
-                <td>{e.reason}</td>
-                <td>{e.riskLevel} ({e.riskScore})</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      {tab === "exceptions" && (
+        <Card>
+          <CardHeader><CardTitle>الاستثناءات ونقاط المخاطر ({exceptions.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR><TH>الطلب</TH><TH>القناة</TH><TH>المبلغ</TH><TH>السبب</TH><TH>مستوى الخطورة</TH></TR>
+              </THead>
+              <TBody>
+                {exceptions.map((e) => (
+                  <TR key={e.paymentId}>
+                    <TD className="font-mono text-xs">{e.orderId.slice(0, 8)}</TD>
+                    <TD>{e.settlementChannel}</TD>
+                    <TD>{e.amount}ج</TD>
+                    <TD>{e.reason}</TD>
+                    <TD><Badge tone={e.riskLevel === "high" ? "danger" : e.riskLevel === "medium" ? "warning" : "neutral"}>{e.riskLevel} ({e.riskScore})</Badge></TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {exceptions.length === 0 && <EmptyState>مفيش استثناءات حاليًا</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }
