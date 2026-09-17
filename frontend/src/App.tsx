@@ -15,6 +15,7 @@ import { AccountingPage } from "./pages/AccountingPage";
 import { PaymentControlPage } from "./pages/PaymentControlPage";
 import { HrPayrollPage } from "./pages/HrPayrollPage";
 import { UsersPage } from "./pages/UsersPage";
+import { TreasuriesPage } from "./pages/TreasuriesPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -110,6 +111,14 @@ export function App() {
         element={
           <RequireAuth>
             <AccountingPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/treasuries"
+        element={
+          <RequireAuth>
+            <TreasuriesPage />
           </RequireAuth>
         }
       />

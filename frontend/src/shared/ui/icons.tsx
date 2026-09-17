@@ -95,3 +95,8 @@ export const ShieldUserIcon = (p: SVGProps<SVGSVGElement>) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.75h-.152c-3.196 0-6.1-1.248-8.25-3.286z" />
   </Icon>
 );
+export const VaultIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0116.5 0m-16.5 0V6.375c0-1.036.84-1.875 1.875-1.875h12.75c1.036 0 1.875.84 1.875 1.875v12.375m-16.5 0h16.5M4.5 6h.75M4.5 9h.75m-.75 3h.75M4.5 15h.75M15 6h.75M15 9h.75M15 12h.75M15 15h.75M9.75 6h1.5v9h-1.5V6z" />
+  </Icon>
+);

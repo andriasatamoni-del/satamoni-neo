@@ -38,6 +38,9 @@ describe("Branches - /branches (e2e ضد تطبيق حقيقي كامل)", () =>
 
   afterAll(async () => {
     const db = app.get(KYSELY);
+    // POST /branches بينشر BranchRegisteredEvent دلوقتي، اللي Treasury context بيسمع له وبينشئ خزينة
+    // رئيسية مربوطة بالفرع (treasuries.branch_id FK) - لازم تتشال قبل الفرع نفسه
+    await sql`DELETE FROM treasuries`.execute(db);
     await sql`DELETE FROM branches`.execute(db);
     await sql`DELETE FROM users WHERE email = 'admin-branches@jest.test'`.execute(db);
     await app.close();

@@ -18,6 +18,7 @@ import {
   ShieldUserIcon,
   TruckIcon,
   UsersIcon,
+  VaultIcon,
 } from "./icons";
 
 const NAV_ITEMS = [
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { to: "/procurement", label: "المشتريات والموردين", icon: ClipboardIcon },
   { to: "/delivery", label: "التوصيل والسائقين", icon: TruckIcon },
   { to: "/accounting", label: "المحاسبة", icon: CoinsIcon },
+  { to: "/treasuries", label: "الخزائن والبنوك", icon: VaultIcon },
   { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
   { to: "/hr-payroll", label: "الموارد البشرية والرواتب", icon: IdCardIcon },
   { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },

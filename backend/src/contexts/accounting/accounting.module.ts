@@ -34,7 +34,7 @@ import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.even
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
-  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY],
+  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler],
 })
 export class AccountingModule implements OnModuleInit {
   constructor(
