@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
+import { DashboardSummary } from "./home/DashboardSummary";
 import {
   BoxIcon,
   BookIcon,
@@ -36,6 +37,7 @@ export function HomePage() {
         title={`أهلاً ${user?.name ?? ""} 👋`}
         description="اختار من الأقسام تحت عشان تبدأ"
       />
+      <DashboardSummary />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {TILES.map(({ to, label, desc, icon: TileIcon }) => (
           <Link

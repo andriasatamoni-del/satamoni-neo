@@ -15,6 +15,7 @@ import { AccountingModule } from "./contexts/accounting/accounting.module";
 import { PaymentControlModule } from "./contexts/payment-control/payment-control.module";
 import { HrPayrollModule } from "./contexts/hr-payroll/hr-payroll.module";
 import { ShiftsModule } from "./contexts/shifts/shifts.module";
+import { ReportingModule } from "./contexts/reporting/reporting.module";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ShiftsModule } from "./contexts/shifts/shifts.module";
     PaymentControlModule,
     HrPayrollModule,
     ShiftsModule,
+    ReportingModule,
   ],
   controllers: [HealthController],
 })
