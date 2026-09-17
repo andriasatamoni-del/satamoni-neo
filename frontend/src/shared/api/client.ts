@@ -46,5 +46,9 @@ export async function apiRequest<T>(
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json();
+  // NestJS بيرجّع body فاضي (Content-Length: 0) مع status 200 لما الـcontroller يرجّع null صراحة -
+  // مش "null" كنص زي ما Express العادي كان هيعمل. res.json() بيرمي SyntaxError على body فاضي، وده
+  // كان بيسيب أي استعلام React Query عالق في إعادة المحاولة (isLoading فاضل true) بدل ما يتحل بـnull
+  const text = await res.text();
+  return text ? JSON.parse(text) : (null as T);
 }

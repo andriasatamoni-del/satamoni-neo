@@ -11,11 +11,13 @@ import { RegisterJournalEntryHandler } from "./application/commands/register-jou
 import { ReverseJournalEntryHandler } from "./application/commands/reverse-journal-entry.handler";
 import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-order-sale-journal-entry.handler";
 import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
+import { PostShiftVarianceJournalEntryHandler } from "./application/commands/post-shift-variance-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
+import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -28,6 +30,7 @@ import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payrol
     ReverseJournalEntryHandler,
     PostOrderSaleJournalEntryHandler,
     PostPayrollJournalEntryHandler,
+    PostShiftVarianceJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -38,7 +41,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
-    private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler
+    private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler,
+    private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -61,6 +65,11 @@ export class AccountingModule implements OnModuleInit {
     // بالظبط، Accounting هنا بيشترك في حدث HR & Payroll من غير ما HrPayroll يعرف حاجة عن وجوده
     this.eventBus.subscribe<PayrollRunApprovedEvent>("PayrollRunApproved", (event) =>
       this.postPayrollJournalEntry.handle(event)
+    );
+    // رابع مستهلك - فرق كاش شيفت مقفول (لو موجود) بيترحّل تلقائيًا، من غير ما Shifts context يعرف
+    // حاجة عن Accounting
+    this.eventBus.subscribe<ShiftClosedEvent>("ShiftClosed", (event) =>
+      this.postShiftVarianceJournalEntry.handle(event)
     );
   }
 }

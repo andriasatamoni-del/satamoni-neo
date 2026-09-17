@@ -7,6 +7,8 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
+import { ShiftBanner } from "./orders/ShiftBanner";
+import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
 
 interface Branch { id: string; name: string; }
 interface MenuItemVariant { id: string; label: string; price: number; }
@@ -87,6 +89,9 @@ export function OrdersPage() {
   return (
     <div>
       <PageHeader title="الطلبات (POS)" description="تسجيل ومتابعة طلبات البيع" />
+
+      <ShiftBanner />
+      <ShiftReviewPanel />
 
       <Card className="mb-6">
         <CardHeader>
