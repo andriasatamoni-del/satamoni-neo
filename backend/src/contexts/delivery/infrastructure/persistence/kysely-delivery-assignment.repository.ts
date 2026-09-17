@@ -16,7 +16,13 @@ export class KyselyDeliveryAssignmentRepository implements DeliveryAssignmentRep
       .insertInto("delivery_assignments")
       .values(row)
       .onConflict((oc) =>
-        oc.column("id").doUpdateSet({ status: row.status, delivered_at: row.delivered_at, failure_reason: row.failure_reason })
+        oc.column("id").doUpdateSet({
+          status: row.status,
+          delivered_at: row.delivered_at,
+          failure_reason: row.failure_reason,
+          collected_amount: row.collected_amount,
+          settlement_id: row.settlement_id,
+        })
       )
       .execute();
   }
@@ -50,6 +56,8 @@ export class KyselyDeliveryAssignmentRepository implements DeliveryAssignmentRep
       assigned_at: assignment.assignedAt,
       delivered_at: assignment.deliveredAt,
       failure_reason: assignment.failureReason,
+      collected_amount: assignment.collectedAmount,
+      settlement_id: assignment.settlementId,
     };
   }
 
@@ -63,6 +71,8 @@ export class KyselyDeliveryAssignmentRepository implements DeliveryAssignmentRep
       assignedAt: row.assigned_at,
       deliveredAt: row.delivered_at,
       failureReason: row.failure_reason,
+      collectedAmount: row.collected_amount === null ? null : Number(row.collected_amount),
+      settlementId: row.settlement_id,
     });
   }
 }

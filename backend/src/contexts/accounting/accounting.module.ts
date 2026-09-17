@@ -13,6 +13,8 @@ import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-or
 import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
 import { PostShiftVarianceJournalEntryHandler } from "./application/commands/post-shift-variance-journal-entry.handler";
 import { PostGoodsReceiptApJournalEntryHandler } from "./application/commands/post-goods-receipt-ap-journal-entry.handler";
+import { PostDriverSettlementVarianceJournalEntryHandler } from "./application/commands/post-driver-settlement-variance-journal-entry.handler";
+import { PostDriverWageJournalEntryHandler } from "./application/commands/post-driver-wage-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
@@ -20,6 +22,8 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
 import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.event";
 import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/goods-receipt-confirmed.event";
+import type { DriverSettlementCreatedEvent } from "../delivery/domain/events/driver-settlement-created.event";
+import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events/driver-attendance-shift-closed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -34,6 +38,8 @@ import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/go
     PostPayrollJournalEntryHandler,
     PostShiftVarianceJournalEntryHandler,
     PostGoodsReceiptApJournalEntryHandler,
+    PostDriverSettlementVarianceJournalEntryHandler,
+    PostDriverWageJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -46,7 +52,9 @@ export class AccountingModule implements OnModuleInit {
     private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
     private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler,
     private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler,
-    private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler
+    private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler,
+    private readonly postDriverSettlementVarianceJournalEntry: PostDriverSettlementVarianceJournalEntryHandler,
+    private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -79,6 +87,15 @@ export class AccountingModule implements OnModuleInit {
     // يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<GoodsReceiptConfirmedEvent>("GoodsReceiptConfirmed", (event) =>
       this.postGoodsReceiptApJournalEntry.handle(event)
+    );
+    // سادس مستهلك - فرق تسليم تسوية سائق (لو موجود) بيترحّل تلقائيًا، من غير ما Delivery context
+    // يعرف حاجة عن وجود Accounting
+    this.eventBus.subscribe<DriverSettlementCreatedEvent>("DriverSettlementCreated", (event) =>
+      this.postDriverSettlementVarianceJournalEntry.handle(event)
+    );
+    // سابع مستهلك - أجر+بونص شيفت حضور سائق مقفول بيترحّل تلقائيًا كمصروف
+    this.eventBus.subscribe<DriverAttendanceShiftClosedEvent>("DriverAttendanceShiftClosed", (event) =>
+      this.postDriverWageJournalEntry.handle(event)
     );
   }
 }

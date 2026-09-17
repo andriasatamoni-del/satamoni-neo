@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString } from "class-validator";
 import { DISPATCH_STATUSES } from "../../domain/delivery-assignment.aggregate";
 
 export class UpdateDeliveryStatusDto {
@@ -6,4 +6,5 @@ export class UpdateDeliveryStatusDto {
   status!: string;
 
   @IsOptional() @IsString() failureReason?: string;
+  @IsOptional() @IsNumber() collectedAmount?: number;
 }

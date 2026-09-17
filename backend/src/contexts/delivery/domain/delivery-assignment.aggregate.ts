@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { DeliveryAssignmentAlreadyFinalizedError, UnknownDispatchStatusError } from "./errors";
+import {
+  DeliveryAssignmentAlreadyFinalizedError,
+  DeliveryAssignmentAlreadySettledError,
+  UnknownDispatchStatusError,
+} from "./errors";
 
 // نفس قيم dispatch_status في الريبو القديم بالظبط (عمود على orders هناك، هنا aggregate مستقل بيشاور
 // على الطلب بـid بس - راجع تعليق docs/ARCHITECTURE-REFERENCE.md، bounded context #7)
@@ -17,6 +21,8 @@ export interface DeliveryAssignmentProps {
   assignedAt: Date;
   deliveredAt: Date | null;
   failureReason: string | null;
+  collectedAmount: number | null;
+  settlementId: string | null;
 }
 
 // DeliveryAssignment - نفس مفهوم dispatch_status/driver_id/delivered_at في الريبو القديم (كانوا أعمدة
@@ -40,6 +46,8 @@ export class DeliveryAssignment {
       assignedAt: new Date(),
       deliveredAt: null,
       failureReason: null,
+      collectedAmount: null,
+      settlementId: null,
     });
   }
 
@@ -47,13 +55,25 @@ export class DeliveryAssignment {
     return new DeliveryAssignment(id, props);
   }
 
-  updateStatus(status: string, input?: { failureReason?: string | null }): void {
+  updateStatus(status: string, input?: { failureReason?: string | null; collectedAmount?: number | null }): void {
     if (!DISPATCH_STATUSES.includes(status as DispatchStatus)) throw new UnknownDispatchStatusError(status);
     if (FINAL_STATUSES.includes(this.props.status)) throw new DeliveryAssignmentAlreadyFinalizedError();
 
     this.props.status = status as DispatchStatus;
-    if (status === "DELIVERED") this.props.deliveredAt = new Date();
+    if (status === "DELIVERED") {
+      this.props.deliveredAt = new Date();
+      this.props.collectedAmount = input?.collectedAmount ?? null;
+    }
     if (status === "FAILED") this.props.failureReason = input?.failureReason ?? null;
+  }
+
+  // بيتنادى وقت تسوية كاش السائق (DriverSettlement.register) عشان الطلب ده منيتحسبش مرتين في تسوية
+  // تانية - نفس فلسفة supplier_invoices.goods_receipt_id بس بالعكس (هنا نعلّم الطلب إنه اتحسب، مش
+  // العكس). لازم يكون DELIVERED الأول (نفس شرط الريبو القديم: dispatch_status='DELIVERED')
+  assignToSettlement(settlementId: string): void {
+    if (this.props.status !== "DELIVERED") throw new DeliveryAssignmentAlreadyFinalizedError();
+    if (this.props.settlementId) throw new DeliveryAssignmentAlreadySettledError();
+    this.props.settlementId = settlementId;
   }
 
   get orderId(): string { return this.props.orderId; }
@@ -64,4 +84,6 @@ export class DeliveryAssignment {
   get assignedAt(): Date { return this.props.assignedAt; }
   get deliveredAt(): Date | null { return this.props.deliveredAt; }
   get failureReason(): string | null { return this.props.failureReason; }
+  get collectedAmount(): number | null { return this.props.collectedAmount; }
+  get settlementId(): string | null { return this.props.settlementId; }
 }

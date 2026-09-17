@@ -43,3 +43,51 @@ export class OrderAlreadyAssignedError extends DomainError {
     super("الطلب ده اتحول لسائق بالفعل");
   }
 }
+
+export class DeliveryAssignmentAlreadySettledError extends DomainError {
+  constructor() {
+    super("طلب التوصيل ده اتحسب في تسوية سابقة بالفعل");
+  }
+}
+
+export class NothingToSettleError extends DomainError {
+  constructor() {
+    super("مفيش طلبات توصيل مسلّمة لسه محتاجة تسوية لهذا السائق");
+  }
+}
+
+export class DriverSettlementNotFoundError extends DomainError {
+  constructor() {
+    super("تسوية السائق دي مش موجودة");
+  }
+}
+
+export class DriverSettlementNotPendingReviewError extends DomainError {
+  constructor() {
+    super("تسوية السائق دي مش محتاجة مراجعة فرق");
+  }
+}
+
+export class InvalidHandoverAmountError extends DomainError {
+  constructor() {
+    super("لازم المبلغ المُسلَّم يكون رقم صحيح (صفر أو أكبر)");
+  }
+}
+
+export class DriverAttendanceShiftAlreadyActiveError extends DomainError {
+  constructor() {
+    super("السائق ده لسه في شيفت حضور شغال - لازم يقفله الأول");
+  }
+}
+
+export class DriverAttendanceShiftNotActiveError extends DomainError {
+  constructor() {
+    super("شيفت الحضور ده مش شغال (اتقفل بالفعل)");
+  }
+}
+
+export class DriverAttendanceShiftNotFoundError extends DomainError {
+  constructor() {
+    super("شيفت الحضور ده مش موجود");
+  }
+}

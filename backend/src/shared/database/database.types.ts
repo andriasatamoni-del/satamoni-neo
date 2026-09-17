@@ -37,6 +37,8 @@ import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrast
 import type {
   DriversTable,
   DeliveryAssignmentsTable,
+  DriverSettlementsTable,
+  DriverAttendanceShiftsTable,
 } from "../../contexts/delivery/infrastructure/persistence/delivery.schema";
 import type {
   AccountsTable,
@@ -92,6 +94,8 @@ export interface Database {
   order_items: OrderItemsTable;
   drivers: DriversTable;
   delivery_assignments: DeliveryAssignmentsTable;
+  driver_settlements: DriverSettlementsTable;
+  driver_attendance_shifts: DriverAttendanceShiftsTable;
   accounts: AccountsTable;
   journal_entries: JournalEntriesTable;
   journal_entry_lines: JournalEntryLinesTable;

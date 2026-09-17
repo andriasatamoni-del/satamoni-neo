@@ -10,6 +10,7 @@ export interface UpdateDeliveryStatusCommand {
   assignmentId: string;
   status: string;
   failureReason?: string | null;
+  collectedAmount?: number | null;
 }
 
 @Injectable()
@@ -20,7 +21,7 @@ export class UpdateDeliveryStatusHandler {
     const assignment = await this.assignments.findById(command.assignmentId);
     if (!assignment) throw new DeliveryAssignmentNotFoundError();
 
-    assignment.updateStatus(command.status, { failureReason: command.failureReason });
+    assignment.updateStatus(command.status, { failureReason: command.failureReason, collectedAmount: command.collectedAmount });
     await this.assignments.save(assignment);
     return assignment;
   }
