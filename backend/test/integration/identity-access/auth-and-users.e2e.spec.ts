@@ -157,6 +157,32 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       expect(res.body.rolePermissions.admin.length).toBeGreaterThan(0);
     });
 
+    test("PATCH /users/:id بباسورد جديد - تسجيل الدخول القديم بيرفض والجديد بينجح", async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/users/${cashierId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ password: "newpass123" });
+      expect(res.status).toBe(200);
+
+      const oldLogin = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ email: "cashier-e2e@jest.test", password: "12345678" });
+      expect(oldLogin.status).toBe(401);
+
+      const newLogin = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ email: "cashier-e2e@jest.test", password: "newpass123" });
+      expect(newLogin.status).toBe(201);
+    });
+
+    test("PATCH /users/:id بباسورد أقصر من 8 حروف -> 400", async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/users/${cashierId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ password: "short" });
+      expect(res.status).toBe(400);
+    });
+
     test("PATCH /users/:id يقفل الحساب -> is_active بيبقى false وتسجيل الدخول بعدها يرفض", async () => {
       const patchRes = await request(app.getHttpServer())
         .patch(`/users/${cashierId}`)
@@ -167,7 +193,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
 
       const loginRes = await request(app.getHttpServer())
         .post("/auth/login")
-        .send({ email: "cashier-e2e@jest.test", password: "12345678" });
+        .send({ email: "cashier-e2e@jest.test", password: "newpass123" }); // الباسورد اتغيّر في اختبار سابق
       expect(loginRes.status).toBe(401);
     });
   });

@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../../domain/user.aggregate";
 import { UnknownPermissionError, UserNotFoundError } from "../../domain/errors";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
+import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
 import { PermissionRegistry } from "../../../../shared/permissions/permission-registry";
 
 export interface UpdateUserCommand {
@@ -10,12 +11,14 @@ export interface UpdateUserCommand {
   branchId?: string | null;
   isActive?: boolean;
   permissionKeys?: string[]; // لو مبعوتة، بتستبدل كل الاستثناءات الحالية (نفس PATCH /api/users/:id القديم)
+  password?: string; // إعادة تعيين كلمة سر (نسيان/فقدان) - الأدمن بس، نفس صلاحية identity.users.manage
 }
 
 @Injectable()
 export class UpdateUserHandler {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
     private readonly permissions: PermissionRegistry
   ) {}
 
@@ -37,6 +40,11 @@ export class UpdateUserHandler {
         ? new Set(this.permissions.getAllKeys())
         : this.permissions.getRoleDefaults(user.role);
       user.replacePermissionOverrides(command.permissionKeys, roleDefaults);
+    }
+
+    if (command.password !== undefined) {
+      User.validatePasswordPolicy(command.password);
+      user.setPasswordHash(await this.hasher.hash(command.password));
     }
 
     await this.users.save(user);

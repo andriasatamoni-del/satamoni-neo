@@ -15,6 +15,7 @@ import {
   IdCardIcon,
   LogoutIcon,
   MenuIcon,
+  ShieldUserIcon,
   TruckIcon,
   UsersIcon,
 } from "./icons";
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { to: "/accounting", label: "المحاسبة", icon: CoinsIcon },
   { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
   { to: "/hr-payroll", label: "الموارد البشرية والرواتب", icon: IdCardIcon },
+  { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },
 ];
 
 const ROLE_LABELS: Record<string, string> = {

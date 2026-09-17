@@ -56,6 +56,7 @@ export class UsersController {
       branchId: dto.branchId,
       isActive: dto.isActive,
       permissionKeys: dto.permissions,
+      password: dto.password,
     });
     return toPublicUser(user);
   }
