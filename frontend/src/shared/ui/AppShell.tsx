@@ -17,12 +17,14 @@ import {
   MenuIcon,
   ShieldUserIcon,
   TruckIcon,
+  UserCircleIcon,
   UsersIcon,
   VaultIcon,
 } from "./icons";
 
 const NAV_ITEMS = [
   { to: "/", label: "الرئيسية", icon: HomeIcon, end: true },
+  { to: "/me", label: "بياناتي", icon: UserCircleIcon },
   { to: "/orders", label: "الطلبات (POS)", icon: CartIcon },
   { to: "/kds", label: "شاشة المطبخ", icon: FireIcon },
   { to: "/crm", label: "متابعة العملاء والشكاوى", icon: UsersIcon },

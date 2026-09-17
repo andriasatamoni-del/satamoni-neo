@@ -55,3 +55,45 @@ export class DuplicatePayrollPeriodError extends DomainError {
     super(`فيه قائمة رواتب فعّالة بالفعل للشهر ${month}/${year} - لازم تلغيها الأول لو عايز تعمل قائمة جديدة لنفس الشهر`);
   }
 }
+
+export class EmployeeProfileNotLinkedError extends DomainError {
+  constructor() {
+    super("الحساب ده مش مربوط بملف موظف");
+  }
+}
+
+export class InvalidLeaveDateRangeError extends DomainError {
+  constructor() {
+    super("تاريخ نهاية الإجازة لازم يكون بعد أو يساوي تاريخ البداية");
+  }
+}
+
+export class LeaveRequestNotFoundError extends DomainError {
+  constructor() {
+    super("طلب الإجازة ده مش موجود");
+  }
+}
+
+export class LeaveRequestNotPendingError extends DomainError {
+  constructor() {
+    super("طلب الإجازة ده اتراجع بالفعل - مينفعش تعدّل حالته تاني");
+  }
+}
+
+export class EmployeeAttendanceShiftAlreadyActiveError extends DomainError {
+  constructor() {
+    super("فيه شيفت حضور شغال بالفعل للموظف ده - لازم يقفله الأول");
+  }
+}
+
+export class EmployeeAttendanceShiftNotFoundError extends DomainError {
+  constructor() {
+    super("شيفت الحضور ده مش موجود");
+  }
+}
+
+export class EmployeeAttendanceShiftNotActiveError extends DomainError {
+  constructor() {
+    super("شيفت الحضور ده مقفول بالفعل");
+  }
+}

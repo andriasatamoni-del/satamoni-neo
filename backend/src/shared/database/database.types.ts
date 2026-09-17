@@ -56,6 +56,8 @@ import type {
   EmployeesTable,
   PayrollRunsTable,
   PayrollRunEmployeesTable,
+  EmployeeLeaveRequestsTable,
+  EmployeeAttendanceShiftsTable,
 } from "../../contexts/hr-payroll/infrastructure/persistence/hr-payroll.schema";
 import type { CashierShiftsTable } from "../../contexts/shifts/infrastructure/persistence/cashier-shift.schema";
 import type {
@@ -109,6 +111,8 @@ export interface Database {
   employees: EmployeesTable;
   payroll_runs: PayrollRunsTable;
   payroll_run_employees: PayrollRunEmployeesTable;
+  employee_leave_requests: EmployeeLeaveRequestsTable;
+  employee_attendance_shifts: EmployeeAttendanceShiftsTable;
   cashier_shifts: CashierShiftsTable;
   treasuries: TreasuriesTable;
   banks: BanksTable;

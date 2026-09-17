@@ -51,3 +51,30 @@ export interface PayrollRunEmployeesTable {
   bonuses: number;
   net_pay: number;
 }
+
+export interface EmployeeLeaveRequestsTable {
+  id: string;
+  employee_id: string;
+  leave_type: string;
+  start_date: Date;
+  end_date: Date;
+  days: number;
+  reason: string | null;
+  status: string;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+  review_notes: string | null;
+  created_at: Generated<Date>;
+}
+
+export interface EmployeeAttendanceShiftsTable {
+  id: string;
+  employee_id: string;
+  branch_id: string;
+  status: string;
+  checked_in_at: Generated<Date>;
+  checked_out_at: Date | null;
+  hours_worked: number | null;
+  notes: string | null;
+  created_at: Generated<Date>;
+}

@@ -7,6 +7,7 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { Tabs } from "../shared/ui/Tabs";
 
 interface Employee { id: string; name: string; department: string | null; jobTitle: string | null; baseSalary: number; wageType: string; status: string; }
 interface PayrollRunEmployeeLine { employeeId: string; employeeName: string; grossPay: number; advances: number; penalties: number; bonuses: number; netPay: number; }
@@ -14,14 +15,32 @@ interface PayrollRun {
   id: string; year: number; month: number; status: string; totalNetPay: number;
   employees: PayrollRunEmployeeLine[]; cancellationReason: string | null;
 }
+interface LeaveRequest {
+  id: string; employeeId: string; leaveType: string; startDate: string; endDate: string;
+  days: number; reason: string | null; status: string; createdAt: string;
+}
 
 const STATUS_LABELS: Record<string, string> = { active: "فعّال", suspended: "موقوف", terminated: "منتهي الخدمة" };
 const RUN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", APPROVED: "معتمدة", CANCELLED: "ملغاة" };
+const LEAVE_STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", APPROVED: "معتمد", REJECTED: "مرفوض", CANCELLED: "ملغى" };
+
+const TABS = [
+  { key: "employees", label: "الموظفين والرواتب" },
+  { key: "leave", label: "طلبات الإجازة" },
+];
 
 export function HrPayrollPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState("employees");
   const employeesQuery = useQuery({ queryKey: ["hr", "employees"], queryFn: () => apiRequest<Employee[]>("/hr/employees") });
   const payrollRunsQuery = useQuery({ queryKey: ["hr", "payroll-runs"], queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs") });
+  const leaveRequestsQuery = useQuery({ queryKey: ["hr", "leave-requests"], queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests") });
+
+  const reviewLeaveRequest = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
+      apiRequest(`/hr/leave-requests/${id}/review`, { method: "POST", body: { decision } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hr", "leave-requests"] }),
+  });
 
   const [employeeForm, setEmployeeForm] = useState({ name: "", department: "", baseSalary: "" });
   const createEmployee = useMutation({
@@ -86,11 +105,16 @@ export function HrPayrollPage() {
 
   const employees = employeesQuery.data ?? [];
   const payrollRuns = payrollRunsQuery.data ?? [];
+  const leaveRequests = leaveRequestsQuery.data ?? [];
 
   return (
     <div>
       <PageHeader title="الموارد البشرية والرواتب" description="الموظفين وقوائم الرواتب الشهرية" />
 
+      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+
+      {tab === "employees" && (
+      <>
       <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>إضافة موظف</CardTitle></CardHeader>
@@ -214,6 +238,48 @@ export function HrPayrollPage() {
           {payrollRuns.length === 0 && <EmptyState>مفيش قوائم رواتب لسه</EmptyState>}
         </CardBody>
       </Card>
+      </>
+      )}
+
+      {tab === "leave" && (
+        <Card>
+          <CardHeader><CardTitle>طلبات الإجازة ({leaveRequests.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR><TH>الموظف</TH><TH>النوع</TH><TH>من</TH><TH>إلى</TH><TH>الأيام</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+              </THead>
+              <TBody>
+                {leaveRequests.map((r) => (
+                  <TR key={r.id}>
+                    <TD className="font-semibold text-slate-900">
+                      {employees.find((e) => e.id === r.employeeId)?.name ?? r.employeeId}
+                    </TD>
+                    <TD>{r.leaveType}</TD>
+                    <TD>{r.startDate.slice(0, 10)}</TD>
+                    <TD>{r.endDate.slice(0, 10)}</TD>
+                    <TD>{r.days}</TD>
+                    <TD><StatusBadge status={LEAVE_STATUS_LABELS[r.status] ?? r.status} /></TD>
+                    <TD>
+                      {r.status === "PENDING" && (
+                        <div className="flex gap-1.5">
+                          <Button size="sm" onClick={() => reviewLeaveRequest.mutate({ id: r.id, decision: "approve" })} disabled={reviewLeaveRequest.isPending}>
+                            اعتماد
+                          </Button>
+                          <Button size="sm" variant="danger" onClick={() => reviewLeaveRequest.mutate({ id: r.id, decision: "reject" })} disabled={reviewLeaveRequest.isPending}>
+                            رفض
+                          </Button>
+                        </div>
+                      )}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {leaveRequests.length === 0 && <EmptyState>مفيش طلبات إجازة لسه</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

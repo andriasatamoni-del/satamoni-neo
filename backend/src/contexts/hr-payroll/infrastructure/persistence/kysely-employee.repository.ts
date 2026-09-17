@@ -48,6 +48,11 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
+  async findByUserId(userId: string): Promise<Employee | null> {
+    const row = await this.db.selectFrom("employees").selectAll().where("user_id", "=", userId).executeTakeFirst();
+    return row ? this.toDomain(row) : null;
+  }
+
   async list(filter?: { status?: string }): Promise<Employee[]> {
     let query = this.db.selectFrom("employees").selectAll();
     if (filter?.status) query = query.where("status", "=", filter.status);
