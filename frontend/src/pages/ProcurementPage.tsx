@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { Badge } from "../shared/ui/Badge";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface Supplier { id: string; name: string; status: string; }
 interface Branch { id: string; name: string; }
@@ -67,71 +72,99 @@ export function ProcurementPage() {
 
   const itemName = (id: string) => itemsQuery.data?.find((i) => i.id === id)?.name ?? id;
   const branchName = (id: string) => branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
+  const suppliers = suppliersQuery.data ?? [];
+  const receipts = receiptsQuery.data ?? [];
 
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>المشتريات والموردين</h1>
+    <div>
+      <PageHeader title="المشتريات والموردين" description="الموردين وأذون استلام البضاعة" />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة مورد</h2>
-        <form onSubmit={handleSupplierSubmit} style={{ display: "flex", gap: 8 }}>
-          <input required placeholder="اسم المورد" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} style={{ flex: 1, padding: 6 }} />
-          <button type="submit" disabled={createSupplier.isPending}>إضافة</button>
-        </form>
-        <ul>
-          {suppliersQuery.data?.map((s) => <li key={s.id}>{s.name} ({s.status})</li>)}
-        </ul>
-      </section>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>إضافة مورد</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleSupplierSubmit} className="mb-4 flex items-end gap-3">
+              <div className="flex-1">
+                <Field label="اسم المورد">
+                  <Input required value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+                </Field>
+              </div>
+              <Button type="submit" disabled={createSupplier.isPending}>إضافة</Button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              {suppliers.map((s) => (
+                <Badge key={s.id} tone="neutral">{s.name} - {s.status}</Badge>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>تسجيل إذن استلام بضاعة (PO-less)</h2>
-        <form onSubmit={handleReceiptSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <select required value={receiptForm.branchId} onChange={(e) => setReceiptForm({ ...receiptForm, branchId: e.target.value })} style={{ padding: 6 }}>
-              <option value="">اختر فرع</option>
-              {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-            <select required value={receiptForm.inventoryItemId} onChange={(e) => setReceiptForm({ ...receiptForm, inventoryItemId: e.target.value })} style={{ padding: 6 }}>
-              <option value="">اختر صنف</option>
-              {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-            </select>
-            <input required type="number" placeholder="الكمية" value={receiptForm.quantity} onChange={(e) => setReceiptForm({ ...receiptForm, quantity: e.target.value })} style={{ padding: 6 }} />
-            <input required type="number" placeholder="تكلفة الوحدة" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} style={{ padding: 6 }} />
-          </div>
-          {receiptError && <p style={{ color: "crimson" }}>{receiptError}</p>}
-          <button type="submit" disabled={createReceipt.isPending} style={{ padding: "8px 16px", marginTop: 8 }}>
-            تسجيل
-          </button>
-        </form>
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>تسجيل إذن استلام بضاعة (PO-less)</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleReceiptSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="الفرع">
+                  <Select required value={receiptForm.branchId} onChange={(e) => setReceiptForm({ ...receiptForm, branchId: e.target.value })}>
+                    <option value="">اختر فرع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="الصنف">
+                  <Select required value={receiptForm.inventoryItemId} onChange={(e) => setReceiptForm({ ...receiptForm, inventoryItemId: e.target.value })}>
+                    <option value="">اختر صنف</option>
+                    {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                  </Select>
+                </Field>
+                <Field label="الكمية">
+                  <Input required type="number" value={receiptForm.quantity} onChange={(e) => setReceiptForm({ ...receiptForm, quantity: e.target.value })} />
+                </Field>
+                <Field label="تكلفة الوحدة">
+                  <Input required type="number" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} />
+                </Field>
+              </div>
+              {receiptError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{receiptError}</p>}
+              <Button type="submit" disabled={createReceipt.isPending}>تسجيل</Button>
+            </form>
+          </CardBody>
+        </Card>
+      </div>
 
-      <section>
-        <h2>أذون الاستلام</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الفرع</th><th>البنود</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receiptsQuery.data?.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{branchName(r.branchId)}</td>
-                <td>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.quantity}`).join("، ")}</td>
-                <td>{r.status === "CONFIRMED" ? "اتأكد" : "مسودة"}</td>
-                <td>
-                  {r.status === "DRAFT" && (
-                    <button onClick={() => confirmReceipt.mutate(r.id)} disabled={confirmReceipt.isPending}>
-                      تأكيد (يرحّل المخزون)
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>أذون الاستلام ({receipts.length})</CardTitle>
+        </CardHeader>
+        <CardBody className="p-0">
+          <Table>
+            <THead>
+              <TR>
+                <TH>الفرع</TH><TH>البنود</TH><TH>الحالة</TH><TH>إجراء</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {receipts.map((r) => (
+                <TR key={r.id}>
+                  <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
+                  <TD>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.quantity}`).join("، ")}</TD>
+                  <TD><Badge tone={r.status === "CONFIRMED" ? "success" : "neutral"}>{r.status === "CONFIRMED" ? "اتأكد" : "مسودة"}</Badge></TD>
+                  <TD>
+                    {r.status === "DRAFT" && (
+                      <Button size="sm" variant="secondary" onClick={() => confirmReceipt.mutate(r.id)} disabled={confirmReceipt.isPending}>
+                        تأكيد (يرحّل المخزون)
+                      </Button>
+                    )}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+          {receipts.length === 0 && <EmptyState>مفيش أذون استلام لسه</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }

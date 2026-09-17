@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { StatusBadge } from "../shared/ui/Badge";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface Branch { id: string; name: string; }
 interface Driver { id: string; name: string; status: string; branchId: string; }
@@ -52,76 +57,94 @@ export function DeliveryPage() {
     return null;
   }
 
+  const assignments = assignmentsQuery.data ?? [];
+
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>التوصيل والسائقين</h1>
+    <div>
+      <PageHeader title="التوصيل والسائقين" description="السائقين وتكليفات التوصيل" />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة سائق</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createDriver.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}
-        >
-          <input required placeholder="اسم السائق" value={driverName} onChange={(e) => setDriverName(e.target.value)} style={{ padding: 6 }} />
-          <select required value={driverBranch} onChange={(e) => setDriverBranch(e.target.value)} style={{ padding: 6 }}>
-            <option value="">اختر فرع</option>
-            {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-          <button type="submit" disabled={createDriver.isPending}>إضافة</button>
-        </form>
-      </section>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>إضافة سائق</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createDriver.mutate(); }} className="space-y-4">
+              <Field label="اسم السائق">
+                <Input required value={driverName} onChange={(e) => setDriverName(e.target.value)} />
+              </Field>
+              <Field label="الفرع">
+                <Select required value={driverBranch} onChange={(e) => setDriverBranch(e.target.value)}>
+                  <option value="">اختر فرع</option>
+                  {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </Field>
+              <Button type="submit" disabled={createDriver.isPending}>إضافة</Button>
+            </form>
+          </CardBody>
+        </Card>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>تحويل طلب لسائق</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createAssignment.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}
-        >
-          <select required value={assignForm.orderId} onChange={(e) => setAssignForm({ ...assignForm, orderId: e.target.value })} style={{ padding: 6 }}>
-            <option value="">اختر طلب دليفري</option>
-            {ordersQuery.data?.filter((o) => o.orderType === "delivery").map((o) => (
-              <option key={o.id} value={o.id}>{o.id.slice(0, 8)} - {o.total}ج</option>
-            ))}
-          </select>
-          <select required value={assignForm.driverId} onChange={(e) => setAssignForm({ ...assignForm, driverId: e.target.value })} style={{ padding: 6 }}>
-            <option value="">اختر سائق</option>
-            {driversQuery.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          <button type="submit" disabled={createAssignment.isPending}>تحويل</button>
-        </form>
-        {assignError && <p style={{ color: "crimson" }}>{assignError}</p>}
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>تحويل طلب لسائق</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAssignment.mutate(); }} className="space-y-4">
+              <Field label="طلب الدليفري">
+                <Select required value={assignForm.orderId} onChange={(e) => setAssignForm({ ...assignForm, orderId: e.target.value })}>
+                  <option value="">اختر طلب دليفري</option>
+                  {ordersQuery.data?.filter((o) => o.orderType === "delivery").map((o) => (
+                    <option key={o.id} value={o.id}>{o.id.slice(0, 8)} - {o.total}ج</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="السائق">
+                <Select required value={assignForm.driverId} onChange={(e) => setAssignForm({ ...assignForm, driverId: e.target.value })}>
+                  <option value="">اختر سائق</option>
+                  {driversQuery.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </Field>
+              {assignError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{assignError}</p>}
+              <Button type="submit" disabled={createAssignment.isPending}>تحويل</Button>
+            </form>
+          </CardBody>
+        </Card>
+      </div>
 
-      <section>
-        <h2>تكليفات التوصيل</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الطلب</th><th>السائق</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignmentsQuery.data?.map((a) => {
-              const next = nextStatus(a.status);
-              return (
-                <tr key={a.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td>{a.orderId.slice(0, 8)}</td>
-                  <td>{driversQuery.data?.find((d) => d.id === a.driverId)?.name ?? a.driverId}</td>
-                  <td>{STATUS_LABELS[a.status] ?? a.status}</td>
-                  <td>
-                    {next && (
-                      <button onClick={() => advanceStatus.mutate({ id: a.id, status: next })} disabled={advanceStatus.isPending}>
-                        {STATUS_LABELS[next]}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>تكليفات التوصيل ({assignments.length})</CardTitle>
+        </CardHeader>
+        <CardBody className="p-0">
+          <Table>
+            <THead>
+              <TR>
+                <TH>الطلب</TH><TH>السائق</TH><TH>الحالة</TH><TH>إجراء</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {assignments.map((a) => {
+                const next = nextStatus(a.status);
+                return (
+                  <TR key={a.id}>
+                    <TD className="font-mono text-xs">{a.orderId.slice(0, 8)}</TD>
+                    <TD>{driversQuery.data?.find((d) => d.id === a.driverId)?.name ?? a.driverId}</TD>
+                    <TD><StatusBadge status={STATUS_LABELS[a.status] ?? a.status} /></TD>
+                    <TD>
+                      {next && (
+                        <Button size="sm" variant="secondary" onClick={() => advanceStatus.mutate({ id: a.id, status: next })} disabled={advanceStatus.isPending}>
+                          {STATUS_LABELS[next]}
+                        </Button>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+          {assignments.length === 0 && <EmptyState>مفيش تكليفات توصيل لسه</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }

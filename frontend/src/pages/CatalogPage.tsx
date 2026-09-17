@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface MenuCategory {
   id: string;
@@ -61,56 +65,94 @@ export function CatalogPage() {
     createItem.mutate();
   }
 
+  const categories = categoriesQuery.data ?? [];
+  const items = itemsQuery.data ?? [];
+  const categoryName_ = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "بدون قسم";
+
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>قائمة الطعام</h1>
+    <div>
+      <PageHeader title="قائمة الطعام" description="الأقسام والأصناف والأحجام" />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة قسم</h2>
-        <form onSubmit={handleCategorySubmit} style={{ display: "flex", gap: 8 }}>
-          <input required placeholder="اسم القسم" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} style={{ flex: 1, padding: 6 }} />
-          <button type="submit" disabled={createCategory.isPending}>إضافة</button>
-        </form>
-      </section>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>إضافة قسم</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleCategorySubmit} className="flex items-end gap-3">
+              <div className="flex-1">
+                <Field label="اسم القسم">
+                  <Input required value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+                </Field>
+              </div>
+              <Button type="submit" disabled={createCategory.isPending}>إضافة</Button>
+            </form>
+            {categories.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {categories.map((c) => (
+                  <span key={c.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة صنف</h2>
-        <form onSubmit={handleItemSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input required placeholder="اسم الصنف" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} style={{ padding: 6 }} />
-            <select value={itemForm.categoryId} onChange={(e) => setItemForm({ ...itemForm, categoryId: e.target.value })} style={{ padding: 6 }}>
-              <option value="">بدون قسم</option>
-              {categoriesQuery.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <input placeholder="اسم الحجم (اختياري)" value={itemForm.variantLabel} onChange={(e) => setItemForm({ ...itemForm, variantLabel: e.target.value })} style={{ padding: 6 }} />
-            <input type="number" placeholder="السعر" value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} style={{ padding: 6 }} />
-          </div>
-          {itemError && <p style={{ color: "crimson" }}>{itemError}</p>}
-          <button type="submit" disabled={createItem.isPending} style={{ padding: "8px 16px", marginTop: 8 }}>
-            إضافة
-          </button>
-        </form>
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>إضافة صنف</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleItemSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="اسم الصنف">
+                  <Input required value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} />
+                </Field>
+                <Field label="القسم">
+                  <Select value={itemForm.categoryId} onChange={(e) => setItemForm({ ...itemForm, categoryId: e.target.value })}>
+                    <option value="">بدون قسم</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="اسم الحجم (اختياري)">
+                  <Input value={itemForm.variantLabel} onChange={(e) => setItemForm({ ...itemForm, variantLabel: e.target.value })} />
+                </Field>
+                <Field label="السعر">
+                  <Input type="number" value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} />
+                </Field>
+              </div>
+              {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
+              <Button type="submit" disabled={createItem.isPending}>إضافة</Button>
+            </form>
+          </CardBody>
+        </Card>
+      </div>
 
-      <section>
-        <h2>الأصناف ({itemsQuery.data?.length ?? 0})</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الاسم</th><th>الأحجام والأسعار</th>
-            </tr>
-          </thead>
-          <tbody>
-            {itemsQuery.data?.map((i) => (
-              <tr key={i.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{i.name}</td>
-                <td>{i.variants.map((v) => `${v.label}: ${v.price}ج`).join("، ") || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>الأصناف ({items.length})</CardTitle>
+        </CardHeader>
+        <CardBody className="p-0">
+          <Table>
+            <THead>
+              <TR>
+                <TH>الاسم</TH><TH>القسم</TH><TH>الأحجام والأسعار</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {items.map((i) => (
+                <TR key={i.id}>
+                  <TD className="font-semibold text-slate-900">{i.name}</TD>
+                  <TD>{categoryName_(i.categoryId)}</TD>
+                  <TD>{i.variants.map((v) => `${v.label}: ${v.price}ج`).join("، ") || "—"}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+          {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }

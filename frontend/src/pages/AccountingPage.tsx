@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select } from "../shared/ui/Field";
+import { Badge } from "../shared/ui/Badge";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface Account { id: string; code: string; name: string; accountType: string; isActive: boolean; }
 interface JournalEntryLine { accountId: string; debit: number; credit: number; description: string | null; }
@@ -76,115 +81,149 @@ export function AccountingPage() {
 
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
+  const balanced = totalDebit === totalCredit;
+  const accounts = accountsQuery.data ?? [];
+  const entries = entriesQuery.data ?? [];
+
+  const STATUS_META: Record<string, { label: string; tone: "success" | "danger" | "neutral" }> = {
+    POSTED: { label: "مرحّل", tone: "success" },
+    REVERSED: { label: "معكوس", tone: "danger" },
+    DRAFT: { label: "مسودة", tone: "neutral" },
+  };
 
   return (
-    <div style={{ maxWidth: 900, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>المحاسبة</h1>
+    <div>
+      <PageHeader title="المحاسبة" description="دليل الحسابات والقيود اليومية" />
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>إضافة حساب لدليل الحسابات</h2>
-        <form
-          onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }}
-          style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: 8 }}
-        >
-          <input required placeholder="الكود" value={accountForm.code} onChange={(e) => setAccountForm({ ...accountForm, code: e.target.value })} style={{ padding: 6 }} />
-          <input required placeholder="اسم الحساب" value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} style={{ padding: 6 }} />
-          <select value={accountForm.accountType} onChange={(e) => setAccountForm({ ...accountForm, accountType: e.target.value })} style={{ padding: 6 }}>
-            {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
-          </select>
-          <button type="submit" disabled={createAccount.isPending}>إضافة</button>
-        </form>
-        {accountError && <p style={{ color: "crimson" }}>{accountError}</p>}
-      </section>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>إضافة حساب لدليل الحسابات</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="الكود">
+                  <Input required value={accountForm.code} onChange={(e) => setAccountForm({ ...accountForm, code: e.target.value })} />
+                </Field>
+                <Field label="اسم الحساب">
+                  <Input required value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
+                </Field>
+                <Field label="النوع">
+                  <Select value={accountForm.accountType} onChange={(e) => setAccountForm({ ...accountForm, accountType: e.target.value })}>
+                    {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              {accountError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{accountError}</p>}
+              <Button type="submit" disabled={createAccount.isPending}>إضافة</Button>
+            </form>
+          </CardBody>
+        </Card>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>دليل الحسابات</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>الكود</th><th>الاسم</th><th>النوع</th><th>الحالة</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accountsQuery.data?.map((a) => (
-              <tr key={a.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{a.code}</td>
-                <td>{a.name}</td>
-                <td>{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</td>
-                <td>{a.isActive ? "فعّال" : "معطّل"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>دليل الحسابات ({accounts.length})</CardTitle>
+          </CardHeader>
+          <CardBody className="max-h-80 overflow-y-auto p-0">
+            <Table>
+              <THead>
+                <TR><TH>الكود</TH><TH>الاسم</TH><TH>النوع</TH><TH>الحالة</TH></TR>
+              </THead>
+              <TBody>
+                {accounts.map((a) => (
+                  <TR key={a.id}>
+                    <TD className="font-mono">{a.code}</TD>
+                    <TD className="font-semibold text-slate-900">{a.name}</TD>
+                    <TD>{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</TD>
+                    <TD><Badge tone={a.isActive ? "success" : "neutral"}>{a.isActive ? "فعّال" : "معطّل"}</Badge></TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      </div>
 
-      <section style={{ marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>قيد يدوي جديد</h2>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEntry.mutate(); }}>
-          <input
-            placeholder="البيان (اختياري)"
-            value={entryDescription}
-            onChange={(e) => setEntryDescription(e.target.value)}
-            style={{ padding: 6, width: "100%", marginBottom: 8, boxSizing: "border-box" }}
-          />
-          {lines.map((line, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-              <select required value={line.accountId} onChange={(e) => updateLine(i, { accountId: e.target.value })} style={{ padding: 6 }}>
-                <option value="">اختر حساب</option>
-                {accountsQuery.data?.map((a) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-              </select>
-              <input type="number" placeholder="مدين" value={line.debit} onChange={(e) => updateLine(i, { debit: e.target.value, credit: e.target.value ? "" : line.credit })} style={{ padding: 6 }} />
-              <input type="number" placeholder="دائن" value={line.credit} onChange={(e) => updateLine(i, { credit: e.target.value, debit: e.target.value ? "" : line.debit })} style={{ padding: 6 }} />
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>قيد يدوي جديد</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEntry.mutate(); }} className="space-y-4">
+            <Field label="البيان (اختياري)">
+              <Input value={entryDescription} onChange={(e) => setEntryDescription(e.target.value)} />
+            </Field>
+
+            <div className="space-y-2">
+              {lines.map((line, i) => (
+                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
+                  <Select required value={line.accountId} onChange={(e) => updateLine(i, { accountId: e.target.value })}>
+                    <option value="">اختر حساب</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                  </Select>
+                  <Input type="number" placeholder="مدين" value={line.debit} onChange={(e) => updateLine(i, { debit: e.target.value, credit: e.target.value ? "" : line.credit })} />
+                  <Input type="number" placeholder="دائن" value={line.credit} onChange={(e) => updateLine(i, { credit: e.target.value, debit: e.target.value ? "" : line.debit })} />
+                </div>
+              ))}
             </div>
-          ))}
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <button type="button" onClick={() => setLines((prev) => [...prev, { accountId: "", debit: "", credit: "" }])}>
-              + سطر
-            </button>
-            <span style={{ marginInlineStart: "auto" }}>
-              مدين: {totalDebit} | دائن: {totalCredit} {totalDebit !== totalCredit && <strong style={{ color: "crimson" }}> (غير متزن)</strong>}
-            </span>
-          </div>
-          <button type="submit" disabled={createEntry.isPending || totalDebit !== totalCredit || totalDebit === 0}>
-            تسجيل القيد
-          </button>
-        </form>
-        {entryError && <p style={{ color: "crimson" }}>{entryError}</p>}
-      </section>
 
-      <section>
-        <h2>القيود اليومية</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>رقم القيد</th><th>المصدر</th><th>البيان</th><th>السطور</th><th>الحالة</th><th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entriesQuery.data?.map((entry) => (
-              <tr key={entry.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{entry.entryNumber ?? "-"}</td>
-                <td>{entry.sourceType}</td>
-                <td>{entry.description ?? "-"}</td>
-                <td>
-                  {entry.lines.map((l, i) => (
-                    <div key={i}>{accountLabel(l.accountId)}: مدين {l.debit} / دائن {l.credit}</div>
-                  ))}
-                </td>
-                <td>{entry.status === "POSTED" ? "مرحّل" : entry.status === "REVERSED" ? "معكوس" : "مسودة"}</td>
-                <td>
-                  {entry.status === "POSTED" && (
-                    <button onClick={() => reverseEntry.mutate(entry.id)} disabled={reverseEntry.isPending}>
-                      عكس القيد
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setLines((prev) => [...prev, { accountId: "", debit: "", credit: "" }])}>
+                + سطر
+              </Button>
+              <span className={`text-sm font-semibold ${balanced ? "text-slate-600" : "text-red-600"}`}>
+                مدين: {totalDebit} | دائن: {totalCredit} {!balanced && "(غير متزن)"}
+              </span>
+            </div>
+
+            {entryError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{entryError}</p>}
+
+            <Button type="submit" disabled={createEntry.isPending || !balanced || totalDebit === 0}>
+              تسجيل القيد
+            </Button>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>القيود اليومية ({entries.length})</CardTitle>
+        </CardHeader>
+        <CardBody className="p-0">
+          <Table>
+            <THead>
+              <TR><TH>رقم القيد</TH><TH>المصدر</TH><TH>البيان</TH><TH>السطور</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+            </THead>
+            <TBody>
+              {entries.map((entry) => {
+                const meta = STATUS_META[entry.status] ?? { label: entry.status, tone: "neutral" as const };
+                return (
+                  <TR key={entry.id}>
+                    <TD className="font-mono">{entry.entryNumber ?? "-"}</TD>
+                    <TD>{entry.sourceType}</TD>
+                    <TD>{entry.description ?? "-"}</TD>
+                    <TD className="text-xs">
+                      {entry.lines.map((l, i) => (
+                        <div key={i}>{accountLabel(l.accountId)}: مدين {l.debit} / دائن {l.credit}</div>
+                      ))}
+                    </TD>
+                    <TD><Badge tone={meta.tone}>{meta.label}</Badge></TD>
+                    <TD>
+                      {entry.status === "POSTED" && (
+                        <Button size="sm" variant="secondary" onClick={() => reverseEntry.mutate(entry.id)} disabled={reverseEntry.isPending}>
+                          عكس القيد
+                        </Button>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+          {entries.length === 0 && <EmptyState>مفيش قيود لسه</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }
