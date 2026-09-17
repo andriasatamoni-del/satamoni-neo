@@ -42,6 +42,7 @@ import { BanksController } from "./api/banks.controller";
     ListBanksHandler,
     ListBankAccountsHandler,
   ],
+  exports: [TREASURY_REPOSITORY],
 })
 export class TreasuryModule implements OnModuleInit {
   constructor(

@@ -10,6 +10,8 @@ import {
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { GoodsReceiptConfirmedEvent } from "../../domain/events/goods-receipt-confirmed.event";
+import { EventBusService } from "../../../../shared/events/event-bus.service";
 
 export interface ConfirmGoodsReceiptCommand {
   goodsReceiptId: string;
@@ -20,13 +22,14 @@ export interface ConfirmGoodsReceiptCommand {
 // Inventory context مباشرة (نفس فلسفة الريبو القديم بالظبط: "الترحيل الفعلي بيحصل عند التأكيد بس").
 // ده تعاون بين Procurement وInventory بييجي عن طريق port بتاع Inventory مباشرة (مش domain event) لأن
 // الاتساق هنا لازم يكون فوري/مضمون وقت التأكيد نفسه - مفيش subscriber غير متزامن يقدر يتأخر أو يفشل من
-// غير ما الإذن يتحط في حالة متضاربة (اتأكد بس المخزون ما اتحدّثش). حدث دومين للمستهلكين المستقبليين
-// (زي Accounting وقت ما يتبني) هيتضاف وقتها - مفيش داعي له دلوقتي (نفس فلسفة EventBusService).
+// غير ما الإذن يتحط في حالة متضاربة (اتأكد بس المخزون ما اتحدّثش). القيد المحاسبي (Accounting) مختلف -
+// نشر حدث كافي هنا لأن فشله (زي دليل حسابات لسه مش معدّ) مقبول يتسجل تحذير بس، مش يفشل تأكيد الاستلام
 @Injectable()
 export class ConfirmGoodsReceiptHandler {
   constructor(
     @Inject(GOODS_RECEIPT_REPOSITORY) private readonly receipts: GoodsReceiptRepositoryPort,
-    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort
+    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    private readonly eventBus: EventBusService
   ) {}
 
   async execute(command: ConfirmGoodsReceiptCommand): Promise<GoodsReceipt> {
@@ -36,7 +39,9 @@ export class ConfirmGoodsReceiptHandler {
     receipt.confirm();
     await this.receipts.save(receipt);
 
+    let totalValue = 0;
     for (const line of receipt.lines) {
+      totalValue += line.quantity * line.unitCost;
       const movement = StockMovement.register({
         inventoryItemId: line.inventoryItemId,
         branchId: receipt.branchId,
@@ -50,6 +55,10 @@ export class ConfirmGoodsReceiptHandler {
       // allowNegativeBalance: true بس عشان مفيش داعي نجيب الصنف ونتأكد من سياسته لحاجة مستحيل تحصل
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
     }
+
+    await this.eventBus.publish(
+      new GoodsReceiptConfirmedEvent(receipt.id, receipt.branchId, receipt.supplierId, totalValue, command.confirmedBy ?? null)
+    );
 
     return receipt;
   }

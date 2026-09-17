@@ -12,12 +12,14 @@ import { ReverseJournalEntryHandler } from "./application/commands/reverse-journ
 import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-order-sale-journal-entry.handler";
 import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
 import { PostShiftVarianceJournalEntryHandler } from "./application/commands/post-shift-variance-journal-entry.handler";
+import { PostGoodsReceiptApJournalEntryHandler } from "./application/commands/post-goods-receipt-ap-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
 import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.event";
+import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/goods-receipt-confirmed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -31,10 +33,11 @@ import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.even
     PostOrderSaleJournalEntryHandler,
     PostPayrollJournalEntryHandler,
     PostShiftVarianceJournalEntryHandler,
+    PostGoodsReceiptApJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
-  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler],
+  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler, ReverseJournalEntryHandler],
 })
 export class AccountingModule implements OnModuleInit {
   constructor(
@@ -42,7 +45,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly eventBus: EventBusService,
     private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
     private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler,
-    private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler
+    private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler,
+    private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -70,6 +74,11 @@ export class AccountingModule implements OnModuleInit {
     // حاجة عن Accounting
     this.eventBus.subscribe<ShiftClosedEvent>("ShiftClosed", (event) =>
       this.postShiftVarianceJournalEntry.handle(event)
+    );
+    // خامس مستهلك - استلام بضاعة اتأكد (لو ليه مورد) بيرحّل قيد AP تلقائيًا، من غير ما Procurement
+    // يعرف حاجة عن وجود Accounting
+    this.eventBus.subscribe<GoodsReceiptConfirmedEvent>("GoodsReceiptConfirmed", (event) =>
+      this.postGoodsReceiptApJournalEntry.handle(event)
     );
   }
 }

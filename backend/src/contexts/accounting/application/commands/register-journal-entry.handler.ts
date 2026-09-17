@@ -13,7 +13,14 @@ export interface RegisterJournalEntryCommand {
   sourceType: string;
   sourceId?: string | null;
   branchId?: string | null;
-  lines: { accountId: string; debit: number; credit: number; description?: string | null }[];
+  lines: {
+    accountId: string;
+    debit: number;
+    credit: number;
+    description?: string | null;
+    referenceType?: string | null;
+    referenceId?: string | null;
+  }[];
   createdBy?: string | null;
 }
 

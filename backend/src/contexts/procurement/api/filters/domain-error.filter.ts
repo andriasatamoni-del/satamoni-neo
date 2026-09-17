@@ -1,7 +1,13 @@
 import { ArgumentsHost, Catch, ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
 import { DomainError } from "../../../../shared/domain/domain-error";
-import { SupplierNotFoundError, PurchaseOrderNotFoundError, GoodsReceiptNotFoundError } from "../../domain/errors";
+import {
+  SupplierNotFoundError,
+  PurchaseOrderNotFoundError,
+  GoodsReceiptNotFoundError,
+  SupplierInvoiceNotFoundError,
+} from "../../domain/errors";
+import { TreasuryNotFoundError } from "../../../treasury/domain/errors";
 
 @Catch(DomainError)
 export class ProcurementDomainErrorFilter implements ExceptionFilter {
@@ -10,7 +16,9 @@ export class ProcurementDomainErrorFilter implements ExceptionFilter {
     const status =
       exception instanceof SupplierNotFoundError ||
       exception instanceof PurchaseOrderNotFoundError ||
-      exception instanceof GoodsReceiptNotFoundError
+      exception instanceof GoodsReceiptNotFoundError ||
+      exception instanceof SupplierInvoiceNotFoundError ||
+      exception instanceof TreasuryNotFoundError
         ? 404
         : 400;
     res.status(status).json({ error: exception.message });

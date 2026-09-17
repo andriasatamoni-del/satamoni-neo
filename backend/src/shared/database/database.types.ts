@@ -25,6 +25,9 @@ import type {
   PurchaseOrderItemsTable,
   GoodsReceiptsTable,
   GoodsReceiptItemsTable,
+  SupplierInvoicesTable,
+  SupplierInvoiceLinesTable,
+  SupplierPaymentsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
 import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
 import type {
@@ -74,6 +77,9 @@ export interface Database {
   purchase_order_items: PurchaseOrderItemsTable;
   goods_receipts: GoodsReceiptsTable;
   goods_receipt_items: GoodsReceiptItemsTable;
+  supplier_invoices: SupplierInvoicesTable;
+  supplier_invoice_lines: SupplierInvoiceLinesTable;
+  supplier_payments: SupplierPaymentsTable;
   orders: OrdersTable;
   order_items: OrderItemsTable;
   drivers: DriversTable;

@@ -12,13 +12,15 @@ export class KyselyTreasuryBalanceReader implements TreasuryBalanceReaderPort {
     const balances = new Map<string, number>(accountIds.map((id) => [id, 0]));
     if (accountIds.length === 0) return balances;
 
-    // POSTED بس - نفس تعليق TreasuryBalanceReaderPort: قيد REVERSED استبدل أثره بقيد عكسي POSTED جديد
+    // <> DRAFT مش = POSTED: قيد REVERSED فعليًا لسه بيمثّل جزء حقيقي من الدفتر (مايتحذفش ومايتلمسش)،
+    // وقيد العكس الجديد (POSTED) هو اللي بيلغي أثره - لو استبعدنا REVERSED هنا هيبقى الإلغاء بيرحّل
+    // التصحيح مرتين (إزالة الأصلي + إضافة عكسه) بدل مرة واحدة (اتلقّطت بالظبط كده في اختبار إلغاء فاتورة مورد)
     const rows = await this.db
       .selectFrom("journal_entry_lines")
       .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
       .select(["journal_entry_lines.account_id as account_id", "journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
       .where("journal_entry_lines.account_id", "in", accountIds)
-      .where("journal_entries.status", "=", "POSTED")
+      .where("journal_entries.status", "<>", "DRAFT")
       .execute();
 
     for (const row of rows) {

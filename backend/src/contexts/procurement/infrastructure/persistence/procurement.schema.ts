@@ -50,3 +50,53 @@ export interface GoodsReceiptItemsTable {
   quantity: number;
   unit_cost: number;
 }
+
+export interface SupplierInvoicesTable {
+  id: Generated<string>;
+  supplier_id: string;
+  branch_id: string;
+  goods_receipt_id: string | null;
+  supplier_invoice_number: string;
+  invoice_date: Date;
+  due_date: Date | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  matched_total: number;
+  variance_amount: number;
+  status: string;
+  variance_journal_entry_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: Date | null;
+  cancelled_by: string | null;
+  cancelled_at: Date | null;
+  cancellation_reason: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface SupplierInvoiceLinesTable {
+  id: Generated<string>;
+  supplier_invoice_id: string;
+  inventory_item_id: string;
+  invoiced_quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface SupplierPaymentsTable {
+  id: Generated<string>;
+  supplier_id: string;
+  branch_id: string;
+  supplier_invoice_id: string | null;
+  treasury_id: string;
+  amount: number;
+  payment_date: Date;
+  reference_number: string | null;
+  notes: string | null;
+  journal_entry_id: string | null;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
