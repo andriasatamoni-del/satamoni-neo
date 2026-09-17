@@ -8,6 +8,7 @@ import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ProductionPage } from "./pages/ProductionPage";
+import { WhatsappPage } from "./pages/WhatsappPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { KdsPage } from "./pages/KdsPage";
@@ -50,6 +51,14 @@ export function App() {
         element={
           <RequireAuth>
             <CrmPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/whatsapp"
+        element={
+          <RequireAuth>
+            <WhatsappPage />
           </RequireAuth>
         }
       />

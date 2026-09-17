@@ -23,7 +23,7 @@ import { OrdersController } from "./api/orders.controller";
     ListOrdersHandler,
     ListKdsBoardHandler,
   ],
-  exports: [ORDER_REPOSITORY],
+  exports: [ORDER_REPOSITORY, RegisterOrderHandler],
 })
 export class OrdersModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

@@ -6,6 +6,7 @@ import { COMPLAINT_REPOSITORY } from "./domain/ports/complaint-repository.port";
 import { KyselyCustomerFollowupRepository } from "./infrastructure/persistence/kysely-customer-followup.repository";
 import { KyselyComplaintRepository } from "./infrastructure/persistence/kysely-complaint.repository";
 import { RecordFollowupHandler } from "./application/commands/record-followup.handler";
+import { RegisterComplaintHandler } from "./application/commands/register-complaint.handler";
 import { UpdateComplaintStatusHandler } from "./application/commands/update-complaint-status.handler";
 import { ListComplaintsHandler } from "./application/queries/list-complaints.handler";
 import { GetLatestComplaintByPhoneHandler } from "./application/queries/get-latest-complaint-by-phone.handler";
@@ -18,10 +19,12 @@ import { CrmController } from "./api/crm.controller";
     { provide: CUSTOMER_FOLLOWUP_REPOSITORY, useClass: KyselyCustomerFollowupRepository },
     { provide: COMPLAINT_REPOSITORY, useClass: KyselyComplaintRepository },
     RecordFollowupHandler,
+    RegisterComplaintHandler,
     UpdateComplaintStatusHandler,
     ListComplaintsHandler,
     GetLatestComplaintByPhoneHandler,
   ],
+  exports: [RegisterComplaintHandler],
 })
 export class CrmModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

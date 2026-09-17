@@ -6,6 +6,12 @@ import type { EventOutboxTable } from "../events/event-outbox.schema";
 import type { AuditLogsTable } from "../audit/audit-log.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
+import type {
+  WhatsappConversationsTable,
+  WhatsappMessagesTable,
+  WhatsappPendingOrdersTable,
+  WhatsappPendingOrderLinesTable,
+} from "../../contexts/whatsapp/infrastructure/persistence/whatsapp.schema";
 import type { BranchesTable } from "../../contexts/branches/infrastructure/persistence/branch.schema";
 import type { InventoryItemsTable } from "../../contexts/inventory/infrastructure/persistence/inventory-item.schema";
 import type {
@@ -77,6 +83,10 @@ export interface Database {
   audit_logs: AuditLogsTable;
   customer_followups: CustomerFollowupsTable;
   complaints: ComplaintsTable;
+  whatsapp_conversations: WhatsappConversationsTable;
+  whatsapp_messages: WhatsappMessagesTable;
+  whatsapp_pending_orders: WhatsappPendingOrdersTable;
+  whatsapp_pending_order_lines: WhatsappPendingOrderLinesTable;
   branches: BranchesTable;
   inventory_items: InventoryItemsTable;
   stock_movements: StockMovementsTable;
