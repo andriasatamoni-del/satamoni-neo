@@ -15,6 +15,7 @@ import { PostShiftVarianceJournalEntryHandler } from "./application/commands/pos
 import { PostGoodsReceiptApJournalEntryHandler } from "./application/commands/post-goods-receipt-ap-journal-entry.handler";
 import { PostDriverSettlementVarianceJournalEntryHandler } from "./application/commands/post-driver-settlement-variance-journal-entry.handler";
 import { PostDriverWageJournalEntryHandler } from "./application/commands/post-driver-wage-journal-entry.handler";
+import { PostStocktakeVarianceJournalEntryHandler } from "./application/commands/post-stocktake-variance-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
@@ -24,6 +25,7 @@ import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.even
 import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/goods-receipt-confirmed.event";
 import type { DriverSettlementCreatedEvent } from "../delivery/domain/events/driver-settlement-created.event";
 import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events/driver-attendance-shift-closed.event";
+import type { StocktakeCommittedEvent } from "../inventory/domain/events/stocktake-committed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -40,6 +42,7 @@ import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events
     PostGoodsReceiptApJournalEntryHandler,
     PostDriverSettlementVarianceJournalEntryHandler,
     PostDriverWageJournalEntryHandler,
+    PostStocktakeVarianceJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -54,7 +57,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler,
     private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler,
     private readonly postDriverSettlementVarianceJournalEntry: PostDriverSettlementVarianceJournalEntryHandler,
-    private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler
+    private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler,
+    private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -96,6 +100,10 @@ export class AccountingModule implements OnModuleInit {
     // سابع مستهلك - أجر+بونص شيفت حضور سائق مقفول بيترحّل تلقائيًا كمصروف
     this.eventBus.subscribe<DriverAttendanceShiftClosedEvent>("DriverAttendanceShiftClosed", (event) =>
       this.postDriverWageJournalEntry.handle(event)
+    );
+    // تامن مستهلك - فروق جرد فعلي (لو موجودة) بيترحّل قيد مستقل لكل سطر تلقائيًا
+    this.eventBus.subscribe<StocktakeCommittedEvent>("StocktakeCommitted", (event) =>
+      this.postStocktakeVarianceJournalEntry.handle(event)
     );
   }
 }

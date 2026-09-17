@@ -3,12 +3,18 @@ import { PermissionRegistry } from "../../shared/permissions/permission-registry
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { INVENTORY_ITEM_REPOSITORY } from "./domain/ports/inventory-item-repository.port";
 import { STOCK_MOVEMENT_REPOSITORY } from "./domain/ports/stock-movement-repository.port";
+import { STOCKTAKE_REPOSITORY } from "./domain/ports/stocktake-repository.port";
 import { KyselyInventoryItemRepository } from "./infrastructure/persistence/kysely-inventory-item.repository";
 import { KyselyStockMovementRepository } from "./infrastructure/persistence/kysely-stock-movement.repository";
+import { KyselyStocktakeRepository } from "./infrastructure/persistence/kysely-stocktake.repository";
 import { RegisterInventoryItemHandler } from "./application/commands/register-inventory-item.handler";
 import { RecordStockMovementHandler } from "./application/commands/record-stock-movement.handler";
+import { RegisterStocktakeHandler } from "./application/commands/register-stocktake.handler";
 import { ListInventoryItemsHandler } from "./application/queries/list-inventory-items.handler";
 import { GetBranchBalanceHandler } from "./application/queries/get-branch-balance.handler";
+import { ListStocktakesHandler } from "./application/queries/list-stocktakes.handler";
+import { GetStocktakeHandler } from "./application/queries/get-stocktake.handler";
+import { GetStocktakeBoardHandler } from "./application/queries/get-stocktake-board.handler";
 import { InventoryController } from "./api/inventory.controller";
 
 @Module({
@@ -17,10 +23,15 @@ import { InventoryController } from "./api/inventory.controller";
   providers: [
     { provide: INVENTORY_ITEM_REPOSITORY, useClass: KyselyInventoryItemRepository },
     { provide: STOCK_MOVEMENT_REPOSITORY, useClass: KyselyStockMovementRepository },
+    { provide: STOCKTAKE_REPOSITORY, useClass: KyselyStocktakeRepository },
     RegisterInventoryItemHandler,
     RecordStockMovementHandler,
+    RegisterStocktakeHandler,
     ListInventoryItemsHandler,
     GetBranchBalanceHandler,
+    ListStocktakesHandler,
+    GetStocktakeHandler,
+    GetStocktakeBoardHandler,
   ],
   exports: [INVENTORY_ITEM_REPOSITORY, STOCK_MOVEMENT_REPOSITORY],
 })

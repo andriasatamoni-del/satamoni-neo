@@ -11,6 +11,7 @@ import type {
   StockMovementsTable,
   BranchStockBalancesTable,
 } from "../../contexts/inventory/infrastructure/persistence/stock-movement.schema";
+import type { StocktakesTable, StocktakeLinesTable } from "../../contexts/inventory/infrastructure/persistence/stocktake.schema";
 import type {
   MenuCategoriesTable,
   MenuItemsTable,
@@ -72,6 +73,8 @@ export interface Database {
   inventory_items: InventoryItemsTable;
   stock_movements: StockMovementsTable;
   branch_stock_balances: BranchStockBalancesTable;
+  stocktakes: StocktakesTable;
+  stocktake_lines: StocktakeLinesTable;
   menu_categories: MenuCategoriesTable;
   menu_items: MenuItemsTable;
   menu_item_variants: MenuItemVariantsTable;

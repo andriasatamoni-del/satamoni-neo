@@ -49,3 +49,21 @@ export class InsufficientStockError extends DomainError {
     super("الرصيد مش كفاية، والصنف ده معندوش سياسة السماح بالرصيد السالب");
   }
 }
+
+export class EmptyStocktakeError extends DomainError {
+  constructor() {
+    super("لازم الجرد يكون فيه بند واحد على الأقل");
+  }
+}
+
+export class InvalidStocktakeQuantityError extends DomainError {
+  constructor() {
+    super("الكمية الفعلية لازم تكون رقم صحيح (صفر أو أكبر)");
+  }
+}
+
+export class StocktakeNotFoundError extends DomainError {
+  constructor() {
+    super("جلسة الجرد دي مش موجودة");
+  }
+}
