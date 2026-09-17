@@ -3,6 +3,7 @@ import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
 import { EventsModule } from "./shared/events/events.module";
 import { PermissionsModule } from "./shared/permissions/permissions.module";
+import { AuditModule } from "./shared/audit/audit.module";
 import { IdentityAccessModule } from "./contexts/identity-access/identity-access.module";
 import { CrmModule } from "./contexts/crm/crm.module";
 import { BranchesModule } from "./contexts/branches/branches.module";
@@ -23,6 +24,7 @@ import { TreasuryModule } from "./contexts/treasury/treasury.module";
     DatabaseModule,
     EventsModule,
     PermissionsModule,
+    AuditModule,
     IdentityAccessModule,
     BranchesModule,
     CrmModule,

@@ -3,6 +3,7 @@
 // (راجع خطة إعادة البناء قسم 1) - لو أي context اتفصل لخدمة منفصلة لاحقًا، جدوله بس بتتشال من هنا.
 import type { UsersTable } from "../../contexts/identity-access/infrastructure/persistence/user.schema";
 import type { EventOutboxTable } from "../events/event-outbox.schema";
+import type { AuditLogsTable } from "../audit/audit-log.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
 import type { BranchesTable } from "../../contexts/branches/infrastructure/persistence/branch.schema";
@@ -69,6 +70,7 @@ import type {
 export interface Database {
   users: UsersTable;
   event_outbox: EventOutboxTable;
+  audit_logs: AuditLogsTable;
   customer_followups: CustomerFollowupsTable;
   complaints: ComplaintsTable;
   branches: BranchesTable;
