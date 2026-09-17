@@ -74,35 +74,41 @@ export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Kysely<Data
       continue;
     }
 
-    const existing = await repo.findByLegacyUserId(row.id);
-    const grants = asStringArray(row.permission_grants);
-    const revokes = asStringArray(row.permission_revokes);
-    const branchId = await resolveBranchId(row.branch_id);
+    try {
+      const existing = await repo.findByLegacyUserId(row.id);
+      const grants = asStringArray(row.permission_grants);
+      const revokes = asStringArray(row.permission_revokes);
+      const branchId = await resolveBranchId(row.branch_id);
 
-    if (existing) {
-      existing.changeRole(row.role);
-      existing.changeBranch(branchId);
-      existing.setPasswordHash(row.password_hash);
-      existing.setPinHash(row.pin_hash);
-      existing.setPermissionOverrides(grants, revokes);
-      if (row.is_active) existing.activate();
-      else existing.deactivate();
-      await repo.save(existing);
-      updated++;
-    } else {
-      const user = User.register({
-        name: row.name,
-        email: row.email,
-        passwordHash: row.password_hash,
-        role: row.role,
-        branchId,
-        legacyUserId: row.id,
-      });
-      user.setPinHash(row.pin_hash);
-      user.setPermissionOverrides(grants, revokes);
-      if (!row.is_active) user.deactivate();
-      await repo.save(user);
-      created++;
+      if (existing) {
+        existing.changeRole(row.role);
+        existing.changeBranch(branchId);
+        existing.setPasswordHash(row.password_hash);
+        existing.setPinHash(row.pin_hash);
+        existing.setPermissionOverrides(grants, revokes);
+        if (row.is_active) existing.activate();
+        else existing.deactivate();
+        await repo.save(existing);
+        updated++;
+      } else {
+        const user = User.register({
+          name: row.name,
+          email: row.email,
+          passwordHash: row.password_hash,
+          role: row.role,
+          branchId,
+          legacyUserId: row.id,
+        });
+        user.setPinHash(row.pin_hash);
+        user.setPermissionOverrides(grants, revokes);
+        if (!row.is_active) user.deactivate();
+        await repo.save(user);
+        created++;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`⚠ تخطّي المستخدم #${row.id} (${row.email}) - ${message}`);
+      skipped++;
     }
   }
 
