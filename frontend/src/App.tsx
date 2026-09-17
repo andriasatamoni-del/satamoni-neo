@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./shared/auth/AuthContext";
+import { AppShell } from "./shared/ui/AppShell";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { CrmPage } from "./pages/CrmPage";
@@ -15,9 +16,15 @@ import { HrPayrollPage } from "./pages/HrPayrollPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) return <p style={{ textAlign: "center", marginTop: 80 }}>بيتم التحميل...</p>;
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm font-medium text-slate-400">بيتم التحميل...</p>
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
-  return children;
+  return <AppShell>{children}</AppShell>;
 }
 
 export function App() {

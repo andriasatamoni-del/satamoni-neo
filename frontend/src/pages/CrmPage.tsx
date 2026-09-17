@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { PageHeader } from "../shared/ui/PageHeader";
+import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
+import { Button } from "../shared/ui/Button";
+import { Field, Input, Select, Textarea } from "../shared/ui/Field";
+import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { StatusBadge } from "../shared/ui/Badge";
 
 interface Complaint {
   id: string;
@@ -102,141 +107,136 @@ export function CrmPage() {
     recordFollowup.mutate();
   }
 
+  const complaints = complaintsQuery.data ?? [];
+
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <p><Link to="/">← الرئيسية</Link></p>
-      <h1>متابعة العملاء والشكاوى (CRM)</h1>
+    <div>
+      <PageHeader title="متابعة العملاء والشكاوى" description="سجّل مكالمات المتابعة وتابع الشكاوى المفتوحة" />
 
-      <section style={{ marginBottom: 32, border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-        <h2>تسجيل مكالمة متابعة</h2>
-        <form onSubmit={handleFollowupSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label>
-              رقم الأوردر (اختياري)
-              <input
-                type="number"
-                value={followupForm.legacyOrderId}
-                onChange={(e) => setFollowupForm({ ...followupForm, legacyOrderId: e.target.value })}
-                style={{ display: "block", width: "100%", padding: 6 }}
-              />
-            </label>
-            <label>
-              رقم تليفون العميل
-              <input
-                required
-                value={followupForm.customerPhone}
-                onChange={(e) => setFollowupForm({ ...followupForm, customerPhone: e.target.value })}
-                style={{ display: "block", width: "100%", padding: 6 }}
-              />
-            </label>
-            <label>
-              نتيجة الاتصال
-              <select
-                value={followupForm.callResult}
-                onChange={(e) => setFollowupForm({ ...followupForm, callResult: e.target.value })}
-                style={{ display: "block", width: "100%", padding: 6 }}
-              >
-                {CALL_RESULTS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </label>
-            <label>
-              تقييم الرضا (اختياري)
-              <select
-                value={followupForm.satisfactionRating}
-                onChange={(e) => setFollowupForm({ ...followupForm, satisfactionRating: e.target.value })}
-                style={{ display: "block", width: "100%", padding: 6 }}
-              >
-                <option value="">—</option>
-                {SATISFACTION_RATINGS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-            </label>
-          </div>
-          <label style={{ display: "block", marginTop: 12 }}>
-            ملاحظات
-            <textarea
-              value={followupForm.notes}
-              onChange={(e) => setFollowupForm({ ...followupForm, notes: e.target.value })}
-              style={{ display: "block", width: "100%", padding: 6 }}
-            />
-          </label>
-          <label style={{ display: "block", marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={followupForm.hasComplaint}
-              onChange={(e) => setFollowupForm({ ...followupForm, hasComplaint: e.target.checked })}
-            />{" "}
-            فيه شكوى مرتبطة بالمكالمة دي
-          </label>
-          {followupForm.hasComplaint && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-              <label>
-                نوع الشكوى
-                <select
-                  value={followupForm.category}
-                  onChange={(e) => setFollowupForm({ ...followupForm, category: e.target.value })}
-                  style={{ display: "block", width: "100%", padding: 6 }}
-                >
-                  {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </label>
-              <label>
-                وصف الشكوى
-                <input
-                  value={followupForm.description}
-                  onChange={(e) => setFollowupForm({ ...followupForm, description: e.target.value })}
-                  style={{ display: "block", width: "100%", padding: 6 }}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>تسجيل مكالمة متابعة</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <form onSubmit={handleFollowupSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="رقم الأوردر (اختياري)">
+                <Input
+                  type="number"
+                  value={followupForm.legacyOrderId}
+                  onChange={(e) => setFollowupForm({ ...followupForm, legacyOrderId: e.target.value })}
                 />
-              </label>
+              </Field>
+              <Field label="رقم تليفون العميل">
+                <Input
+                  required
+                  value={followupForm.customerPhone}
+                  onChange={(e) => setFollowupForm({ ...followupForm, customerPhone: e.target.value })}
+                />
+              </Field>
+              <Field label="نتيجة الاتصال">
+                <Select
+                  value={followupForm.callResult}
+                  onChange={(e) => setFollowupForm({ ...followupForm, callResult: e.target.value })}
+                >
+                  {CALL_RESULTS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </Select>
+              </Field>
+              <Field label="تقييم الرضا (اختياري)">
+                <Select
+                  value={followupForm.satisfactionRating}
+                  onChange={(e) => setFollowupForm({ ...followupForm, satisfactionRating: e.target.value })}
+                >
+                  <option value="">—</option>
+                  {SATISFACTION_RATINGS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </Select>
+              </Field>
             </div>
-          )}
-          {followupError && <p style={{ color: "crimson" }}>{followupError}</p>}
-          {followupMessage && <p style={{ color: "green" }}>{followupMessage}</p>}
-          <button type="submit" disabled={recordFollowup.isPending} style={{ padding: "8px 16px", marginTop: 12 }}>
-            {recordFollowup.isPending ? "بيتسجّل..." : "تسجيل المتابعة"}
-          </button>
-        </form>
-      </section>
 
-      <section>
-        <h2>الشكاوى</h2>
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            فلترة بالحالة:{" "}
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">الكل</option>
-              <option value="open">مفتوحة</option>
-              <option value="in_progress">جاري الحل</option>
-              <option value="resolved">اتحلت</option>
-            </select>
-          </label>
-        </div>
-
-        {complaintsQuery.isLoading && <p>بيتحمّل...</p>}
-        {complaintsQuery.isError && <p style={{ color: "crimson" }}>حصل خطأ في تحميل الشكاوى</p>}
-        {complaintsQuery.data && complaintsQuery.data.length === 0 && <p>مفيش شكاوى.</p>}
-
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-              <th>القناة</th>
-              <th>التليفون</th>
-              <th>النوع</th>
-              <th>الوصف</th>
-              <th>الحالة</th>
-              <th>إجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {complaintsQuery.data?.map((c) => (
-              <ComplaintRow
-                key={c.id}
-                complaint={c}
-                onUpdate={(status, resolutionNotes) => updateStatus.mutate({ id: c.id, status, resolutionNotes })}
+            <Field label="ملاحظات">
+              <Textarea
+                rows={2}
+                value={followupForm.notes}
+                onChange={(e) => setFollowupForm({ ...followupForm, notes: e.target.value })}
               />
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </Field>
+
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                checked={followupForm.hasComplaint}
+                onChange={(e) => setFollowupForm({ ...followupForm, hasComplaint: e.target.checked })}
+              />
+              فيه شكوى مرتبطة بالمكالمة دي
+            </label>
+
+            {followupForm.hasComplaint && (
+              <div className="grid grid-cols-1 gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-2">
+                <Field label="نوع الشكوى">
+                  <Select
+                    value={followupForm.category}
+                    onChange={(e) => setFollowupForm({ ...followupForm, category: e.target.value })}
+                  >
+                    {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="وصف الشكوى">
+                  <Input
+                    value={followupForm.description}
+                    onChange={(e) => setFollowupForm({ ...followupForm, description: e.target.value })}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {followupError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{followupError}</p>}
+            {followupMessage && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{followupMessage}</p>}
+
+            <Button type="submit" disabled={recordFollowup.isPending}>
+              {recordFollowup.isPending ? "بيتسجّل..." : "تسجيل المتابعة"}
+            </Button>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>الشكاوى ({complaints.length})</CardTitle>
+          <Select className="w-auto" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">كل الحالات</option>
+            <option value="open">مفتوحة</option>
+            <option value="in_progress">جاري الحل</option>
+            <option value="resolved">اتحلت</option>
+          </Select>
+        </CardHeader>
+        <CardBody className="p-0">
+          {complaintsQuery.isLoading && <p className="px-5 py-4 text-sm text-slate-400">بيتحمّل...</p>}
+          {complaintsQuery.isError && <p className="px-5 py-4 text-sm text-red-600">حصل خطأ في تحميل الشكاوى</p>}
+          <Table>
+            <THead>
+              <TR>
+                <TH>القناة</TH>
+                <TH>التليفون</TH>
+                <TH>النوع</TH>
+                <TH>الوصف</TH>
+                <TH>الحالة</TH>
+                <TH>إجراء</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {complaints.map((c) => (
+                <ComplaintRow
+                  key={c.id}
+                  complaint={c}
+                  onUpdate={(status, resolutionNotes) => updateStatus.mutate({ id: c.id, status, resolutionNotes })}
+                />
+              ))}
+            </TBody>
+          </Table>
+          {complaints.length === 0 && !complaintsQuery.isLoading && <EmptyState>مفيش شكاوى</EmptyState>}
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -251,26 +251,28 @@ function ComplaintRow({
   const [resolutionNotes, setResolutionNotes] = useState(complaint.resolutionNotes ?? "");
 
   return (
-    <tr style={{ borderBottom: "1px solid #eee" }}>
-      <td>{complaint.channel === "whatsapp" ? "واتساب" : "تليفون"}</td>
-      <td>{complaint.customerPhone}</td>
-      <td>{CATEGORIES.find((c) => c.value === complaint.category)?.label ?? complaint.category}</td>
-      <td>{complaint.description ?? "—"}</td>
-      <td>{STATUS_LABELS[complaint.status] ?? complaint.status}</td>
-      <td>
-        <select value={complaint.status} onChange={(e) => onUpdate(e.target.value, undefined)}>
-          <option value="open">مفتوحة</option>
-          <option value="in_progress">جاري الحل</option>
-          <option value="resolved">اتحلت</option>
-        </select>
-        <input
-          placeholder="ملاحظة الحل"
-          value={resolutionNotes}
-          onChange={(e) => setResolutionNotes(e.target.value)}
-          onBlur={() => onUpdate(undefined, resolutionNotes)}
-          style={{ marginInlineStart: 8, padding: 4 }}
-        />
-      </td>
-    </tr>
+    <TR>
+      <TD>{complaint.channel === "whatsapp" ? "واتساب" : "تليفون"}</TD>
+      <TD>{complaint.customerPhone}</TD>
+      <TD>{CATEGORIES.find((c) => c.value === complaint.category)?.label ?? complaint.category}</TD>
+      <TD className="max-w-xs truncate">{complaint.description ?? "—"}</TD>
+      <TD><StatusBadge status={STATUS_LABELS[complaint.status] ?? complaint.status} /></TD>
+      <TD>
+        <div className="flex items-center gap-2">
+          <Select className="w-auto" value={complaint.status} onChange={(e) => onUpdate(e.target.value, undefined)}>
+            <option value="open">مفتوحة</option>
+            <option value="in_progress">جاري الحل</option>
+            <option value="resolved">اتحلت</option>
+          </Select>
+          <Input
+            className="w-40"
+            placeholder="ملاحظة الحل"
+            value={resolutionNotes}
+            onChange={(e) => setResolutionNotes(e.target.value)}
+            onBlur={() => onUpdate(undefined, resolutionNotes)}
+          />
+        </div>
+      </TD>
+    </TR>
   );
 }
