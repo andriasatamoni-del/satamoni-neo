@@ -139,3 +139,93 @@ export class SupplierPaymentExceedsOutstandingError extends DomainError {
     super(`المبلغ أكبر من المتبقي على الفاتورة (المتبقي ${outstanding.toFixed(2)})`);
   }
 }
+
+export class EmptyPurchaseRequestError extends DomainError {
+  constructor() {
+    super("لازم طلب الشراء يكون فيه بند واحد على الأقل");
+  }
+}
+
+export class InvalidPurchaseRequestLineError extends DomainError {
+  constructor() {
+    super("كل بند لازم صنف مخزون وكمية مطلوبة أكبر من صفر");
+  }
+}
+
+export class PurchaseRequestNotFoundError extends DomainError {
+  constructor() {
+    super("طلب الشراء ده مش موجود");
+  }
+}
+
+export class PurchaseRequestNotEditableError extends DomainError {
+  constructor() {
+    super("طلب الشراء ده مش DRAFT، مينفعش يتعدّل");
+  }
+}
+
+export class PurchaseRequestNotSubmittableError extends DomainError {
+  constructor() {
+    super("طلب الشراء ده مش DRAFT، مينفعش يتقدّم");
+  }
+}
+
+export class PurchaseRequestNotDecidableError extends DomainError {
+  constructor() {
+    super("طلب الشراء ده مش SUBMITTED، مينفعش يتاعتمد أو يترفض");
+  }
+}
+
+export class PurchaseRequestRejectionReasonRequiredError extends DomainError {
+  constructor() {
+    super("لازم سبب الرفض");
+  }
+}
+
+export class PurchaseRequestNotCancellableError extends DomainError {
+  constructor() {
+    super("طلب الشراء ده اتحوّل لأمر شراء أو اتلغى أو اترفض بالفعل - مينفعش يتلغي");
+  }
+}
+
+export class PurchaseRequestNotConvertibleError extends DomainError {
+  constructor() {
+    super("طلب الشراء لازم يكون معتمد (APPROVED) الأول عشان يتحوّل لأمر شراء");
+  }
+}
+
+export class EmptyPurchaseReturnError extends DomainError {
+  constructor() {
+    super("لازم مرتجع المشتريات يكون فيه بند واحد على الأقل");
+  }
+}
+
+export class InvalidPurchaseReturnLineError extends DomainError {
+  constructor() {
+    super("كل بند لازم صنف مخزون وكمية أكبر من صفر ووحدة");
+  }
+}
+
+export class PurchaseReturnReasonRequiredError extends DomainError {
+  constructor() {
+    super("لازم سبب المرتجع");
+  }
+}
+
+export class PurchaseReturnNotFoundError extends DomainError {
+  constructor() {
+    super("مرتجع المشتريات ده مش موجود");
+  }
+}
+
+export class PurchaseReturnNotPostableError extends DomainError {
+  constructor() {
+    super("مرتجع المشتريات ده مش DRAFT، مينفعش يترحّل");
+  }
+}
+
+export class PurchaseReturnNotCancellableError extends DomainError {
+  constructor() {
+    super("مرتجع المشتريات ده اترحّل بالفعل - مينفعش يتلغي (البضاعة خرجت فعليًا للمورد)");
+  }
+}

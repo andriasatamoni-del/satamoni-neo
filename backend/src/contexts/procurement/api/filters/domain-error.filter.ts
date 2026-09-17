@@ -6,6 +6,8 @@ import {
   PurchaseOrderNotFoundError,
   GoodsReceiptNotFoundError,
   SupplierInvoiceNotFoundError,
+  PurchaseRequestNotFoundError,
+  PurchaseReturnNotFoundError,
 } from "../../domain/errors";
 import { TreasuryNotFoundError } from "../../../treasury/domain/errors";
 
@@ -18,6 +20,8 @@ export class ProcurementDomainErrorFilter implements ExceptionFilter {
       exception instanceof PurchaseOrderNotFoundError ||
       exception instanceof GoodsReceiptNotFoundError ||
       exception instanceof SupplierInvoiceNotFoundError ||
+      exception instanceof PurchaseRequestNotFoundError ||
+      exception instanceof PurchaseReturnNotFoundError ||
       exception instanceof TreasuryNotFoundError
         ? 404
         : 400;

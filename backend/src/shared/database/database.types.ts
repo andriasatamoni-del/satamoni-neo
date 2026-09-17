@@ -28,6 +28,10 @@ import type {
   SupplierInvoicesTable,
   SupplierInvoiceLinesTable,
   SupplierPaymentsTable,
+  PurchaseRequestsTable,
+  PurchaseRequestItemsTable,
+  PurchaseReturnsTable,
+  PurchaseReturnItemsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
 import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
 import type {
@@ -80,6 +84,10 @@ export interface Database {
   supplier_invoices: SupplierInvoicesTable;
   supplier_invoice_lines: SupplierInvoiceLinesTable;
   supplier_payments: SupplierPaymentsTable;
+  purchase_requests: PurchaseRequestsTable;
+  purchase_request_items: PurchaseRequestItemsTable;
+  purchase_returns: PurchaseReturnsTable;
+  purchase_return_items: PurchaseReturnItemsTable;
   orders: OrdersTable;
   order_items: OrderItemsTable;
   drivers: DriversTable;

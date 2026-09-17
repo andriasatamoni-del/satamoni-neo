@@ -100,3 +100,58 @@ export interface SupplierPaymentsTable {
   created_by: string | null;
   created_at: Generated<Date>;
 }
+
+export interface PurchaseRequestsTable {
+  id: Generated<string>;
+  branch_id: string;
+  requested_by: string | null;
+  required_date: Date | null;
+  reason: string | null;
+  status: string;
+  approved_by: string | null;
+  approved_at: Date | null;
+  rejected_by: string | null;
+  rejection_reason: string | null;
+  cancelled_by: string | null;
+  cancelled_at: Date | null;
+  converted_to_purchase_order_id: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface PurchaseRequestItemsTable {
+  id: Generated<string>;
+  purchase_request_id: string;
+  inventory_item_id: string;
+  requested_quantity: number;
+  unit: string | null;
+  notes: string | null;
+}
+
+export interface PurchaseReturnsTable {
+  id: Generated<string>;
+  branch_id: string;
+  supplier_id: string | null;
+  goods_receipt_id: string | null;
+  status: string;
+  reason: string;
+  notes: string | null;
+  total_value: number | null;
+  journal_entry_id: string | null;
+  created_by: string | null;
+  created_at: Generated<Date>;
+  posted_by: string | null;
+  posted_at: Date | null;
+  cancelled_by: string | null;
+  cancelled_at: Date | null;
+}
+
+export interface PurchaseReturnItemsTable {
+  id: Generated<string>;
+  purchase_return_id: string;
+  inventory_item_id: string;
+  quantity: number;
+  unit: string;
+  unit_cost: number | null;
+  line_value: number | null;
+}

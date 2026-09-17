@@ -8,6 +8,7 @@ export const MOVEMENT_TYPES = [
   "TRANSFER_OUT",
   "TRANSFER_IN",
   "OPENING_BALANCE",
+  "RETURN_TO_SUPPLIER",
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 

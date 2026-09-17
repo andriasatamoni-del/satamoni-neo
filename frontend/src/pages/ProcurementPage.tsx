@@ -46,12 +46,58 @@ interface SupplierPayment {
   referenceNumber: string | null;
   createdAt: string;
 }
+interface PurchaseRequest {
+  id: string;
+  branchId: string;
+  reason: string | null;
+  lines: { inventoryItemId: string; requestedQuantity: number; unit: string | null; notes: string | null }[];
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CONVERTED_TO_PO" | "CANCELLED";
+  rejectionReason: string | null;
+  convertedToPurchaseOrderId: string | null;
+  createdAt: string;
+}
+interface PurchaseReturn {
+  id: string;
+  branchId: string;
+  supplierId: string | null;
+  goodsReceiptId: string | null;
+  reason: string;
+  lines: { inventoryItemId: string; quantity: number; unit: string; unitCost: number | null; lineValue: number | null }[];
+  totalValue: number | null;
+  status: "DRAFT" | "POSTED" | "CANCELLED";
+  createdAt: string;
+}
 
 const TABS = [
   { key: "receipts", label: "أذون الاستلام" },
   { key: "invoices", label: "فواتير الموردين" },
   { key: "payments", label: "سدادات الموردين" },
+  { key: "purchase-requests", label: "طلبات الشراء" },
+  { key: "purchase-returns", label: "مرتجعات المشتريات" },
 ];
+
+const PR_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "مسودة",
+  SUBMITTED: "مقدّم - محتاج اعتماد",
+  APPROVED: "معتمد",
+  REJECTED: "مرفوض",
+  CONVERTED_TO_PO: "اتحوّل لأمر شراء",
+  CANCELLED: "ملغي",
+};
+const PR_STATUS_TONES: Record<string, "success" | "warning" | "brand" | "info" | "danger" | "neutral"> = {
+  DRAFT: "neutral",
+  SUBMITTED: "warning",
+  APPROVED: "brand",
+  REJECTED: "danger",
+  CONVERTED_TO_PO: "success",
+  CANCELLED: "danger",
+};
+const RETURN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", POSTED: "اترحّل", CANCELLED: "ملغي" };
+const RETURN_STATUS_TONES: Record<string, "success" | "warning" | "brand" | "info" | "danger" | "neutral"> = {
+  DRAFT: "neutral",
+  POSTED: "success",
+  CANCELLED: "danger",
+};
 
 const INVOICE_STATUS_LABELS: Record<string, string> = {
   MATCHED: "مطابقة",
@@ -87,6 +133,8 @@ export function ProcurementPage() {
   const treasuriesQuery = useQuery({ queryKey: ["treasuries"], queryFn: () => apiRequest<Treasury[]>("/treasuries") });
   const invoicesQuery = useQuery({ queryKey: ["procurement", "supplier-invoices"], queryFn: () => apiRequest<SupplierInvoice[]>("/procurement/supplier-invoices") });
   const paymentsQuery = useQuery({ queryKey: ["procurement", "supplier-payments"], queryFn: () => apiRequest<SupplierPayment[]>("/procurement/supplier-payments") });
+  const purchaseRequestsQuery = useQuery({ queryKey: ["procurement", "purchase-requests"], queryFn: () => apiRequest<PurchaseRequest[]>("/procurement/purchase-requests") });
+  const purchaseReturnsQuery = useQuery({ queryKey: ["procurement", "purchase-returns"], queryFn: () => apiRequest<PurchaseReturn[]>("/procurement/purchase-returns") });
 
   const [newSupplierName, setNewSupplierName] = useState("");
   const createSupplier = useMutation({
@@ -204,6 +252,108 @@ export function ProcurementPage() {
     enabled: !!balanceSupplierId,
   });
 
+  // --- طلبات الشراء ---
+  const [purchaseRequestForm, setPurchaseRequestForm] = useState({ branchId: "", reason: "", inventoryItemId: "", requestedQuantity: "" });
+  const [purchaseRequestError, setPurchaseRequestError] = useState<string | null>(null);
+  const createPurchaseRequest = useMutation({
+    mutationFn: () =>
+      apiRequest("/procurement/purchase-requests", {
+        method: "POST",
+        body: {
+          branchId: purchaseRequestForm.branchId,
+          reason: purchaseRequestForm.reason || undefined,
+          lines: [{ inventoryItemId: purchaseRequestForm.inventoryItemId, requestedQuantity: Number(purchaseRequestForm.requestedQuantity) }],
+        },
+      }),
+    onSuccess: () => {
+      setPurchaseRequestForm({ branchId: "", reason: "", inventoryItemId: "", requestedQuantity: "" });
+      setPurchaseRequestError(null);
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] });
+    },
+    onError: (err) => setPurchaseRequestError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const submitPurchaseRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/procurement/purchase-requests/${id}/submit`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] }),
+  });
+  const approvePurchaseRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/procurement/purchase-requests/${id}/approve`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] }),
+  });
+  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const rejectPurchaseRequest = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest(`/procurement/purchase-requests/${id}/reject`, { method: "POST", body: { reason } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] }),
+  });
+  const cancelPurchaseRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/procurement/purchase-requests/${id}/cancel`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] }),
+  });
+  const [convertForm, setConvertForm] = useState<Record<string, { supplierId: string; unitPrice: string }>>({});
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const convertToPurchaseOrder = useMutation({
+    mutationFn: (request: PurchaseRequest) => {
+      const form = convertForm[request.id];
+      return apiRequest("/procurement/purchase-orders", {
+        method: "POST",
+        body: {
+          supplierId: form?.supplierId,
+          branchId: request.branchId,
+          purchaseRequestId: request.id,
+          lines: request.lines.map((l) => ({
+            inventoryItemId: l.inventoryItemId,
+            quantity: l.requestedQuantity,
+            unitPrice: Number(form?.unitPrice ?? 0),
+          })),
+        },
+      });
+    },
+    onSuccess: () => {
+      setConvertError(null);
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-orders"] });
+    },
+    onError: (err) => setConvertError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  // --- مرتجعات المشتريات ---
+  const [purchaseReturnForm, setPurchaseReturnForm] = useState({
+    branchId: "", supplierId: "", goodsReceiptId: "", reason: "", inventoryItemId: "", quantity: "", unit: "",
+  });
+  const [purchaseReturnError, setPurchaseReturnError] = useState<string | null>(null);
+  const createPurchaseReturn = useMutation({
+    mutationFn: () =>
+      apiRequest("/procurement/purchase-returns", {
+        method: "POST",
+        body: {
+          branchId: purchaseReturnForm.branchId,
+          supplierId: purchaseReturnForm.supplierId || undefined,
+          goodsReceiptId: purchaseReturnForm.goodsReceiptId || undefined,
+          reason: purchaseReturnForm.reason,
+          lines: [{ inventoryItemId: purchaseReturnForm.inventoryItemId, quantity: Number(purchaseReturnForm.quantity), unit: purchaseReturnForm.unit }],
+        },
+      }),
+    onSuccess: () => {
+      setPurchaseReturnForm({ branchId: "", supplierId: "", goodsReceiptId: "", reason: "", inventoryItemId: "", quantity: "", unit: "" });
+      setPurchaseReturnError(null);
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-returns"] });
+    },
+    onError: (err) => setPurchaseReturnError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const postPurchaseReturn = useMutation({
+    mutationFn: (id: string) => apiRequest(`/procurement/purchase-returns/${id}/post`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["procurement", "suppliers", "balance"] });
+    },
+  });
+  const cancelPurchaseReturn = useMutation({
+    mutationFn: (id: string) => apiRequest(`/procurement/purchase-returns/${id}/cancel`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-returns"] }),
+  });
+
   function handleSupplierSubmit(e: FormEvent) {
     e.preventDefault();
     createSupplier.mutate();
@@ -220,6 +370,14 @@ export function ProcurementPage() {
     e.preventDefault();
     createPayment.mutate();
   }
+  function handlePurchaseRequestSubmit(e: FormEvent) {
+    e.preventDefault();
+    createPurchaseRequest.mutate();
+  }
+  function handlePurchaseReturnSubmit(e: FormEvent) {
+    e.preventDefault();
+    createPurchaseReturn.mutate();
+  }
 
   const itemName = (id: string) => itemsQuery.data?.find((i) => i.id === id)?.name ?? id;
   const branchName = (id: string) => branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
@@ -233,6 +391,11 @@ export function ProcurementPage() {
   );
   const unpaidInvoicesForPaymentForm = invoices.filter(
     (i) => ["APPROVED", "MATCHED", "PARTIALLY_PAID"].includes(i.status) && (!paymentForm.supplierId || i.supplierId === paymentForm.supplierId)
+  );
+  const purchaseRequests = purchaseRequestsQuery.data ?? [];
+  const purchaseReturns = purchaseReturnsQuery.data ?? [];
+  const confirmedReceiptsForReturnForm = receipts.filter(
+    (r) => r.status === "CONFIRMED" && (!purchaseReturnForm.supplierId || r.supplierId === purchaseReturnForm.supplierId)
   );
 
   return (
@@ -541,6 +704,207 @@ export function ProcurementPage() {
                 </TBody>
               </Table>
               {payments.length === 0 && <EmptyState>مفيش سدادات لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </>
+      )}
+
+      {tab === "purchase-requests" && (
+        <>
+          <Card className="mb-6">
+            <CardHeader><CardTitle>طلب شراء جديد</CardTitle></CardHeader>
+            <CardBody>
+              <form onSubmit={handlePurchaseRequestSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="الفرع">
+                    <Select required value={purchaseRequestForm.branchId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, branchId: e.target.value })}>
+                      <option value="">اختر فرع</option>
+                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الصنف">
+                    <Select required value={purchaseRequestForm.inventoryItemId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, inventoryItemId: e.target.value })}>
+                      <option value="">اختر صنف</option>
+                      {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الكمية المطلوبة">
+                    <Input required type="number" value={purchaseRequestForm.requestedQuantity} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, requestedQuantity: e.target.value })} />
+                  </Field>
+                  <Field label="السبب (اختياري)">
+                    <Input value={purchaseRequestForm.reason} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, reason: e.target.value })} />
+                  </Field>
+                </div>
+                {purchaseRequestError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseRequestError}</p>}
+                <Button type="submit" disabled={createPurchaseRequest.isPending}>{createPurchaseRequest.isPending ? "بيتسجّل..." : "تسجيل الطلب"}</Button>
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>طلبات الشراء ({purchaseRequests.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>الفرع</TH><TH>البنود</TH><TH>السبب</TH><TH>الحالة</TH><TH>إجراء</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {purchaseRequests.map((r) => (
+                    <TR key={r.id}>
+                      <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
+                      <TD>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.requestedQuantity}`).join("، ")}</TD>
+                      <TD>{r.reason ?? "-"}{r.status === "REJECTED" && r.rejectionReason ? ` (سبب الرفض: ${r.rejectionReason})` : ""}</TD>
+                      <TD><Badge tone={PR_STATUS_TONES[r.status]}>{PR_STATUS_LABELS[r.status]}</Badge></TD>
+                      <TD>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {r.status === "DRAFT" && (
+                            <>
+                              <Button size="sm" onClick={() => submitPurchaseRequest.mutate(r.id)} disabled={submitPurchaseRequest.isPending}>تقديم</Button>
+                              <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                            </>
+                          )}
+                          {r.status === "SUBMITTED" && canApproveOrCancel && (
+                            <>
+                              <Button size="sm" onClick={() => approvePurchaseRequest.mutate(r.id)} disabled={approvePurchaseRequest.isPending}>اعتماد</Button>
+                              <Input
+                                placeholder="سبب الرفض"
+                                className="w-32"
+                                value={rejectReason[r.id] ?? ""}
+                                onChange={(e) => setRejectReason({ ...rejectReason, [r.id]: e.target.value })}
+                              />
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => rejectPurchaseRequest.mutate({ id: r.id, reason: rejectReason[r.id] ?? "" })}
+                                disabled={rejectPurchaseRequest.isPending || !rejectReason[r.id]}
+                              >
+                                رفض
+                              </Button>
+                              <Button size="sm" variant="secondary" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                            </>
+                          )}
+                          {r.status === "APPROVED" && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Select
+                                className="w-32"
+                                value={convertForm[r.id]?.supplierId ?? ""}
+                                onChange={(e) => setConvertForm({ ...convertForm, [r.id]: { supplierId: e.target.value, unitPrice: convertForm[r.id]?.unitPrice ?? "" } })}
+                              >
+                                <option value="">مورد</option>
+                                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              </Select>
+                              <Input
+                                placeholder="سعر الوحدة"
+                                type="number"
+                                className="w-24"
+                                value={convertForm[r.id]?.unitPrice ?? ""}
+                                onChange={(e) => setConvertForm({ ...convertForm, [r.id]: { supplierId: convertForm[r.id]?.supplierId ?? "", unitPrice: e.target.value } })}
+                              />
+                              <Button
+                                size="sm"
+                                disabled={convertToPurchaseOrder.isPending || !convertForm[r.id]?.supplierId}
+                                onClick={() => convertToPurchaseOrder.mutate(r)}
+                              >
+                                تحويل لأمر شراء
+                              </Button>
+                              <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                            </div>
+                          )}
+                        </div>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {convertError && <p className="m-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{convertError}</p>}
+              {purchaseRequests.length === 0 && <EmptyState>مفيش طلبات شراء لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </>
+      )}
+
+      {tab === "purchase-returns" && (
+        <>
+          <Card className="mb-6">
+            <CardHeader><CardTitle>مرتجع مشتريات جديد</CardTitle></CardHeader>
+            <CardBody>
+              <form onSubmit={handlePurchaseReturnSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label="الفرع">
+                    <Select required value={purchaseReturnForm.branchId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, branchId: e.target.value })}>
+                      <option value="">اختر فرع</option>
+                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="المورد (اختياري)">
+                    <Select value={purchaseReturnForm.supplierId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, supplierId: e.target.value, goodsReceiptId: "" })}>
+                      <option value="">بدون مورد محدد</option>
+                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="إذن الاستلام (اختياري - للتتبع)">
+                    <Select value={purchaseReturnForm.goodsReceiptId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, goodsReceiptId: e.target.value })}>
+                      <option value="">بدون ربط</option>
+                      {confirmedReceiptsForReturnForm.map((r) => (
+                        <option key={r.id} value={r.id}>{r.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="الصنف">
+                    <Select required value={purchaseReturnForm.inventoryItemId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, inventoryItemId: e.target.value })}>
+                      <option value="">اختر صنف</option>
+                      {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الكمية">
+                    <Input required type="number" value={purchaseReturnForm.quantity} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, quantity: e.target.value })} />
+                  </Field>
+                  <Field label="الوحدة">
+                    <Input required placeholder="كيلو/لتر/قطعة" value={purchaseReturnForm.unit} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, unit: e.target.value })} />
+                  </Field>
+                </div>
+                <Field label="السبب">
+                  <Input required placeholder="تالف / غلط / منتهي الصلاحية" value={purchaseReturnForm.reason} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, reason: e.target.value })} />
+                </Field>
+                {purchaseReturnError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseReturnError}</p>}
+                <Button type="submit" disabled={createPurchaseReturn.isPending}>{createPurchaseReturn.isPending ? "بيتسجّل..." : "تسجيل المرتجع"}</Button>
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>مرتجعات المشتريات ({purchaseReturns.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>الفرع</TH><TH>المورد</TH><TH>البنود</TH><TH>السبب</TH><TH>القيمة</TH><TH>الحالة</TH><TH>إجراء</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {purchaseReturns.map((r) => (
+                    <TR key={r.id}>
+                      <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
+                      <TD>{r.supplierId ? supplierName(r.supplierId) : "-"}</TD>
+                      <TD>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.quantity}`).join("، ")}</TD>
+                      <TD>{r.reason}</TD>
+                      <TD>{r.totalValue === null ? "غير مكتملة" : `${fmt(r.totalValue)}ج`}</TD>
+                      <TD><Badge tone={RETURN_STATUS_TONES[r.status]}>{RETURN_STATUS_LABELS[r.status]}</Badge></TD>
+                      <TD>
+                        {r.status === "DRAFT" && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button size="sm" onClick={() => postPurchaseReturn.mutate(r.id)} disabled={postPurchaseReturn.isPending}>ترحيل</Button>
+                            <Button size="sm" variant="danger" onClick={() => cancelPurchaseReturn.mutate(r.id)} disabled={cancelPurchaseReturn.isPending}>إلغاء</Button>
+                          </div>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {purchaseReturns.length === 0 && <EmptyState>مفيش مرتجعات مشتريات لسه</EmptyState>}
             </CardBody>
           </Card>
         </>

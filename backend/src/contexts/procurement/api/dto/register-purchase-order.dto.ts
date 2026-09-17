@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsNumber, IsUUID, ValidateNested } from "class-validator";
+import { IsArray, IsNumber, IsOptional, IsUUID, ValidateNested } from "class-validator";
 
 export class PurchaseOrderLineInputDto {
   @IsUUID()
@@ -18,6 +18,10 @@ export class RegisterPurchaseOrderDto {
 
   @IsUUID()
   branchId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  purchaseRequestId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
