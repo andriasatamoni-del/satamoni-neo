@@ -7,6 +7,7 @@ import { CrmPage } from "./pages/CrmPage";
 import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
+import { ProductionPage } from "./pages/ProductionPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { KdsPage } from "./pages/KdsPage";
@@ -73,6 +74,14 @@ export function App() {
         element={
           <RequireAuth>
             <CatalogPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/production"
+        element={
+          <RequireAuth>
+            <ProductionPage />
           </RequireAuth>
         }
       />

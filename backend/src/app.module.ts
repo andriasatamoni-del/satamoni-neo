@@ -9,6 +9,7 @@ import { CrmModule } from "./contexts/crm/crm.module";
 import { BranchesModule } from "./contexts/branches/branches.module";
 import { InventoryModule } from "./contexts/inventory/inventory.module";
 import { CatalogModule } from "./contexts/catalog/catalog.module";
+import { ProductionModule } from "./contexts/production/production.module";
 import { ProcurementModule } from "./contexts/procurement/procurement.module";
 import { OrdersModule } from "./contexts/orders/orders.module";
 import { DeliveryModule } from "./contexts/delivery/delivery.module";
@@ -30,6 +31,7 @@ import { TreasuryModule } from "./contexts/treasury/treasury.module";
     CrmModule,
     InventoryModule,
     CatalogModule,
+    ProductionModule,
     ProcurementModule,
     OrdersModule,
     DeliveryModule,

@@ -16,6 +16,7 @@ import { ActivateRecipeVersionHandler } from "./application/commands/activate-re
 import { ListMenuCategoriesHandler } from "./application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "./application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "./application/queries/get-recipe-by-variant.handler";
+import { ListRecipesHandler } from "./application/queries/list-recipes.handler";
 import { CatalogController } from "./api/catalog.controller";
 
 @Module({
@@ -34,6 +35,7 @@ import { CatalogController } from "./api/catalog.controller";
     ListMenuCategoriesHandler,
     ListMenuItemsHandler,
     GetRecipeByVariantHandler,
+    ListRecipesHandler,
   ],
   exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY],
 })

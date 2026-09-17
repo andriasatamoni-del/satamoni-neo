@@ -110,3 +110,8 @@ export const ListSearchIcon = (p: SVGProps<SVGSVGElement>) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h9.75m-9.75 5.25h4.5m9-1.5l3 3m-.75-6a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
   </Icon>
 );
+export const FactoryIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5M4.5 21V9.75l6-3.375v3.375l6-3.375v3.375l3-1.688V21M9 21v-4.5h3V21" />
+  </Icon>
+);

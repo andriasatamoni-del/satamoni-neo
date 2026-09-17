@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterMenuCategoryHandler } from "../application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "../application/commands/register-menu-item.handler";
@@ -9,6 +9,7 @@ import { ActivateRecipeVersionHandler } from "../application/commands/activate-r
 import { ListMenuCategoriesHandler } from "../application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "../application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "../application/queries/get-recipe-by-variant.handler";
+import { ListRecipesHandler } from "../application/queries/list-recipes.handler";
 import { RegisterMenuCategoryDto } from "./dto/register-menu-category.dto";
 import { RegisterMenuItemDto } from "./dto/register-menu-item.dto";
 import { AddVariantDto } from "./dto/add-variant.dto";
@@ -36,8 +37,15 @@ export class CatalogController {
     private readonly activateRecipeVersion: ActivateRecipeVersionHandler,
     private readonly listCategories: ListMenuCategoriesHandler,
     private readonly listItems: ListMenuItemsHandler,
-    private readonly getRecipeByVariant: GetRecipeByVariantHandler
+    private readonly getRecipeByVariant: GetRecipeByVariantHandler,
+    private readonly listRecipes: ListRecipesHandler
   ) {}
+
+  @Get("recipes")
+  @RequirePermission("catalog.items.view", "catalog.recipes.manage")
+  async recipes(@Query("recipeType") recipeType?: string) {
+    return (await this.listRecipes.execute({ recipeType })).map(toPublicRecipe);
+  }
 
   @Get("categories")
   @RequirePermission("catalog.items.view", "catalog.items.manage")

@@ -14,6 +14,10 @@ import type {
 } from "../../contexts/inventory/infrastructure/persistence/stock-movement.schema";
 import type { StocktakesTable, StocktakeLinesTable } from "../../contexts/inventory/infrastructure/persistence/stocktake.schema";
 import type {
+  ConversionOrdersTable,
+  ConversionOrderInputLinesTable,
+} from "../../contexts/production/infrastructure/persistence/conversion-order.schema";
+import type {
   MenuCategoriesTable,
   MenuItemsTable,
   MenuItemVariantsTable,
@@ -78,6 +82,8 @@ export interface Database {
   stock_movements: StockMovementsTable;
   branch_stock_balances: BranchStockBalancesTable;
   stocktakes: StocktakesTable;
+  conversion_orders: ConversionOrdersTable;
+  conversion_order_input_lines: ConversionOrderInputLinesTable;
   stocktake_lines: StocktakeLinesTable;
   menu_categories: MenuCategoriesTable;
   menu_items: MenuItemsTable;

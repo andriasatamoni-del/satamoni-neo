@@ -76,13 +76,16 @@ export function InventoryPage() {
 
   const [newItemName, setNewItemName] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("");
+  const [newItemType, setNewItemType] = useState("raw");
   const [itemError, setItemError] = useState<string | null>(null);
 
   const createItem = useMutation({
-    mutationFn: () => apiRequest("/inventory/items", { method: "POST", body: { name: newItemName, unit: newItemUnit } }),
+    mutationFn: () =>
+      apiRequest("/inventory/items", { method: "POST", body: { name: newItemName, unit: newItemUnit, itemType: newItemType } }),
     onSuccess: () => {
       setNewItemName("");
       setNewItemUnit("");
+      setNewItemType("raw");
       setItemError(null);
       queryClient.invalidateQueries({ queryKey: ["inventory", "items"] });
     },
@@ -205,6 +208,12 @@ export function InventoryPage() {
                   </Field>
                   <Field label="الوحدة (كيلو/لتر/قطعة)">
                     <Input required value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} />
+                  </Field>
+                  <Field label="نوع الصنف">
+                    <Select value={newItemType} onChange={(e) => setNewItemType(e.target.value)}>
+                      <option value="raw">خام</option>
+                      <option value="manufactured">مصنّع (ناتج تصنيع/تعبئة)</option>
+                    </Select>
                   </Field>
                   {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
                   <Button type="submit" disabled={createItem.isPending}>إضافة</Button>

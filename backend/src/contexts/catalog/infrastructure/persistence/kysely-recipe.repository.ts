@@ -83,6 +83,15 @@ export class KyselyRecipeRepository implements RecipeRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
+  async list(filter?: { recipeType?: string }): Promise<Recipe[]> {
+    let query = this.db.selectFrom("recipes").selectAll();
+    if (filter?.recipeType) query = query.where("recipe_type", "=", filter.recipeType);
+    const rows = await query.execute();
+    const recipes: Recipe[] = [];
+    for (const row of rows) recipes.push(await this.toDomain(row));
+    return recipes;
+  }
+
   private async toDomain(row: Selectable<RecipesTable>): Promise<Recipe> {
     const versionRows = await this.db
       .selectFrom("recipe_versions")

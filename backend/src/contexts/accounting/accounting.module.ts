@@ -16,6 +16,7 @@ import { PostGoodsReceiptApJournalEntryHandler } from "./application/commands/po
 import { PostDriverSettlementVarianceJournalEntryHandler } from "./application/commands/post-driver-settlement-variance-journal-entry.handler";
 import { PostDriverWageJournalEntryHandler } from "./application/commands/post-driver-wage-journal-entry.handler";
 import { PostStocktakeVarianceJournalEntryHandler } from "./application/commands/post-stocktake-variance-journal-entry.handler";
+import { PostConversionOrderJournalEntryHandler } from "./application/commands/post-conversion-order-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
@@ -26,6 +27,7 @@ import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/go
 import type { DriverSettlementCreatedEvent } from "../delivery/domain/events/driver-settlement-created.event";
 import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events/driver-attendance-shift-closed.event";
 import type { StocktakeCommittedEvent } from "../inventory/domain/events/stocktake-committed.event";
+import type { ConversionOrderCompletedEvent } from "../production/domain/events/conversion-order-completed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -43,6 +45,7 @@ import type { StocktakeCommittedEvent } from "../inventory/domain/events/stockta
     PostDriverSettlementVarianceJournalEntryHandler,
     PostDriverWageJournalEntryHandler,
     PostStocktakeVarianceJournalEntryHandler,
+    PostConversionOrderJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -58,7 +61,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler,
     private readonly postDriverSettlementVarianceJournalEntry: PostDriverSettlementVarianceJournalEntryHandler,
     private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler,
-    private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler
+    private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler,
+    private readonly postConversionOrderJournalEntry: PostConversionOrderJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -104,6 +108,10 @@ export class AccountingModule implements OnModuleInit {
     // تامن مستهلك - فروق جرد فعلي (لو موجودة) بيترحّل قيد مستقل لكل سطر تلقائيًا
     this.eventBus.subscribe<StocktakeCommittedEvent>("StocktakeCommitted", (event) =>
       this.postStocktakeVarianceJournalEntry.handle(event)
+    );
+    // تاسع مستهلك - إكمال أمر تحويل (تصنيع/تعبئة) بيترحّل قيد تحويل قيمة (خام→تام) + فرق إنتاج تلقائيًا
+    this.eventBus.subscribe<ConversionOrderCompletedEvent>("ConversionOrderCompleted", (event) =>
+      this.postConversionOrderJournalEntry.handle(event)
     );
   }
 }
