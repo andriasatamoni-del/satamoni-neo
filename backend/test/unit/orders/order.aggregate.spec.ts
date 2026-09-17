@@ -1,7 +1,9 @@
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import {
   EmptyOrderError,
+  InvalidKitchenStatusTransitionError,
   OrderAlreadyFinalizedError,
+  OrderCancelledError,
   UnknownKitchenStatusError,
   UnknownOrderStatusError,
   UnknownOrderTypeError,
@@ -56,23 +58,53 @@ describe("Order aggregate", () => {
     });
   });
 
-  describe("setKitchenStatus", () => {
-    it("بيرفض حالة مطبخ مش معروفة", () => {
-      const order = Order.register({
+  describe("advanceKitchenStatus", () => {
+    function newOrder() {
+      return Order.register({
         branchId: "branch-1", orderType: "takeaway",
         items: [{ menuItemId: "item-1", variantId: "variant-1", quantity: 1, unitPrice: 10 }],
       });
-      expect(() => order.setKitchenStatus("ghost")).toThrow(UnknownKitchenStatusError);
+    }
+
+    it("بيرفض حالة مطبخ مش معروفة", () => {
+      expect(() => newOrder().advanceKitchenStatus("ghost")).toThrow(UnknownKitchenStatusError);
     });
 
-    it("مش مرتبطة بـstatus - بتتغيّر حتى لو الطلب completed", () => {
-      const order = Order.register({
-        branchId: "branch-1", orderType: "takeaway",
-        items: [{ menuItemId: "item-1", variantId: "variant-1", quantity: 1, unitPrice: 10 }],
-      });
-      order.setStatus("completed");
-      order.setKitchenStatus("READY");
+    it("بيتقدّم خطوة بخطوة (NEW->ACCEPTED->PREPARING->READY) ويسجّل توقيتات القبول والجاهزية", () => {
+      const order = newOrder();
+      order.advanceKitchenStatus("ACCEPTED");
+      expect(order.kitchenStatus).toBe("ACCEPTED");
+      expect(order.kitchenAcceptedAt).not.toBeNull();
+
+      order.advanceKitchenStatus("PREPARING");
+      expect(order.kitchenStatus).toBe("PREPARING");
+
+      order.advanceKitchenStatus("READY");
       expect(order.kitchenStatus).toBe("READY");
+      expect(order.kitchenReadyAt).not.toBeNull();
+    });
+
+    it("بيرفض تخطّي خطوة (NEW مباشرة لـPREPARING)", () => {
+      expect(() => newOrder().advanceKitchenStatus("PREPARING")).toThrow(InvalidKitchenStatusTransitionError);
+    });
+
+    it("بيرفض الرجوع لورا", () => {
+      const order = newOrder();
+      order.advanceKitchenStatus("ACCEPTED");
+      expect(() => order.advanceKitchenStatus("NEW")).toThrow(InvalidKitchenStatusTransitionError);
+    });
+
+    it("مش مرتبطة بـstatus - بتتقدّم حتى لو الطلب completed", () => {
+      const order = newOrder();
+      order.setStatus("completed");
+      order.advanceKitchenStatus("ACCEPTED");
+      expect(order.kitchenStatus).toBe("ACCEPTED");
+    });
+
+    it("بيرفض أي تقدّم لو الطلب اتلغى", () => {
+      const order = newOrder();
+      order.setStatus("cancelled");
+      expect(() => order.advanceKitchenStatus("ACCEPTED")).toThrow(OrderCancelledError);
     });
   });
 });

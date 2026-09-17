@@ -27,12 +27,21 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           total: order.total,
           status: order.status,
           kitchen_status: order.kitchenStatus,
+          kitchen_accepted_at: order.kitchenAcceptedAt,
+          kitchen_ready_at: order.kitchenReadyAt,
           created_by: order.createdBy,
           created_at: order.createdAt,
           legacy_order_id: order.legacyOrderId,
           payment_method_id: order.paymentMethodId,
         })
-        .onConflict((oc) => oc.column("id").doUpdateSet({ status: order.status, kitchen_status: order.kitchenStatus }))
+        .onConflict((oc) =>
+          oc.column("id").doUpdateSet({
+            status: order.status,
+            kitchen_status: order.kitchenStatus,
+            kitchen_accepted_at: order.kitchenAcceptedAt,
+            kitchen_ready_at: order.kitchenReadyAt,
+          })
+        )
         .execute();
 
       for (const item of order.items) {
@@ -99,6 +108,8 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
       total: Number(row.total),
       status: row.status as OrderStatus,
       kitchenStatus: row.kitchen_status as KitchenStatus,
+      kitchenAcceptedAt: row.kitchen_accepted_at,
+      kitchenReadyAt: row.kitchen_ready_at,
       createdBy: row.created_by,
       createdAt: row.created_at,
       legacyOrderId: row.legacy_order_id,

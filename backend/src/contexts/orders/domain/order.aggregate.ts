@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   EmptyOrderError,
+  InvalidKitchenStatusTransitionError,
   OrderAlreadyFinalizedError,
+  OrderCancelledError,
   UnknownKitchenStatusError,
   UnknownOrderStatusError,
   UnknownOrderTypeError,
@@ -38,6 +40,8 @@ export interface OrderProps {
   total: number;
   status: OrderStatus;
   kitchenStatus: KitchenStatus;
+  kitchenAcceptedAt: Date | null;
+  kitchenReadyAt: Date | null;
   createdBy: string | null;
   createdAt: Date;
   legacyOrderId: number | null;
@@ -100,6 +104,8 @@ export class Order {
       total: subtotal - discount,
       status: "preparing",
       kitchenStatus: "NEW",
+      kitchenAcceptedAt: null,
+      kitchenReadyAt: null,
       createdBy: input.createdBy ?? null,
       createdAt: new Date(),
       legacyOrderId: input.legacyOrderId ?? null,
@@ -119,9 +125,20 @@ export class Order {
     this.props.status = status as OrderStatus;
   }
 
-  setKitchenStatus(status: string): void {
+  // بتتقدّم خطوة واحدة بالظبط كل مرة (NEW->ACCEPTED->PREPARING->READY) - مفيش تخطي ومفيش رجوع لورا،
+  // نفس قاعدة الريبو القديم بالظبط (routes/orders.js: nextIdx === currentIdx + 1) بما فيها قفل الحالة
+  // خالص لو الطلب اتلغى (مفيش حالة PREP_CANCELLED منفصلة - نفس قرار الريبو القديم).
+  advanceKitchenStatus(status: string): void {
     if (!KITCHEN_STATUSES.includes(status as KitchenStatus)) throw new UnknownKitchenStatusError(status);
+    if (this.props.status === "cancelled") throw new OrderCancelledError();
+
+    const currentIdx = KITCHEN_STATUSES.indexOf(this.props.kitchenStatus);
+    const nextIdx = KITCHEN_STATUSES.indexOf(status as KitchenStatus);
+    if (nextIdx !== currentIdx + 1) throw new InvalidKitchenStatusTransitionError();
+
     this.props.kitchenStatus = status as KitchenStatus;
+    if (status === "ACCEPTED") this.props.kitchenAcceptedAt = new Date();
+    if (status === "READY") this.props.kitchenReadyAt = new Date();
   }
 
   get branchId(): string { return this.props.branchId; }
@@ -136,6 +153,8 @@ export class Order {
   get total(): number { return this.props.total; }
   get status(): OrderStatus { return this.props.status; }
   get kitchenStatus(): KitchenStatus { return this.props.kitchenStatus; }
+  get kitchenAcceptedAt(): Date | null { return this.props.kitchenAcceptedAt; }
+  get kitchenReadyAt(): Date | null { return this.props.kitchenReadyAt; }
   get createdBy(): string | null { return this.props.createdBy; }
   get createdAt(): Date { return this.props.createdAt; }
   get legacyOrderId(): number | null { return this.props.legacyOrderId; }

@@ -7,7 +7,9 @@ import { ORDER_REPOSITORY } from "./domain/ports/order-repository.port";
 import { KyselyOrderRepository } from "./infrastructure/persistence/kysely-order.repository";
 import { RegisterOrderHandler } from "./application/commands/register-order.handler";
 import { UpdateOrderStatusHandler } from "./application/commands/update-order-status.handler";
+import { AdvanceKitchenStatusHandler } from "./application/commands/advance-kitchen-status.handler";
 import { ListOrdersHandler } from "./application/queries/list-orders.handler";
+import { ListKdsBoardHandler } from "./application/queries/list-kds-board.handler";
 import { OrdersController } from "./api/orders.controller";
 
 @Module({
@@ -17,7 +19,9 @@ import { OrdersController } from "./api/orders.controller";
     { provide: ORDER_REPOSITORY, useClass: KyselyOrderRepository },
     RegisterOrderHandler,
     UpdateOrderStatusHandler,
+    AdvanceKitchenStatusHandler,
     ListOrdersHandler,
+    ListKdsBoardHandler,
   ],
   exports: [ORDER_REPOSITORY],
 })
@@ -36,5 +40,18 @@ export class OrdersModule implements OnModuleInit {
     });
     this.permissions.setRoleDefaults("cashier", ["orders.view", "orders.create"]);
     this.permissions.setRoleDefaults("branch_manager", ["orders.view", "orders.create", "orders.manage"]);
+
+    // مفيش دور "مطبخ" منفصل - نفس قرار الريبو القديم بالظبط (docs/KITCHEN-DISPLAY.md): الكاشير غالبًا
+    // هو الواقف قدام شاشة المطبخ فعليًا، ومدير الفرع طبعًا لازم يشوف ويتابع برضه.
+    this.permissions.registerGroup({
+      group: "kitchen",
+      groupLabel: "شاشة المطبخ",
+      permissions: [
+        { key: "kitchen.view", label: "رؤية شاشة المطبخ" },
+        { key: "kitchen.advance", label: "تقديم حالة تحضير الطلب" },
+      ],
+    });
+    this.permissions.setRoleDefaults("cashier", ["kitchen.view", "kitchen.advance"]);
+    this.permissions.setRoleDefaults("branch_manager", ["kitchen.view", "kitchen.advance"]);
   }
 }

@@ -10,6 +10,7 @@ import {
   ClipboardIcon,
   CloseIcon,
   CoinsIcon,
+  FireIcon,
   HomeIcon,
   IdCardIcon,
   LogoutIcon,
@@ -21,6 +22,7 @@ import {
 const NAV_ITEMS = [
   { to: "/", label: "الرئيسية", icon: HomeIcon, end: true },
   { to: "/orders", label: "الطلبات (POS)", icon: CartIcon },
+  { to: "/kds", label: "شاشة المطبخ", icon: FireIcon },
   { to: "/crm", label: "متابعة العملاء والشكاوى", icon: UsersIcon },
   { to: "/branches", label: "الفروع", icon: BuildingIcon },
   { to: "/inventory", label: "المخزون", icon: BoxIcon },

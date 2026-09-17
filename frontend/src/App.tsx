@@ -9,6 +9,7 @@ import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { KdsPage } from "./pages/KdsPage";
 import { DeliveryPage } from "./pages/DeliveryPage";
 import { AccountingPage } from "./pages/AccountingPage";
 import { PaymentControlPage } from "./pages/PaymentControlPage";
@@ -84,6 +85,14 @@ export function App() {
         element={
           <RequireAuth>
             <OrdersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/kds"
+        element={
+          <RequireAuth>
+            <KdsPage />
           </RequireAuth>
         }
       />

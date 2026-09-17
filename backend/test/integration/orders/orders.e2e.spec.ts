@@ -186,6 +186,33 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     expect(rejected.status).toBe(400);
   });
 
+  test("PATCH /orders/:id/kitchen-status بيتقدّم خطوة بخطوة بس، وبيرفض التخطي، وبيظهر في لوحة المطبخ لحد ما يبقى READY", async () => {
+    const created = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "dinein", items: [{ variantId: variantWithoutRecipeId, quantity: 1 }] });
+    const orderId = created.body.id;
+
+    const boardBefore = await request(app.getHttpServer())
+      .get(`/orders/kitchen-board?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(boardBefore.body.some((o: { id: string }) => o.id === orderId)).toBe(true);
+
+    const skip = await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/kitchen-status`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ kitchenStatus: "PREPARING" }); // NEW -> PREPARING مباشرة، مرفوض
+    expect(skip.status).toBe(400);
+
+    const accepted = await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/kitchen-status`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ kitchenStatus: "ACCEPTED" });
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.kitchenStatus).toBe("ACCEPTED");
+    expect(accepted.body.kitchenAcceptedAt).not.toBeNull();
+  });
+
   test("POST /orders بحجم مش موجود -> 400 (validation)", async () => {
     const res = await request(app.getHttpServer())
       .post("/orders")

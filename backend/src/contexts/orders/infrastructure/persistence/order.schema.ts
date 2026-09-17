@@ -13,6 +13,8 @@ export interface OrdersTable {
   total: number;
   status: string;
   kitchen_status: string;
+  kitchen_accepted_at: Date | null;
+  kitchen_ready_at: Date | null;
   created_by: string | null;
   created_at: Generated<Date>;
   legacy_order_id: number | null;

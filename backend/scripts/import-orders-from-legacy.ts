@@ -134,6 +134,10 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       kitchenStatus: KITCHEN_STATUSES.includes(row.kitchen_status as (typeof KITCHEN_STATUSES)[number])
         ? (row.kitchen_status as (typeof KITCHEN_STATUSES)[number])
         : "READY",
+      // الريبو القديم مفيهوش أعمدة توقيت قبول/جاهزية مطبخ منفصلة نستوردها - طلبات تاريخية، مفيش
+      // شاشة مطبخ حية هتحتاج تحسب وقت انتظارها
+      kitchenAcceptedAt: null,
+      kitchenReadyAt: null,
       createdBy: await resolveUserId(row.created_by),
       createdAt: row.created_at,
       legacyOrderId: row.id,
