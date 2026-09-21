@@ -1,8 +1,8 @@
 import { CashierShift, VARIANCE_ACK_THRESHOLD_EGP } from "../../../src/contexts/shifts/domain/cashier-shift.aggregate";
 import { ShiftNotActiveError, ShiftNotPendingReviewError } from "../../../src/contexts/shifts/domain/errors";
 
-function financials(cashSales: number) {
-  return { cashSales, cardSales: 0, otherSales: 0, orderCount: 0 };
+function financials(cashSales: number, cashExpensesTotal = 0, cashPurchasesTotal = 0) {
+  return { cashSales, cardSales: 0, otherSales: 0, orderCount: 0, cashExpensesTotal, cashPurchasesTotal };
 }
 
 describe("CashierShift aggregate", () => {
@@ -71,5 +71,16 @@ describe("CashierShift aggregate", () => {
     const shift = CashierShift.register({ branchId: "b1", userId: "u1", openingCash: 300 });
     shift.close({ actualCash: 300, financials: financials(0), closedBy: "u1" }); // فرق صفر -> CLOSED مباشرة
     expect(() => shift.reviewVariance({ decision: "approve", reviewerId: "manager-1" })).toThrow(ShiftNotPendingReviewError);
+  });
+
+  it("close بيخصم المصروفات والمشتريات النقدية من الكاش المتوقع", () => {
+    const shift = CashierShift.register({ branchId: "b1", userId: "u1", openingCash: 300 });
+    // متوقع = 300 + 500 - 50 (مصروف) - 120 (مشترى) = 630
+    shift.close({ actualCash: 630, financials: financials(500, 50, 120), closedBy: "u1" });
+    expect(shift.status).toBe("CLOSED");
+    expect(shift.expectedCash).toBe(630);
+    expect(shift.cashVariance).toBe(0);
+    expect(shift.cashExpensesTotal).toBe(50);
+    expect(shift.cashPurchasesTotal).toBe(120);
   });
 });

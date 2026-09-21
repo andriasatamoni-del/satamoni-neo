@@ -37,3 +37,15 @@ export class BranchRequiredError extends DomainError {
     super("لازم تحدد الفرع");
   }
 }
+
+export class InvalidCashDrawerEntryAmountError extends DomainError {
+  constructor() {
+    super("قيمة المصروف/المشترى لازم تكون أكبر من صفر");
+  }
+}
+
+export class CashDrawerEntryLabelRequiredError extends DomainError {
+  constructor() {
+    super("لازم تكتب بيان للمصروف/المشترى");
+  }
+}

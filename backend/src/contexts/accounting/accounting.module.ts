@@ -17,12 +17,14 @@ import { PostDriverSettlementVarianceJournalEntryHandler } from "./application/c
 import { PostDriverWageJournalEntryHandler } from "./application/commands/post-driver-wage-journal-entry.handler";
 import { PostStocktakeVarianceJournalEntryHandler } from "./application/commands/post-stocktake-variance-journal-entry.handler";
 import { PostConversionOrderJournalEntryHandler } from "./application/commands/post-conversion-order-journal-entry.handler";
+import { PostCashDrawerEntryJournalEntryHandler } from "./application/commands/post-cash-drawer-entry-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
 import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.event";
+import type { CashDrawerEntryRegisteredEvent } from "../shifts/domain/events/cash-drawer-entry-registered.event";
 import type { GoodsReceiptConfirmedEvent } from "../procurement/domain/events/goods-receipt-confirmed.event";
 import type { DriverSettlementCreatedEvent } from "../delivery/domain/events/driver-settlement-created.event";
 import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events/driver-attendance-shift-closed.event";
@@ -46,6 +48,7 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     PostDriverWageJournalEntryHandler,
     PostStocktakeVarianceJournalEntryHandler,
     PostConversionOrderJournalEntryHandler,
+    PostCashDrawerEntryJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
   ],
@@ -62,7 +65,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly postDriverSettlementVarianceJournalEntry: PostDriverSettlementVarianceJournalEntryHandler,
     private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler,
     private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler,
-    private readonly postConversionOrderJournalEntry: PostConversionOrderJournalEntryHandler
+    private readonly postConversionOrderJournalEntry: PostConversionOrderJournalEntryHandler,
+    private readonly postCashDrawerEntryJournalEntry: PostCashDrawerEntryJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -112,6 +116,11 @@ export class AccountingModule implements OnModuleInit {
     // تاسع مستهلك - إكمال أمر تحويل (تصنيع/تعبئة) بيترحّل قيد تحويل قيمة (خام→تام) + فرق إنتاج تلقائيًا
     this.eventBus.subscribe<ConversionOrderCompletedEvent>("ConversionOrderCompleted", (event) =>
       this.postConversionOrderJournalEntry.handle(event)
+    );
+    // عاشر مستهلك - مصروف/مشترى نقدي اتسجل من درج شيفت شغال بيترحّل تلقائيًا، من غير ما Shifts context
+    // يعرف حاجة عن وجود Accounting
+    this.eventBus.subscribe<CashDrawerEntryRegisteredEvent>("CashDrawerEntryRegistered", (event) =>
+      this.postCashDrawerEntryJournalEntry.handle(event)
     );
   }
 }

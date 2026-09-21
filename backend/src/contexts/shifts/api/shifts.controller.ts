@@ -5,9 +5,13 @@ import { CloseShiftHandler } from "../application/commands/close-shift.handler";
 import { ReviewShiftVarianceHandler } from "../application/commands/review-shift-variance.handler";
 import { PreviewShiftHandler } from "../application/queries/preview-shift.handler";
 import { ListShiftsHandler } from "../application/queries/list-shifts.handler";
+import { RegisterCashDrawerEntryHandler } from "../application/commands/register-cash-drawer-entry.handler";
+import { ListCashDrawerEntriesHandler } from "../application/queries/list-cash-drawer-entries.handler";
 import { OpenShiftDto } from "./dto/open-shift.dto";
 import { CloseShiftDto } from "./dto/close-shift.dto";
 import { ReviewShiftVarianceDto } from "./dto/review-shift-variance.dto";
+import { RegisterCashDrawerEntryDto } from "./dto/register-cash-drawer-entry.dto";
+import type { CashDrawerEntry } from "../domain/cash-drawer-entry.aggregate";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -26,7 +30,9 @@ export class ShiftsController {
     private readonly closeShift: CloseShiftHandler,
     private readonly reviewShiftVariance: ReviewShiftVarianceHandler,
     private readonly previewShift: PreviewShiftHandler,
-    private readonly listShifts: ListShiftsHandler
+    private readonly listShifts: ListShiftsHandler,
+    private readonly registerCashDrawerEntry: RegisterCashDrawerEntryHandler,
+    private readonly listCashDrawerEntries: ListCashDrawerEntriesHandler
   ) {}
 
   @Post("open")
@@ -74,6 +80,27 @@ export class ShiftsController {
     if (!effectiveBranchId) return [];
     return (await this.listShifts.execute({ branchId: effectiveBranchId, status })).map(toPublicShift);
   }
+
+  @Post(":id/cash-drawer-entries")
+  @RequirePermission("shifts.record_cash_entry")
+  async addCashDrawerEntry(@Param("id") id: string, @Body() dto: RegisterCashDrawerEntryDto, @Req() req: Req_) {
+    return toPublicCashDrawerEntry(
+      await this.registerCashDrawerEntry.execute({
+        shiftId: id,
+        entryType: dto.entryType,
+        amount: dto.amount,
+        label: dto.label,
+        notes: dto.notes,
+        createdBy: req.user.id,
+      })
+    );
+  }
+
+  @Get(":id/cash-drawer-entries")
+  @RequirePermission("shifts.view_own")
+  async cashDrawerEntries(@Param("id") id: string) {
+    return (await this.listCashDrawerEntries.execute(id)).map(toPublicCashDrawerEntry);
+  }
 }
 
 function toPublicShift(shift: CashierShift) {
@@ -94,8 +121,22 @@ function toPublicShift(shift: CashierShift) {
     cardSales: shift.cardSales,
     otherSales: shift.otherSales,
     orderCount: shift.orderCount,
+    cashExpensesTotal: shift.cashExpensesTotal,
+    cashPurchasesTotal: shift.cashPurchasesTotal,
     varianceStatus: shift.varianceStatus,
     varianceReviewedAt: shift.varianceReviewedAt,
     varianceReviewNotes: shift.varianceReviewNotes,
+  };
+}
+
+function toPublicCashDrawerEntry(entry: CashDrawerEntry) {
+  return {
+    id: entry.id,
+    shiftId: entry.shiftId,
+    entryType: entry.entryType,
+    amount: entry.amount,
+    label: entry.label,
+    notes: entry.notes,
+    createdAt: entry.createdAt,
   };
 }

@@ -18,6 +18,8 @@ export interface CashierShiftsTable {
   card_sales: number;
   other_sales: number;
   order_count: number;
+  cash_expenses_total: number;
+  cash_purchases_total: number;
   variance_status: string;
   variance_reviewed_by: string | null;
   variance_reviewed_at: Date | null;

@@ -30,6 +30,26 @@ export class KyselyShiftFinancialsReader implements ShiftFinancialsReaderPort {
       else if (row.method_kind === "card_or_wallet") cardSales += total;
       else otherSales += total;
     }
-    return { cashSales, cardSales, otherSales, orderCount: rows.length };
+
+    // مصروفات/مشتريات نقدية اتسجلت من نفس درج الشيفت ده أثناء نفس النافذة الزمنية - بتتخصم من الكاش
+    // المتوقع لأن الفلوس خرجت من الدرج فعليًا وقت التسجيل (نفس فلسفة cash_expenses_total/
+    // cash_purchases_total في db/shift-engine.js بالريبو القديم بالظبط)
+    const entryRows = await this.db
+      .selectFrom("cash_drawer_entries")
+      .select(["entry_type", "amount"])
+      .where("branch_id", "=", input.branchId)
+      .where("user_id", "=", input.userId)
+      .where("created_at", ">=", input.fromTs)
+      .where("created_at", "<=", input.toTs)
+      .execute();
+
+    let cashExpensesTotal = 0;
+    let cashPurchasesTotal = 0;
+    for (const row of entryRows) {
+      if (row.entry_type === "EXPENSE") cashExpensesTotal += Number(row.amount);
+      else cashPurchasesTotal += Number(row.amount);
+    }
+
+    return { cashSales, cardSales, otherSales, orderCount: rows.length, cashExpensesTotal, cashPurchasesTotal };
   }
 }

@@ -17,6 +17,8 @@ export interface ShiftFinancials {
   cardSales: number;
   otherSales: number;
   orderCount: number;
+  cashExpensesTotal: number;
+  cashPurchasesTotal: number;
 }
 
 export interface CashierShiftProps {
@@ -36,6 +38,8 @@ export interface CashierShiftProps {
   cardSales: number;
   otherSales: number;
   orderCount: number;
+  cashExpensesTotal: number;
+  cashPurchasesTotal: number;
   varianceStatus: VarianceStatus;
   varianceReviewedBy: string | null;
   varianceReviewedAt: Date | null;
@@ -72,6 +76,8 @@ export class CashierShift {
       cardSales: 0,
       otherSales: 0,
       orderCount: 0,
+      cashExpensesTotal: 0,
+      cashPurchasesTotal: 0,
       varianceStatus: "NONE",
       varianceReviewedBy: null,
       varianceReviewedAt: null,
@@ -87,7 +93,8 @@ export class CashierShift {
     if (this.props.status !== "ACTIVE") throw new ShiftNotActiveError();
     if (input.actualCash < 0 || Number.isNaN(input.actualCash)) throw new InvalidCashAmountError();
 
-    const expectedCash = this.props.openingCash + input.financials.cashSales;
+    const expectedCash =
+      this.props.openingCash + input.financials.cashSales - input.financials.cashExpensesTotal - input.financials.cashPurchasesTotal;
     const cashVariance = input.actualCash - expectedCash;
     const varianceStatus: VarianceStatus = Math.abs(cashVariance) <= VARIANCE_ACK_THRESHOLD_EGP ? "NONE" : "PENDING_REVIEW";
 
@@ -102,6 +109,8 @@ export class CashierShift {
     this.props.cardSales = input.financials.cardSales;
     this.props.otherSales = input.financials.otherSales;
     this.props.orderCount = input.financials.orderCount;
+    this.props.cashExpensesTotal = input.financials.cashExpensesTotal;
+    this.props.cashPurchasesTotal = input.financials.cashPurchasesTotal;
     this.props.varianceStatus = varianceStatus;
   }
 
@@ -130,6 +139,8 @@ export class CashierShift {
   get cardSales(): number { return this.props.cardSales; }
   get otherSales(): number { return this.props.otherSales; }
   get orderCount(): number { return this.props.orderCount; }
+  get cashExpensesTotal(): number { return this.props.cashExpensesTotal; }
+  get cashPurchasesTotal(): number { return this.props.cashPurchasesTotal; }
   get varianceStatus(): VarianceStatus { return this.props.varianceStatus; }
   get varianceReviewedBy(): string | null { return this.props.varianceReviewedBy; }
   get varianceReviewedAt(): Date | null { return this.props.varianceReviewedAt; }

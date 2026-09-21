@@ -20,7 +20,7 @@ export class PreviewShiftHandler {
       fromTs: shift.openedAt,
       toTs: new Date(),
     });
-    const expectedCash = shift.openingCash + financials.cashSales;
+    const expectedCash = shift.openingCash + financials.cashSales - financials.cashExpensesTotal - financials.cashPurchasesTotal;
     return { ...financials, openingCash: shift.openingCash, expectedCash };
   }
 }
