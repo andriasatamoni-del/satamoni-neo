@@ -25,6 +25,17 @@ interface DriverAttendanceShift {
   checkedInAt: string; checkedOutAt: string | null; hourlyRate: number;
   hoursWorked: number | null; wageAmount: number | null; bonusTotal: number | null; totalPay: number | null;
 }
+interface PendingDriver { driverId: string; driverName: string; pendingOrderCount: number; pendingCash: number; }
+interface SettlementPreview { driverId: string; orderCount: number; codExpected: number; codCollected: number; expectedHandover: number; bonusTotal: number; }
+interface DriverDayOrderLine {
+  assignmentId: string; orderId: string; total: number; collectedAmount: number | null;
+  deliveredAt: string; paymentKind: string | null; bonus: number; collected: boolean;
+}
+interface DriverDayOrdersReport {
+  driverId: string; driverName: string; date: string; orders: DriverDayOrderLine[];
+  orderCount: number; bonusTotal: number; collectedBonusTotal: number; pendingBonusTotal: number;
+  cashPendingCount: number; cashCollectedCount: number;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ASSIGNED: "متحوّل", OUT_FOR_DELIVERY: "في الطريق", DELIVERED: "اتسلّم", FAILED: "فشل", RETURNED: "اترجّع",
@@ -34,6 +45,7 @@ const TABS = [
   { key: "assignments", label: "التكليفات" },
   { key: "settlements", label: "تسويات كاش السائقين" },
   { key: "shifts", label: "شيفتات الحضور" },
+  { key: "driver-report", label: "تقرير أوردرات السائق" },
 ];
 
 const VARIANCE_STATUS_LABELS: Record<string, string> = {
@@ -91,6 +103,18 @@ export function DeliveryPage() {
   // --- تسويات كاش السائقين ---
   const [settlementForm, setSettlementForm] = useState({ driverId: "", branchId: "", actualHandover: "", notes: "" });
   const [settlementError, setSettlementError] = useState<string | null>(null);
+
+  const pendingDriversQuery = useQuery({
+    queryKey: ["delivery", "settlements", "pending-drivers", settlementForm.branchId],
+    queryFn: () => apiRequest<PendingDriver[]>(`/delivery/settlements/pending-drivers?branchId=${settlementForm.branchId}`),
+    enabled: !!settlementForm.branchId,
+  });
+  const settlementPreviewQuery = useQuery({
+    queryKey: ["delivery", "settlements", "preview", settlementForm.driverId],
+    queryFn: () => apiRequest<SettlementPreview>(`/delivery/settlements/preview?driverId=${settlementForm.driverId}`),
+    enabled: !!settlementForm.driverId,
+  });
+
   const createSettlement = useMutation({
     mutationFn: () =>
       apiRequest("/delivery/settlements", {
@@ -101,10 +125,12 @@ export function DeliveryPage() {
         },
       }),
     onSuccess: () => {
-      setSettlementForm({ driverId: "", branchId: "", actualHandover: "", notes: "" });
+      setSettlementForm((f) => ({ ...f, driverId: "", actualHandover: "", notes: "" }));
       setSettlementError(null);
       queryClient.invalidateQueries({ queryKey: ["delivery", "settlements"] });
       queryClient.invalidateQueries({ queryKey: ["delivery", "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery", "settlements", "pending-drivers"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery", "driver-orders"] });
     },
     onError: (err) => setSettlementError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
@@ -130,6 +156,16 @@ export function DeliveryPage() {
   const checkOut = useMutation({
     mutationFn: (id: string) => apiRequest(`/delivery/attendance-shifts/${id}/check-out`, { method: "POST", body: {} }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["delivery", "attendance-shifts"] }),
+  });
+
+  // --- تقرير أوردرات السائق اليومي ---
+  const today = new Date().toISOString().slice(0, 10);
+  const [reportDriverId, setReportDriverId] = useState("");
+  const [reportDate, setReportDate] = useState(today);
+  const driverDayOrdersQuery = useQuery({
+    queryKey: ["delivery", "driver-orders", reportDriverId, reportDate],
+    queryFn: () => apiRequest<DriverDayOrdersReport>(`/delivery/driver-orders?driverId=${reportDriverId}&date=${reportDate}`),
+    enabled: !!reportDriverId,
   });
 
   function nextStatus(status: string): string | null {
@@ -265,22 +301,47 @@ export function DeliveryPage() {
             <CardBody>
               <form onSubmit={(e: FormEvent) => { e.preventDefault(); createSettlement.mutate(); }} className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="السائق">
-                    <Select required value={settlementForm.driverId} onChange={(e) => setSettlementForm({ ...settlementForm, driverId: e.target.value })}>
-                      <option value="">اختر سائق</option>
-                      {driversQuery.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </Select>
-                  </Field>
                   <Field label="الفرع">
-                    <Select required value={settlementForm.branchId} onChange={(e) => setSettlementForm({ ...settlementForm, branchId: e.target.value })}>
+                    <Select
+                      required
+                      value={settlementForm.branchId}
+                      onChange={(e) => setSettlementForm({ ...settlementForm, branchId: e.target.value, driverId: "" })}
+                    >
                       <option value="">اختر فرع</option>
                       {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="السائق (عنده كاش معلّق)">
+                    <Select
+                      required
+                      disabled={!settlementForm.branchId}
+                      value={settlementForm.driverId}
+                      onChange={(e) => setSettlementForm({ ...settlementForm, driverId: e.target.value })}
+                    >
+                      <option value="">
+                        {!settlementForm.branchId ? "اختار الفرع الأول" : pendingDriversQuery.data?.length === 0 ? "مفيش سائقين عندهم كاش معلّق" : "اختر سائق"}
+                      </option>
+                      {pendingDriversQuery.data?.map((d) => (
+                        <option key={d.driverId} value={d.driverId}>
+                          {d.driverName} ({d.pendingOrderCount} طلب - {fmt(d.pendingCash)}ج معلّق)
+                        </option>
+                      ))}
                     </Select>
                   </Field>
                   <Field label="المبلغ اللي سلّمه السائق فعليًا">
                     <Input required type="number" min="0" value={settlementForm.actualHandover} onChange={(e) => setSettlementForm({ ...settlementForm, actualHandover: e.target.value })} />
                   </Field>
                 </div>
+
+                {settlementForm.driverId && settlementPreviewQuery.data && (
+                  <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-4">
+                    <div><p className="text-xs text-slate-500">عدد الطلبات</p><p className="font-bold">{settlementPreviewQuery.data.orderCount}</p></div>
+                    <div><p className="text-xs text-slate-500">كاش متحصّل (المفروض)</p><p className="font-bold">{fmt(settlementPreviewQuery.data.codCollected)}ج</p></div>
+                    <div><p className="text-xs text-slate-500">المتوقع تسليمه</p><p className="font-bold text-brand-700">{fmt(settlementPreviewQuery.data.expectedHandover)}ج</p></div>
+                    <div><p className="text-xs text-slate-500">بونص السائق</p><p className="font-bold text-emerald-700">{fmt(settlementPreviewQuery.data.bonusTotal)}ج</p></div>
+                  </div>
+                )}
+
                 <Field label="ملاحظات (اختياري)">
                   <Textarea value={settlementForm.notes} onChange={(e) => setSettlementForm({ ...settlementForm, notes: e.target.value })} />
                 </Field>
@@ -397,6 +458,68 @@ export function DeliveryPage() {
               {shifts.length === 0 && <EmptyState>مفيش شيفتات حضور لسه</EmptyState>}
             </CardBody>
           </Card>
+        </>
+      )}
+
+      {tab === "driver-report" && (
+        <>
+          <Card className="mb-6">
+            <CardHeader><CardTitle>تقرير أوردرات السائق (محصّلة ولسه معلّقة)</CardTitle></CardHeader>
+            <CardBody>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="max-w-xs flex-1">
+                  <Field label="السائق">
+                    <Select value={reportDriverId} onChange={(e) => setReportDriverId(e.target.value)}>
+                      <option value="">اختر سائق</option>
+                      {driversQuery.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="max-w-xs flex-1">
+                  <Field label="التاريخ">
+                    <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+                  </Field>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+
+          {driverDayOrdersQuery.data && (
+            <>
+              <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Card><CardBody><p className="text-xs text-slate-500">عدد الطلبات</p><p className="text-xl font-bold">{driverDayOrdersQuery.data.orderCount}</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">إجمالي البونص</p><p className="text-xl font-bold text-emerald-700">{fmt(driverDayOrdersQuery.data.bonusTotal)}ج</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">كاش لسه معلّق</p><p className="text-xl font-bold text-amber-700">{driverDayOrdersQuery.data.cashPendingCount} طلب</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">كاش اتحصّل بالفعل</p><p className="text-xl font-bold text-brand-700">{driverDayOrdersQuery.data.cashCollectedCount} طلب</p></CardBody></Card>
+              </div>
+
+              <Card>
+                <CardHeader><CardTitle>الطلبات ({driverDayOrdersQuery.data.orders.length})</CardTitle></CardHeader>
+                <CardBody className="p-0">
+                  <Table>
+                    <THead>
+                      <TR><TH>الطلب</TH><TH>وقت التسليم</TH><TH>طريقة الدفع</TH><TH>الإجمالي</TH><TH>المحصّل</TH><TH>البونص</TH><TH>الحالة</TH></TR>
+                    </THead>
+                    <TBody>
+                      {driverDayOrdersQuery.data.orders.map((o) => (
+                        <TR key={o.assignmentId}>
+                          <TD className="font-mono text-xs">{o.orderId.slice(0, 8)}</TD>
+                          <TD>{new Date(o.deliveredAt).toLocaleTimeString("ar-EG")}</TD>
+                          <TD>{o.paymentKind === "cash" ? "كاش" : o.paymentKind ?? "-"}</TD>
+                          <TD>{fmt(o.total)}ج</TD>
+                          <TD>{o.collectedAmount !== null ? `${fmt(o.collectedAmount)}ج` : "-"}</TD>
+                          <TD>{fmt(o.bonus)}ج</TD>
+                          <TD><Badge tone={o.collected ? "success" : "warning"}>{o.collected ? "اتحصّل" : "لسه معلّق"}</Badge></TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {driverDayOrdersQuery.data.orders.length === 0 && <EmptyState>مفيش طلبات مُسلَّمة في اليوم ده</EmptyState>}
+                </CardBody>
+              </Card>
+            </>
+          )}
+          {!reportDriverId && <p className="text-sm text-slate-400">اختار سائق عشان تشوف تقرير أوردراته</p>}
         </>
       )}
     </div>

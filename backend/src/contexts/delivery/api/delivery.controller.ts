@@ -12,6 +12,9 @@ import { ListDeliveryAssignmentsHandler } from "../application/queries/list-deli
 import { ListDriverSettlementsHandler } from "../application/queries/list-driver-settlements.handler";
 import { GetDriverSettlementHandler } from "../application/queries/get-driver-settlement.handler";
 import { ListDriverAttendanceShiftsHandler } from "../application/queries/list-driver-attendance-shifts.handler";
+import { PreviewDriverSettlementHandler } from "../application/queries/preview-driver-settlement.handler";
+import { ListPendingSettlementDriversHandler } from "../application/queries/list-pending-settlement-drivers.handler";
+import { GetDriverDayOrdersHandler } from "../application/queries/get-driver-day-orders.handler";
 import { RegisterDriverDto } from "./dto/register-driver.dto";
 import { AssignDriverDto } from "./dto/assign-driver.dto";
 import { UpdateDeliveryStatusDto } from "./dto/update-delivery-status.dto";
@@ -45,7 +48,10 @@ export class DeliveryController {
     private readonly listAssignments: ListDeliveryAssignmentsHandler,
     private readonly listDriverSettlements: ListDriverSettlementsHandler,
     private readonly getDriverSettlement: GetDriverSettlementHandler,
-    private readonly listDriverAttendanceShifts: ListDriverAttendanceShiftsHandler
+    private readonly listDriverAttendanceShifts: ListDriverAttendanceShiftsHandler,
+    private readonly previewDriverSettlement: PreviewDriverSettlementHandler,
+    private readonly listPendingSettlementDrivers: ListPendingSettlementDriversHandler,
+    private readonly getDriverDayOrders: GetDriverDayOrdersHandler
   ) {}
 
   @Get("drivers")
@@ -82,6 +88,24 @@ export class DeliveryController {
   @RequirePermission("delivery.settlements.view", "delivery.settlements.create", "delivery.settlements.review")
   async settlements(@Query("driverId") driverId?: string, @Query("branchId") branchId?: string, @Query("varianceStatus") varianceStatus?: string) {
     return (await this.listDriverSettlements.execute({ driverId, branchId, varianceStatus })).map(toPublicSettlement);
+  }
+
+  @Get("settlements/preview")
+  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  async settlementPreview(@Query("driverId") driverId: string) {
+    return this.previewDriverSettlement.execute(driverId);
+  }
+
+  @Get("settlements/pending-drivers")
+  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  async pendingSettlementDrivers(@Query("branchId") branchId: string, @Req() req: Request & { user: AuthenticatedUser }) {
+    return this.listPendingSettlementDrivers.execute(branchId || req.user.branchId!);
+  }
+
+  @Get("driver-orders")
+  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  async driverDayOrders(@Query("driverId") driverId: string, @Query("date") date?: string) {
+    return this.getDriverDayOrders.execute(driverId, date);
   }
 
   @Get("settlements/:id")
