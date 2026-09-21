@@ -5,6 +5,9 @@ import { RegisterJournalEntryHandler } from "../application/commands/register-jo
 import { ReverseJournalEntryHandler } from "../application/commands/reverse-journal-entry.handler";
 import { ListAccountsHandler } from "../application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "../application/queries/list-journal-entries.handler";
+import { GetTrialBalanceHandler } from "../application/queries/get-trial-balance.handler";
+import { GetGeneralLedgerHandler } from "../application/queries/get-general-ledger.handler";
+import { GetIncomeStatementHandler } from "../application/queries/get-income-statement.handler";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { RegisterJournalEntryDto } from "./dto/register-journal-entry.dto";
 import { ReverseJournalEntryDto } from "./dto/reverse-journal-entry.dto";
@@ -25,7 +28,10 @@ export class AccountingController {
     private readonly registerJournalEntry: RegisterJournalEntryHandler,
     private readonly reverseJournalEntry: ReverseJournalEntryHandler,
     private readonly listAccounts: ListAccountsHandler,
-    private readonly listJournalEntries: ListJournalEntriesHandler
+    private readonly listJournalEntries: ListJournalEntriesHandler,
+    private readonly getTrialBalance: GetTrialBalanceHandler,
+    private readonly getGeneralLedger: GetGeneralLedgerHandler,
+    private readonly getIncomeStatement: GetIncomeStatementHandler
   ) {}
 
   @Get("accounts")
@@ -63,6 +69,43 @@ export class AccountingController {
   async reverse(@Param("id") id: string, @Body() dto: ReverseJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(await this.reverseJournalEntry.execute({ entryId: id, reversedBy: req.user.id, reason: dto.reason }));
   }
+
+  @Get("reports/trial-balance")
+  @RequirePermission("accounting.view", "accounting.manage")
+  async trialBalance(@Query("asOf") asOf: string | undefined, @Query("branchId") branchId: string | undefined) {
+    return this.getTrialBalance.execute(asOf ? new Date(`${asOf}T23:59:59.999`) : new Date(), branchId ?? null);
+  }
+
+  @Get("reports/general-ledger")
+  @RequirePermission("accounting.view", "accounting.manage")
+  async generalLedger(
+    @Query("accountId") accountId: string,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined
+  ) {
+    const range = resolveReportRange(from, to, DEFAULT_GENERAL_LEDGER_RANGE_DAYS);
+    return this.getGeneralLedger.execute(accountId, range.fromTs, range.toTs);
+  }
+
+  @Get("reports/income-statement")
+  @RequirePermission("accounting.view", "accounting.manage")
+  async incomeStatement(
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("branchId") branchId: string | undefined
+  ) {
+    const range = resolveReportRange(from, to, DEFAULT_INCOME_STATEMENT_RANGE_DAYS);
+    return this.getIncomeStatement.execute(range.fromTs, range.toTs, branchId ?? null);
+  }
+}
+
+const DEFAULT_INCOME_STATEMENT_RANGE_DAYS = 30;
+const DEFAULT_GENERAL_LEDGER_RANGE_DAYS = 365;
+
+function resolveReportRange(from: string | undefined, to: string | undefined, defaultDays: number) {
+  const toTs = to ? new Date(`${to}T23:59:59.999`) : new Date();
+  const fromTs = from ? new Date(`${from}T00:00:00.000`) : new Date(toTs.getTime() - (defaultDays - 1) * 24 * 60 * 60 * 1000);
+  return { fromTs, toTs };
 }
 
 function toPublicAccount(account: Account) {

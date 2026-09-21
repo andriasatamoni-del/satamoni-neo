@@ -4,8 +4,10 @@ import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { ACCOUNT_REPOSITORY } from "./domain/ports/account-repository.port";
 import { JOURNAL_ENTRY_REPOSITORY } from "./domain/ports/journal-entry-repository.port";
+import { ACCOUNTING_REPORTS_READER } from "./domain/ports/accounting-reports-reader.port";
 import { KyselyAccountRepository } from "./infrastructure/persistence/kysely-account.repository";
 import { KyselyJournalEntryRepository } from "./infrastructure/persistence/kysely-journal-entry.repository";
+import { KyselyAccountingReportsReader } from "./infrastructure/persistence/kysely-accounting-reports-reader";
 import { RegisterAccountHandler } from "./application/commands/register-account.handler";
 import { RegisterJournalEntryHandler } from "./application/commands/register-journal-entry.handler";
 import { ReverseJournalEntryHandler } from "./application/commands/reverse-journal-entry.handler";
@@ -20,6 +22,9 @@ import { PostConversionOrderJournalEntryHandler } from "./application/commands/p
 import { PostCashDrawerEntryJournalEntryHandler } from "./application/commands/post-cash-drawer-entry-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
+import { GetTrialBalanceHandler } from "./application/queries/get-trial-balance.handler";
+import { GetGeneralLedgerHandler } from "./application/queries/get-general-ledger.handler";
+import { GetIncomeStatementHandler } from "./application/queries/get-income-statement.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
@@ -37,6 +42,7 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
   providers: [
     { provide: ACCOUNT_REPOSITORY, useClass: KyselyAccountRepository },
     { provide: JOURNAL_ENTRY_REPOSITORY, useClass: KyselyJournalEntryRepository },
+    { provide: ACCOUNTING_REPORTS_READER, useClass: KyselyAccountingReportsReader },
     RegisterAccountHandler,
     RegisterJournalEntryHandler,
     ReverseJournalEntryHandler,
@@ -51,6 +57,9 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     PostCashDrawerEntryJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
+    GetTrialBalanceHandler,
+    GetGeneralLedgerHandler,
+    GetIncomeStatementHandler,
   ],
   exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler, ReverseJournalEntryHandler],
 })
