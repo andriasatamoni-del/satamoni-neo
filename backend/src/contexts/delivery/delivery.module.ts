@@ -60,7 +60,7 @@ import { DeliveryController } from "./api/delivery.controller";
     ListPendingSettlementDriversHandler,
     GetDriverDayOrdersHandler,
   ],
-  exports: [DRIVER_REPOSITORY, DELIVERY_ASSIGNMENT_REPOSITORY],
+  exports: [DRIVER_REPOSITORY, DELIVERY_ASSIGNMENT_REPOSITORY, ListPendingSettlementDriversHandler],
 })
 export class DeliveryModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

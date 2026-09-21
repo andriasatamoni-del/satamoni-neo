@@ -83,6 +83,7 @@ import type {
   PrintJobsTable,
 } from "../../contexts/printing/infrastructure/persistence/printing.schema";
 import type { PosSettingsTable } from "../../contexts/settings/infrastructure/persistence/pos-settings.schema";
+import type { BranchDaysTable } from "../../contexts/branch-day/infrastructure/persistence/branch-day.schema";
 
 export interface Database {
   users: UsersTable;
@@ -148,4 +149,5 @@ export interface Database {
   kitchen_stations: KitchenStationsTable;
   print_jobs: PrintJobsTable;
   pos_settings: PosSettingsTable;
+  branch_days: BranchDaysTable;
 }
