@@ -7,9 +7,10 @@ export type ShiftStatus = (typeof SHIFT_STATUSES)[number];
 export const VARIANCE_STATUSES = ["NONE", "PENDING_REVIEW", "APPROVED", "ACKNOWLEDGED"] as const;
 export type VarianceStatus = (typeof VARIANCE_STATUSES)[number];
 
-// حد اعتماد الفرق الثابت (بالجنيه) - فرق جوّاه بيتقفل تلقائيًا، غير كده محتاج مراجعة مدير/محاسب.
-// في الريبو القديم ده كان قابل للتهيئة (pos_settings.shift_variance_ack_threshold_egp) - هنا ثابت
-// عمدًا للسلايس الأول (مفيش جدول إعدادات لسه)
+// حد اعتماد الفرق الافتراضي (بالجنيه) - فرق جوّاه بيتقفل تلقائيًا، غير كده محتاج مراجعة مدير/محاسب.
+// نفس مفهوم pos_settings.shift_variance_ack_threshold_egp في الريبو القديم بالظبط - القيمة الفعلية
+// دلوقتي بتتحقن من الـapplication layer (CloseShiftHandler بيقراها من Settings context)، الثابت هنا
+// بس fallback افتراضي (لو حد نادى close() مباشرة من غير ما يمرّر threshold، زي الاختبارات القديمة)
 export const VARIANCE_ACK_THRESHOLD_EGP = 20;
 
 export interface ShiftFinancials {
@@ -89,14 +90,21 @@ export class CashierShift {
     return new CashierShift(id, props);
   }
 
-  close(input: { actualCash: number; financials: ShiftFinancials; closingNotes?: string | null; closedBy: string }): void {
+  close(input: {
+    actualCash: number;
+    financials: ShiftFinancials;
+    closingNotes?: string | null;
+    closedBy: string;
+    varianceAckThresholdEgp?: number;
+  }): void {
     if (this.props.status !== "ACTIVE") throw new ShiftNotActiveError();
     if (input.actualCash < 0 || Number.isNaN(input.actualCash)) throw new InvalidCashAmountError();
 
     const expectedCash =
       this.props.openingCash + input.financials.cashSales - input.financials.cashExpensesTotal - input.financials.cashPurchasesTotal;
     const cashVariance = input.actualCash - expectedCash;
-    const varianceStatus: VarianceStatus = Math.abs(cashVariance) <= VARIANCE_ACK_THRESHOLD_EGP ? "NONE" : "PENDING_REVIEW";
+    const threshold = input.varianceAckThresholdEgp ?? VARIANCE_ACK_THRESHOLD_EGP;
+    const varianceStatus: VarianceStatus = Math.abs(cashVariance) <= threshold ? "NONE" : "PENDING_REVIEW";
 
     this.props.status = varianceStatus === "NONE" ? "CLOSED" : "PENDING_REVIEW";
     this.props.closedAt = new Date();

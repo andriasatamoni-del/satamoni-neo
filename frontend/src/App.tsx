@@ -22,6 +22,7 @@ import { MyProfilePage } from "./pages/MyProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { RateOrderPage } from "./pages/RateOrderPage";
 import { PrintingPage } from "./pages/PrintingPage";
+import { PosSettingsPage } from "./pages/PosSettingsPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -190,6 +191,14 @@ export function App() {
         element={
           <RequireAuth>
             <AuditLogPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pos-settings"
+        element={
+          <RequireAuth>
+            <PosSettingsPage />
           </RequireAuth>
         }
       />

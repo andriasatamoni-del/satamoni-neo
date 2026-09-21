@@ -2,6 +2,7 @@ import { Module, OnModuleInit } from "@nestjs/common";
 import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
+import { SettingsModule } from "../settings/settings.module";
 import { PAYMENT_METHOD_REPOSITORY } from "./domain/ports/payment-method-repository.port";
 import { PAYMENT_REPOSITORY } from "./domain/ports/payment-repository.port";
 import { PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY } from "./domain/ports/payment-adjustment-request-repository.port";
@@ -28,7 +29,7 @@ import { PaymentControlController } from "./api/payment-control.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 
 @Module({
-  imports: [IdentityAccessModule],
+  imports: [IdentityAccessModule, SettingsModule],
   controllers: [PaymentControlController],
   providers: [
     { provide: PAYMENT_METHOD_REPOSITORY, useClass: KyselyPaymentMethodRepository },

@@ -82,6 +82,7 @@ import type {
   KitchenStationsTable,
   PrintJobsTable,
 } from "../../contexts/printing/infrastructure/persistence/printing.schema";
+import type { PosSettingsTable } from "../../contexts/settings/infrastructure/persistence/pos-settings.schema";
 
 export interface Database {
   users: UsersTable;
@@ -146,4 +147,5 @@ export interface Database {
   printers: PrintersTable;
   kitchen_stations: KitchenStationsTable;
   print_jobs: PrintJobsTable;
+  pos_settings: PosSettingsTable;
 }

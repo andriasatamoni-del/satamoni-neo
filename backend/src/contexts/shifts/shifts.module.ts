@@ -1,6 +1,7 @@
 import { Module, OnModuleInit } from "@nestjs/common";
 import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
+import { SettingsModule } from "../settings/settings.module";
 import { CASHIER_SHIFT_REPOSITORY } from "./domain/ports/cashier-shift-repository.port";
 import { SHIFT_FINANCIALS_READER } from "./domain/ports/shift-financials-reader.port";
 import { CASH_DRAWER_ENTRY_REPOSITORY } from "./domain/ports/cash-drawer-entry-repository.port";
@@ -17,7 +18,7 @@ import { ListCashDrawerEntriesHandler } from "./application/queries/list-cash-dr
 import { ShiftsController } from "./api/shifts.controller";
 
 @Module({
-  imports: [IdentityAccessModule],
+  imports: [IdentityAccessModule, SettingsModule],
   controllers: [ShiftsController],
   providers: [
     { provide: CASHIER_SHIFT_REPOSITORY, useClass: KyselyCashierShiftRepository },

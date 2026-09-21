@@ -3,6 +3,7 @@ import { PermissionRegistry } from "../../shared/permissions/permission-registry
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { OrdersModule } from "../orders/orders.module";
 import { PaymentControlModule } from "../payment-control/payment-control.module";
+import { SettingsModule } from "../settings/settings.module";
 import { DRIVER_REPOSITORY } from "./domain/ports/driver-repository.port";
 import { DELIVERY_ASSIGNMENT_REPOSITORY } from "./domain/ports/delivery-assignment-repository.port";
 import { DRIVER_SETTLEMENT_REPOSITORY } from "./domain/ports/driver-settlement-repository.port";
@@ -35,7 +36,7 @@ import { DeliveryController } from "./api/delivery.controller";
 // hr-payroll context - الأجر بيتدفع كاش على طول، مفيش payroll_adjustment. راجع تعليقات
 // driver-settlement.aggregate.ts وdriver-attendance-shift.aggregate.ts للتفاصيل الكاملة)
 @Module({
-  imports: [IdentityAccessModule, OrdersModule, PaymentControlModule],
+  imports: [IdentityAccessModule, OrdersModule, PaymentControlModule, SettingsModule],
   controllers: [DeliveryController],
   providers: [
     { provide: DRIVER_REPOSITORY, useClass: KyselyDriverRepository },

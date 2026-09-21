@@ -8,9 +8,9 @@ import {
 export const VARIANCE_STATUSES = ["NONE", "PENDING_REVIEW", "ACKNOWLEDGED", "APPROVED"] as const;
 export type VarianceStatus = (typeof VARIANCE_STATUSES)[number];
 
-// حد اعتماد فرق التسليم الثابت (بالجنيه) - نفس مفهوم VARIANCE_ACK_THRESHOLD_EGP في CashierShift
-// بالظبط (ثابت عمدًا، مفيش جدول إعدادات لسه - راجع تعليق pos_settings.driver_settlement_variance_ack_threshold_egp
-// في الريبو القديم اللي كانت قابلة للتهيئة)
+// حد اعتماد فرق التسليم الافتراضي (بالجنيه) - نفس مفهوم VARIANCE_ACK_THRESHOLD_EGP في CashierShift
+// بالظبط. نفس مفهوم pos_settings.driver_settlement_variance_ack_threshold_egp في الريبو القديم -
+// القيمة الفعلية بتتحقن من الـapplication layer (RegisterDriverSettlementHandler)، الثابت هنا fallback بس
 export const HANDOVER_VARIANCE_ACK_THRESHOLD_EGP = 30;
 
 export interface DriverSettlementCandidateOrder {
@@ -60,6 +60,7 @@ export class DriverSettlement {
     actualHandover: number;
     notes?: string | null;
     candidates: DriverSettlementCandidateOrder[];
+    varianceAckThresholdEgp?: number;
   }): DriverSettlement {
     if (input.candidates.length === 0) throw new NothingToSettleError();
     if (input.actualHandover < 0 || Number.isNaN(input.actualHandover)) throw new InvalidHandoverAmountError();
@@ -70,8 +71,8 @@ export class DriverSettlement {
     const bonusTotal = input.candidates.reduce((sum, c) => sum + c.bonus, 0);
     const expectedHandover = codCollected;
     const handoverVariance = input.actualHandover - expectedHandover;
-    const varianceStatus: VarianceStatus =
-      Math.abs(handoverVariance) <= HANDOVER_VARIANCE_ACK_THRESHOLD_EGP ? "NONE" : "PENDING_REVIEW";
+    const threshold = input.varianceAckThresholdEgp ?? HANDOVER_VARIANCE_ACK_THRESHOLD_EGP;
+    const varianceStatus: VarianceStatus = Math.abs(handoverVariance) <= threshold ? "NONE" : "PENDING_REVIEW";
 
     return new DriverSettlement(randomUUID(), {
       driverId: input.driverId,

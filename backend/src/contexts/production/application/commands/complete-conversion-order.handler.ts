@@ -9,6 +9,7 @@ import {
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { ConversionOrderCompletedEvent } from "../../domain/events/conversion-order-completed.event";
+import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 
 export interface CompleteConversionOrderCommand {
   conversionOrderId: string;
@@ -26,7 +27,8 @@ export class CompleteConversionOrderHandler {
   constructor(
     @Inject(CONVERSION_ORDER_REPOSITORY) private readonly conversionOrders: ConversionOrderRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly getPosSettings: GetPosSettingsHandler
   ) {}
 
   async execute(command: CompleteConversionOrderCommand): Promise<ConversionOrder> {
@@ -52,12 +54,14 @@ export class CompleteConversionOrderHandler {
     });
     await this.movements.recordMovement(movement, { allowNegativeBalance: true });
 
+    const settings = await this.getPosSettings.execute();
     order.complete({
       actualOutputQuantity: command.actualOutputQuantity,
       varianceReason: command.varianceReason,
       outputUnitCost: standardUnitCost,
       outputMovementId: movement.id,
       completedBy: command.completedBy ?? null,
+      varianceAlertPercent: settings.productionVarianceAlertPercent,
     });
     await this.conversionOrders.save(order);
 

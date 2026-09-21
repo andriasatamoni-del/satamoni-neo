@@ -18,6 +18,7 @@ import {
 import { DriverSettlementCreatedEvent } from "../../domain/events/driver-settlement-created.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { DRIVER_ORDER_BONUS_EGP } from "../../domain/driver-bonus-policy";
+import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 
 export interface RegisterDriverSettlementCommand {
   driverId: string;
@@ -38,7 +39,8 @@ export class RegisterDriverSettlementHandler {
     @Inject(DRIVER_REPOSITORY) private readonly drivers: DriverRepositoryPort,
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     @Inject(PAYMENT_METHOD_REPOSITORY) private readonly paymentMethods: PaymentMethodRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly getPosSettings: GetPosSettingsHandler
   ) {}
 
   async execute(command: RegisterDriverSettlementCommand): Promise<DriverSettlement> {
@@ -65,6 +67,7 @@ export class RegisterDriverSettlementHandler {
     }
     if (candidates.length === 0) throw new NothingToSettleError();
 
+    const settings = await this.getPosSettings.execute();
     const settlement = DriverSettlement.register({
       driverId: command.driverId,
       branchId: command.branchId,
@@ -72,6 +75,7 @@ export class RegisterDriverSettlementHandler {
       actualHandover: command.actualHandover,
       notes: command.notes,
       candidates,
+      varianceAckThresholdEgp: settings.driverSettlementVarianceAckThresholdEgp,
     });
     await this.settlements.save(settlement);
 

@@ -7,10 +7,11 @@ import {
 import { PAYMENT_REPOSITORY, type PaymentRepositoryPort } from "../../domain/ports/payment-repository.port";
 import { PAYMENT_METHOD_REPOSITORY, type PaymentMethodRepositoryPort } from "../../domain/ports/payment-method-repository.port";
 import { AdjustmentRequestNotFoundError, InsufficientApprovalLevelError, PaymentNotFoundError, PaymentMethodNotFoundError } from "../../domain/errors";
+import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 
-// نفس سقف الريبو القديم الافتراضي (pos_settings.payment_adjustment_high_threshold_egp) - قيمة ثابتة
-// هنا عمدًا (settings-per-branch مؤجّل، مش جزء من نطاق السلايس ده)
-export const HIGH_APPROVAL_THRESHOLD_EGP = 500;
+// نفس سقف الريبو القديم الافتراضي (pos_settings.payment_adjustment_high_threshold_egp) - القيمة
+// الفعلية بتتقرا من Settings context، الثابت هنا fallback بس
+export const DEFAULT_HIGH_APPROVAL_THRESHOLD_EGP = 500;
 
 export interface ApprovePaymentAdjustmentCommand {
   requestId: string;
@@ -23,7 +24,8 @@ export class ApprovePaymentAdjustmentHandler {
   constructor(
     @Inject(PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY) private readonly requests: PaymentAdjustmentRequestRepositoryPort,
     @Inject(PAYMENT_REPOSITORY) private readonly payments: PaymentRepositoryPort,
-    @Inject(PAYMENT_METHOD_REPOSITORY) private readonly methods: PaymentMethodRepositoryPort
+    @Inject(PAYMENT_METHOD_REPOSITORY) private readonly methods: PaymentMethodRepositoryPort,
+    private readonly getPosSettings: GetPosSettingsHandler
   ) {}
 
   async execute(command: ApprovePaymentAdjustmentCommand): Promise<PaymentAdjustmentRequest> {
@@ -31,7 +33,8 @@ export class ApprovePaymentAdjustmentHandler {
     if (!request) throw new AdjustmentRequestNotFoundError();
     // مدير الفرع يقدر يعتمد لوحده لو الفرق تحت السقف؛ فوق السقف لازم محاسب/أدمن (approve_high) -
     // نفس منطق سقف الخصم المرحلي الموجود فعلًا في الريبو القديم بالظبط
-    if (request.amountDelta >= HIGH_APPROVAL_THRESHOLD_EGP && !command.hasHighApproval) {
+    const settings = await this.getPosSettings.execute();
+    if (request.amountDelta >= settings.paymentAdjustmentHighThresholdEgp && !command.hasHighApproval) {
       throw new InsufficientApprovalLevelError();
     }
 

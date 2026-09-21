@@ -21,6 +21,7 @@ import { ShiftsModule } from "./contexts/shifts/shifts.module";
 import { ReportingModule } from "./contexts/reporting/reporting.module";
 import { TreasuryModule } from "./contexts/treasury/treasury.module";
 import { PrintingModule } from "./contexts/printing/printing.module";
+import { SettingsModule } from "./contexts/settings/settings.module";
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { PrintingModule } from "./contexts/printing/printing.module";
     PermissionsModule,
     AuditModule,
     IdentityAccessModule,
+    SettingsModule,
     BranchesModule,
     CrmModule,
     InventoryModule,

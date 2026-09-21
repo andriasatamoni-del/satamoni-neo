@@ -11,8 +11,9 @@ import {
 export const CONVERSION_ORDER_STATUSES = ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 export type ConversionOrderStatus = (typeof CONVERSION_ORDER_STATUSES)[number];
 
-// نفس pos_settings.production_variance_alert_percent الافتراضي (10) في الريبو القديم - قيمة ثابتة هنا
-// عمدًا (مفيش جدول إعدادات لسه - راجع TIER3-5 مؤجّلة)
+// نفس pos_settings.production_variance_alert_percent الافتراضي (10) في الريبو القديم - القيمة الفعلية
+// بتتحقن من الـapplication layer (CompleteConversionOrderHandler بيقراها من Settings context)، الثابت
+// هنا fallback بس
 export const PRODUCTION_VARIANCE_ALERT_PERCENT = 10;
 
 export interface ConversionOrderInputLine {
@@ -147,6 +148,7 @@ export class ConversionOrder {
     outputUnitCost: number | null;
     outputMovementId: string;
     completedBy: string | null;
+    varianceAlertPercent?: number;
   }): void {
     if (this.props.status !== "IN_PROGRESS") throw new ConversionOrderNotInProgressError();
     if (!input.actualOutputQuantity || input.actualOutputQuantity <= 0) throw new InvalidConversionQuantityError();
@@ -155,8 +157,9 @@ export class ConversionOrder {
       this.props.plannedOutputQuantity > 0
         ? ((input.actualOutputQuantity - this.props.plannedOutputQuantity) / this.props.plannedOutputQuantity) * 100
         : 0;
-    if (Math.abs(variancePercent) > PRODUCTION_VARIANCE_ALERT_PERCENT && !input.varianceReason) {
-      throw new ConversionVarianceReasonRequiredError(variancePercent, PRODUCTION_VARIANCE_ALERT_PERCENT);
+    const alertPercent = input.varianceAlertPercent ?? PRODUCTION_VARIANCE_ALERT_PERCENT;
+    if (Math.abs(variancePercent) > alertPercent && !input.varianceReason) {
+      throw new ConversionVarianceReasonRequiredError(variancePercent, alertPercent);
     }
 
     this.props.status = "COMPLETED";

@@ -3,6 +3,7 @@ import { PermissionRegistry } from "../../shared/permissions/permission-registry
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { InventoryModule } from "../inventory/inventory.module";
+import { SettingsModule } from "../settings/settings.module";
 import { CONVERSION_ORDER_REPOSITORY } from "./domain/ports/conversion-order-repository.port";
 import { KyselyConversionOrderRepository } from "./infrastructure/persistence/kysely-conversion-order.repository";
 import { RegisterConversionOrderHandler } from "./application/commands/register-conversion-order.handler";
@@ -15,7 +16,7 @@ import { GetConversionOrderHandler } from "./application/queries/get-conversion-
 import { ProductionController } from "./api/production.controller";
 
 @Module({
-  imports: [IdentityAccessModule, CatalogModule, InventoryModule],
+  imports: [IdentityAccessModule, CatalogModule, InventoryModule, SettingsModule],
   controllers: [ProductionController],
   providers: [
     { provide: CONVERSION_ORDER_REPOSITORY, useClass: KyselyConversionOrderRepository },

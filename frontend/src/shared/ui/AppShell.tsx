@@ -13,6 +13,7 @@ import {
   CoinsIcon,
   FactoryIcon,
   FireIcon,
+  GearIcon,
   HomeIcon,
   IdCardIcon,
   LogoutIcon,
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { to: "/printing", label: "الطباعة", icon: PrinterIcon },
   { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },
   { to: "/audit-log", label: "سجل التدقيق", icon: ListSearchIcon },
+  { to: "/pos-settings", label: "إعدادات النظام", icon: GearIcon },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
