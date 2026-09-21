@@ -49,6 +49,16 @@ export class MenuCategory {
   deactivate(): void { this.props.isActive = false; }
   setStationId(stationId: string | null): void { this.props.stationId = stationId; }
 
+  updateDetails(input: { name?: string; displayOrder?: number; menuGroup?: string }): void {
+    if (input.name !== undefined) {
+      const trimmed = input.name.trim();
+      if (!trimmed) throw new MenuCategoryNameRequiredError();
+      this.props.name = trimmed;
+    }
+    if (input.displayOrder !== undefined) this.props.displayOrder = input.displayOrder;
+    if (input.menuGroup !== undefined) this.props.menuGroup = input.menuGroup as MenuGroup;
+  }
+
   get name(): string { return this.props.name; }
   get displayOrder(): number { return this.props.displayOrder; }
   get menuGroup(): MenuGroup { return this.props.menuGroup; }

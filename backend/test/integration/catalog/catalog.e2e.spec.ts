@@ -129,6 +129,62 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     expect(res.body.versions[0].status).toBe("ACTIVE");
   });
 
+  test("PATCH /catalog/items/:id/variants/:variantId - بيعدّل السعر", async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/catalog/items/${itemId}/variants/${variantId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ price: 95 });
+    expect(res.status).toBe(200);
+    const updated = res.body.variants.find((v: { id: string }) => v.id === variantId);
+    expect(updated.price).toBe(95);
+  });
+
+  test("PATCH /catalog/items/:id - بيعدّل الاسم ويعطّل الصنف", async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/catalog/items/${itemId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "مارجريتا معدّلة-e2e-جست", isActive: false });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("مارجريتا معدّلة-e2e-جست");
+    expect(res.body.isActive).toBe(false);
+
+    // نرجّعه نشط تاني عشان مايأثرش على استخدامه في اختبارات لاحقة لو اتضافت
+    await request(app.getHttpServer())
+      .patch(`/catalog/items/${itemId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: true });
+  });
+
+  test("PATCH /catalog/items/:id لصنف مش موجود -> 404", async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/catalog/items/00000000-0000-0000-0000-000000000000`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "أي حاجة" });
+    expect(res.status).toBe(404);
+  });
+
+  test("PATCH /catalog/categories/:id - بيعطّل القسم ويرجّعه تاني", async () => {
+    const categoriesRes = await request(app.getHttpServer())
+      .get("/catalog/categories")
+      .set("Authorization", `Bearer ${adminToken}`);
+    const category = categoriesRes.body.find((c: { name: string }) => c.name === "بيتزا-e2e-جست");
+
+    const deactivateRes = await request(app.getHttpServer())
+      .patch(`/catalog/categories/${category.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: false });
+    expect(deactivateRes.status).toBe(200);
+    expect(deactivateRes.body.isActive).toBe(false);
+
+    const reactivateRes = await request(app.getHttpServer())
+      .patch(`/catalog/categories/${category.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "بيتزا معدّلة-e2e-جست", isActive: true });
+    expect(reactivateRes.status).toBe(200);
+    expect(reactivateRes.body.name).toBe("بيتزا معدّلة-e2e-جست");
+    expect(reactivateRes.body.isActive).toBe(true);
+  });
+
   test("POST /catalog/items بدون صلاحية catalog.items.manage -> 403", async () => {
     const { KyselyUserRepository } = await import(
       "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"

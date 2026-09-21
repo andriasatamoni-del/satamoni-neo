@@ -10,6 +10,9 @@ import { KyselyRecipeRepository } from "./infrastructure/persistence/kysely-reci
 import { RegisterMenuCategoryHandler } from "./application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "./application/commands/register-menu-item.handler";
 import { AddVariantHandler } from "./application/commands/add-variant.handler";
+import { UpdateMenuCategoryHandler } from "./application/commands/update-menu-category.handler";
+import { UpdateMenuItemHandler } from "./application/commands/update-menu-item.handler";
+import { UpdateVariantHandler } from "./application/commands/update-variant.handler";
 import { RegisterRecipeHandler } from "./application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "./application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "./application/commands/activate-recipe-version.handler";
@@ -29,6 +32,9 @@ import { CatalogController } from "./api/catalog.controller";
     RegisterMenuCategoryHandler,
     RegisterMenuItemHandler,
     AddVariantHandler,
+    UpdateMenuCategoryHandler,
+    UpdateMenuItemHandler,
+    UpdateVariantHandler,
     RegisterRecipeHandler,
     CreateRecipeVersionHandler,
     ActivateRecipeVersionHandler,
