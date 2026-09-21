@@ -52,6 +52,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     await sql`DELETE FROM whatsapp_conversations WHERE id = ${conversationId}`.execute(db);
     await sql`DELETE FROM complaints WHERE customer_phone = '+201000000001'`.execute(db);
     await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
+    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);

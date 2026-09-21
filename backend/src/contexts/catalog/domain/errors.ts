@@ -8,6 +8,12 @@ export class MenuCategoryNameRequiredError extends DomainError {
   }
 }
 
+export class MenuCategoryNotFoundError extends DomainError {
+  constructor() {
+    super("القسم ده مش موجود");
+  }
+}
+
 export class MenuItemNameRequiredError extends DomainError {
   constructor() {
     super("اسم الصنف مطلوب");

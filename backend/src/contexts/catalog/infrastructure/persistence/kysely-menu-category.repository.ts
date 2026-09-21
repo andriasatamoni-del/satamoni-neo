@@ -21,6 +21,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
           display_order: row.display_order,
           menu_group: row.menu_group,
           is_active: row.is_active,
+          station_id: row.station_id,
         })
       )
       .execute();
@@ -53,6 +54,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
       menu_group: category.menuGroup,
       is_active: category.isActive,
       legacy_category_id: category.legacyCategoryId,
+      station_id: category.stationId,
     };
   }
 
@@ -63,6 +65,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
       menuGroup: row.menu_group as MenuGroup,
       isActive: row.is_active,
       legacyCategoryId: row.legacy_category_id,
+      stationId: row.station_id,
     });
   }
 }

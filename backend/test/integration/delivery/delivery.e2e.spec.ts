@@ -67,6 +67,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
     const db = app.get(KYSELY);
     await sql`DELETE FROM delivery_assignments`.execute(db);
     await sql`DELETE FROM drivers`.execute(db);
+    await sql`DELETE FROM print_jobs`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM orders`.execute(db);
     await sql`DELETE FROM menu_item_variants`.execute(db);

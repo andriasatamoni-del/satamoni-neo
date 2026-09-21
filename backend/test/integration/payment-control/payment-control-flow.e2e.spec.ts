@@ -69,6 +69,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     await sql`DELETE FROM payment_adjustment_requests`.execute(db);
     await sql`DELETE FROM payment_reconciliation_records`.execute(db);
     await sql`DELETE FROM payments`.execute(db);
+    await sql`DELETE FROM print_jobs`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM orders`.execute(db);
     await sql`DELETE FROM payment_methods WHERE id IN (${sql.join([cashMethodId, visaMethodId])})`.execute(db);

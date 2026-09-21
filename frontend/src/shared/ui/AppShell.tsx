@@ -18,6 +18,7 @@ import {
   LogoutIcon,
   MenuIcon,
   ListSearchIcon,
+  PrinterIcon,
   ShieldUserIcon,
   TruckIcon,
   UserCircleIcon,
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { to: "/treasuries", label: "الخزائن والبنوك", icon: VaultIcon },
   { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
   { to: "/hr-payroll", label: "الموارد البشرية والرواتب", icon: IdCardIcon },
+  { to: "/printing", label: "الطباعة", icon: PrinterIcon },
   { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },
   { to: "/audit-log", label: "سجل التدقيق", icon: ListSearchIcon },
 ];

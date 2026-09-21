@@ -95,6 +95,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
 
   afterAll(async () => {
     const db = app.get(KYSELY);
+    await sql`DELETE FROM print_jobs`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM orders`.execute(db);
     await sql`DELETE FROM recipe_ingredients`.execute(db);

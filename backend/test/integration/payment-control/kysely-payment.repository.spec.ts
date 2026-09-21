@@ -48,6 +48,7 @@ describe("KyselyPaymentRepository", () => {
 
   afterAll(async () => {
     await sql`DELETE FROM payments`.execute(db);
+    await sql`DELETE FROM print_jobs WHERE order_id = ${orderId}`.execute(db);
     await sql`DELETE FROM order_items WHERE order_id = ${orderId}`.execute(db);
     await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(db);
     await sql`DELETE FROM payment_methods WHERE id IN (${sql.join([cashMethodId, visaMethodId])})`.execute(db);

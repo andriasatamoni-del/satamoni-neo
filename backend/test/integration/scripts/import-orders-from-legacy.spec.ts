@@ -69,6 +69,7 @@ describe("importOrdersFromLegacy", () => {
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM order_items; DELETE FROM orders");
+    await sql`DELETE FROM print_jobs`.execute(neoDb);
     await sql`DELETE FROM order_items`.execute(neoDb);
     await sql`DELETE FROM orders`.execute(neoDb);
   });

@@ -19,6 +19,9 @@ export interface MenuItemProps {
   variants: MenuItemVariant[];
   legacyMenuItemId: number | null;
   createdAt: Date;
+  // توجيه الطباعة (TIER3-4) - محطة التحضير بتاعة الصنف نفسه؛ لو NULL بيرجع لتوجيه القسم (categoryId's
+  // station) بدل ما يبقى مفيش توجيه خالص. نفس مفهوم menu_items.station_id في الريبو القديم بالظبط
+  stationId: string | null;
 }
 
 // MenuItem - نفس مفهوم menu_items في الريبو القديم، بس هنا الأحجام (variants) جزء من نفس الـaggregate
@@ -53,6 +56,7 @@ export class MenuItem {
       variants: [],
       legacyMenuItemId: input.legacyMenuItemId ?? null,
       createdAt: new Date(),
+      stationId: null,
     });
   }
 
@@ -101,6 +105,7 @@ export class MenuItem {
 
   activate(): void { this.props.isActive = true; }
   deactivate(): void { this.props.isActive = false; }
+  setStationId(stationId: string | null): void { this.props.stationId = stationId; }
 
   get categoryId(): string | null { return this.props.categoryId; }
   get name(): string { return this.props.name; }
@@ -111,4 +116,5 @@ export class MenuItem {
   get variants(): readonly MenuItemVariant[] { return this.props.variants; }
   get legacyMenuItemId(): number | null { return this.props.legacyMenuItemId; }
   get createdAt(): Date { return this.props.createdAt; }
+  get stationId(): string | null { return this.props.stationId; }
 }

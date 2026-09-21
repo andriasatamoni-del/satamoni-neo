@@ -83,6 +83,7 @@ describe("importPaymentControlFromLegacy", () => {
     await sql`DELETE FROM payment_reconciliation_records`.execute(neoDb);
     await sql`DELETE FROM payment_adjustment_requests`.execute(neoDb);
     await sql`DELETE FROM payments`.execute(neoDb);
+    await sql`DELETE FROM print_jobs WHERE order_id = ${orderId}`.execute(neoDb);
     await sql`DELETE FROM order_items WHERE order_id = ${orderId}`.execute(neoDb);
     await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(neoDb);
     await sql`DELETE FROM payment_methods WHERE name LIKE '%استيراد-دفعات-جست%'`.execute(neoDb);

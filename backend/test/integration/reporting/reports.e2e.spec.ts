@@ -96,6 +96,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
   afterAll(async () => {
     const db = app.get(KYSELY);
     await sql`DELETE FROM payments WHERE branch_id = ${branchId}`.execute(db);
+    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
     await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM payment_methods WHERE id = ${paymentMethodId}`.execute(db);

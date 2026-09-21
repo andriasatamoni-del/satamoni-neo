@@ -71,6 +71,7 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
     // بيمنع أي تعديل على سطور قيد POSTED (نفس السبب في kysely-journal-entry.repository.spec.ts)
     await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
     await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashAccountId, salesAccountId])})`.execute(db);
+    await sql`DELETE FROM print_jobs`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM orders`.execute(db);
     await sql`DELETE FROM menu_item_variants`.execute(db);

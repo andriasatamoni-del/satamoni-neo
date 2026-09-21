@@ -119,6 +119,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     await sql`DELETE FROM drivers WHERE id = ${driverId}`.execute(db);
     await sql`DELETE FROM order_items`.execute(db);
     await sql`DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
+    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM payment_methods WHERE id = ${cashPaymentMethodId}`.execute(db);
     await sql`DELETE FROM menu_item_variants`.execute(db);

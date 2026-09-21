@@ -76,6 +76,11 @@ import type {
   BanksTable,
   BankAccountsTable,
 } from "../../contexts/treasury/infrastructure/persistence/treasury.schema";
+import type {
+  PrintersTable,
+  KitchenStationsTable,
+  PrintJobsTable,
+} from "../../contexts/printing/infrastructure/persistence/printing.schema";
 
 export interface Database {
   users: UsersTable;
@@ -136,4 +141,7 @@ export interface Database {
   treasuries: TreasuriesTable;
   banks: BanksTable;
   bank_accounts: BankAccountsTable;
+  printers: PrintersTable;
+  kitchen_stations: KitchenStationsTable;
+  print_jobs: PrintJobsTable;
 }

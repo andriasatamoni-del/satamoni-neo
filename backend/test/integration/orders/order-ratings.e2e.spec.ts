@@ -76,6 +76,7 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
   afterAll(async () => {
     const db = app.get(KYSELY);
     await sql`DELETE FROM order_ratings WHERE branch_id = ${branchId}`.execute(db);
+    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
     await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);

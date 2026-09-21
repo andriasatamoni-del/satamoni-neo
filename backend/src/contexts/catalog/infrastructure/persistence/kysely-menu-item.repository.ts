@@ -24,6 +24,7 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
         is_active: item.isActive,
         legacy_menu_item_id: item.legacyMenuItemId,
         created_at: item.createdAt,
+        station_id: item.stationId,
       };
       await trx
         .insertInto("menu_items")
@@ -36,6 +37,7 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
             image_url: itemRow.image_url,
             is_best: itemRow.is_best,
             is_active: itemRow.is_active,
+            station_id: itemRow.station_id,
           })
         )
         .execute();
@@ -107,6 +109,7 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
       isActive: row.is_active,
       legacyMenuItemId: row.legacy_menu_item_id,
       createdAt: row.created_at,
+      stationId: row.station_id,
       variants: variantRows.map((v) => ({
         id: v.id,
         label: v.label,

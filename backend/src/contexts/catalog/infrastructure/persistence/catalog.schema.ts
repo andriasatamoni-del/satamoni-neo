@@ -7,6 +7,7 @@ export interface MenuCategoriesTable {
   menu_group: string;
   is_active: boolean;
   legacy_category_id: number | null;
+  station_id: string | null;
 }
 
 export interface MenuItemsTable {
@@ -18,6 +19,7 @@ export interface MenuItemsTable {
   is_best: boolean;
   is_active: boolean;
   legacy_menu_item_id: number | null;
+  station_id: string | null;
   created_at: Generated<Date>;
 }
 
