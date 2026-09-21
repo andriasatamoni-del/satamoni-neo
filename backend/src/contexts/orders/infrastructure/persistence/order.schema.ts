@@ -19,6 +19,7 @@ export interface OrdersTable {
   created_at: Generated<Date>;
   legacy_order_id: number | null;
   payment_method_id: string | null;
+  rating_token: Generated<string>;
 }
 
 export interface OrderItemsTable {
@@ -29,4 +30,14 @@ export interface OrderItemsTable {
   quantity: number;
   unit_price: number;
   line_total: number;
+}
+
+export interface OrderRatingsTable {
+  id: string;
+  order_id: string;
+  branch_id: string | null;
+  stars: number;
+  comment: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }

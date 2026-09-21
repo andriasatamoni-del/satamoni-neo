@@ -50,6 +50,10 @@ export interface OrderProps {
   // يقفل Payment فوره وقت تسجيل الطلب (نفس فلسفة الريبو القديم بالظبط - "قفل طريقة الدفع فور اختيار
   // الكاشير ليها"). لو معندش قيمة، مفيش Payment هيتسجّل خالص (نفس القيد الموروث من الريبو القديم).
   paymentMethodId: string | null;
+  // توكن عام عشوائي (TIER3-3) - مفتاح الدخول الوحيد لصفحة تقييم الطلب العامة (بدون تسجيل دخول)، نفس
+  // فلسفة orders.rating_token في الريبو القديم بالظبط: ثابت طول عمر الطلب، بيتولّد مرة واحدة وقت
+  // التسجيل، ومش رقم الطلب نفسه عشان محدش يقدر يخمّنه.
+  ratingToken: string;
 }
 
 // Order - نفس مفهوم orders+order_items في الريبو القديم، بس مبسّط للسلايس الأول (Phase 3): من غير
@@ -110,6 +114,7 @@ export class Order {
       createdAt: new Date(),
       legacyOrderId: input.legacyOrderId ?? null,
       paymentMethodId: input.paymentMethodId ?? null,
+      ratingToken: randomUUID(),
     });
   }
 
@@ -159,4 +164,5 @@ export class Order {
   get createdAt(): Date { return this.props.createdAt; }
   get legacyOrderId(): number | null { return this.props.legacyOrderId; }
   get paymentMethodId(): string | null { return this.props.paymentMethodId; }
+  get ratingToken(): string { return this.props.ratingToken; }
 }

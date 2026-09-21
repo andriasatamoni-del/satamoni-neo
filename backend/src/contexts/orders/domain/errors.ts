@@ -61,3 +61,17 @@ export class InsufficientStockForOrderError extends DomainError {
     super(`المخزون مش كفاية للصنف: ${itemName}`);
   }
 }
+
+// اللينك العام لتقييم الطلب غلط: توكن مش مطابق، أو مطابق لطلب تاني - نفس رد الريبو القديم بالظبط
+// (404 موحّد، مفيش تفرقة بين "توكن غلط" و"طلب غلط" - محدش لازم يعرف أيهما عشان محدش يقدر يخمّن)
+export class InvalidRatingTokenError extends DomainError {
+  constructor() {
+    super("اللينك ده غير صالح");
+  }
+}
+
+export class InvalidRatingStarsError extends DomainError {
+  constructor() {
+    super("لازم تختار تقييم من 1 لـ5 نجوم");
+  }
+}

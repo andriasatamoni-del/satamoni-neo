@@ -144,6 +144,9 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       // مش هنعمل backfill لـpayment_method_id هنا - جدول payments بتاع Payment Control (سكريبت استيراد
       // منفصل) بيحمل نفس الربط (order_id -> payment_method_id) للطلبات التاريخية بالكامل بالفعل
       paymentMethodId: null,
+      // توكن جديد لكل طلب مستورد - الريبو القديم بيولّد rating_token افتراضي (gen_random_uuid()) لكل
+      // صف قديم برضه، فمفيش حاجة نستوردها هنا (مفيش قيمة قديمة "حقيقية" أصلًا نحافظ عليها)
+      ratingToken: randomUUID(),
     });
     await orderRepo.save(order);
     result.created++;

@@ -45,7 +45,7 @@ import type {
   PurchaseReturnsTable,
   PurchaseReturnItemsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
-import type { OrdersTable, OrderItemsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
+import type { OrdersTable, OrderItemsTable, OrderRatingsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
 import type {
   DriversTable,
   DeliveryAssignmentsTable,
@@ -115,6 +115,7 @@ export interface Database {
   purchase_return_items: PurchaseReturnItemsTable;
   orders: OrdersTable;
   order_items: OrderItemsTable;
+  order_ratings: OrderRatingsTable;
   drivers: DriversTable;
   delivery_assignments: DeliveryAssignmentsTable;
   driver_settlements: DriverSettlementsTable;

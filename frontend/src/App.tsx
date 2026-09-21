@@ -20,6 +20,7 @@ import { UsersPage } from "./pages/UsersPage";
 import { TreasuriesPage } from "./pages/TreasuriesPage";
 import { MyProfilePage } from "./pages/MyProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { RateOrderPage } from "./pages/RateOrderPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -38,6 +39,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/rate/:orderId" element={<RateOrderPage />} />
       <Route
         path="/"
         element={
