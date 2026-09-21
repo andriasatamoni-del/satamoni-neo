@@ -1,29 +1,52 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
-import { Field, Input, Select } from "../shared/ui/Field";
+import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { ShiftBanner } from "./orders/ShiftBanner";
 import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
 
 interface Branch { id: string; name: string; }
-interface MenuItemVariant { id: string; label: string; price: number; }
-interface MenuItem { id: string; name: string; variants: MenuItemVariant[]; }
+interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: "regular" | "fasting"; isActive: boolean; }
+interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
+interface MenuItem {
+  id: string;
+  categoryId: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  isBest: boolean;
+  isActive: boolean;
+  variants: MenuItemVariant[];
+}
 interface PaymentMethod { id: string; name: string; }
 interface OrderLine { menuItemId: string; variantId: string; quantity: number; unitPrice: number; lineTotal: number; }
 interface Order {
   id: string;
   branchId: string;
   orderType: string;
+  tableNumber: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
   items: OrderLine[];
+  subtotal: number;
+  discount: number;
   total: number;
   status: string;
   kitchenStatus: string;
   paymentMethodId: string | null;
+}
+
+interface CartLine {
+  variantId: string;
+  itemName: string;
+  variantLabel: string;
+  unitPrice: number;
+  quantity: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,30 +59,128 @@ const ORDER_TYPES = [
   { value: "delivery", label: "دليفري" },
 ];
 
+const MENU_GROUP_LABELS: Record<string, string> = { regular: "عادي", fasting: "صيامي" };
+
 export function OrdersPage() {
   const queryClient = useQueryClient();
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
-  const ordersQuery = useQuery({ queryKey: ["orders"], queryFn: () => apiRequest<Order[]>("/orders") });
   const paymentMethodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
 
-  const [form, setForm] = useState({ branchId: "", orderType: "takeaway", variantId: "", quantity: "1", paymentMethodId: "" });
+  const [branchId, setBranchId] = useState("");
+  const ordersQuery = useQuery({
+    queryKey: ["orders", branchId],
+    queryFn: () => apiRequest<Order[]>(`/orders${branchId ? `?branchId=${branchId}` : ""}`),
+  });
+
+  const [menuGroup, setMenuGroup] = useState<"all" | "regular" | "fasting">("all");
+  const [categoryId, setCategoryId] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [orderType, setOrderType] = useState("takeaway");
+  const [tableNumber, setTableNumber] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [addressDetails, setAddressDetails] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [paymentMethodId, setPaymentMethodId] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const categoriesById = useMemo(() => {
+    const map = new Map<string, MenuCategory>();
+    for (const c of categoriesQuery.data ?? []) map.set(c.id, c);
+    return map;
+  }, [categoriesQuery.data]);
+
+  const activeCategories = useMemo(
+    () =>
+      (categoriesQuery.data ?? [])
+        .filter((c) => c.isActive && (menuGroup === "all" || c.menuGroup === menuGroup))
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    [categoriesQuery.data, menuGroup]
+  );
+
+  const hasFastingMenu = (categoriesQuery.data ?? []).some((c) => c.menuGroup === "fasting");
+
+  const visibleItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (menuItemsQuery.data ?? []).filter((item) => {
+      if (!item.isActive) return false;
+      const category = categoriesById.get(item.categoryId);
+      if (menuGroup !== "all" && category?.menuGroup !== menuGroup) return false;
+      if (categoryId !== "all" && item.categoryId !== categoryId) return false;
+      if (q && !item.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [menuItemsQuery.data, categoriesById, menuGroup, categoryId, search]);
+
+  function addToCart(item: MenuItem, variant: MenuItemVariant) {
+    setCart((lines) => {
+      const existing = lines.find((l) => l.variantId === variant.id);
+      if (existing) {
+        return lines.map((l) => (l.variantId === variant.id ? { ...l, quantity: l.quantity + 1 } : l));
+      }
+      return [
+        ...lines,
+        { variantId: variant.id, itemName: item.name, variantLabel: variant.label, unitPrice: variant.price, quantity: 1 },
+      ];
+    });
+    setPickerItem(null);
+  }
+
+  function handleItemClick(item: MenuItem) {
+    if (item.variants.length === 0) return;
+    if (item.variants.length === 1) {
+      addToCart(item, item.variants[0]);
+    } else {
+      setPickerItem(item);
+    }
+  }
+
+  function changeQuantity(variantId: string, delta: number) {
+    setCart((lines) =>
+      lines
+        .map((l) => (l.variantId === variantId ? { ...l, quantity: l.quantity + delta } : l))
+        .filter((l) => l.quantity > 0)
+    );
+  }
+
+  function removeLine(variantId: string) {
+    setCart((lines) => lines.filter((l) => l.variantId !== variantId));
+  }
+
+  const subtotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+  const discountNum = Number(discount) || 0;
+  const total = Math.max(0, subtotal - discountNum);
 
   const createOrder = useMutation({
     mutationFn: () =>
       apiRequest("/orders", {
         method: "POST",
         body: {
-          branchId: form.branchId,
-          orderType: form.orderType,
-          items: [{ variantId: form.variantId, quantity: Number(form.quantity) }],
-          paymentMethodId: form.paymentMethodId || undefined,
+          branchId,
+          orderType,
+          tableNumber: orderType === "dinein" && tableNumber ? tableNumber : undefined,
+          customerName: customerName || undefined,
+          customerPhone: customerPhone || undefined,
+          addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
+          items: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+          discount: discountNum > 0 ? discountNum : undefined,
+          paymentMethodId: paymentMethodId || undefined,
         },
       }),
     onSuccess: () => {
       setError(null);
-      setForm((f) => ({ ...f, variantId: "", quantity: "1" }));
+      setCart([]);
+      setTableNumber("");
+      setCustomerName("");
+      setCustomerPhone("");
+      setAddressDetails("");
+      setDiscount("");
+      setPaymentMethodId("");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
@@ -76,7 +197,6 @@ export function OrdersPage() {
     createOrder.mutate();
   }
 
-  const allVariants = menuItemsQuery.data?.flatMap((item) => item.variants.map((v) => ({ ...v, itemName: item.name }))) ?? [];
   const variantLabel = (variantId: string) => {
     for (const item of menuItemsQuery.data ?? []) {
       const v = item.variants.find((v) => v.id === variantId);
@@ -93,67 +213,217 @@ export function OrdersPage() {
       <ShiftBanner />
       <ShiftReviewPanel />
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>تسجيل طلب جديد</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {ORDER_TYPES.map((t) => (
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <Field label="الفرع">
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="max-w-[220px]">
+            <option value="">كل الفروع</option>
+            {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        </Field>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+          {/* Category/item grid */}
+          <Card>
+            <CardBody>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Input
+                  placeholder="بحث عن صنف..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="max-w-[220px]"
+                />
+                {hasFastingMenu && (
+                  <div className="flex gap-1">
+                    {(["all", "regular", "fasting"] as const).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => { setMenuGroup(g); setCategoryId("all"); }}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {g === "all" ? "الكل" : MENU_GROUP_LABELS[g]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
                 <button
-                  key={t.value}
                   type="button"
-                  onClick={() => setForm({ ...form, orderType: t.value })}
-                  className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                    form.orderType === t.value
-                      ? "bg-brand-600 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  onClick={() => setCategoryId("all")}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    categoryId === "all" ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  {t.label}
+                  كل الأصناف
                 </button>
-              ))}
-            </div>
+                {activeCategories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryId(c.id)}
+                    className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                      categoryId === c.id ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="الفرع">
-                <Select required value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-                  <option value="">اختر فرع</option>
-                  {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="الصنف">
-                <Select required value={form.variantId} onChange={(e) => setForm({ ...form, variantId: e.target.value })}>
-                  <option value="">اختر صنف</option>
-                  {allVariants.map((v) => (
-                    <option key={v.id} value={v.id}>{v.itemName} ({v.label}) - {v.price}ج</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="الكمية">
-                <Input required type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-              </Field>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {visibleItems.map((item) => {
+                  const minPrice = item.variants.reduce((min, v) => Math.min(min, v.price), Infinity);
+                  const inCartQty = cart
+                    .filter((l) => item.variants.some((v) => v.id === l.variantId))
+                    .reduce((sum, l) => sum + l.quantity, 0);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleItemClick(item)}
+                      className="relative flex flex-col items-start gap-1 rounded-xl border border-slate-200 bg-white p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                    >
+                      {inCartQty > 0 && (
+                        <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+                          {inCartQty}
+                        </span>
+                      )}
+                      {item.isBest && <Badge tone="warning" className="mb-0.5">الأكثر طلبًا</Badge>}
+                      <p className="text-sm font-bold text-slate-900">{item.name}</p>
+                      <p className="text-sm font-semibold text-brand-700">
+                        {item.variants.length > 1 ? `من ${minPrice}ج` : `${minPrice === Infinity ? "-" : minPrice}ج`}
+                      </p>
+                    </button>
+                  );
+                })}
+                {visibleItems.length === 0 && (
+                  <p className="col-span-full py-8 text-center text-sm text-slate-400">مفيش أصناف مطابقة</p>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Cart panel */}
+          <Card className="h-fit lg:sticky lg:top-20">
+            <CardHeader>
+              <CardTitle>السلة ({cart.length})</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {ORDER_TYPES.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setOrderType(t.value)}
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                      orderType === t.value ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {orderType === "dinein" && (
+                <Field label="رقم الترابيزة">
+                  <Input value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} />
+                </Field>
+              )}
+              {(orderType === "delivery" || orderType === "takeaway") && (
+                <>
+                  <Field label="اسم العميل (اختياري)">
+                    <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                  </Field>
+                  <Field label="رقم الموبايل (اختياري)">
+                    <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                  </Field>
+                </>
+              )}
+              {orderType === "delivery" && (
+                <Field label="العنوان">
+                  <Textarea rows={2} value={addressDetails} onChange={(e) => setAddressDetails(e.target.value)} />
+                </Field>
+              )}
+
+              <div className="max-h-64 space-y-2 overflow-y-auto border-t border-slate-100 pt-3">
+                {cart.map((line) => (
+                  <div key={line.variantId} className="flex items-center gap-2 text-sm">
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-800">{line.itemName}</p>
+                      {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => changeQuantity(line.variantId, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
+                      <span className="w-5 text-center font-semibold">{line.quantity}</span>
+                      <button type="button" onClick={() => changeQuantity(line.variantId, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
+                    </div>
+                    <span className="w-14 text-end font-bold text-slate-900">{line.unitPrice * line.quantity}ج</span>
+                    <button type="button" onClick={() => removeLine(line.variantId)} className="text-red-500 hover:text-red-700">×</button>
+                  </div>
+                ))}
+                {cart.length === 0 && <p className="py-6 text-center text-sm text-slate-400">السلة فاضية</p>}
+              </div>
+
+              <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">الإجمالي الفرعي</span><span className="font-semibold">{subtotal}ج</span></div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">الخصم</span>
+                  <Input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} className="max-w-[100px] py-1 text-end" />
+                </div>
+                <div className="flex justify-between text-base font-bold text-slate-900"><span>الإجمالي</span><span>{total}ج</span></div>
+              </div>
+
               <Field label="طريقة الدفع (اختياري)">
-                <Select value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}>
+                <Select value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
                   <option value="">- بدون -</option>
                   {paymentMethodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </Select>
               </Field>
+
+              {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
+
+              <Button type="submit" className="w-full" disabled={createOrder.isPending || cart.length === 0 || !branchId}>
+                {createOrder.isPending ? "بيتسجّل..." : "تسجيل الطلب"}
+              </Button>
+              {!branchId && <p className="text-center text-xs text-amber-600">اختار الفرع الأول</p>}
+            </CardBody>
+          </Card>
+        </div>
+      </form>
+
+      {pickerItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPickerItem(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">{pickerItem.name}</h3>
+              <button type="button" onClick={() => setPickerItem(null)} className="text-slate-400 hover:text-slate-700">×</button>
             </div>
+            <div className="space-y-2">
+              {pickerItem.variants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => addToCart(pickerItem, v)}
+                  className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold hover:border-brand-400 hover:bg-brand-50"
+                >
+                  <span>{v.label}</span>
+                  <span className="text-brand-700">{v.price}ج</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-
-            <Button type="submit" disabled={createOrder.isPending}>
-              {createOrder.isPending ? "بيتسجّل..." : "تسجيل الطلب"}
-            </Button>
-          </form>
-        </CardBody>
-      </Card>
-
-      <Card>
+      <Card className="mt-6">
         <CardHeader>
-          <CardTitle>الطلبات ({orders.length})</CardTitle>
+          <CardTitle>الطلبات الجارية ({orders.length})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
           <Table>
