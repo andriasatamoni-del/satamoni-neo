@@ -91,6 +91,46 @@ describe("Procurement - /procurement (e2e ضد تطبيق حقيقي كامل)",
     expect(res.body.status).toBe("DRAFT");
   });
 
+  test("POST /procurement/purchase-orders/:id/send ثم /cancel - دورة حياة أمر شراء كاملة", async () => {
+    const created = await request(app.getHttpServer())
+      .post("/procurement/purchase-orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ supplierId, branchId, lines: [{ inventoryItemId, quantity: 10, unitPrice: 5 }] });
+    expect(created.status).toBe(201);
+    const poId = created.body.id;
+
+    const sent = await request(app.getHttpServer())
+      .post(`/procurement/purchase-orders/${poId}/send`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(sent.status).toBe(201);
+    expect(sent.body.status).toBe("SENT");
+
+    // إرسال تاني لأمر شراء بقى SENT بالفعل -> 400 (مينفعش يتقدّم إلا وهو DRAFT)
+    const sentAgain = await request(app.getHttpServer())
+      .post(`/procurement/purchase-orders/${poId}/send`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(sentAgain.status).toBe(400);
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`/procurement/purchase-orders/${poId}/cancel`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(cancelled.status).toBe(201);
+    expect(cancelled.body.status).toBe("CANCELLED");
+
+    // إلغاء تاني لأمر شراء اتلغى بالفعل -> 400
+    const cancelledAgain = await request(app.getHttpServer())
+      .post(`/procurement/purchase-orders/${poId}/cancel`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(cancelledAgain.status).toBe(400);
+  });
+
+  test("POST /procurement/purchase-orders/:id/send لأمر شراء مش موجود -> 404", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/procurement/purchase-orders/00000000-0000-0000-0000-000000000000/send")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+
   test("POST /procurement/goods-receipts (PO-less) + confirm - بيرحّل حركة مخزون حقيقية", async () => {
     const balanceBefore = await request(app.getHttpServer())
       .get(`/inventory/balances?branchId=${branchId}&inventoryItemId=${inventoryItemId}`)

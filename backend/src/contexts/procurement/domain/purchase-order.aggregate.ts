@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   EmptyPurchaseOrderError,
+  PurchaseOrderNotCancellableError,
   PurchaseOrderNotEditableError,
   UnknownPurchaseOrderStatusError,
 } from "./errors";
@@ -69,6 +70,7 @@ export class PurchaseOrder {
   }
 
   cancel(): void {
+    if (this.props.status === "RECEIVED" || this.props.status === "CANCELLED") throw new PurchaseOrderNotCancellableError();
     this.props.status = "CANCELLED";
   }
 

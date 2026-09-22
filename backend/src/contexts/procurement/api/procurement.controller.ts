@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post, Query, Req, UseFilters, UseGuards }
 import type { Request } from "express";
 import { RegisterSupplierHandler } from "../application/commands/register-supplier.handler";
 import { RegisterPurchaseOrderHandler } from "../application/commands/register-purchase-order.handler";
+import { SendPurchaseOrderHandler } from "../application/commands/send-purchase-order.handler";
+import { CancelPurchaseOrderHandler } from "../application/commands/cancel-purchase-order.handler";
 import { RegisterGoodsReceiptHandler } from "../application/commands/register-goods-receipt.handler";
 import { ConfirmGoodsReceiptHandler } from "../application/commands/confirm-goods-receipt.handler";
 import { RegisterSupplierInvoiceHandler } from "../application/commands/register-supplier-invoice.handler";
@@ -58,6 +60,8 @@ export class ProcurementController {
   constructor(
     private readonly registerSupplier: RegisterSupplierHandler,
     private readonly registerPurchaseOrder: RegisterPurchaseOrderHandler,
+    private readonly sendPurchaseOrder: SendPurchaseOrderHandler,
+    private readonly cancelPurchaseOrder: CancelPurchaseOrderHandler,
     private readonly registerGoodsReceipt: RegisterGoodsReceiptHandler,
     private readonly confirmGoodsReceipt: ConfirmGoodsReceiptHandler,
     private readonly registerSupplierInvoice: RegisterSupplierInvoiceHandler,
@@ -108,6 +112,18 @@ export class ProcurementController {
   @RequirePermission("procurement.purchase_orders.manage")
   async createPurchaseOrder(@Body() dto: RegisterPurchaseOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseOrder(await this.registerPurchaseOrder.execute({ ...dto, createdBy: req.user.id }));
+  }
+
+  @Post("purchase-orders/:id/send")
+  @RequirePermission("procurement.purchase_orders.manage")
+  async sendPurchaseOrderRoute(@Param("id") id: string) {
+    return toPublicPurchaseOrder(await this.sendPurchaseOrder.execute(id));
+  }
+
+  @Post("purchase-orders/:id/cancel")
+  @RequirePermission("procurement.purchase_orders.manage")
+  async cancelPurchaseOrderRoute(@Param("id") id: string) {
+    return toPublicPurchaseOrder(await this.cancelPurchaseOrder.execute(id));
   }
 
   @Get("goods-receipts")

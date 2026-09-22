@@ -44,6 +44,12 @@ export class PurchaseOrderNotFoundError extends DomainError {
   }
 }
 
+export class PurchaseOrderNotCancellableError extends DomainError {
+  constructor() {
+    super("أمر الشراء ده اتسلّم بالكامل أو اتلغى بالفعل - مينفعش يتلغي");
+  }
+}
+
 export class EmptyGoodsReceiptError extends DomainError {
   constructor() {
     super("لازم إذن الاستلام يكون فيه بند واحد على الأقل");

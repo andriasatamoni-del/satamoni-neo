@@ -22,6 +22,8 @@ import { KyselyPurchaseRequestRepository } from "./infrastructure/persistence/ky
 import { KyselyPurchaseReturnRepository } from "./infrastructure/persistence/kysely-purchase-return.repository";
 import { RegisterSupplierHandler } from "./application/commands/register-supplier.handler";
 import { RegisterPurchaseOrderHandler } from "./application/commands/register-purchase-order.handler";
+import { SendPurchaseOrderHandler } from "./application/commands/send-purchase-order.handler";
+import { CancelPurchaseOrderHandler } from "./application/commands/cancel-purchase-order.handler";
 import { RegisterGoodsReceiptHandler } from "./application/commands/register-goods-receipt.handler";
 import { ConfirmGoodsReceiptHandler } from "./application/commands/confirm-goods-receipt.handler";
 import { RegisterSupplierInvoiceHandler } from "./application/commands/register-supplier-invoice.handler";
@@ -64,6 +66,8 @@ import { ProcurementController } from "./api/procurement.controller";
     { provide: PURCHASE_RETURN_REPOSITORY, useClass: KyselyPurchaseReturnRepository },
     RegisterSupplierHandler,
     RegisterPurchaseOrderHandler,
+    SendPurchaseOrderHandler,
+    CancelPurchaseOrderHandler,
     RegisterGoodsReceiptHandler,
     ConfirmGoodsReceiptHandler,
     RegisterSupplierInvoiceHandler,
