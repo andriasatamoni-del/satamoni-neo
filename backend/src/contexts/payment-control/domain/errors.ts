@@ -67,3 +67,21 @@ export class ReconciliationRecordAlreadyDecidedError extends DomainError {
     super("سطر المطابقة ده اتطابق أو اتجاهل بالفعل");
   }
 }
+
+export class EmptyImportBatchError extends DomainError {
+  constructor() {
+    super("الملف فاضي - مفيش سطور تتاستورد");
+  }
+}
+
+export class ImportBatchNotFoundError extends DomainError {
+  constructor() {
+    super("دفعة الاستيراد دي مش موجودة");
+  }
+}
+
+export class ImportBatchHasDecidedRecordsError extends DomainError {
+  constructor() {
+    super("دفعة الاستيراد دي فيها سطور اتطابقت أو اتجاهلت بالفعل - رجّعها يدويًا سطر سطر مش كدفعة");
+  }
+}

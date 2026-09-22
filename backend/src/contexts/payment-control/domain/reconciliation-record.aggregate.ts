@@ -19,6 +19,8 @@ export interface ReconciliationRecordProps {
   enteredBy: string | null;
   enteredAt: Date;
   legacyReconciliationRecordId: number | null;
+  // مجموعة سطور اتسجّلت مع بعض من استيراد ملف (CSV) واحد - null للسطور اللي بتتسجّل يدويًا سطر سطر
+  importBatchId: string | null;
 }
 
 // ReconciliationRecord - سطر كشف حساب خارجي (طلبات/فيزا/إنستاباي/أورانج كاش) بيتقارن مع Payment مقفولة
@@ -40,6 +42,7 @@ export class ReconciliationRecord {
     notes?: string | null;
     enteredBy?: string | null;
     legacyReconciliationRecordId?: number | null;
+    importBatchId?: string | null;
   }): ReconciliationRecord {
     return new ReconciliationRecord(randomUUID(), {
       branchId: input.branchId ?? null,
@@ -53,6 +56,7 @@ export class ReconciliationRecord {
       enteredBy: input.enteredBy ?? null,
       enteredAt: new Date(),
       legacyReconciliationRecordId: input.legacyReconciliationRecordId ?? null,
+      importBatchId: input.importBatchId ?? null,
     });
   }
 
@@ -82,4 +86,5 @@ export class ReconciliationRecord {
   get enteredBy(): string | null { return this.props.enteredBy; }
   get enteredAt(): Date { return this.props.enteredAt; }
   get legacyReconciliationRecordId(): number | null { return this.props.legacyReconciliationRecordId; }
+  get importBatchId(): string | null { return this.props.importBatchId; }
 }

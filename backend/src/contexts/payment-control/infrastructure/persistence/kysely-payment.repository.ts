@@ -44,10 +44,12 @@ export class KyselyPaymentRepository implements PaymentRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter?: { branchId?: string; settlementChannel?: string }): Promise<Payment[]> {
+  async list(filter?: { branchId?: string; settlementChannel?: string; fromDate?: Date; toDate?: Date }): Promise<Payment[]> {
     let query = this.db.selectFrom("payments").selectAll();
     if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
     if (filter?.settlementChannel) query = query.where("settlement_channel", "=", filter.settlementChannel);
+    if (filter?.fromDate) query = query.where("locked_at", ">=", filter.fromDate);
+    if (filter?.toDate) query = query.where("locked_at", "<=", filter.toDate);
     const rows = await query.orderBy("locked_at", "desc").execute();
     return rows.map((r) => this.toDomain(r));
   }

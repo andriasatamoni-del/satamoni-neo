@@ -168,4 +168,97 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     expect(matched.body.matchStatus).toBe("MATCHED");
     expect(matched.body.matchedPaymentId).toBe(payment.id);
   });
+
+  test("POST /reconciliation-records/import/commit بيسجّل عدة سطور بدفعة واحدة", async () => {
+    const commit = await request(app.getHttpServer())
+      .post("/payment-control/reconciliation-records/import/commit")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        source: "instapay",
+        branchId,
+        rows: [
+          { externalDate: "2026-02-01", externalAmount: 50, externalReference: "ref-1" },
+          { externalDate: "2026-02-02", externalAmount: 75, externalReference: "ref-2" },
+        ],
+      });
+    expect(commit.status).toBe(201);
+    expect(commit.body.count).toBe(2);
+    expect(commit.body.batchId).toBeTruthy();
+
+    const records = await request(app.getHttpServer())
+      .get(`/payment-control/reconciliation-records?branchId=${branchId}&source=instapay`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    const imported = records.body.filter((r: { importBatchId: string | null }) => r.importBatchId === commit.body.batchId);
+    expect(imported).toHaveLength(2);
+    expect(imported.every((r: { matchStatus: string }) => r.matchStatus === "UNMATCHED")).toBe(true);
+
+    // إلغاء الدفعة كلها - لسه كل سطورها UNMATCHED
+    const cancel = await request(app.getHttpServer())
+      .delete(`/payment-control/reconciliation-records/import-batches/${commit.body.batchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(cancel.status).toBe(200);
+    expect(cancel.body.deleted).toBe(2);
+
+    const afterCancel = await request(app.getHttpServer())
+      .get(`/payment-control/reconciliation-records?branchId=${branchId}&source=instapay`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(afterCancel.body.filter((r: { importBatchId: string | null }) => r.importBatchId === commit.body.batchId)).toHaveLength(0);
+  });
+
+  test("DELETE على دفعة استيراد فيها سطر اتطابق بالفعل -> 400، مبيتلغيش خالص", async () => {
+    const order = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 1 }], paymentMethodId: cashMethodId });
+    const paymentsRes = await request(app.getHttpServer())
+      .get(`/payment-control/payments?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    const payment = paymentsRes.body.find((p: { orderId: string }) => p.orderId === order.body.id);
+
+    const commit = await request(app.getHttpServer())
+      .post("/payment-control/reconciliation-records/import/commit")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ source: "orange_cash", branchId, rows: [{ externalDate: "2026-02-03", externalAmount: 100 }] });
+    const batchId = commit.body.batchId;
+
+    const records = await request(app.getHttpServer())
+      .get(`/payment-control/reconciliation-records?branchId=${branchId}&source=orange_cash`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    const recordId = records.body.find((r: { importBatchId: string | null }) => r.importBatchId === batchId).id;
+
+    await request(app.getHttpServer())
+      .patch(`/payment-control/reconciliation-records/${recordId}/match`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ paymentId: payment.id });
+
+    const cancel = await request(app.getHttpServer())
+      .delete(`/payment-control/reconciliation-records/import-batches/${batchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(cancel.status).toBe(400);
+
+    const stillThere = await request(app.getHttpServer())
+      .get(`/payment-control/reconciliation-records?branchId=${branchId}&source=orange_cash`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(stillThere.body.some((r: { id: string }) => r.id === recordId)).toBe(true);
+  });
+
+  test("GET /reports/daily-owner بيلخّص مدفوعات اليوم صح", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const order = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 3 }], paymentMethodId: cashMethodId });
+    expect(order.status).toBe(201);
+
+    const report = await request(app.getHttpServer())
+      .get(`/payment-control/reports/daily-owner?date=${today}&branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(report.status).toBe(200);
+    expect(report.body.date).toBe(today);
+    const cashTotal = report.body.totalsByChannel.find((t: { channel: string }) => t.channel === "cash");
+    expect(cashTotal).toBeTruthy();
+    expect(cashTotal.totalAmount).toBeGreaterThanOrEqual(300);
+    expect(typeof report.body.pendingAdjustmentRequests).toBe("number");
+    expect(Array.isArray(report.body.unmatchedReconciliationRecords)).toBe(true);
+  });
 });

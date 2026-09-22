@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { PageHeader } from "../shared/ui/PageHeader";
@@ -23,6 +23,21 @@ interface PaymentException {
   paymentId: string; orderId: string; settlementChannel: string; amount: number; lockedAt: string;
   riskScore: number; riskLevel: string; reason: string;
 }
+interface Branch { id: string; name: string; }
+interface DailyOwnerReport {
+  date: string;
+  branchId: string | null;
+  totalsByChannel: { channel: string; count: number; totalAmount: number }[];
+  totalAmount: number;
+  pendingAdjustmentRequests: number;
+  unmatchedReconciliationRecords: { source: string; count: number }[];
+  exceptionsCount: number;
+  highRiskExceptionsCount: number;
+}
+interface AuditLogRecord {
+  id: string; actorUserId: string | null; action: string; entityType: string | null;
+  entityId: string | null; branchId: string | null; metadata: Record<string, unknown> | null; createdAt: string;
+}
 
 const KIND_LABELS: Record<string, string> = { cash: "كاش", card_or_wallet: "كارت/محفظة", credit: "آجل" };
 const SOURCE_LABELS: Record<string, string> = {
@@ -32,20 +47,40 @@ const STATUS_LABELS: Record<string, string> = { PENDING: "معلّق", APPROVED:
 const MATCH_STATUS_LABELS: Record<string, string> = { UNMATCHED: "غير متطابق", MATCHED: "متطابق", IGNORED: "متجاهل" };
 
 const TABS = [
+  { key: "overview", label: "نظرة عامة" },
   { key: "payments", label: "الدفعات المقفولة" },
   { key: "adjustments", label: "طلبات التعديل" },
   { key: "reconciliation", label: "المطابقة" },
   { key: "exceptions", label: "الاستثناءات" },
+  { key: "audit", label: "سجل التدقيق" },
 ];
 
 export function PaymentControlPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("payments");
+  const [tab, setTab] = useState("overview");
   const methodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
   const paymentsQuery = useQuery({ queryKey: ["payment-control", "payments"], queryFn: () => apiRequest<Payment[]>("/payment-control/payments") });
   const requestsQuery = useQuery({ queryKey: ["payment-control", "requests"], queryFn: () => apiRequest<AdjustmentRequest[]>("/payment-control/adjustment-requests") });
   const recordsQuery = useQuery({ queryKey: ["payment-control", "records"], queryFn: () => apiRequest<ReconciliationRecord[]>("/payment-control/reconciliation-records") });
   const exceptionsQuery = useQuery({ queryKey: ["payment-control", "exceptions"], queryFn: () => apiRequest<PaymentException[]>("/payment-control/exceptions") });
+  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reportBranchId, setReportBranchId] = useState("");
+  const reportQuery = useQuery({
+    queryKey: ["payment-control", "daily-owner-report", reportDate, reportBranchId],
+    queryFn: () =>
+      apiRequest<DailyOwnerReport>(
+        `/payment-control/reports/daily-owner?date=${reportDate}${reportBranchId ? `&branchId=${reportBranchId}` : ""}`
+      ),
+    enabled: tab === "overview",
+  });
+
+  const auditLogQuery = useQuery({
+    queryKey: ["audit-logs", "payment-control"],
+    queryFn: () => apiRequest<AuditLogRecord[]>("/audit-logs?entityType=payment-control&limit=200"),
+    enabled: tab === "audit",
+  });
 
   const [adjustmentForm, setAdjustmentForm] = useState({ paymentId: "", proposedPaymentMethodId: "", proposedAmount: "", reason: "" });
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
@@ -107,15 +142,152 @@ export function PaymentControlPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["payment-control", "records"] }),
   });
 
+  // استيراد كشف حساب (CSV) - المعاينة واختيار الأعمدة بيحصلوا محليًا في المتصفح على ملف المحاسب
+  // نفسه (مفيش رفع ملف للسيرفر)، وبس الصفوف النهائية بعد التحديد بتتبعت للـcommit - راجع تعليق
+  // CommitReconciliationImportHandler
+  const [importSource, setImportSource] = useState<string>("talabat_statement");
+  const [importRows, setImportRows] = useState<string[][]>([]);
+  const [importDateCol, setImportDateCol] = useState<number | null>(null);
+  const [importAmountCol, setImportAmountCol] = useState<number | null>(null);
+  const [importRefCol, setImportRefCol] = useState<number | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [lastImportBatch, setLastImportBatch] = useState<{ batchId: string; count: number } | null>(null);
+
+  function handleImportFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const rows = text
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0)
+        .map((line) => line.split(","));
+      setImportRows(rows);
+      setImportDateCol(null);
+      setImportAmountCol(null);
+      setImportRefCol(null);
+      setLastImportBatch(null);
+      setImportError(null);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function parseImportRows(): { externalDate: string; externalAmount: number; externalReference?: string }[] {
+    if (importDateCol === null || importAmountCol === null) return [];
+    const hasHeader = isNaN(Number(importRows[0]?.[importAmountCol]));
+    const dataRows = hasHeader ? importRows.slice(1) : importRows;
+    return dataRows
+      .filter((row) => row[importDateCol] && row[importAmountCol])
+      .map((row) => {
+        const rawDate = row[importDateCol].trim();
+        const isoDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : rawDate;
+        return {
+          externalDate: isoDate,
+          externalAmount: Number(row[importAmountCol]),
+          externalReference: importRefCol !== null ? row[importRefCol]?.trim() : undefined,
+        };
+      });
+  }
+
+  const commitImport = useMutation({
+    mutationFn: () =>
+      apiRequest<{ batchId: string; count: number }>("/payment-control/reconciliation-records/import/commit", {
+        method: "POST",
+        body: { source: importSource, rows: parseImportRows() },
+      }),
+    onSuccess: (result) => {
+      setLastImportBatch(result);
+      setImportError(null);
+      setImportRows([]);
+      queryClient.invalidateQueries({ queryKey: ["payment-control", "records"] });
+    },
+    onError: (err) => setImportError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const cancelImportBatch = useMutation({
+    mutationFn: (batchId: string) => apiRequest(`/payment-control/reconciliation-records/import-batches/${batchId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setLastImportBatch(null);
+      queryClient.invalidateQueries({ queryKey: ["payment-control", "records"] });
+    },
+    onError: (err) => setImportError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
   const payments = paymentsQuery.data ?? [];
   const requests = requestsQuery.data ?? [];
   const records = recordsQuery.data ?? [];
   const exceptions = exceptionsQuery.data ?? [];
+  const report = reportQuery.data;
+  const auditEntries = auditLogQuery.data ?? [];
+  const parsedImportPreview = parseImportRows();
 
   return (
     <div>
       <PageHeader title="التحكم في المدفوعات والمطابقة" description="الدفعات، طلبات التعديل، والمطابقة مع كشوف الحساب" />
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
+
+      {tab === "overview" && (
+        <div className="space-y-6">
+          <Card>
+            <CardBody>
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="اليوم">
+                  <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+                </Field>
+                <Field label="الفرع">
+                  <Select value={reportBranchId} onChange={(e) => setReportBranchId(e.target.value)} className="max-w-[220px]">
+                    <option value="">كل الفروع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
+
+          {report && (
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <Card><CardBody><p className="text-xs text-slate-500">إجمالي مدفوعات اليوم</p><p className="mt-1 text-2xl font-bold text-slate-900">{report.totalAmount}ج</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">طلبات تعديل معلّقة</p><p className="mt-1 text-2xl font-bold text-amber-600">{report.pendingAdjustmentRequests}</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">استثناءات</p><p className="mt-1 text-2xl font-bold text-slate-900">{report.exceptionsCount}</p></CardBody></Card>
+                <Card><CardBody><p className="text-xs text-slate-500">استثناءات عالية الخطورة</p><p className="mt-1 text-2xl font-bold text-red-600">{report.highRiskExceptionsCount}</p></CardBody></Card>
+              </div>
+
+              <Card>
+                <CardHeader><CardTitle>المدفوعات حسب القناة</CardTitle></CardHeader>
+                <CardBody className="p-0">
+                  <Table>
+                    <THead><TR><TH>القناة</TH><TH>العدد</TH><TH>الإجمالي</TH></TR></THead>
+                    <TBody>
+                      {report.totalsByChannel.map((t) => (
+                        <TR key={t.channel}><TD>{KIND_LABELS[t.channel] ?? t.channel}</TD><TD>{t.count}</TD><TD className="font-bold text-slate-900">{t.totalAmount}ج</TD></TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {report.totalsByChannel.length === 0 && <EmptyState>مفيش مدفوعات في اليوم ده</EmptyState>}
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>سطور كشف حساب غير متطابقة</CardTitle></CardHeader>
+                <CardBody className="p-0">
+                  <Table>
+                    <THead><TR><TH>المصدر</TH><TH>العدد</TH></TR></THead>
+                    <TBody>
+                      {report.unmatchedReconciliationRecords.map((u) => (
+                        <TR key={u.source}><TD>{SOURCE_LABELS[u.source] ?? u.source}</TD><TD>{u.count}</TD></TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {report.unmatchedReconciliationRecords.length === 0 && <EmptyState>كل الكشوف متطابقة</EmptyState>}
+                </CardBody>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
 
       {tab === "payments" && (
         <Card>
@@ -245,6 +417,80 @@ export function PaymentControlPage() {
           </Card>
 
           <Card>
+            <CardHeader><CardTitle>استيراد كشف حساب (CSV)</CardTitle></CardHeader>
+            <CardBody className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="المصدر">
+                  <Select value={importSource} onChange={(e) => setImportSource(e.target.value)} className="max-w-[220px]">
+                    {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="ملف CSV">
+                  <input type="file" accept=".csv,text/csv" onChange={handleImportFile} className="text-sm" />
+                </Field>
+              </div>
+
+              {importRows.length > 0 && (
+                <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">حدد أي عمود التاريخ/المبلغ/المرجع من صفوف الملف (عيّنة أول 5 صفوف تحت)</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Field label="عمود التاريخ">
+                      <Select value={importDateCol ?? ""} onChange={(e) => setImportDateCol(e.target.value === "" ? null : Number(e.target.value))}>
+                        <option value="">- اختر -</option>
+                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="عمود المبلغ">
+                      <Select value={importAmountCol ?? ""} onChange={(e) => setImportAmountCol(e.target.value === "" ? null : Number(e.target.value))}>
+                        <option value="">- اختر -</option>
+                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="عمود المرجع (اختياري)">
+                      <Select value={importRefCol ?? ""} onChange={(e) => setImportRefCol(e.target.value === "" ? null : Number(e.target.value))}>
+                        <option value="">- بدون -</option>
+                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {importRows.slice(0, 5).map((row, ri) => (
+                          <tr key={ri} className="border-b border-slate-100">
+                            {row.map((cell, ci) => <td key={ci} className="px-2 py-1 text-slate-600">{cell}</td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      disabled={importDateCol === null || importAmountCol === null || commitImport.isPending}
+                      onClick={() => commitImport.mutate()}
+                    >
+                      استيراد {parsedImportPreview.length} سطر
+                    </Button>
+                  </div>
+                  {importError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{importError}</p>}
+                </div>
+              )}
+
+              {lastImportBatch && (
+                <div className="flex items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <span>تم استيراد {lastImportBatch.count} سطر بنجاح.</span>
+                  <Button size="sm" variant="ghost" onClick={() => cancelImportBatch.mutate(lastImportBatch.batchId)} disabled={cancelImportBatch.isPending}>
+                    تراجع عن الدفعة دي
+                  </Button>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
             <CardHeader><CardTitle>سطور المطابقة ({records.length})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
@@ -311,6 +557,30 @@ export function PaymentControlPage() {
               </TBody>
             </Table>
             {exceptions.length === 0 && <EmptyState>مفيش استثناءات حاليًا</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
+
+      {tab === "audit" && (
+        <Card>
+          <CardHeader><CardTitle>سجل التدقيق - التحكم في المدفوعات ({auditEntries.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR><TH>الوقت</TH><TH>الإجراء</TH><TH>العنصر</TH><TH>بواسطة</TH></TR>
+              </THead>
+              <TBody>
+                {auditEntries.map((a) => (
+                  <TR key={a.id}>
+                    <TD className="text-xs">{new Date(a.createdAt).toLocaleString("ar-EG")}</TD>
+                    <TD className="font-mono text-xs">{a.action}</TD>
+                    <TD className="font-mono text-xs">{a.entityId?.slice(0, 8) ?? "-"}</TD>
+                    <TD className="font-mono text-xs">{a.actorUserId?.slice(0, 8) ?? "-"}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {auditEntries.length === 0 && <EmptyState>مفيش سجل تدقيق لسه (أو معندكش صلاحية رؤيته)</EmptyState>}
           </CardBody>
         </Card>
       )}

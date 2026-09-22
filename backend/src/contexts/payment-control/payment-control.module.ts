@@ -20,11 +20,14 @@ import { RegisterReconciliationRecordHandler } from "./application/commands/regi
 import { MatchReconciliationRecordHandler } from "./application/commands/match-reconciliation-record.handler";
 import { IgnoreReconciliationRecordHandler } from "./application/commands/ignore-reconciliation-record.handler";
 import { AutoMatchReconciliationRecordsHandler } from "./application/commands/auto-match-reconciliation-records.handler";
+import { CommitReconciliationImportHandler } from "./application/commands/commit-reconciliation-import.handler";
+import { CancelReconciliationImportBatchHandler } from "./application/commands/cancel-reconciliation-import-batch.handler";
 import { ListPaymentMethodsHandler } from "./application/queries/list-payment-methods.handler";
 import { ListPaymentsHandler } from "./application/queries/list-payments.handler";
 import { ListAdjustmentRequestsHandler } from "./application/queries/list-adjustment-requests.handler";
 import { ListReconciliationRecordsHandler } from "./application/queries/list-reconciliation-records.handler";
 import { ListExceptionsHandler } from "./application/queries/list-exceptions.handler";
+import { GetDailyOwnerReportHandler } from "./application/queries/get-daily-owner-report.handler";
 import { PaymentControlController } from "./api/payment-control.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 
@@ -45,11 +48,14 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     MatchReconciliationRecordHandler,
     IgnoreReconciliationRecordHandler,
     AutoMatchReconciliationRecordsHandler,
+    CommitReconciliationImportHandler,
+    CancelReconciliationImportBatchHandler,
     ListPaymentMethodsHandler,
     ListPaymentsHandler,
     ListAdjustmentRequestsHandler,
     ListReconciliationRecordsHandler,
     ListExceptionsHandler,
+    GetDailyOwnerReportHandler,
   ],
   exports: [PAYMENT_METHOD_REPOSITORY, PAYMENT_REPOSITORY],
 })

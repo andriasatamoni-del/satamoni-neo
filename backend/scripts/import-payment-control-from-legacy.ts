@@ -195,6 +195,7 @@ export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Ky
       enteredBy: await resolveUserId(row.entered_by),
       enteredAt: row.entered_at,
       legacyReconciliationRecordId: row.id,
+      importBatchId: null,
     });
     await reconciliationRepo.save(record);
     if (existing) reconciliationRecords.updated++;

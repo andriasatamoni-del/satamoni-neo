@@ -6,6 +6,7 @@ import {
   PaymentNotFoundError,
   AdjustmentRequestNotFoundError,
   ReconciliationRecordNotFoundError,
+  ImportBatchNotFoundError,
 } from "../../domain/errors";
 
 @Catch(DomainError)
@@ -16,7 +17,8 @@ export class PaymentControlDomainErrorFilter implements ExceptionFilter {
       exception instanceof PaymentMethodNotFoundError ||
       exception instanceof PaymentNotFoundError ||
       exception instanceof AdjustmentRequestNotFoundError ||
-      exception instanceof ReconciliationRecordNotFoundError;
+      exception instanceof ReconciliationRecordNotFoundError ||
+      exception instanceof ImportBatchNotFoundError;
     res.status(isNotFound ? 404 : 400).json({ error: exception.message });
   }
 }

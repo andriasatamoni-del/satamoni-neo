@@ -52,4 +52,5 @@ export interface PaymentReconciliationRecordsTable {
   entered_by: string | null;
   entered_at: Generated<Date>;
   legacy_reconciliation_record_id: number | null;
+  import_batch_id: string | null;
 }

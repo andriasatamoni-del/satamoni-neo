@@ -61,6 +61,19 @@ export class KyselyReconciliationRecordRepository implements ReconciliationRecor
     return rows.map((r) => this.toDomain(r));
   }
 
+  async listByImportBatchId(importBatchId: string): Promise<ReconciliationRecord[]> {
+    const rows = await this.db
+      .selectFrom("payment_reconciliation_records")
+      .selectAll()
+      .where("import_batch_id", "=", importBatchId)
+      .execute();
+    return rows.map((r) => this.toDomain(r));
+  }
+
+  async deleteByImportBatchId(importBatchId: string): Promise<void> {
+    await this.db.deleteFrom("payment_reconciliation_records").where("import_batch_id", "=", importBatchId).execute();
+  }
+
   private toRow(record: ReconciliationRecord) {
     return {
       id: record.id,
@@ -75,6 +88,7 @@ export class KyselyReconciliationRecordRepository implements ReconciliationRecor
       entered_by: record.enteredBy,
       entered_at: record.enteredAt,
       legacy_reconciliation_record_id: record.legacyReconciliationRecordId,
+      import_batch_id: record.importBatchId,
     };
   }
 
@@ -91,6 +105,7 @@ export class KyselyReconciliationRecordRepository implements ReconciliationRecor
       enteredBy: row.entered_by,
       enteredAt: row.entered_at,
       legacyReconciliationRecordId: row.legacy_reconciliation_record_id,
+      importBatchId: row.import_batch_id,
     });
   }
 }

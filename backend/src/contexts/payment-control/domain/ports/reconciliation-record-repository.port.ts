@@ -6,6 +6,8 @@ export interface ReconciliationRecordRepositoryPort {
   findByLegacyReconciliationRecordId(legacyId: number): Promise<ReconciliationRecord | null>;
   list(filter?: { branchId?: string; source?: string; matchStatus?: string }): Promise<ReconciliationRecord[]>;
   listUnmatchedBySource(source: string): Promise<ReconciliationRecord[]>;
+  listByImportBatchId(importBatchId: string): Promise<ReconciliationRecord[]>;
+  deleteByImportBatchId(importBatchId: string): Promise<void>;
 }
 
 export const RECONCILIATION_RECORD_REPOSITORY = Symbol("RECONCILIATION_RECORD_REPOSITORY");
