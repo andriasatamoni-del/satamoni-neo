@@ -9,6 +9,11 @@ export class OrderItemInputDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  modifierIds?: string[];
 }
 
 export class RegisterOrderDto {

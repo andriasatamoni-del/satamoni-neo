@@ -4,7 +4,7 @@ import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import { Order, type OrderStatus, type KitchenStatus, type OrderType } from "../../domain/order.aggregate";
 import type { OrderRepositoryPort } from "../../domain/ports/order-repository.port";
-import type { OrdersTable, OrderItemsTable } from "./order.schema";
+import type { OrdersTable, OrderItemsTable, OrderItemModifiersTable } from "./order.schema";
 
 @Injectable()
 export class KyselyOrderRepository implements OrderRepositoryPort {
@@ -59,6 +59,19 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           })
           .onConflict((oc) => oc.column("id").doNothing())
           .execute();
+
+        for (const modifier of item.modifiers) {
+          await trx
+            .insertInto("order_item_modifiers")
+            .values({
+              order_item_id: item.id,
+              modifier_id: modifier.modifierId,
+              name_at_sale: modifier.nameAtSale,
+              price_at_sale: modifier.priceAtSale,
+            })
+            .onConflict((oc) => oc.columns(["order_item_id", "modifier_id"]).doNothing())
+            .execute();
+        }
       }
     });
   }
@@ -84,11 +97,26 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
     return orders;
   }
 
-  private loadItems(orderId: string): Promise<Selectable<OrderItemsTable>[]> {
-    return this.db.selectFrom("order_items").selectAll().where("order_id", "=", orderId).execute();
+  private async loadItems(
+    orderId: string
+  ): Promise<{ item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[]> {
+    const itemRows = await this.db.selectFrom("order_items").selectAll().where("order_id", "=", orderId).execute();
+    const result: { item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[] = [];
+    for (const item of itemRows) {
+      const modifiers = await this.db
+        .selectFrom("order_item_modifiers")
+        .selectAll()
+        .where("order_item_id", "=", item.id)
+        .execute();
+      result.push({ item, modifiers });
+    }
+    return result;
   }
 
-  private toDomain(row: Selectable<OrdersTable>, itemRows: Selectable<OrderItemsTable>[]): Order {
+  private toDomain(
+    row: Selectable<OrdersTable>,
+    itemRows: { item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[]
+  ): Order {
     return Order.reconstitute(row.id, {
       branchId: row.branch_id,
       orderType: row.order_type as OrderType,
@@ -96,13 +124,18 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
       addressDetails: row.address_details,
-      items: itemRows.map((i) => ({
+      items: itemRows.map(({ item: i, modifiers }) => ({
         id: i.id,
         menuItemId: i.menu_item_id,
         variantId: i.variant_id,
         quantity: i.quantity,
         unitPrice: Number(i.unit_price),
         lineTotal: Number(i.line_total),
+        modifiers: modifiers.map((m) => ({
+          modifierId: m.modifier_id,
+          nameAtSale: m.name_at_sale,
+          priceAtSale: Number(m.price_at_sale),
+        })),
       })),
       subtotal: Number(row.subtotal),
       discount: Number(row.discount),

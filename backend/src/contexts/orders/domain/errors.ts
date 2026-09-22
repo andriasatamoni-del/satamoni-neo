@@ -56,6 +56,12 @@ export class VariantNotFoundForOrderError extends DomainError {
   }
 }
 
+export class ModifierNotFoundForOrderError extends DomainError {
+  constructor() {
+    super("في سطر بيشاور على مرفق مش موجود أو مش تابع للصنف ده أو مش نشط");
+  }
+}
+
 export class InsufficientStockForOrderError extends DomainError {
   constructor(itemName: string) {
     super(`المخزون مش كفاية للصنف: ${itemName}`);

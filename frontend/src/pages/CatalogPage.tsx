@@ -16,6 +16,14 @@ interface MenuCategory {
 }
 
 interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
+interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
+interface MenuItemModifier {
+  id: string;
+  name: string;
+  priceDelta: number;
+  isActive: boolean;
+  variantPrices: MenuItemModifierVariantPrice[];
+}
 interface MenuItem {
   id: string;
   categoryId: string | null;
@@ -23,6 +31,7 @@ interface MenuItem {
   isBest: boolean;
   isActive: boolean;
   variants: MenuItemVariant[];
+  modifiers: MenuItemModifier[];
 }
 
 export function CatalogPage() {
@@ -93,6 +102,43 @@ export function CatalogPage() {
   const updateVariant = useMutation({
     mutationFn: ({ itemId, variantId, price }: { itemId: string; variantId: string; price: number }) =>
       apiRequest(`/catalog/items/${itemId}/variants/${variantId}`, { method: "PATCH", body: { price } }),
+    onSuccess: () => invalidateCatalog(),
+  });
+
+  const [modifiersItemId, setModifiersItemId] = useState<string | null>(null);
+  const [newModifierName, setNewModifierName] = useState("");
+  const [newModifierPrice, setNewModifierPrice] = useState("");
+  const [modifierError, setModifierError] = useState<string | null>(null);
+  const [modifierPrices, setModifierPrices] = useState<Record<string, string>>({});
+  const [variantOverrides, setVariantOverrides] = useState<Record<string, string>>({});
+
+  const addModifier = useMutation({
+    mutationFn: ({ itemId, name, priceDelta }: { itemId: string; name: string; priceDelta: number }) =>
+      apiRequest(`/catalog/items/${itemId}/modifiers`, { method: "POST", body: { name, priceDelta } }),
+    onSuccess: () => {
+      setNewModifierName("");
+      setNewModifierPrice("");
+      setModifierError(null);
+      invalidateCatalog();
+    },
+    onError: (err) => setModifierError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const updateModifier = useMutation({
+    mutationFn: ({ itemId, modifierId, ...input }: { itemId: string; modifierId: string; name?: string; priceDelta?: number; isActive?: boolean }) =>
+      apiRequest(`/catalog/items/${itemId}/modifiers/${modifierId}`, { method: "PATCH", body: input }),
+    onSuccess: () => invalidateCatalog(),
+  });
+
+  const setModifierVariantPrice = useMutation({
+    mutationFn: ({ itemId, modifierId, variantId, priceDelta }: { itemId: string; modifierId: string; variantId: string; priceDelta: number }) =>
+      apiRequest(`/catalog/items/${itemId}/modifiers/${modifierId}/variant-prices/${variantId}`, { method: "PUT", body: { priceDelta } }),
+    onSuccess: () => invalidateCatalog(),
+  });
+
+  const clearModifierVariantPrice = useMutation({
+    mutationFn: ({ itemId, modifierId, variantId }: { itemId: string; modifierId: string; variantId: string }) =>
+      apiRequest(`/catalog/items/${itemId}/modifiers/${modifierId}/variant-prices/${variantId}`, { method: "DELETE" }),
     onSuccess: () => invalidateCatalog(),
   });
 
@@ -282,6 +328,9 @@ export function CatalogPage() {
                       <TD>
                         <div className="flex gap-1.5">
                           <Button size="sm" variant="ghost" onClick={() => startEditItem(i)}>تعديل</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setModifiersItemId(i.id)}>
+                            المرفقات ({i.modifiers.length})
+                          </Button>
                           <Button
                             size="sm"
                             variant={i.isActive ? "secondary" : "primary"}
@@ -301,6 +350,123 @@ export function CatalogPage() {
           {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
         </CardBody>
       </Card>
+
+      {modifiersItemId && (() => {
+        const item = items.find((i) => i.id === modifiersItemId);
+        if (!item) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModifiersItemId(null)}>
+            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900">مرفقات {item.name}</h3>
+                <button type="button" onClick={() => setModifiersItemId(null)} className="text-slate-400 hover:text-slate-700">×</button>
+              </div>
+
+              <div className="space-y-3">
+                {item.modifiers.map((m) => (
+                  <div key={m.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`flex-1 text-sm font-semibold ${m.isActive ? "text-slate-800" : "text-slate-400 line-through"}`}>{m.name}</span>
+                      <Input
+                        type="number"
+                        value={modifierPrices[m.id] ?? String(m.priceDelta)}
+                        onChange={(e) => setModifierPrices({ ...modifierPrices, [m.id]: e.target.value })}
+                        className="w-20 py-1 text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={updateModifier.isPending || Number(modifierPrices[m.id] ?? m.priceDelta) === m.priceDelta}
+                        onClick={() => updateModifier.mutate({ itemId: item.id, modifierId: m.id, priceDelta: Number(modifierPrices[m.id] ?? m.priceDelta) })}
+                      >
+                        حفظ
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={m.isActive ? "secondary" : "primary"}
+                        disabled={updateModifier.isPending}
+                        onClick={() => updateModifier.mutate({ itemId: item.id, modifierId: m.id, isActive: !m.isActive })}
+                      >
+                        {m.isActive ? "تعطيل" : "تفعيل"}
+                      </Button>
+                    </div>
+
+                    {item.variants.length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                        <p className="text-xs text-slate-400">سعر مخصوص لكل حجم (فاضي = يستخدم السعر الافتراضي فوق)</p>
+                        {item.variants.map((v) => {
+                          const override = m.variantPrices.find((vp) => vp.variantId === v.id);
+                          const key = `${m.id}:${v.id}`;
+                          return (
+                            <div key={v.id} className="flex items-center gap-2">
+                              <span className="w-16 text-xs text-slate-500">{v.label}</span>
+                              <Input
+                                type="number"
+                                placeholder="افتراضي"
+                                value={variantOverrides[key] ?? (override ? String(override.priceDelta) : "")}
+                                onChange={(e) => setVariantOverrides({ ...variantOverrides, [key]: e.target.value })}
+                                className="w-20 py-0.5 text-xs"
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={setModifierVariantPrice.isPending || !(variantOverrides[key] ?? "").trim()}
+                                onClick={() =>
+                                  setModifierVariantPrice.mutate({ itemId: item.id, modifierId: m.id, variantId: v.id, priceDelta: Number(variantOverrides[key]) })
+                                }
+                              >
+                                حفظ
+                              </Button>
+                              {override && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={clearModifierVariantPrice.isPending}
+                                  onClick={() => {
+                                    setVariantOverrides({ ...variantOverrides, [key]: "" });
+                                    clearModifierVariantPrice.mutate({ itemId: item.id, modifierId: m.id, variantId: v.id });
+                                  }}
+                                >
+                                  إلغاء
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {item.modifiers.length === 0 && <p className="py-2 text-center text-sm text-slate-400">مفيش مرفقات لسه</p>}
+              </div>
+
+              <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                <p className="text-xs font-semibold text-slate-500">إضافة مرفق جديد</p>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Field label="اسم المرفق">
+                      <Input value={newModifierName} onChange={(e) => setNewModifierName(e.target.value)} className="py-1" />
+                    </Field>
+                  </div>
+                  <div className="w-24">
+                    <Field label="السعر">
+                      <Input type="number" value={newModifierPrice} onChange={(e) => setNewModifierPrice(e.target.value)} className="py-1" />
+                    </Field>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={addModifier.isPending || !newModifierName.trim()}
+                    onClick={() => addModifier.mutate({ itemId: item.id, name: newModifierName, priceDelta: Number(newModifierPrice) || 0 })}
+                  >
+                    إضافة
+                  </Button>
+                </div>
+                {modifierError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{modifierError}</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

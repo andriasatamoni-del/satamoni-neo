@@ -38,6 +38,18 @@ export class MenuItemNotFoundError extends DomainError {
   }
 }
 
+export class DuplicateModifierNameError extends DomainError {
+  constructor(name: string) {
+    super(`في مرفق بنفس الاسم ده بالفعل في الصنف: ${name}`);
+  }
+}
+
+export class ModifierNotFoundError extends DomainError {
+  constructor() {
+    super("المرفق ده مش موجود في الصنف");
+  }
+}
+
 export class UnknownRecipeTypeError extends DomainError {
   constructor(value: string) {
     super(`نوع الوصفة ده مش معروف: ${value}`);

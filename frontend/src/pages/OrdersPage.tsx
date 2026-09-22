@@ -13,6 +13,14 @@ import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
 interface Branch { id: string; name: string; }
 interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: "regular" | "fasting"; isActive: boolean; }
 interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
+interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
+interface MenuItemModifier {
+  id: string;
+  name: string;
+  priceDelta: number;
+  isActive: boolean;
+  variantPrices: MenuItemModifierVariantPrice[];
+}
 interface MenuItem {
   id: string;
   categoryId: string;
@@ -22,9 +30,11 @@ interface MenuItem {
   isBest: boolean;
   isActive: boolean;
   variants: MenuItemVariant[];
+  modifiers: MenuItemModifier[];
 }
 interface PaymentMethod { id: string; name: string; }
-interface OrderLine { menuItemId: string; variantId: string; quantity: number; unitPrice: number; lineTotal: number; }
+interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
+interface OrderLine { menuItemId: string; variantId: string; quantity: number; unitPrice: number; lineTotal: number; modifiers: OrderLineModifier[]; }
 interface Order {
   id: string;
   branchId: string;
@@ -41,12 +51,20 @@ interface Order {
   paymentMethodId: string | null;
 }
 
+interface CartLineModifier { modifierId: string; name: string; priceDelta: number; }
 interface CartLine {
+  key: string;
   variantId: string;
   itemName: string;
   variantLabel: string;
   unitPrice: number;
   quantity: number;
+  modifiers: CartLineModifier[];
+}
+
+function resolveModifierPrice(modifier: MenuItemModifier, variantId: string): number {
+  const override = modifier.variantPrices.find((vp) => vp.variantId === variantId);
+  return override ? override.priceDelta : modifier.priceDelta;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -78,6 +96,8 @@ export function OrdersPage() {
   const [categoryId, setCategoryId] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [pickerVariantId, setPickerVariantId] = useState<string | null>(null);
+  const [pickerModifierIds, setPickerModifierIds] = useState<string[]>([]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orderType, setOrderType] = useState("takeaway");
@@ -117,15 +137,21 @@ export function OrdersPage() {
     });
   }, [menuItemsQuery.data, categoriesById, menuGroup, categoryId, search]);
 
-  function addToCart(item: MenuItem, variant: MenuItemVariant) {
+  function addToCart(item: MenuItem, variant: MenuItemVariant, modifierIds: string[]) {
+    const modifiers: CartLineModifier[] = modifierIds.map((id) => {
+      const modifier = item.modifiers.find((m) => m.id === id)!;
+      return { modifierId: modifier.id, name: modifier.name, priceDelta: resolveModifierPrice(modifier, variant.id) };
+    });
+    const modifierTotal = modifiers.reduce((sum, m) => sum + m.priceDelta, 0);
+    const key = `${variant.id}:${modifierIds.slice().sort().join(",")}`;
     setCart((lines) => {
-      const existing = lines.find((l) => l.variantId === variant.id);
+      const existing = lines.find((l) => l.key === key);
       if (existing) {
-        return lines.map((l) => (l.variantId === variant.id ? { ...l, quantity: l.quantity + 1 } : l));
+        return lines.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l));
       }
       return [
         ...lines,
-        { variantId: variant.id, itemName: item.name, variantLabel: variant.label, unitPrice: variant.price, quantity: 1 },
+        { key, variantId: variant.id, itemName: item.name, variantLabel: variant.label, unitPrice: variant.price + modifierTotal, quantity: 1, modifiers },
       ];
     });
     setPickerItem(null);
@@ -133,23 +159,26 @@ export function OrdersPage() {
 
   function handleItemClick(item: MenuItem) {
     if (item.variants.length === 0) return;
-    if (item.variants.length === 1) {
-      addToCart(item, item.variants[0]);
+    const activeModifiers = item.modifiers.filter((m) => m.isActive);
+    if (item.variants.length === 1 && activeModifiers.length === 0) {
+      addToCart(item, item.variants[0], []);
     } else {
       setPickerItem(item);
+      setPickerVariantId(item.variants[0]?.id ?? null);
+      setPickerModifierIds([]);
     }
   }
 
-  function changeQuantity(variantId: string, delta: number) {
+  function changeQuantity(key: string, delta: number) {
     setCart((lines) =>
       lines
-        .map((l) => (l.variantId === variantId ? { ...l, quantity: l.quantity + delta } : l))
+        .map((l) => (l.key === key ? { ...l, quantity: l.quantity + delta } : l))
         .filter((l) => l.quantity > 0)
     );
   }
 
-  function removeLine(variantId: string) {
-    setCart((lines) => lines.filter((l) => l.variantId !== variantId));
+  function removeLine(key: string) {
+    setCart((lines) => lines.filter((l) => l.key !== key));
   }
 
   const subtotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
@@ -167,7 +196,11 @@ export function OrdersPage() {
           customerName: customerName || undefined,
           customerPhone: customerPhone || undefined,
           addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
-          items: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+          items: cart.map((l) => ({
+            variantId: l.variantId,
+            quantity: l.quantity,
+            modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
+          })),
           discount: discountNum > 0 ? discountNum : undefined,
           paymentMethodId: paymentMethodId || undefined,
         },
@@ -353,18 +386,21 @@ export function OrdersPage() {
 
               <div className="max-h-64 space-y-2 overflow-y-auto border-t border-slate-100 pt-3">
                 {cart.map((line) => (
-                  <div key={line.variantId} className="flex items-center gap-2 text-sm">
+                  <div key={line.key} className="flex items-center gap-2 text-sm">
                     <div className="flex-1">
                       <p className="font-semibold text-slate-800">{line.itemName}</p>
                       {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
+                      {line.modifiers.length > 0 && (
+                        <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => changeQuantity(line.variantId, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
+                      <button type="button" onClick={() => changeQuantity(line.key, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
                       <span className="w-5 text-center font-semibold">{line.quantity}</span>
-                      <button type="button" onClick={() => changeQuantity(line.variantId, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
+                      <button type="button" onClick={() => changeQuantity(line.key, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
                     </div>
                     <span className="w-14 text-end font-bold text-slate-900">{line.unitPrice * line.quantity}ج</span>
-                    <button type="button" onClick={() => removeLine(line.variantId)} className="text-red-500 hover:text-red-700">×</button>
+                    <button type="button" onClick={() => removeLine(line.key)} className="text-red-500 hover:text-red-700">×</button>
                   </div>
                 ))}
                 {cart.length === 0 && <p className="py-6 text-center text-sm text-slate-400">السلة فاضية</p>}
@@ -397,29 +433,72 @@ export function OrdersPage() {
         </div>
       </form>
 
-      {pickerItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPickerItem(null)}>
-          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">{pickerItem.name}</h3>
-              <button type="button" onClick={() => setPickerItem(null)} className="text-slate-400 hover:text-slate-700">×</button>
-            </div>
-            <div className="space-y-2">
-              {pickerItem.variants.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => addToCart(pickerItem, v)}
-                  className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold hover:border-brand-400 hover:bg-brand-50"
-                >
-                  <span>{v.label}</span>
-                  <span className="text-brand-700">{v.price}ج</span>
-                </button>
-              ))}
+      {pickerItem && (() => {
+        const activeModifiers = pickerItem.modifiers.filter((m) => m.isActive);
+        const selectedVariant = pickerItem.variants.find((v) => v.id === pickerVariantId) ?? pickerItem.variants[0];
+        const modifierTotal = pickerModifierIds.reduce((sum, id) => {
+          const modifier = activeModifiers.find((m) => m.id === id);
+          return modifier ? sum + resolveModifierPrice(modifier, selectedVariant.id) : sum;
+        }, 0);
+        const finalPrice = selectedVariant.price + modifierTotal;
+
+        function toggleModifier(id: string) {
+          setPickerModifierIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPickerItem(null)}>
+            <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900">{pickerItem.name}</h3>
+                <button type="button" onClick={() => setPickerItem(null)} className="text-slate-400 hover:text-slate-700">×</button>
+              </div>
+
+              {pickerItem.variants.length > 1 && (
+                <div className="mb-3 space-y-2">
+                  {pickerItem.variants.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setPickerVariantId(v.id)}
+                      className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-semibold ${
+                        selectedVariant.id === v.id ? "border-brand-500 bg-brand-50" : "border-slate-200 hover:border-brand-400"
+                      }`}
+                    >
+                      <span>{v.label}</span>
+                      <span className="text-brand-700">{v.price}ج</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {activeModifiers.length > 0 && (
+                <div className="mb-3 space-y-1.5 border-t border-slate-100 pt-3">
+                  <p className="text-xs font-semibold text-slate-500">إضافات</p>
+                  {activeModifiers.map((m) => {
+                    const price = resolveModifierPrice(m, selectedVariant.id);
+                    return (
+                      <label key={m.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-1.5 text-sm">
+                        <input type="checkbox" checked={pickerModifierIds.includes(m.id)} onChange={() => toggleModifier(m.id)} />
+                        <span className="flex-1">{m.name}</span>
+                        <span className="text-slate-500">+{price}ج</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="text-sm font-semibold text-slate-500">السعر</span>
+                <span className="text-lg font-bold text-brand-700">{finalPrice}ج</span>
+              </div>
+              <Button className="mt-3 w-full" onClick={() => addToCart(pickerItem, selectedVariant, pickerModifierIds)}>
+                إضافة للسلة
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <Card className="mt-6">
         <CardHeader>

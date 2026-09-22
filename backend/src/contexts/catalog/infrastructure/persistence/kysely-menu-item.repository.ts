@@ -4,7 +4,12 @@ import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import { MenuItem } from "../../domain/menu-item.aggregate";
 import type { MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
-import type { MenuItemsTable, MenuItemVariantsTable } from "./catalog.schema";
+import type {
+  MenuItemsTable,
+  MenuItemVariantsTable,
+  MenuItemModifiersTable,
+  MenuItemModifierVariantPricesTable,
+} from "./catalog.schema";
 
 @Injectable()
 export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
@@ -58,13 +63,46 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
           )
           .execute();
       }
+
+      for (const modifier of item.modifiers) {
+        await trx
+          .insertInto("menu_item_modifiers")
+          .values({
+            id: modifier.id,
+            item_id: item.id,
+            name: modifier.name,
+            price_delta: modifier.priceDelta,
+            is_active: modifier.isActive,
+            legacy_modifier_id: modifier.legacyModifierId,
+          })
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet({ name: modifier.name, price_delta: modifier.priceDelta, is_active: modifier.isActive })
+          )
+          .execute();
+
+        // مزامنة كاملة لأسعار الأحجام المخصوصة للمرفق ده - بيمسح أي حجم متشال من قايمة الـaggregate
+        // في الذاكرة (clearModifierVariantPrice) وبيحدّث/يضيف الموجودين، في خطوة واحدة بدل ما نحتاج
+        // نتتبّع إيه اتغيّر بالظبط
+        const variantIds = modifier.variantPrices.map((vp) => vp.variantId);
+        let deleteQuery = trx.deleteFrom("menu_item_modifier_variant_prices").where("modifier_id", "=", modifier.id);
+        if (variantIds.length > 0) deleteQuery = deleteQuery.where("variant_id", "not in", variantIds);
+        await deleteQuery.execute();
+
+        for (const vp of modifier.variantPrices) {
+          await trx
+            .insertInto("menu_item_modifier_variant_prices")
+            .values({ modifier_id: modifier.id, variant_id: vp.variantId, price_delta: vp.priceDelta })
+            .onConflict((oc) => oc.columns(["modifier_id", "variant_id"]).doUpdateSet({ price_delta: vp.priceDelta }))
+            .execute();
+        }
+      }
     });
   }
 
   async findById(id: string): Promise<MenuItem | null> {
     const row = await this.db.selectFrom("menu_items").selectAll().where("id", "=", id).executeTakeFirst();
     if (!row) return null;
-    return this.toDomain(row, await this.loadVariants(id));
+    return this.toDomain(row, await this.loadVariants(id), await this.loadModifiers(id));
   }
 
   async findByVariantId(variantId: string): Promise<MenuItem | null> {
@@ -83,14 +121,14 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
       .where("legacy_menu_item_id", "=", legacyId)
       .executeTakeFirst();
     if (!row) return null;
-    return this.toDomain(row, await this.loadVariants(row.id));
+    return this.toDomain(row, await this.loadVariants(row.id), await this.loadModifiers(row.id));
   }
 
   async list(): Promise<MenuItem[]> {
     const rows = await this.db.selectFrom("menu_items").selectAll().orderBy("name").execute();
     const items: MenuItem[] = [];
     for (const row of rows) {
-      items.push(this.toDomain(row, await this.loadVariants(row.id)));
+      items.push(this.toDomain(row, await this.loadVariants(row.id), await this.loadModifiers(row.id)));
     }
     return items;
   }
@@ -99,7 +137,32 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
     return this.db.selectFrom("menu_item_variants").selectAll().where("item_id", "=", itemId).orderBy("label").execute();
   }
 
-  private toDomain(row: Selectable<MenuItemsTable>, variantRows: Selectable<MenuItemVariantsTable>[]): MenuItem {
+  private async loadModifiers(
+    itemId: string
+  ): Promise<{ row: Selectable<MenuItemModifiersTable>; variantPrices: Selectable<MenuItemModifierVariantPricesTable>[] }[]> {
+    const modifierRows = await this.db
+      .selectFrom("menu_item_modifiers")
+      .selectAll()
+      .where("item_id", "=", itemId)
+      .orderBy("name")
+      .execute();
+    const result: { row: Selectable<MenuItemModifiersTable>; variantPrices: Selectable<MenuItemModifierVariantPricesTable>[] }[] = [];
+    for (const row of modifierRows) {
+      const variantPrices = await this.db
+        .selectFrom("menu_item_modifier_variant_prices")
+        .selectAll()
+        .where("modifier_id", "=", row.id)
+        .execute();
+      result.push({ row, variantPrices });
+    }
+    return result;
+  }
+
+  private toDomain(
+    row: Selectable<MenuItemsTable>,
+    variantRows: Selectable<MenuItemVariantsTable>[],
+    modifierRows: { row: Selectable<MenuItemModifiersTable>; variantPrices: Selectable<MenuItemModifierVariantPricesTable>[] }[]
+  ): MenuItem {
     return MenuItem.reconstitute(row.id, {
       categoryId: row.category_id,
       name: row.name,
@@ -116,6 +179,14 @@ export class KyselyMenuItemRepository implements MenuItemRepositoryPort {
         price: Number(v.price),
         talabatPrice: v.talabat_price != null ? Number(v.talabat_price) : null,
         legacyVariantId: v.legacy_variant_id,
+      })),
+      modifiers: modifierRows.map(({ row: m, variantPrices }) => ({
+        id: m.id,
+        name: m.name,
+        priceDelta: Number(m.price_delta),
+        isActive: m.is_active,
+        legacyModifierId: m.legacy_modifier_id,
+        variantPrices: variantPrices.map((vp) => ({ variantId: vp.variant_id, priceDelta: Number(vp.price_delta) })),
       })),
     });
   }

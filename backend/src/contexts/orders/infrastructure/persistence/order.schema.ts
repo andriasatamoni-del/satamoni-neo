@@ -32,6 +32,14 @@ export interface OrderItemsTable {
   line_total: number;
 }
 
+export interface OrderItemModifiersTable {
+  id: Generated<string>;
+  order_item_id: string;
+  modifier_id: string | null;
+  name_at_sale: string;
+  price_at_sale: number;
+}
+
 export interface OrderRatingsTable {
   id: string;
   order_id: string;

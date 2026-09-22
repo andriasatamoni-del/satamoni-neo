@@ -18,13 +18,22 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const KITCHEN_STATUSES = ["NEW", "ACCEPTED", "PREPARING", "READY"] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 
+export interface OrderItemModifierLine {
+  modifierId: string | null;
+  nameAtSale: string;
+  priceAtSale: number;
+}
+
 export interface OrderItemLine {
   id: string;
   menuItemId: string;
   variantId: string;
   quantity: number;
+  // شامل مجموع أسعار المرفقات المختارة (basePrice + sum(modifiers.priceAtSale)) - نفس منطق الريبو
+  // القديم بالظبط (unitPrice = basePrice + modifierTotal)، مش سعر الحجم الأساسي لوحده
   unitPrice: number;
   lineTotal: number;
+  modifiers: OrderItemModifierLine[];
 }
 
 export interface OrderProps {
@@ -75,7 +84,13 @@ export class Order {
     customerName?: string | null;
     customerPhone?: string | null;
     addressDetails?: string | null;
-    items: { menuItemId: string; variantId: string; quantity: number; unitPrice: number }[];
+    items: {
+      menuItemId: string;
+      variantId: string;
+      quantity: number;
+      unitPrice: number;
+      modifiers?: OrderItemModifierLine[];
+    }[];
     discount?: number;
     createdBy?: string | null;
     legacyOrderId?: number | null;
@@ -91,6 +106,7 @@ export class Order {
       quantity: i.quantity,
       unitPrice: i.unitPrice,
       lineTotal: i.quantity * i.unitPrice,
+      modifiers: i.modifiers ?? [],
     }));
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
     const discount = input.discount ?? 0;

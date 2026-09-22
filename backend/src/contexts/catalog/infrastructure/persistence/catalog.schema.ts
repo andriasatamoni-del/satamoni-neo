@@ -32,6 +32,22 @@ export interface MenuItemVariantsTable {
   legacy_variant_id: number | null;
 }
 
+export interface MenuItemModifiersTable {
+  id: Generated<string>;
+  item_id: string;
+  name: string;
+  price_delta: number;
+  is_active: boolean;
+  legacy_modifier_id: number | null;
+}
+
+export interface MenuItemModifierVariantPricesTable {
+  id: Generated<string>;
+  modifier_id: string;
+  variant_id: string;
+  price_delta: number;
+}
+
 export interface RecipesTable {
   id: Generated<string>;
   recipe_type: string;

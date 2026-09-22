@@ -1,7 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Order } from "../../domain/order.aggregate";
+import { Order, type OrderItemModifierLine } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
-import { VariantNotFoundForOrderError, InsufficientStockForOrderError } from "../../domain/errors";
+import {
+  VariantNotFoundForOrderError,
+  InsufficientStockForOrderError,
+  ModifierNotFoundForOrderError,
+} from "../../domain/errors";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY, type RecipeRepositoryPort } from "../../../catalog/domain/ports/recipe-repository.port";
 import {
@@ -23,7 +27,7 @@ export interface RegisterOrderCommand {
   customerName?: string | null;
   customerPhone?: string | null;
   addressDetails?: string | null;
-  items: { variantId: string; quantity: number }[];
+  items: { variantId: string; quantity: number; modifierIds?: string[] }[];
   discount?: number;
   createdBy?: string | null;
   // موافقة صريحة تسمح باستهلاك يخلي رصيد صنف معينه ALLOW_WITH_APPROVAL يروح سالب - نفس فلسفة
@@ -49,12 +53,35 @@ export class RegisterOrderHandler {
   ) {}
 
   async execute(command: RegisterOrderCommand): Promise<Order> {
-    const resolvedItems: { menuItemId: string; variantId: string; quantity: number; unitPrice: number }[] = [];
+    const resolvedItems: {
+      menuItemId: string;
+      variantId: string;
+      quantity: number;
+      unitPrice: number;
+      modifiers: OrderItemModifierLine[];
+    }[] = [];
     for (const item of command.items) {
       const menuItem = await this.menuItems.findByVariantId(item.variantId);
       const variant = menuItem?.variants.find((v) => v.id === item.variantId);
       if (!menuItem || !variant) throw new VariantNotFoundForOrderError();
-      resolvedItems.push({ menuItemId: menuItem.id, variantId: item.variantId, quantity: item.quantity, unitPrice: variant.price });
+
+      const modifiers: OrderItemModifierLine[] = [];
+      let modifierTotal = 0;
+      for (const modifierId of item.modifierIds ?? []) {
+        const modifier = menuItem.modifiers.find((m) => m.id === modifierId && m.isActive);
+        if (!modifier) throw new ModifierNotFoundForOrderError();
+        const priceAtSale = menuItem.resolveModifierPrice(modifierId, item.variantId);
+        modifiers.push({ modifierId: modifier.id, nameAtSale: modifier.name, priceAtSale });
+        modifierTotal += priceAtSale;
+      }
+
+      resolvedItems.push({
+        menuItemId: menuItem.id,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        unitPrice: variant.price + modifierTotal,
+        modifiers,
+      });
     }
 
     // تجميع الاستهلاك المطلوب لكل مكوّن عبر كل أصناف الطلب

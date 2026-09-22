@@ -4,6 +4,7 @@ import { DomainError } from "../../../../shared/domain/domain-error";
 import {
   MenuCategoryNotFoundError,
   MenuItemNotFoundError,
+  ModifierNotFoundError,
   RecipeNotFoundError,
   RecipeVersionNotFoundError,
   VariantNotFoundError,
@@ -17,6 +18,7 @@ export class CatalogDomainErrorFilter implements ExceptionFilter {
       exception instanceof MenuCategoryNotFoundError ||
       exception instanceof MenuItemNotFoundError ||
       exception instanceof VariantNotFoundError ||
+      exception instanceof ModifierNotFoundError ||
       exception instanceof RecipeNotFoundError ||
       exception instanceof RecipeVersionNotFoundError
         ? 404

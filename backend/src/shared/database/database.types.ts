@@ -27,6 +27,8 @@ import type {
   MenuCategoriesTable,
   MenuItemsTable,
   MenuItemVariantsTable,
+  MenuItemModifiersTable,
+  MenuItemModifierVariantPricesTable,
   RecipesTable,
   RecipeVersionsTable,
   RecipeIngredientsTable,
@@ -45,7 +47,12 @@ import type {
   PurchaseReturnsTable,
   PurchaseReturnItemsTable,
 } from "../../contexts/procurement/infrastructure/persistence/procurement.schema";
-import type { OrdersTable, OrderItemsTable, OrderRatingsTable } from "../../contexts/orders/infrastructure/persistence/order.schema";
+import type {
+  OrdersTable,
+  OrderItemsTable,
+  OrderRatingsTable,
+  OrderItemModifiersTable,
+} from "../../contexts/orders/infrastructure/persistence/order.schema";
 import type {
   DriversTable,
   DeliveryAssignmentsTable,
@@ -107,6 +114,8 @@ export interface Database {
   menu_categories: MenuCategoriesTable;
   menu_items: MenuItemsTable;
   menu_item_variants: MenuItemVariantsTable;
+  menu_item_modifiers: MenuItemModifiersTable;
+  menu_item_modifier_variant_prices: MenuItemModifierVariantPricesTable;
   recipes: RecipesTable;
   recipe_versions: RecipeVersionsTable;
   recipe_ingredients: RecipeIngredientsTable;
@@ -124,6 +133,7 @@ export interface Database {
   purchase_return_items: PurchaseReturnItemsTable;
   orders: OrdersTable;
   order_items: OrderItemsTable;
+  order_item_modifiers: OrderItemModifiersTable;
   order_ratings: OrderRatingsTable;
   drivers: DriversTable;
   delivery_assignments: DeliveryAssignmentsTable;
