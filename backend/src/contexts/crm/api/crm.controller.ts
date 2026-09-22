@@ -4,6 +4,7 @@ import { RecordFollowupHandler } from "../application/commands/record-followup.h
 import { UpdateComplaintStatusHandler } from "../application/commands/update-complaint-status.handler";
 import { ListComplaintsHandler } from "../application/queries/list-complaints.handler";
 import { GetLatestComplaintByPhoneHandler } from "../application/queries/get-latest-complaint-by-phone.handler";
+import { ListFollowupQueueHandler } from "../application/queries/list-followup-queue.handler";
 import { RecordFollowupDto } from "./dto/record-followup.dto";
 import { UpdateComplaintStatusDto } from "./dto/update-complaint-status.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
@@ -22,8 +23,28 @@ export class CrmController {
     private readonly recordFollowup: RecordFollowupHandler,
     private readonly updateComplaintStatus: UpdateComplaintStatusHandler,
     private readonly listComplaints: ListComplaintsHandler,
-    private readonly getLatestComplaintByPhone: GetLatestComplaintByPhoneHandler
+    private readonly getLatestComplaintByPhone: GetLatestComplaintByPhoneHandler,
+    private readonly listFollowupQueue: ListFollowupQueueHandler
   ) {}
+
+  @Get("followup-queue")
+  @RequirePermission("crm.followups.view")
+  async followupQueue(@Query("branchId") branchId?: string) {
+    const rows = await this.listFollowupQueue.execute(branchId);
+    return rows.map((r) => ({
+      orderId: r.orderId,
+      branchId: r.branchId,
+      branchName: r.branchName,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
+      addressDetails: r.addressDetails,
+      total: r.total,
+      deliveredAt: r.deliveredAt,
+      lastCallResult: r.lastCallResult,
+      lastNotes: r.lastNotes,
+      lastCalledAt: r.lastCalledAt,
+    }));
+  }
 
   @Post("followups")
   @RequirePermission("crm.followups.record")
@@ -32,6 +53,7 @@ export class CrmController {
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
     const { followup, complaint } = await this.recordFollowup.execute({
+      orderId: dto.orderId,
       legacyOrderId: dto.legacyOrderId,
       branchId: dto.branchId,
       customerPhone: dto.customerPhone,
@@ -79,6 +101,7 @@ export class CrmController {
 function toPublicFollowup(followup: CustomerFollowup) {
   return {
     id: followup.id,
+    orderId: followup.orderId,
     legacyOrderId: followup.legacyOrderId,
     branchId: followup.branchId,
     customerPhone: followup.customerPhone,

@@ -8,6 +8,7 @@ import {
 import { COMPLAINT_REPOSITORY, type ComplaintRepositoryPort } from "../../domain/ports/complaint-repository.port";
 
 export interface RecordFollowupCommand {
+  orderId?: string | null;
   legacyOrderId?: number | null;
   branchId?: string | null;
   customerPhone: string;
@@ -41,8 +42,11 @@ export class RecordFollowupHandler {
   ) {}
 
   async execute(command: RecordFollowupCommand): Promise<RecordFollowupResult> {
-    const existing =
-      command.legacyOrderId != null ? await this.followups.findByLegacyOrderId(command.legacyOrderId) : null;
+    const existing = command.orderId
+      ? await this.followups.findByOrderId(command.orderId)
+      : command.legacyOrderId != null
+        ? await this.followups.findByLegacyOrderId(command.legacyOrderId)
+        : null;
 
     let followup: CustomerFollowup;
     if (existing) {
@@ -56,6 +60,7 @@ export class RecordFollowupHandler {
       followup = existing;
     } else {
       followup = CustomerFollowup.register({
+        orderId: command.orderId,
         legacyOrderId: command.legacyOrderId,
         branchId: command.branchId,
         customerPhone: command.customerPhone,

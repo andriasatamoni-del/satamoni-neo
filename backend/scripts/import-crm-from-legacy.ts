@@ -132,6 +132,7 @@ export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Databa
     const branchId = await resolveBranchId(row.branch_id);
     const existing = await followupRepo.findByLegacyFollowupId(row.id);
     const followup = CustomerFollowup.reconstitute(existing ? existing.id : randomUUID(), {
+      orderId: existing ? existing.orderId : null,
       legacyOrderId: row.order_id,
       branchId,
       customerPhone: row.customer_phone,

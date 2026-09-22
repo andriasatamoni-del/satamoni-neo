@@ -4,6 +4,7 @@ export interface CustomerFollowupRepositoryPort {
   save(followup: CustomerFollowup): Promise<void>;
   findById(id: string): Promise<CustomerFollowup | null>;
   findByLegacyOrderId(legacyOrderId: number): Promise<CustomerFollowup | null>;
+  findByOrderId(orderId: string): Promise<CustomerFollowup | null>;
   findByLegacyFollowupId(legacyFollowupId: number): Promise<CustomerFollowup | null>;
 }
 

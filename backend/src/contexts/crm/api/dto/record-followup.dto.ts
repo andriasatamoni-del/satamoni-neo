@@ -25,6 +25,10 @@ export class ComplaintInputDto {
 
 export class RecordFollowupDto {
   @IsOptional()
+  @IsUUID()
+  orderId?: string | null;
+
+  @IsOptional()
   @IsInt()
   legacyOrderId?: number | null;
 

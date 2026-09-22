@@ -8,6 +8,7 @@ export const SATISFACTION_RATINGS = ["excellent", "good", "average", "bad"] as c
 export type SatisfactionRating = (typeof SATISFACTION_RATINGS)[number];
 
 export interface CustomerFollowupProps {
+  orderId: string | null;
   legacyOrderId: number | null;
   branchId: string | null;
   customerPhone: string;
@@ -21,9 +22,12 @@ export interface CustomerFollowupProps {
 }
 
 // نفس مفهوم customer_followups في الريبو القديم (CRM-1): مكالمة متابعة جودة بعد تسليم أوردر دليفري.
-// order_id بقى legacyOrderId عادي (مش FK) لأن Orders context لسه ما اتبناش - راجع تعليق migration
-// 002_create_crm_tables. صف واحد بيتحدّث (upsert) لكل legacyOrderId - نفس منطق ON CONFLICT (order_id)
-// في الريبو القديم، بس هنا الـapplication layer (RecordFollowupHandler) هو اللي بيقرر create/update.
+// وقت ما اتبنى ده (CRM-1) كان Orders context لسه ما اتبناش، فـorder_id بقى legacyOrderId عادي (مش FK) -
+// راجع تعليق migration 002_create_crm_tables. بعد ما Orders اتبنى (NEOORD)، اتضاف orderId حقيقي (FK)
+// كمان (migration 030) عشان طابور المتابعة (followup-queue) يشتغل على أوردرات satamoni-neo نفسها، مش
+// بس المستوردة من الريبو القديم - orderId وlegacyOrderId الاتنين اختياريين وممكن يتسجّل واحد بس حسب
+// مصدر الطلب. صف واحد بيتحدّث (upsert) لكل طلب - نفس منطق ON CONFLICT (order_id) في الريبو القديم، بس
+// هنا الـapplication layer (RecordFollowupHandler) هو اللي بيقرر create/update.
 export class CustomerFollowup {
   private constructor(
     public readonly id: string,
@@ -31,6 +35,7 @@ export class CustomerFollowup {
   ) {}
 
   static register(input: {
+    orderId?: string | null;
     legacyOrderId?: number | null;
     branchId?: string | null;
     customerPhone: string;
@@ -52,6 +57,7 @@ export class CustomerFollowup {
     }
 
     return new CustomerFollowup(randomUUID(), {
+      orderId: input.orderId ?? null,
       legacyOrderId: input.legacyOrderId ?? null,
       branchId: input.branchId ?? null,
       customerPhone: input.customerPhone,
@@ -94,6 +100,7 @@ export class CustomerFollowup {
     this.props.calledAt = new Date();
   }
 
+  get orderId(): string | null { return this.props.orderId; }
   get legacyOrderId(): number | null { return this.props.legacyOrderId; }
   get branchId(): string | null { return this.props.branchId; }
   get customerPhone(): string { return this.props.customerPhone; }

@@ -1,8 +1,9 @@
 import type { Generated } from "kysely";
 
-// مطابق لـmigration 002_create_crm_tables بالظبط
+// مطابق لـmigration 002_create_crm_tables + 030_add_order_id_to_customer_followups بالظبط
 export interface CustomerFollowupsTable {
   id: Generated<string>;
+  order_id: string | null;
   legacy_order_id: number | null;
   branch_id: string | null;
   customer_phone: string;

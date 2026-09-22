@@ -78,6 +78,7 @@ describe("KyselyCustomerFollowupRepository", () => {
     expect((await repo.findById(followup.id))!.branchId).toBeNull();
 
     const withBranch = CustomerFollowup.reconstitute(followup.id, {
+      orderId: followup.orderId,
       legacyOrderId: followup.legacyOrderId,
       branchId: "11111111-1111-1111-1111-111111111111",
       customerPhone: followup.customerPhone,

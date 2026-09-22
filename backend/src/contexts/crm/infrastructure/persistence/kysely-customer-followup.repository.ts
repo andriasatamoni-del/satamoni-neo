@@ -17,6 +17,7 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
       .values(row)
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
+          order_id: row.order_id,
           legacy_order_id: row.legacy_order_id,
           branch_id: row.branch_id,
           customer_phone: row.customer_phone,
@@ -45,6 +46,15 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
     return row ? this.toDomain(row) : null;
   }
 
+  async findByOrderId(orderId: string): Promise<CustomerFollowup | null> {
+    const row = await this.db
+      .selectFrom("customer_followups")
+      .selectAll()
+      .where("order_id", "=", orderId)
+      .executeTakeFirst();
+    return row ? this.toDomain(row) : null;
+  }
+
   async findByLegacyFollowupId(legacyFollowupId: number): Promise<CustomerFollowup | null> {
     const row = await this.db
       .selectFrom("customer_followups")
@@ -57,6 +67,7 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
   private toRow(followup: CustomerFollowup) {
     return {
       id: followup.id,
+      order_id: followup.orderId,
       legacy_order_id: followup.legacyOrderId,
       branch_id: followup.branchId,
       customer_phone: followup.customerPhone,
@@ -72,6 +83,7 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
 
   private toDomain(row: Selectable<CustomerFollowupsTable>): CustomerFollowup {
     return CustomerFollowup.reconstitute(row.id, {
+      orderId: row.order_id,
       legacyOrderId: row.legacy_order_id,
       branchId: row.branch_id,
       customerPhone: row.customer_phone,

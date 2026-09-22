@@ -21,6 +21,25 @@ interface Complaint {
   resolvedAt: string | null;
 }
 
+interface Branch {
+  id: string;
+  name: string;
+}
+
+interface FollowupQueueRow {
+  orderId: string;
+  branchId: string;
+  branchName: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  addressDetails: string | null;
+  total: number;
+  deliveredAt: string;
+  lastCallResult: string | null;
+  lastNotes: string | null;
+  lastCalledAt: string | null;
+}
+
 const CALL_RESULTS = [
   { value: "answered", label: "اتصل ورد" },
   { value: "no_answer", label: "ملحقش يرد" },
@@ -43,6 +62,19 @@ const STATUS_LABELS: Record<string, string> = { open: "مفتوحة", in_progres
 export function CrmPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
+
+  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const [queueBranchId, setQueueBranchId] = useState("");
+  const followupQueueQuery = useQuery({
+    queryKey: ["crm", "followup-queue", queueBranchId],
+    queryFn: () => apiRequest<FollowupQueueRow[]>(`/crm/followup-queue?branchId=${queueBranchId}`),
+    enabled: !!queueBranchId,
+  });
+  const quickFollowup = useMutation({
+    mutationFn: (input: { orderId: string; customerPhone: string; callResult: string }) =>
+      apiRequest("/crm/followups", { method: "POST", body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["crm", "followup-queue"] }),
+  });
 
   const complaintsQuery = useQuery({
     queryKey: ["crm", "complaints", statusFilter],
@@ -112,6 +144,64 @@ export function CrmPage() {
   return (
     <div>
       <PageHeader title="متابعة العملاء والشكاوى" description="سجّل مكالمات المتابعة وتابع الشكاوى المفتوحة" />
+
+      <Card className="mb-6">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>طابور المتابعة ({followupQueueQuery.data?.length ?? 0})</CardTitle>
+          <Select className="w-auto" value={queueBranchId} onChange={(e) => setQueueBranchId(e.target.value)}>
+            <option value="">اختر فرع</option>
+            {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        </CardHeader>
+        <CardBody className="p-0">
+          {!queueBranchId && <EmptyState>اختر فرع عشان تشوف طلبات محتاجة مكالمة متابعة</EmptyState>}
+          {queueBranchId && (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>العميل</TH>
+                  <TH>التليفون</TH>
+                  <TH>العنوان</TH>
+                  <TH>القيمة</TH>
+                  <TH>آخر محاولة</TH>
+                  <TH>إجراء</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {followupQueueQuery.data?.map((row) => (
+                  <TR key={row.orderId}>
+                    <TD className="font-semibold text-slate-900">{row.customerName ?? "-"}</TD>
+                    <TD>{row.customerPhone ?? "-"}</TD>
+                    <TD className="max-w-xs truncate">{row.addressDetails ?? "-"}</TD>
+                    <TD>{row.total.toFixed(2)} ج.م</TD>
+                    <TD>{row.lastCallResult === "no_answer" ? "محاولش يرد" : "لسه ما اتصلناش"}</TD>
+                    <TD>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          disabled={quickFollowup.isPending || !row.customerPhone}
+                          onClick={() => quickFollowup.mutate({ orderId: row.orderId, customerPhone: row.customerPhone!, callResult: "answered" })}
+                        >
+                          رد ✅
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={quickFollowup.isPending || !row.customerPhone}
+                          onClick={() => quickFollowup.mutate({ orderId: row.orderId, customerPhone: row.customerPhone!, callResult: "no_answer" })}
+                        >
+                          محاولش يرد
+                        </Button>
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+          {queueBranchId && followupQueueQuery.data?.length === 0 && <EmptyState>مفيش طلبات محتاجة متابعة دلوقتي</EmptyState>}
+        </CardBody>
+      </Card>
 
       <Card className="mb-6">
         <CardHeader>

@@ -16,6 +16,17 @@ describe("CustomerFollowup aggregate", () => {
       expect(followup.satisfactionRating).toBe("good");
       expect(followup.hasComplaint).toBe(false);
       expect(followup.branchId).toBeNull();
+      expect(followup.orderId).toBeNull();
+    });
+
+    it("بيسجّل orderId حقيقي لطلب satamoni-neo (مش بس legacyOrderId)", () => {
+      const followup = CustomerFollowup.register({
+        orderId: "11111111-1111-1111-1111-111111111111",
+        customerPhone: "01000000000",
+        callResult: "answered",
+      });
+      expect(followup.orderId).toBe("11111111-1111-1111-1111-111111111111");
+      expect(followup.legacyOrderId).toBeNull();
     });
 
     it("بيرفض نتيجة اتصال مش معروفة", () => {
