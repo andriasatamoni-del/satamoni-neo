@@ -84,6 +84,7 @@ import type {
 } from "../../contexts/printing/infrastructure/persistence/printing.schema";
 import type { PosSettingsTable } from "../../contexts/settings/infrastructure/persistence/pos-settings.schema";
 import type { BranchDaysTable } from "../../contexts/branch-day/infrastructure/persistence/branch-day.schema";
+import type { BranchStockThresholdsTable } from "../../contexts/inventory/infrastructure/persistence/branch-stock-threshold.schema";
 
 export interface Database {
   users: UsersTable;
@@ -150,4 +151,5 @@ export interface Database {
   print_jobs: PrintJobsTable;
   pos_settings: PosSettingsTable;
   branch_days: BranchDaysTable;
+  branch_stock_thresholds: BranchStockThresholdsTable;
 }

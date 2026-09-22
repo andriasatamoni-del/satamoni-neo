@@ -67,3 +67,9 @@ export class StocktakeNotFoundError extends DomainError {
     super("جلسة الجرد دي مش موجودة");
   }
 }
+
+export class NegativeStockThresholdError extends DomainError {
+  constructor() {
+    super("حدود المخزون لازم تكون صفر أو أكبر");
+  }
+}

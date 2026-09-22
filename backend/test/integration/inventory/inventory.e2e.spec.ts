@@ -49,6 +49,7 @@ describe("Inventory - /inventory (e2e ضد تطبيق حقيقي كامل)", () 
 
   afterAll(async () => {
     const db = app.get(KYSELY);
+    await sql`DELETE FROM branch_stock_thresholds WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM branch_stock_balances`.execute(db);
     await sql`DELETE FROM stock_movements`.execute(db);
     await sql`DELETE FROM inventory_items WHERE name LIKE '%-e2e-جست'`.execute(db);
@@ -107,5 +108,52 @@ describe("Inventory - /inventory (e2e ضد تطبيق حقيقي كامل)", () 
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: "00000000-0000-0000-0000-000000000000", branchId, movementType: "RECEIPT", quantityDelta: 1 });
     expect(res.status).toBe(404);
+  });
+
+  test("GET /inventory/stock-thresholds قبل الضبط بيرجّع حدود فاضية (كله null)", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/inventory/stock-thresholds?branchId=${branchId}&inventoryItemId=${itemId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.reorderPoint).toBeNull();
+  });
+
+  test("PATCH /inventory/stock-thresholds بقيمة سالبة -> 400", async () => {
+    const res = await request(app.getHttpServer())
+      .patch("/inventory/stock-thresholds")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, inventoryItemId: itemId, reorderPoint: -5 });
+    expect(res.status).toBe(400);
+  });
+
+  test("PATCH /inventory/stock-thresholds ثم GET /inventory/low-stock بيعكس الرصيد الحقيقي فعليًا", async () => {
+    // الرصيد الحالي للصنف ده 20 (من اختبار الاستلام فوق) - نضبط حد إعادة طلب 30 عشان يظهر NEEDS_REORDER
+    const patchRes = await request(app.getHttpServer())
+      .patch("/inventory/stock-thresholds")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, inventoryItemId: itemId, reorderPoint: 30 });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.reorderPoint).toBe(30);
+    expect(patchRes.body.updatedBy).toBeTruthy();
+
+    const lowStockRes = await request(app.getHttpServer())
+      .get(`/inventory/low-stock?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(lowStockRes.status).toBe(200);
+    const row = lowStockRes.body.find((r: { inventoryItemId: string }) => r.inventoryItemId === itemId);
+    expect(row).toBeTruthy();
+    expect(row.status).toBe("NEEDS_REORDER");
+    expect(row.quantity).toBe(20);
+
+    // نزوّد الرصيد فوق حد إعادة الطلب - المفروض يختفي من قايمة النواقص
+    await request(app.getHttpServer())
+      .post("/inventory/movements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ inventoryItemId: itemId, branchId, movementType: "RECEIPT", quantityDelta: 50 });
+
+    const afterRes = await request(app.getHttpServer())
+      .get(`/inventory/low-stock?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(afterRes.body.some((r: { inventoryItemId: string }) => r.inventoryItemId === itemId)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterInventoryItemHandler } from "../application/commands/register-inventory-item.handler";
 import { RecordStockMovementHandler } from "../application/commands/record-stock-movement.handler";
@@ -8,9 +8,13 @@ import { GetBranchBalanceHandler } from "../application/queries/get-branch-balan
 import { ListStocktakesHandler } from "../application/queries/list-stocktakes.handler";
 import { GetStocktakeHandler } from "../application/queries/get-stocktake.handler";
 import { GetStocktakeBoardHandler } from "../application/queries/get-stocktake-board.handler";
+import { UpdateStockThresholdHandler } from "../application/commands/update-stock-threshold.handler";
+import { GetStockThresholdHandler } from "../application/queries/get-stock-threshold.handler";
+import { ListLowStockHandler } from "../application/queries/list-low-stock.handler";
 import { RegisterInventoryItemDto } from "./dto/register-inventory-item.dto";
 import { RecordStockMovementDto } from "./dto/record-stock-movement.dto";
 import { RegisterStocktakeDto } from "./dto/register-stocktake.dto";
+import { UpdateStockThresholdDto } from "./dto/update-stock-threshold.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -19,6 +23,7 @@ import { InventoryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { InventoryItem } from "../domain/inventory-item.aggregate";
 import type { StockMovement } from "../domain/stock-movement.aggregate";
 import type { Stocktake } from "../domain/stocktake.aggregate";
+import type { BranchStockThreshold } from "../domain/branch-stock-threshold.aggregate";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,7 +37,10 @@ export class InventoryController {
     private readonly getBalance: GetBranchBalanceHandler,
     private readonly listStocktakes: ListStocktakesHandler,
     private readonly getStocktake: GetStocktakeHandler,
-    private readonly getStocktakeBoard: GetStocktakeBoardHandler
+    private readonly getStocktakeBoard: GetStocktakeBoardHandler,
+    private readonly updateStockThreshold: UpdateStockThresholdHandler,
+    private readonly getStockThreshold: GetStockThresholdHandler,
+    private readonly listLowStock: ListLowStockHandler
   ) {}
 
   @Get("items")
@@ -61,6 +69,33 @@ export class InventoryController {
   async balance(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
     const quantity = await this.getBalance.execute(branchId, inventoryItemId);
     return { branchId, inventoryItemId, quantity };
+  }
+
+  @Get("stock-thresholds")
+  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  async stockThreshold(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
+    return toPublicThreshold(await this.getStockThreshold.execute(branchId, inventoryItemId));
+  }
+
+  @Patch("stock-thresholds")
+  @RequirePermission("inventory.items.manage")
+  async updateStockThresholdRoute(@Body() dto: UpdateStockThresholdDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicThreshold(
+      await this.updateStockThreshold.execute({
+        branchId: dto.branchId,
+        inventoryItemId: dto.inventoryItemId,
+        reorderPoint: dto.reorderPoint,
+        minStock: dto.minStock,
+        maxStock: dto.maxStock,
+        updatedBy: req.user.id,
+      })
+    );
+  }
+
+  @Get("low-stock")
+  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  async lowStock(@Query("branchId") branchId?: string) {
+    return this.listLowStock.execute(branchId);
   }
 
   @Get("stocktakes/board")
@@ -108,6 +143,18 @@ function toPublicMovement(movement: StockMovement) {
     quantityDelta: movement.quantityDelta,
     reason: movement.reason,
     occurredAt: movement.occurredAt,
+  };
+}
+
+function toPublicThreshold(threshold: BranchStockThreshold) {
+  return {
+    branchId: threshold.branchId,
+    inventoryItemId: threshold.inventoryItemId,
+    reorderPoint: threshold.reorderPoint,
+    minStock: threshold.minStock,
+    maxStock: threshold.maxStock,
+    updatedBy: threshold.updatedBy,
+    updatedAt: threshold.updatedAt,
   };
 }
 

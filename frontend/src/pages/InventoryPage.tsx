@@ -51,6 +51,18 @@ interface Stocktake {
   lines: StocktakeLine[];
 }
 
+interface LowStockRow {
+  branchId: string;
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  reorderPoint: number | null;
+  status: "OUT" | "NEEDS_REORDER";
+}
+
+const LOW_STOCK_STATUS_LABELS: Record<string, string> = { OUT: "خلص خالص", NEEDS_REORDER: "محتاج إعادة طلب" };
+
 const MOVEMENT_TYPES = [
   { value: "RECEIPT", label: "استلام" },
   { value: "CONSUMPTION", label: "استهلاك" },
@@ -62,6 +74,7 @@ const MOVEMENT_TYPES = [
 const TABS = [
   { key: "items", label: "الأصناف والحركات" },
   { key: "stocktake", label: "الجرد الفعلي" },
+  { key: "low-stock", label: "حدود المخزون والتنبيهات" },
 ];
 
 function fmt(n: number): string {
@@ -138,6 +151,22 @@ export function InventoryPage() {
   const [stocktakeError, setStocktakeError] = useState<string | null>(null);
   const [stocktakeResult, setStocktakeResult] = useState<string | null>(null);
   const [openStocktakeId, setOpenStocktakeId] = useState<string | null>(null);
+
+  const [lowStockBranchId, setLowStockBranchId] = useState("");
+  const [reorderPointDrafts, setReorderPointDrafts] = useState<Record<string, string>>({});
+  const lowStockQuery = useQuery({
+    queryKey: ["inventory", "low-stock", lowStockBranchId],
+    queryFn: () => apiRequest<LowStockRow[]>(`/inventory/low-stock?branchId=${lowStockBranchId}`),
+    enabled: !!lowStockBranchId,
+  });
+  const updateThreshold = useMutation({
+    mutationFn: ({ inventoryItemId, reorderPoint }: { inventoryItemId: string; reorderPoint: number }) =>
+      apiRequest("/inventory/stock-thresholds", {
+        method: "PATCH",
+        body: { branchId: lowStockBranchId, inventoryItemId, reorderPoint },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "low-stock", lowStockBranchId] }),
+  });
 
   const boardQuery = useQuery({
     queryKey: ["inventory", "stocktakes", "board", stocktakeBranchId],
@@ -420,6 +449,90 @@ export function InventoryPage() {
               </CardBody>
             </Card>
           )}
+        </div>
+      )}
+
+      {tab === "low-stock" && (
+        <div className="space-y-6">
+          <Card>
+            <CardBody>
+              <Field label="الفرع">
+                <Select value={lowStockBranchId} onChange={(e) => setLowStockBranchId(e.target.value)}>
+                  <option value="">اختر فرع</option>
+                  {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </Field>
+            </CardBody>
+          </Card>
+
+          {lowStockBranchId && (
+            <>
+              <Card>
+                <CardHeader><CardTitle>ضبط حد إعادة الطلب</CardTitle></CardHeader>
+                <CardBody className="p-0">
+                  <Table>
+                    <THead>
+                      <TR><TH>الصنف</TH><TH>الوحدة</TH><TH>حد إعادة الطلب</TH><TH></TH></TR>
+                    </THead>
+                    <TBody>
+                      {items.map((item) => {
+                        const existing = lowStockQuery.data?.find((r) => r.inventoryItemId === item.id);
+                        const draft = reorderPointDrafts[item.id] ?? (existing?.reorderPoint != null ? String(existing.reorderPoint) : "");
+                        return (
+                          <TR key={item.id}>
+                            <TD className="font-semibold text-slate-900">{item.name}</TD>
+                            <TD>{item.unit}</TD>
+                            <TD>
+                              <Input
+                                type="number"
+                                min="0"
+                                className="w-28"
+                                value={draft}
+                                onChange={(e) => setReorderPointDrafts({ ...reorderPointDrafts, [item.id]: e.target.value })}
+                              />
+                            </TD>
+                            <TD>
+                              <Button
+                                size="sm"
+                                disabled={updateThreshold.isPending || draft === ""}
+                                onClick={() => updateThreshold.mutate({ inventoryItemId: item.id, reorderPoint: Number(draft) })}
+                              >
+                                حفظ
+                              </Button>
+                            </TD>
+                          </TR>
+                        );
+                      })}
+                    </TBody>
+                  </Table>
+                  {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>تنبيهات المخزون المنخفض ({lowStockQuery.data?.length ?? 0})</CardTitle></CardHeader>
+                <CardBody className="p-0">
+                  <Table>
+                    <THead>
+                      <TR><TH>الصنف</TH><TH>الرصيد الحالي</TH><TH>حد إعادة الطلب</TH><TH>الحالة</TH></TR>
+                    </THead>
+                    <TBody>
+                      {lowStockQuery.data?.map((r) => (
+                        <TR key={r.inventoryItemId}>
+                          <TD className="font-semibold text-slate-900">{r.itemName}</TD>
+                          <TD>{fmt(r.quantity)} {r.unit}</TD>
+                          <TD>{r.reorderPoint === null ? "-" : fmt(r.reorderPoint)}</TD>
+                          <TD><Badge tone={r.status === "OUT" ? "danger" : "warning"}>{LOW_STOCK_STATUS_LABELS[r.status]}</Badge></TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {lowStockQuery.data?.length === 0 && <EmptyState>مفيش أصناف منخفضة دلوقتي - كل حاجة تمام</EmptyState>}
+                </CardBody>
+              </Card>
+            </>
+          )}
+          {!lowStockBranchId && <EmptyState>اختر فرع عشان تشوف حدود المخزون والتنبيهات</EmptyState>}
         </div>
       )}
     </div>
