@@ -19,3 +19,13 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </StrictMode>
 );
+
+// وضع الكاشير الأوفلاين (OFFLINE) - بيكاش نسخة من الواجهة عشان صفحة الطلبات تقدر تفتح حتى من غير نت.
+// مش موجود في المتصفحات القديمة/بعض بيئات الاختبار - بنتأكد إنه موجود الأول
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // فشل التسجيل مش خطأ يوقف التطبيق - التطبيق يشتغل عادي أونلاين، بس من غير كاش أوفلاين للواجهة
+    });
+  });
+}

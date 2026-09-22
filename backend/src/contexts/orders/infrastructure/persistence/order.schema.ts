@@ -20,6 +20,7 @@ export interface OrdersTable {
   legacy_order_id: number | null;
   payment_method_id: string | null;
   rating_token: Generated<string>;
+  client_request_id: string | null;
 }
 
 export interface OrderItemsTable {

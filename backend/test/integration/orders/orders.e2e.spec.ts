@@ -214,6 +214,27 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     expect(accepted.body.kitchenAcceptedAt).not.toBeNull();
   });
 
+  test("POST /orders بنفس clientRequestId مرتين - وضع الكاشير الأوفلاين، بيرجّع نفس الطلب مرة واحدة بس", async () => {
+    const clientRequestId = "22222222-2222-4222-a222-222222222222";
+    const first = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "dinein", items: [{ variantId: variantWithoutRecipeId, quantity: 1 }], clientRequestId });
+    expect(first.status).toBe(201);
+
+    const retry = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "dinein", items: [{ variantId: variantWithoutRecipeId, quantity: 1 }], clientRequestId });
+    expect(retry.status).toBe(201);
+    expect(retry.body.id).toBe(first.body.id); // نفس الطلب بالظبط، مش طلب جديد
+
+    const orders = await request(app.getHttpServer())
+      .get(`/orders?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(orders.body.filter((o: { id: string }) => o.id === first.body.id)).toHaveLength(1);
+  });
+
   test("POST /orders بحجم مش موجود -> 400 (validation)", async () => {
     const res = await request(app.getHttpServer())
       .post("/orders")

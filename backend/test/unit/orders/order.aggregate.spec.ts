@@ -26,6 +26,21 @@ describe("Order aggregate", () => {
     expect(order.kitchenStatus).toBe("NEW");
   });
 
+  it("بيحفظ clientRequestId لو اتبعت (وضع الكاشير الأوفلاين) وبيفضل null لو معندوش", () => {
+    const withId = Order.register({
+      branchId: "branch-1", orderType: "takeaway",
+      items: [{ menuItemId: "item-1", variantId: "variant-1", quantity: 1, unitPrice: 10 }],
+      clientRequestId: "11111111-1111-4111-a111-111111111111",
+    });
+    expect(withId.clientRequestId).toBe("11111111-1111-4111-a111-111111111111");
+
+    const withoutId = Order.register({
+      branchId: "branch-1", orderType: "takeaway",
+      items: [{ menuItemId: "item-1", variantId: "variant-1", quantity: 1, unitPrice: 10 }],
+    });
+    expect(withoutId.clientRequestId).toBeNull();
+  });
+
   it("بيرفض طلب من غير أصناف", () => {
     expect(() => Order.register({ branchId: "branch-1", orderType: "takeaway", items: [] })).toThrow(EmptyOrderError);
   });

@@ -4,6 +4,7 @@ export interface OrderRepositoryPort {
   save(order: Order): Promise<void>;
   findById(id: string): Promise<Order | null>;
   findByLegacyOrderId(legacyId: number): Promise<Order | null>;
+  findByClientRequestId(clientRequestId: string): Promise<Order | null>;
   list(filter?: { branchId?: string }): Promise<Order[]>;
 }
 

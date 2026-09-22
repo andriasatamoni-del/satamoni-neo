@@ -34,6 +34,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           legacy_order_id: order.legacyOrderId,
           payment_method_id: order.paymentMethodId,
           rating_token: order.ratingToken,
+          client_request_id: order.clientRequestId,
         })
         .onConflict((oc) =>
           oc.column("id").doUpdateSet({
@@ -84,6 +85,12 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
 
   async findByLegacyOrderId(legacyId: number): Promise<Order | null> {
     const row = await this.db.selectFrom("orders").selectAll().where("legacy_order_id", "=", legacyId).executeTakeFirst();
+    if (!row) return null;
+    return this.toDomain(row, await this.loadItems(row.id));
+  }
+
+  async findByClientRequestId(clientRequestId: string): Promise<Order | null> {
+    const row = await this.db.selectFrom("orders").selectAll().where("client_request_id", "=", clientRequestId).executeTakeFirst();
     if (!row) return null;
     return this.toDomain(row, await this.loadItems(row.id));
   }
@@ -149,6 +156,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
       legacyOrderId: row.legacy_order_id,
       paymentMethodId: row.payment_method_id,
       ratingToken: row.rating_token,
+      clientRequestId: row.client_request_id,
     });
   }
 }

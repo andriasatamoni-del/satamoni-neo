@@ -36,4 +36,6 @@ export class RegisterOrderDto {
   @IsOptional() @IsNumber() discount?: number;
   @IsOptional() @IsBoolean() stockApproved?: boolean;
   @IsOptional() @IsUUID() paymentMethodId?: string;
+  // من وضع الكاشير الأوفلاين - راجع تعليق Order.clientRequestId
+  @IsOptional() @IsUUID() clientRequestId?: string;
 }

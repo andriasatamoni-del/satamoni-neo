@@ -34,6 +34,9 @@ export interface RegisterOrderCommand {
   // Inventory/Procurement بالظبط
   stockApproved?: boolean;
   paymentMethodId?: string | null;
+  // من وضع الكاشير الأوفلاين (OFFLINE) - راجع تعليق Order.clientRequestId. لو موجود ولقينا طلب مسجّل
+  // بيه بالفعل، بنرجّعه زي ما هو من غير ما نكرر استهلاك المخزون أو الحدث تاني.
+  clientRequestId?: string | null;
 }
 
 // بيسجّل الطلب ويستهلك المخزون النظري (عن طريق الوصفة النشطة لكل حجم) في نفس الطلب - مرحلتين:
@@ -53,6 +56,11 @@ export class RegisterOrderHandler {
   ) {}
 
   async execute(command: RegisterOrderCommand): Promise<Order> {
+    if (command.clientRequestId) {
+      const existing = await this.orders.findByClientRequestId(command.clientRequestId);
+      if (existing) return existing;
+    }
+
     const resolvedItems: {
       menuItemId: string;
       variantId: string;

@@ -63,6 +63,10 @@ export interface OrderProps {
   // فلسفة orders.rating_token في الريبو القديم بالظبط: ثابت طول عمر الطلب، بيتولّد مرة واحدة وقت
   // التسجيل، ومش رقم الطلب نفسه عشان محدش يقدر يخمّنه.
   ratingToken: string;
+  // معرّف بيولّده الكاشير (الفرونت إند) وقت التسجيل - مستخدم في وضع الكاشير الأوفلاين (OFFLINE) عشان
+  // لو نفس الطلب اتبعت مرتين (مثلًا الشبكة رجعت في نفس لحظة إعادة المحاولة) نرجّع نفس الطلب المتسجّل
+  // بدل ما نسجّله تاني - idempotency على مستوى الطلب مش على مستوى الـHTTP request بس.
+  clientRequestId: string | null;
 }
 
 // Order - نفس مفهوم orders+order_items في الريبو القديم، بس مبسّط للسلايس الأول (Phase 3): من غير
@@ -95,6 +99,7 @@ export class Order {
     createdBy?: string | null;
     legacyOrderId?: number | null;
     paymentMethodId?: string | null;
+    clientRequestId?: string | null;
   }): Order {
     if (!ORDER_TYPES.includes(input.orderType as OrderType)) throw new UnknownOrderTypeError(input.orderType);
     if (input.items.length === 0) throw new EmptyOrderError();
@@ -131,6 +136,7 @@ export class Order {
       legacyOrderId: input.legacyOrderId ?? null,
       paymentMethodId: input.paymentMethodId ?? null,
       ratingToken: randomUUID(),
+      clientRequestId: input.clientRequestId ?? null,
     });
   }
 
@@ -181,4 +187,5 @@ export class Order {
   get legacyOrderId(): number | null { return this.props.legacyOrderId; }
   get paymentMethodId(): string | null { return this.props.paymentMethodId; }
   get ratingToken(): string { return this.props.ratingToken; }
+  get clientRequestId(): string | null { return this.props.clientRequestId; }
 }

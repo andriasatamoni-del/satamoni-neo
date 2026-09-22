@@ -9,6 +9,23 @@ import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table"
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { ShiftBanner } from "./orders/ShiftBanner";
 import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
+import { enqueueOrder, loadSnapshot, saveSnapshot } from "../shared/offline/db";
+import { useOfflineSync } from "../shared/offline/useOfflineSync";
+
+// وضع الكاشير الأوفلاين (OFFLINE) - بيجيب البيانات من الشبكة كالمعتاد، وبيحفظ آخر نسخة ناجحة في
+// IndexedDB. لو الطلب فشل (أوفلاين)، بيرجّع آخر نسخة محفوظة بدل ما يوقف الصفحة تمامًا - الكاشير يقدر
+// يفضل يشتغل بقائمة الطعام والفروع وطرق الدفع اللي كانت متاحة آخر مرة كان فيها نت.
+async function offlineFallbackQuery<T>(path: string, snapshotKey: string): Promise<T> {
+  try {
+    const data = await apiRequest<T>(path);
+    await saveSnapshot(snapshotKey, data);
+    return data;
+  } catch (err) {
+    const cached = await loadSnapshot<T>(snapshotKey);
+    if (cached) return cached;
+    throw err;
+  }
+}
 
 interface Branch { id: string; name: string; }
 interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: "regular" | "fasting"; isActive: boolean; }
@@ -81,10 +98,14 @@ const MENU_GROUP_LABELS: Record<string, string> = { regular: "عادي", fasting
 
 export function OrdersPage() {
   const queryClient = useQueryClient();
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const offlineSync = useOfflineSync();
+  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches") });
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
-  const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
-  const paymentMethodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
+  const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items") });
+  const paymentMethodsQuery = useQuery({
+    queryKey: ["payment-control", "methods"],
+    queryFn: () => offlineFallbackQuery<PaymentMethod[]>("/payment-control/payment-methods", "payment-methods"),
+  });
 
   const [branchId, setBranchId] = useState("");
   const ordersQuery = useQuery({
@@ -186,26 +207,46 @@ export function OrdersPage() {
   const total = Math.max(0, subtotal - discountNum);
 
   const createOrder = useMutation({
-    mutationFn: () =>
-      apiRequest("/orders", {
-        method: "POST",
-        body: {
-          branchId,
-          orderType,
-          tableNumber: orderType === "dinein" && tableNumber ? tableNumber : undefined,
-          customerName: customerName || undefined,
-          customerPhone: customerPhone || undefined,
-          addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
-          items: cart.map((l) => ({
-            variantId: l.variantId,
-            quantity: l.quantity,
-            modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
-          })),
-          discount: discountNum > 0 ? discountNum : undefined,
-          paymentMethodId: paymentMethodId || undefined,
-        },
-      }),
-    onSuccess: () => {
+    // React Query بشكل افتراضي بيوقف تنفيذ الـmutation تمامًا وهو أوفلاين (networkMode: 'online')
+    // ويأجّله لحد ما النت يرجع - ده بالظبط عكس اللي محتاجينه هنا: عايزين الكود يتنفّذ فورًا وهو
+    // أوفلاين عشان يسجّل الطلب في الطابور المحلي بنفسه، مش ينتظر النت يرجع الأول
+    networkMode: "always",
+    mutationFn: async () => {
+      const payload = {
+        branchId,
+        orderType,
+        tableNumber: orderType === "dinein" && tableNumber ? tableNumber : undefined,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+        addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
+        items: cart.map((l) => ({
+          variantId: l.variantId,
+          quantity: l.quantity,
+          modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
+        })),
+        discount: discountNum > 0 ? discountNum : undefined,
+        paymentMethodId: paymentMethodId || undefined,
+        // معرّف بيتولّد هنا (مش في السيرفر) عشان لو الطلب اتسجّل في الطابور المحلي وبعدين اتزامن أكتر
+        // من مرة (وضع الكاشير الأوفلاين)، السيرفر يقدر يتجاهل التكرار - راجع تعليق Order.clientRequestId
+        clientRequestId: crypto.randomUUID(),
+      };
+      const cartSummary = cart.map((l) => `${l.itemName} × ${l.quantity}`).join("، ");
+
+      if (!navigator.onLine) {
+        await enqueueOrder({ clientRequestId: payload.clientRequestId, payload, summary: cartSummary, createdAt: Date.now() });
+        return { queued: true as const };
+      }
+      try {
+        await apiRequest("/orders", { method: "POST", body: payload });
+        return { queued: false as const };
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        // فشل الطلب من غير رد من السيرفر (انقطاع شبكة فعلي، مش رفض) - نسجّله في الطابور المحلي
+        await enqueueOrder({ clientRequestId: payload.clientRequestId, payload, summary: cartSummary, createdAt: Date.now() });
+        return { queued: true as const };
+      }
+    },
+    onSuccess: (result) => {
       setError(null);
       setCart([]);
       setTableNumber("");
@@ -214,8 +255,10 @@ export function OrdersPage() {
       setAddressDetails("");
       setDiscount("");
       setPaymentMethodId("");
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      if (!result.queued) {
+        queryClient.invalidateQueries({ queryKey: ["orders"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      }
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
@@ -245,6 +288,30 @@ export function OrdersPage() {
 
       <ShiftBanner />
       <ShiftReviewPanel />
+
+      {(!offlineSync.isOnline || offlineSync.pendingOrders.length > 0 || offlineSync.syncError) && (
+        <div className={`mb-4 rounded-xl border p-3 text-sm ${!offlineSync.isOnline ? "border-amber-200 bg-amber-50" : "border-brand-200 bg-brand-50"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-semibold text-slate-800">
+              {!offlineSync.isOnline && "أنت غير متصل بالإنترنت - الطلبات هتتسجّل محليًا وتتزامن أول ما النت يرجع. "}
+              {offlineSync.pendingOrders.length > 0 && `${offlineSync.pendingOrders.length} طلب في انتظار المزامنة.`}
+            </div>
+            {offlineSync.pendingOrders.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={offlineSync.syncNow} disabled={!offlineSync.isOnline || offlineSync.syncing}>
+                {offlineSync.syncing ? "بتتزامن..." : "مزامنة الآن"}
+              </Button>
+            )}
+          </div>
+          {offlineSync.syncError && <p className="mt-1 text-red-700">{offlineSync.syncError}</p>}
+          {offlineSync.pendingOrders.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
+              {offlineSync.pendingOrders.map((o) => (
+                <li key={o.clientRequestId}>{o.summary}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="الفرع">
