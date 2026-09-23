@@ -6,10 +6,12 @@ import { EMPLOYEE_REPOSITORY } from "./domain/ports/employee-repository.port";
 import { PAYROLL_RUN_REPOSITORY } from "./domain/ports/payroll-run-repository.port";
 import { LEAVE_REQUEST_REPOSITORY } from "./domain/ports/leave-request-repository.port";
 import { EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY } from "./domain/ports/employee-attendance-shift-repository.port";
+import { PAYROLL_ADJUSTMENT_REPOSITORY } from "./domain/ports/payroll-adjustment-repository.port";
 import { KyselyEmployeeRepository } from "./infrastructure/persistence/kysely-employee.repository";
 import { KyselyPayrollRunRepository } from "./infrastructure/persistence/kysely-payroll-run.repository";
 import { KyselyLeaveRequestRepository } from "./infrastructure/persistence/kysely-leave-request.repository";
 import { KyselyEmployeeAttendanceShiftRepository } from "./infrastructure/persistence/kysely-employee-attendance-shift.repository";
+import { KyselyPayrollAdjustmentRepository } from "./infrastructure/persistence/kysely-payroll-adjustment.repository";
 import { RegisterEmployeeHandler } from "./application/commands/register-employee.handler";
 import { SetEmployeeStatusHandler } from "./application/commands/set-employee-status.handler";
 import { RegisterPayrollRunHandler } from "./application/commands/register-payroll-run.handler";
@@ -28,6 +30,9 @@ import { ListOwnPayslipsHandler } from "./application/queries/list-own-payslips.
 import { ListOwnLeaveRequestsHandler } from "./application/queries/list-own-leave-requests.handler";
 import { ListLeaveRequestsHandler } from "./application/queries/list-leave-requests.handler";
 import { ListOwnAttendanceShiftsHandler } from "./application/queries/list-own-attendance-shifts.handler";
+import { RegisterPayrollAdjustmentHandler } from "./application/commands/register-payroll-adjustment.handler";
+import { CancelPayrollAdjustmentHandler } from "./application/commands/cancel-payroll-adjustment.handler";
+import { ListPayrollAdjustmentsHandler } from "./application/queries/list-payroll-adjustments.handler";
 import { HrPayrollController } from "./api/hr-payroll.controller";
 
 @Module({
@@ -38,6 +43,7 @@ import { HrPayrollController } from "./api/hr-payroll.controller";
     { provide: PAYROLL_RUN_REPOSITORY, useClass: KyselyPayrollRunRepository },
     { provide: LEAVE_REQUEST_REPOSITORY, useClass: KyselyLeaveRequestRepository },
     { provide: EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY, useClass: KyselyEmployeeAttendanceShiftRepository },
+    { provide: PAYROLL_ADJUSTMENT_REPOSITORY, useClass: KyselyPayrollAdjustmentRepository },
     RegisterEmployeeHandler,
     SetEmployeeStatusHandler,
     RegisterPayrollRunHandler,
@@ -56,6 +62,9 @@ import { HrPayrollController } from "./api/hr-payroll.controller";
     ListOwnLeaveRequestsHandler,
     ListLeaveRequestsHandler,
     ListOwnAttendanceShiftsHandler,
+    RegisterPayrollAdjustmentHandler,
+    CancelPayrollAdjustmentHandler,
+    ListPayrollAdjustmentsHandler,
   ],
   exports: [EMPLOYEE_REPOSITORY, PAYROLL_RUN_REPOSITORY],
 })
@@ -75,6 +84,7 @@ export class HrPayrollModule implements OnModuleInit {
         { key: "hr.self.view", label: "بياناتي (بروفايل/قسائم راتب/حضور)" },
         { key: "hr.self.leave.manage", label: "طلبات الإجازة الخاصة بيا" },
         { key: "hr.leave.review", label: "مراجعة طلبات إجازة الموظفين" },
+        { key: "hr.payroll.adjustments.manage", label: "تسجيل/إلغاء سلف وجزاءات ومكافآت الموظفين" },
       ],
     });
     this.permissions.setRoleDefaults("branch_manager", ["hr.employees.view", "hr.payroll.view", "hr.leave.review"]);
@@ -83,6 +93,7 @@ export class HrPayrollModule implements OnModuleInit {
       "hr.payroll.view",
       "hr.payroll.manage",
       "hr.payroll.approve",
+      "hr.payroll.adjustments.manage",
     ]);
     // بوابة الخدمة الذاتية متاحة لأي دور - نفس فلسفة "زر بياناتي" اللي كان ظاهر في كل شاشة في الريبو
     // القديم بغض النظر عن دور المستخدم

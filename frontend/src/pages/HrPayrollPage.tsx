@@ -19,14 +19,22 @@ interface LeaveRequest {
   id: string; employeeId: string; leaveType: string; startDate: string; endDate: string;
   days: number; reason: string | null; status: string; createdAt: string;
 }
+interface PayrollAdjustment {
+  id: string; employeeId: string; entryDate: string; adjustmentType: string; amount: number;
+  notes: string | null; status: string; createdBy: string | null; createdAt: string;
+  cancelledBy: string | null; cancelledAt: string | null; cancellationReason: string | null;
+}
 
 const STATUS_LABELS: Record<string, string> = { active: "فعّال", suspended: "موقوف", terminated: "منتهي الخدمة" };
 const RUN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", APPROVED: "معتمدة", CANCELLED: "ملغاة" };
 const LEAVE_STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", APPROVED: "معتمد", REJECTED: "مرفوض", CANCELLED: "ملغى" };
+const ADJUSTMENT_TYPE_LABELS: Record<string, string> = { advance: "سلفة", penalty: "جزاء", bonus: "مكافأة" };
+const ADJUSTMENT_STATUS_LABELS: Record<string, string> = { ACTIVE: "فعّال", CANCELLED: "ملغى" };
 
 const TABS = [
   { key: "employees", label: "الموظفين والرواتب" },
   { key: "leave", label: "طلبات الإجازة" },
+  { key: "adjustments", label: "سلف وجزاءات ومكافآت" },
 ];
 
 export function HrPayrollPage() {
@@ -35,6 +43,7 @@ export function HrPayrollPage() {
   const employeesQuery = useQuery({ queryKey: ["hr", "employees"], queryFn: () => apiRequest<Employee[]>("/hr/employees") });
   const payrollRunsQuery = useQuery({ queryKey: ["hr", "payroll-runs"], queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs") });
   const leaveRequestsQuery = useQuery({ queryKey: ["hr", "leave-requests"], queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests") });
+  const adjustmentsQuery = useQuery({ queryKey: ["hr", "adjustments"], queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments") });
 
   const reviewLeaveRequest = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
@@ -103,9 +112,46 @@ export function HrPayrollPage() {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   }
 
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    employeeId: "", entryDate: new Date().toISOString().slice(0, 10), adjustmentType: "advance", amount: "", notes: "",
+  });
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  const registerAdjustment = useMutation({
+    mutationFn: () =>
+      apiRequest("/hr/adjustments", {
+        method: "POST",
+        body: {
+          employeeId: adjustmentForm.employeeId,
+          entryDate: adjustmentForm.entryDate,
+          adjustmentType: adjustmentForm.adjustmentType,
+          amount: Number(adjustmentForm.amount),
+          notes: adjustmentForm.notes || undefined,
+        },
+      }),
+    onSuccess: () => {
+      setAdjustmentForm({ employeeId: "", entryDate: new Date().toISOString().slice(0, 10), adjustmentType: "advance", amount: "", notes: "" });
+      setAdjustmentError(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "adjustments"] });
+    },
+    onError: (err) => setAdjustmentError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const [cancelAdjustmentReason, setCancelAdjustmentReason] = useState<Record<string, string>>({});
+  const [cancelAdjustmentError, setCancelAdjustmentError] = useState<string | null>(null);
+  const cancelAdjustment = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest(`/hr/adjustments/${id}/cancel`, { method: "POST", body: { reason } }),
+    onSuccess: () => {
+      setCancelAdjustmentError(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "adjustments"] });
+    },
+    onError: (err) => setCancelAdjustmentError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
   const employees = employeesQuery.data ?? [];
   const payrollRuns = payrollRunsQuery.data ?? [];
   const leaveRequests = leaveRequestsQuery.data ?? [];
+  const adjustments = adjustmentsQuery.data ?? [];
 
   return (
     <div>
@@ -279,6 +325,99 @@ export function HrPayrollPage() {
             {leaveRequests.length === 0 && <EmptyState>مفيش طلبات إجازة لسه</EmptyState>}
           </CardBody>
         </Card>
+      )}
+
+      {tab === "adjustments" && (
+        <>
+          <Card className="mb-6">
+            <CardHeader><CardTitle>تسجيل سلفة / جزاء / مكافأة</CardTitle></CardHeader>
+            <CardBody>
+              <form
+                onSubmit={(e: FormEvent) => { e.preventDefault(); registerAdjustment.mutate(); }}
+                className="grid grid-cols-1 gap-4 sm:grid-cols-5"
+              >
+                <Field label="الموظف">
+                  <Select required value={adjustmentForm.employeeId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
+                    <option value="">اختر موظف</option>
+                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="التاريخ">
+                  <Input required type="date" value={adjustmentForm.entryDate} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, entryDate: e.target.value })} />
+                </Field>
+                <Field label="النوع">
+                  <Select value={adjustmentForm.adjustmentType} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustmentType: e.target.value })}>
+                    <option value="advance">سلفة</option>
+                    <option value="penalty">جزاء</option>
+                    <option value="bonus">مكافأة</option>
+                  </Select>
+                </Field>
+                <Field label="المبلغ">
+                  <Input required type="number" min="0" step="0.01" value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} />
+                </Field>
+                <Field label="ملاحظات (اختياري)">
+                  <Input value={adjustmentForm.notes} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, notes: e.target.value })} />
+                </Field>
+                <div className="sm:col-span-5">
+                  {adjustmentError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
+                  <Button type="submit" disabled={registerAdjustment.isPending}>تسجيل</Button>
+                </div>
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>سجل السلف والجزاءات والمكافآت ({adjustments.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              {cancelAdjustmentError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{cancelAdjustmentError}</p>}
+              <Table>
+                <THead>
+                  <TR><TH>الموظف</TH><TH>التاريخ</TH><TH>النوع</TH><TH>المبلغ</TH><TH>ملاحظات</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+                </THead>
+                <TBody>
+                  {adjustments.map((a) => (
+                    <TR key={a.id}>
+                      <TD className="font-semibold text-slate-900">
+                        {employees.find((e) => e.id === a.employeeId)?.name ?? a.employeeId}
+                      </TD>
+                      <TD>{a.entryDate.slice(0, 10)}</TD>
+                      <TD>{ADJUSTMENT_TYPE_LABELS[a.adjustmentType] ?? a.adjustmentType}</TD>
+                      <TD className="font-bold text-slate-900">{a.amount}ج</TD>
+                      <TD>{a.notes ?? "-"}</TD>
+                      <TD>
+                        <StatusBadge status={ADJUSTMENT_STATUS_LABELS[a.status] ?? a.status} />
+                        {a.status === "CANCELLED" && a.cancellationReason && (
+                          <div className="mt-1 text-xs text-slate-500">{a.cancellationReason}</div>
+                        )}
+                      </TD>
+                      <TD>
+                        {a.status === "ACTIVE" && (
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              placeholder="سبب الإلغاء"
+                              className="w-36"
+                              value={cancelAdjustmentReason[a.id] ?? ""}
+                              onChange={(e) => setCancelAdjustmentReason({ ...cancelAdjustmentReason, [a.id]: e.target.value })}
+                            />
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => cancelAdjustment.mutate({ id: a.id, reason: cancelAdjustmentReason[a.id] ?? "" })}
+                              disabled={cancelAdjustment.isPending}
+                            >
+                              إلغاء
+                            </Button>
+                          </div>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {adjustments.length === 0 && <EmptyState>مفيش سلف أو جزاءات أو مكافآت مسجلة لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </>
       )}
     </div>
   );

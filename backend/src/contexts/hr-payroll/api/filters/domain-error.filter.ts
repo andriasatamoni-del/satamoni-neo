@@ -7,6 +7,7 @@ import {
   EmployeeProfileNotLinkedError,
   LeaveRequestNotFoundError,
   EmployeeAttendanceShiftNotFoundError,
+  PayrollAdjustmentNotFoundError,
 } from "../../domain/errors";
 
 @Catch(DomainError)
@@ -18,7 +19,8 @@ export class HrPayrollDomainErrorFilter implements ExceptionFilter {
       exception instanceof PayrollRunNotFoundError ||
       exception instanceof EmployeeProfileNotLinkedError ||
       exception instanceof LeaveRequestNotFoundError ||
-      exception instanceof EmployeeAttendanceShiftNotFoundError;
+      exception instanceof EmployeeAttendanceShiftNotFoundError ||
+      exception instanceof PayrollAdjustmentNotFoundError;
     res.status(isNotFound ? 404 : 400).json({ error: exception.message });
   }
 }

@@ -97,3 +97,33 @@ export class EmployeeAttendanceShiftNotActiveError extends DomainError {
     super("شيفت الحضور ده مقفول بالفعل");
   }
 }
+
+export class UnknownAdjustmentTypeError extends DomainError {
+  constructor(value: string) {
+    super(`نوع الحركة ده مش معروف: ${value}`);
+  }
+}
+
+export class AdjustmentAmountMustBePositiveError extends DomainError {
+  constructor() {
+    super("المبلغ لازم يكون أكبر من صفر");
+  }
+}
+
+export class PayrollAdjustmentNotFoundError extends DomainError {
+  constructor() {
+    super("السجل ده مش موجود");
+  }
+}
+
+export class PayrollAdjustmentAlreadyCancelledError extends DomainError {
+  constructor() {
+    super("السجل ده ملغى بالفعل");
+  }
+}
+
+export class CancellationReasonRequiredError extends DomainError {
+  constructor() {
+    super("لازم سبب الإلغاء");
+  }
+}

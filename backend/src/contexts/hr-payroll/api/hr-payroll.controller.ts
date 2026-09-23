@@ -18,6 +18,9 @@ import { ListOwnPayslipsHandler } from "../application/queries/list-own-payslips
 import { ListOwnLeaveRequestsHandler } from "../application/queries/list-own-leave-requests.handler";
 import { ListLeaveRequestsHandler } from "../application/queries/list-leave-requests.handler";
 import { ListOwnAttendanceShiftsHandler } from "../application/queries/list-own-attendance-shifts.handler";
+import { RegisterPayrollAdjustmentHandler } from "../application/commands/register-payroll-adjustment.handler";
+import { CancelPayrollAdjustmentHandler } from "../application/commands/cancel-payroll-adjustment.handler";
+import { ListPayrollAdjustmentsHandler } from "../application/queries/list-payroll-adjustments.handler";
 import { RegisterEmployeeDto } from "./dto/register-employee.dto";
 import { SetEmployeeStatusDto } from "./dto/set-employee-status.dto";
 import { RegisterPayrollRunDto } from "./dto/register-payroll-run.dto";
@@ -26,6 +29,8 @@ import { RegisterLeaveRequestDto } from "./dto/register-leave-request.dto";
 import { ReviewLeaveRequestDto } from "./dto/review-leave-request.dto";
 import { CheckInEmployeeDto } from "./dto/check-in-employee.dto";
 import { CheckOutEmployeeDto } from "./dto/check-out-employee.dto";
+import { RegisterPayrollAdjustmentDto } from "./dto/register-payroll-adjustment.dto";
+import { CancelPayrollAdjustmentDto } from "./dto/cancel-payroll-adjustment.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -35,6 +40,7 @@ import type { Employee } from "../domain/employee.aggregate";
 import type { PayrollRun } from "../domain/payroll-run.aggregate";
 import type { LeaveRequest } from "../domain/leave-request.aggregate";
 import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shift.aggregate";
+import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
 
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -58,7 +64,10 @@ export class HrPayrollController {
     private readonly listOwnPayslips: ListOwnPayslipsHandler,
     private readonly listOwnLeaveRequests: ListOwnLeaveRequestsHandler,
     private readonly listLeaveRequests: ListLeaveRequestsHandler,
-    private readonly listOwnAttendanceShifts: ListOwnAttendanceShiftsHandler
+    private readonly listOwnAttendanceShifts: ListOwnAttendanceShiftsHandler,
+    private readonly registerPayrollAdjustment: RegisterPayrollAdjustmentHandler,
+    private readonly cancelPayrollAdjustment: CancelPayrollAdjustmentHandler,
+    private readonly listPayrollAdjustments: ListPayrollAdjustmentsHandler
   ) {}
 
   @Get("employees")
@@ -196,6 +205,36 @@ export class HrPayrollController {
       })
     );
   }
+
+  // سلف/جزاءات/مكافآت فردية - راجع تعليق payroll-adjustment.aggregate.ts
+  @Get("adjustments")
+  @RequirePermission("hr.payroll.view", "hr.payroll.adjustments.manage")
+  async adjustments(@Query("employeeId") employeeId?: string, @Query("status") status?: string) {
+    return (await this.listPayrollAdjustments.execute({ employeeId, status })).map(toPublicAdjustment);
+  }
+
+  @Post("adjustments")
+  @RequirePermission("hr.payroll.adjustments.manage")
+  async createAdjustment(@Body() dto: RegisterPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicAdjustment(
+      await this.registerPayrollAdjustment.execute({
+        employeeId: dto.employeeId,
+        entryDate: new Date(dto.entryDate),
+        adjustmentType: dto.adjustmentType,
+        amount: dto.amount,
+        notes: dto.notes,
+        createdBy: req.user.id,
+      })
+    );
+  }
+
+  @Post("adjustments/:id/cancel")
+  @RequirePermission("hr.payroll.adjustments.manage")
+  async cancelAdjustment(@Param("id") id: string, @Body() dto: CancelPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicAdjustment(
+      await this.cancelPayrollAdjustment.execute({ adjustmentId: id, reason: dto.reason, cancelledBy: req.user.id })
+    );
+  }
 }
 
 function toPublicEmployee(employee: Employee) {
@@ -240,6 +279,23 @@ function toPublicAttendanceShift(shift: EmployeeAttendanceShift) {
     checkedOutAt: shift.checkedOutAt,
     hoursWorked: shift.hoursWorked,
     notes: shift.notes,
+  };
+}
+
+function toPublicAdjustment(adjustment: PayrollAdjustment) {
+  return {
+    id: adjustment.id,
+    employeeId: adjustment.employeeId,
+    entryDate: adjustment.entryDate,
+    adjustmentType: adjustment.adjustmentType,
+    amount: adjustment.amount,
+    notes: adjustment.notes,
+    status: adjustment.status,
+    createdBy: adjustment.createdBy,
+    createdAt: adjustment.createdAt,
+    cancelledBy: adjustment.cancelledBy,
+    cancelledAt: adjustment.cancelledAt,
+    cancellationReason: adjustment.cancellationReason,
   };
 }
 

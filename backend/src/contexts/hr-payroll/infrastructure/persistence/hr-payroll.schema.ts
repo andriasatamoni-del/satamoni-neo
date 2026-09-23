@@ -78,3 +78,18 @@ export interface EmployeeAttendanceShiftsTable {
   notes: string | null;
   created_at: Generated<Date>;
 }
+
+export interface PayrollAdjustmentsTable {
+  id: Generated<string>;
+  employee_id: string;
+  entry_date: Date;
+  adjustment_type: string;
+  amount: number;
+  notes: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: Generated<Date>;
+  cancelled_by: string | null;
+  cancelled_at: Date | null;
+  cancellation_reason: string | null;
+}
