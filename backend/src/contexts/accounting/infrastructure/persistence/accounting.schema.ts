@@ -40,3 +40,22 @@ export interface JournalEntryLinesTable {
   reference_type: string | null;
   reference_id: string | null;
 }
+
+export interface AccountingPeriodsTable {
+  id: Generated<string>;
+  year: number;
+  month: number;
+  status: string;
+  closed_by: string | null;
+  closed_at: Date | null;
+  created_at: Generated<Date>;
+}
+
+export interface FiscalYearClosingsTable {
+  id: Generated<string>;
+  year: number;
+  net_income: number;
+  closed_by: string | null;
+  closed_at: Generated<Date>;
+  journal_entry_id: string;
+}

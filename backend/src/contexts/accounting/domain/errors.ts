@@ -61,3 +61,39 @@ export class JournalEntryAlreadyReversedError extends DomainError {
     super("القيد ده اتعكس بالفعل");
   }
 }
+
+export class AccountingPeriodClosedError extends DomainError {
+  constructor(year: number, month: number) {
+    super(`الشهر المحاسبي ${year}-${String(month).padStart(2, "0")} مقفول - مينفعش يترحّل عليه أي قيد جديد`);
+  }
+}
+
+export class AccountingPeriodAlreadyClosedError extends DomainError {
+  constructor(year: number, month: number) {
+    super(`الشهر المحاسبي ${year}-${String(month).padStart(2, "0")} مقفول بالفعل`);
+  }
+}
+
+export class FiscalYearAlreadyClosedError extends DomainError {
+  constructor(year: number) {
+    super(`سنة ${year} مقفولة بالفعل`);
+  }
+}
+
+export class FiscalYearMonthsNotAllClosedError extends DomainError {
+  constructor(year: number, missingMonths: number[]) {
+    super(`لازم كل شهور سنة ${year} تكون مقفولة الأول - الشهور [${missingMonths.join(", ")}] لسه مفتوحة`);
+  }
+}
+
+export class NoActivityToCloseError extends DomainError {
+  constructor(year: number) {
+    super(`مفيش حركة محاسبية مسجّلة على سنة ${year} أصلًا - مفيش حاجة تتقفل`);
+  }
+}
+
+export class RetainedEarningsAccountNotFoundError extends DomainError {
+  constructor(code: string) {
+    super(`حساب الأرباح المرحّلة (${code}) مش موجود في دليل الحسابات - محتاج يتسجّل الأول قبل إقفال أي سنة`);
+  }
+}

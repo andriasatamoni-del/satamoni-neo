@@ -15,6 +15,10 @@ interface JournalEntry {
   sourceType: string; sourceId: string | null; status: string; lines: JournalEntryLine[];
   reversalOfEntryId: string | null;
 }
+interface AccountingPeriod { year: number; month: number; status: string; closedBy: string | null; closedAt: string | null; }
+interface FiscalYearClosing { id: string; year: number; netIncome: number; closedBy: string | null; closedAt: string; journalEntryId: string; }
+
+const MONTH_LABELS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 
 const ACCOUNT_TYPES = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "COGS", "EXPENSE"];
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
@@ -69,6 +73,40 @@ export function AccountingPage() {
     mutationFn: (id: string) => apiRequest(`/accounting/journal-entries/${id}/reverse`, { method: "POST", body: {} }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["accounting", "journal-entries"] }),
   });
+
+  const [closeYear, setCloseYear] = useState(() => new Date().getFullYear());
+  const periodsQuery = useQuery({
+    queryKey: ["accounting", "periods", closeYear],
+    queryFn: () => apiRequest<AccountingPeriod[]>(`/accounting/periods?year=${closeYear}`),
+  });
+  const fiscalYearClosingsQuery = useQuery({
+    queryKey: ["accounting", "fiscal-year-closings"],
+    queryFn: () => apiRequest<FiscalYearClosing[]>("/accounting/fiscal-year-closings"),
+  });
+  const [closeError, setCloseError] = useState<string | null>(null);
+
+  const closePeriodMutation = useMutation({
+    mutationFn: (month: number) => apiRequest(`/accounting/periods/${closeYear}/${month}/close`, { method: "POST" }),
+    onSuccess: () => {
+      setCloseError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting", "periods"] });
+    },
+    onError: (err) => setCloseError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const closeFiscalYearMutation = useMutation({
+    mutationFn: () => apiRequest("/accounting/fiscal-year-closings", { method: "POST", body: { year: closeYear } }),
+    onSuccess: () => {
+      setCloseError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting", "fiscal-year-closings"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting", "journal-entries"] });
+    },
+    onError: (err) => setCloseError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const periodsByMonth = new Map((periodsQuery.data ?? []).map((p) => [p.month, p]));
+  const allMonthsClosed = Array.from({ length: 12 }, (_, i) => i + 1).every((m) => periodsByMonth.get(m)?.status === "CLOSED");
+  const yearAlreadyClosed = (fiscalYearClosingsQuery.data ?? []).some((c) => c.year === closeYear);
 
   function accountLabel(id: string): string {
     const account = accountsQuery.data?.find((a) => a.id === id);
@@ -222,6 +260,79 @@ export function AccountingPage() {
             </TBody>
           </Table>
           {entries.length === 0 && <EmptyState>مفيش قيود لسه</EmptyState>}
+        </CardBody>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>إقفال الفترات المحاسبية</CardTitle>
+        </CardHeader>
+        <CardBody className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="السنة">
+              <Input type="number" value={closeYear} onChange={(e) => setCloseYear(Number(e.target.value) || closeYear)} className="max-w-[140px]" />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            {MONTH_LABELS.map((label, i) => {
+              const month = i + 1;
+              const period = periodsByMonth.get(month);
+              const isClosed = period?.status === "CLOSED";
+              return (
+                <div key={month} className={`rounded-lg border p-3 text-center ${isClosed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
+                  <p className="text-sm font-semibold text-slate-800">{label}</p>
+                  <p className={`mt-1 text-xs ${isClosed ? "text-emerald-700" : "text-slate-400"}`}>{isClosed ? "مقفول" : "مفتوح"}</p>
+                  {!isClosed && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2 w-full"
+                      onClick={() => closePeriodMutation.mutate(month)}
+                      disabled={closePeriodMutation.isPending}
+                    >
+                      قفل الشهر
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-slate-100 pt-4">
+            {yearAlreadyClosed ? (
+              <p className="text-sm font-semibold text-emerald-700">
+                سنة {closeYear} مقفولة بالفعل - صافي الربح: {fiscalYearClosingsQuery.data?.find((c) => c.year === closeYear)?.netIncome}ج
+              </p>
+            ) : (
+              <>
+                <Button onClick={() => closeFiscalYearMutation.mutate()} disabled={closeFiscalYearMutation.isPending || !allMonthsClosed}>
+                  قفل السنة المالية {closeYear}
+                </Button>
+                {!allMonthsClosed && <p className="mt-2 text-xs text-amber-600">لازم كل شهور السنة تتقفل الأول</p>}
+              </>
+            )}
+          </div>
+
+          {closeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{closeError}</p>}
+
+          {fiscalYearClosingsQuery.data && fiscalYearClosingsQuery.data.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-xs font-semibold text-slate-500">سنوات مقفولة سابقًا</p>
+              <Table>
+                <THead><TR><TH>السنة</TH><TH>صافي الربح</TH><TH>تاريخ القفل</TH></TR></THead>
+                <TBody>
+                  {fiscalYearClosingsQuery.data.map((c) => (
+                    <TR key={c.id}>
+                      <TD>{c.year}</TD>
+                      <TD className="font-bold text-slate-900">{c.netIncome}ج</TD>
+                      <TD>{new Date(c.closedAt).toLocaleDateString("ar-EG")}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+          )}
         </CardBody>
       </Card>
     </div>

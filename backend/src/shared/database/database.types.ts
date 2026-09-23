@@ -63,6 +63,8 @@ import type {
   AccountsTable,
   JournalEntriesTable,
   JournalEntryLinesTable,
+  AccountingPeriodsTable,
+  FiscalYearClosingsTable,
 } from "../../contexts/accounting/infrastructure/persistence/accounting.schema";
 import type {
   PaymentMethodsTable,
@@ -142,6 +144,8 @@ export interface Database {
   accounts: AccountsTable;
   journal_entries: JournalEntriesTable;
   journal_entry_lines: JournalEntryLinesTable;
+  accounting_periods: AccountingPeriodsTable;
+  fiscal_year_closings: FiscalYearClosingsTable;
   payment_methods: PaymentMethodsTable;
   payments: PaymentsTable;
   payment_adjustment_requests: PaymentAdjustmentRequestsTable;

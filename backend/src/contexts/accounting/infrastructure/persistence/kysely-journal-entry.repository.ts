@@ -6,6 +6,7 @@ import { KYSELY } from "../../../../shared/database/database.module";
 import { JournalEntry, type JournalEntryStatus } from "../../domain/journal-entry.aggregate";
 import type { JournalEntryRepositoryPort } from "../../domain/ports/journal-entry-repository.port";
 import type { JournalEntriesTable, JournalEntryLinesTable } from "./accounting.schema";
+import { AccountingPeriodClosedError } from "../../domain/errors";
 
 @Injectable()
 export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort {
@@ -65,6 +66,18 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
       }
 
       if (entry.status !== "DRAFT") {
+        // تحقق تطبيقي (رسالة خطأ واضحة) قبل ما نوصل لتريجر القاعدة (trg_prevent_posting_to_closed_period
+        // في migration 035) اللي هو الدفاع الحقيقي - نفس فلسفة اتزان القيد (تحقق في الدومين + تريجر مزدوج)
+        const year = entry.entryDate.getUTCFullYear();
+        const month = entry.entryDate.getUTCMonth() + 1;
+        const period = await trx
+          .selectFrom("accounting_periods")
+          .select("status")
+          .where("year", "=", year)
+          .where("month", "=", month)
+          .executeTakeFirst();
+        if (period?.status === "CLOSED") throw new AccountingPeriodClosedError(year, month);
+
         await trx
           .updateTable("journal_entries")
           .set({ status: entry.status, posted_at: entry.postedAt, reversed_at: entry.reversedAt })

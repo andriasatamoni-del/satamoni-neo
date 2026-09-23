@@ -5,12 +5,18 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { ACCOUNT_REPOSITORY } from "./domain/ports/account-repository.port";
 import { JOURNAL_ENTRY_REPOSITORY } from "./domain/ports/journal-entry-repository.port";
 import { ACCOUNTING_REPORTS_READER } from "./domain/ports/accounting-reports-reader.port";
+import { ACCOUNTING_PERIOD_REPOSITORY } from "./domain/ports/accounting-period-repository.port";
+import { FISCAL_YEAR_CLOSING_REPOSITORY } from "./domain/ports/fiscal-year-closing-repository.port";
 import { KyselyAccountRepository } from "./infrastructure/persistence/kysely-account.repository";
 import { KyselyJournalEntryRepository } from "./infrastructure/persistence/kysely-journal-entry.repository";
 import { KyselyAccountingReportsReader } from "./infrastructure/persistence/kysely-accounting-reports-reader";
+import { KyselyAccountingPeriodRepository } from "./infrastructure/persistence/kysely-accounting-period.repository";
+import { KyselyFiscalYearClosingRepository } from "./infrastructure/persistence/kysely-fiscal-year-closing.repository";
 import { RegisterAccountHandler } from "./application/commands/register-account.handler";
 import { RegisterJournalEntryHandler } from "./application/commands/register-journal-entry.handler";
 import { ReverseJournalEntryHandler } from "./application/commands/reverse-journal-entry.handler";
+import { ClosePeriodHandler } from "./application/commands/close-period.handler";
+import { CloseFiscalYearHandler } from "./application/commands/close-fiscal-year.handler";
 import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-order-sale-journal-entry.handler";
 import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
 import { PostShiftVarianceJournalEntryHandler } from "./application/commands/post-shift-variance-journal-entry.handler";
@@ -25,6 +31,8 @@ import { ListJournalEntriesHandler } from "./application/queries/list-journal-en
 import { GetTrialBalanceHandler } from "./application/queries/get-trial-balance.handler";
 import { GetGeneralLedgerHandler } from "./application/queries/get-general-ledger.handler";
 import { GetIncomeStatementHandler } from "./application/queries/get-income-statement.handler";
+import { ListPeriodsHandler } from "./application/queries/list-periods.handler";
+import { ListFiscalYearClosingsHandler } from "./application/queries/list-fiscal-year-closings.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
@@ -43,9 +51,13 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     { provide: ACCOUNT_REPOSITORY, useClass: KyselyAccountRepository },
     { provide: JOURNAL_ENTRY_REPOSITORY, useClass: KyselyJournalEntryRepository },
     { provide: ACCOUNTING_REPORTS_READER, useClass: KyselyAccountingReportsReader },
+    { provide: ACCOUNTING_PERIOD_REPOSITORY, useClass: KyselyAccountingPeriodRepository },
+    { provide: FISCAL_YEAR_CLOSING_REPOSITORY, useClass: KyselyFiscalYearClosingRepository },
     RegisterAccountHandler,
     RegisterJournalEntryHandler,
     ReverseJournalEntryHandler,
+    ClosePeriodHandler,
+    CloseFiscalYearHandler,
     PostOrderSaleJournalEntryHandler,
     PostPayrollJournalEntryHandler,
     PostShiftVarianceJournalEntryHandler,
@@ -60,6 +72,8 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     GetTrialBalanceHandler,
     GetGeneralLedgerHandler,
     GetIncomeStatementHandler,
+    ListPeriodsHandler,
+    ListFiscalYearClosingsHandler,
   ],
   exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler, ReverseJournalEntryHandler],
 })
@@ -85,9 +99,13 @@ export class AccountingModule implements OnModuleInit {
       permissions: [
         { key: "accounting.view", label: "رؤية الحسابات والقيود" },
         { key: "accounting.manage", label: "إدارة الحسابات وتسجيل القيود" },
+        { key: "accounting.close_period", label: "قفل شهر محاسبي" },
+        { key: "accounting.close_year", label: "قفل سنة مالية" },
       ],
     });
-    this.permissions.setRoleDefaults("accountant", ["accounting.view", "accounting.manage"]);
+    this.permissions.setRoleDefaults("accountant", ["accounting.view", "accounting.manage", "accounting.close_period"]);
+    // قفل السنة المالية أدمن بس (نفس الريبو القديم بالحرف: requireRole("admin") قبل حتى requirePermission)
+    // - أثر أعمق وأصعب في التراجع من قفل شهر واحد
 
     // أول استخدام حقيقي لـEventBusService في النظام - Accounting بيشترك في حدث Orders من غير ما
     // Orders يعرف حاجة عن وجود Accounting أصلًا (نفس فايدة الفصل اللي الـbus اتصمم لأجلها من الأول)
