@@ -23,6 +23,7 @@ import { TreasuryModule } from "./contexts/treasury/treasury.module";
 import { PrintingModule } from "./contexts/printing/printing.module";
 import { SettingsModule } from "./contexts/settings/settings.module";
 import { BranchDayModule } from "./contexts/branch-day/branch-day.module";
+import { ExpensesModule } from "./contexts/expenses/expenses.module";
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { BranchDayModule } from "./contexts/branch-day/branch-day.module";
     TreasuryModule,
     PrintingModule,
     BranchDayModule,
+    ExpensesModule,
   ],
   controllers: [HealthController],
 })

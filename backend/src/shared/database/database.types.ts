@@ -99,6 +99,8 @@ import type {
   TransferRequestsTable,
   TransferRequestLinesTable,
 } from "../../contexts/inventory/infrastructure/persistence/transfer-request.schema";
+import type { ExpenseCategoriesTable } from "../../contexts/expenses/infrastructure/persistence/expense-category.schema";
+import type { ExpensesTable } from "../../contexts/expenses/infrastructure/persistence/expense.schema";
 
 export interface Database {
   users: UsersTable;
@@ -174,4 +176,6 @@ export interface Database {
   branch_stock_thresholds: BranchStockThresholdsTable;
   transfer_requests: TransferRequestsTable;
   transfer_request_lines: TransferRequestLinesTable;
+  expense_categories: ExpenseCategoriesTable;
+  expenses: ExpensesTable;
 }
