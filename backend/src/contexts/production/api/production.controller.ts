@@ -7,6 +7,8 @@ import { CompleteConversionOrderHandler } from "../application/commands/complete
 import { CancelConversionOrderHandler } from "../application/commands/cancel-conversion-order.handler";
 import { ListConversionOrdersHandler } from "../application/queries/list-conversion-orders.handler";
 import { GetConversionOrderHandler } from "../application/queries/get-conversion-order.handler";
+import { GetProductionPlanHandler } from "../application/queries/get-production-plan.handler";
+import { GetRawMaterialRequirementHandler } from "../application/queries/get-raw-material-requirement.handler";
 import { RegisterConversionOrderDto } from "./dto/register-conversion-order.dto";
 import { StartConversionOrderDto } from "./dto/start-conversion-order.dto";
 import { CompleteConversionOrderDto } from "./dto/complete-conversion-order.dto";
@@ -29,8 +31,27 @@ export class ProductionController {
     private readonly completeConversionOrder: CompleteConversionOrderHandler,
     private readonly cancelConversionOrder: CancelConversionOrderHandler,
     private readonly listConversionOrders: ListConversionOrdersHandler,
-    private readonly getConversionOrder: GetConversionOrderHandler
+    private readonly getConversionOrder: GetConversionOrderHandler,
+    private readonly getProductionPlan: GetProductionPlanHandler,
+    private readonly getRawMaterialRequirement: GetRawMaterialRequirementHandler
   ) {}
+
+  // تخطيط تصنيع السنتر كيتشن - راجع تعليق get-production-plan.handler.ts. لازم fromDate/toDate بصيغة
+  // YYYY-MM-DD؛ لو مش محددين، بيفترضوا يوم النهاردة بس (نفس افتراضي الريبو القديم)
+  @Get("planning/plan")
+  @RequirePermission("production.view")
+  async plan(@Query("ckBranchId") ckBranchId: string, @Query("fromDate") fromDate?: string, @Query("toDate") toDate?: string) {
+    const from = fromDate ? new Date(fromDate) : new Date(new Date().toISOString().slice(0, 10));
+    const to = toDate ? new Date(toDate) : from;
+    const plan = await this.getProductionPlan.execute({ ckBranchId, fromDate: from, toDate: to });
+    return { ckBranchId, fromDate: from.toISOString().slice(0, 10), toDate: to.toISOString().slice(0, 10), plan };
+  }
+
+  @Get("planning/raw-materials")
+  @RequirePermission("production.view")
+  async rawMaterials(@Query("ckBranchId") ckBranchId: string, @Query("inventoryItemId") inventoryItemId: string, @Query("quantity") quantity: string) {
+    return this.getRawMaterialRequirement.execute({ ckBranchId, inventoryItemId, quantity: Number(quantity) });
+  }
 
   @Get()
   @RequirePermission("production.view")

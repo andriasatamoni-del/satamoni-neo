@@ -61,7 +61,38 @@ interface LowStockRow {
   status: "OUT" | "NEEDS_REORDER";
 }
 
+interface TransferRequestLine {
+  id: string;
+  inventoryItemId: string;
+  requestedQuantity: number;
+  approvedQuantity: number | null;
+  dispatchedQuantity: number | null;
+  receivedQuantity: number | null;
+}
+
+interface TransferRequest {
+  id: string;
+  fromBranchId: string;
+  toBranchId: string;
+  requiredDate: string | null;
+  notes: string | null;
+  status: "SUBMITTED" | "APPROVED" | "REJECTED" | "DISPATCHED" | "RECEIVED" | "CANCELLED";
+  rejectionReason: string | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  lines: TransferRequestLine[];
+}
+
 const LOW_STOCK_STATUS_LABELS: Record<string, string> = { OUT: "خلص خالص", NEEDS_REORDER: "محتاج إعادة طلب" };
+
+const TRANSFER_STATUS_LABELS: Record<string, string> = {
+  SUBMITTED: "بانتظار الاعتماد", APPROVED: "معتمد", REJECTED: "مرفوض",
+  DISPATCHED: "متشحن", RECEIVED: "متسلّم", CANCELLED: "ملغى",
+};
+const TRANSFER_STATUS_TONES: Record<string, "neutral" | "brand" | "success" | "danger" | "warning"> = {
+  SUBMITTED: "warning", APPROVED: "brand", REJECTED: "danger",
+  DISPATCHED: "brand", RECEIVED: "success", CANCELLED: "neutral",
+};
 
 const MOVEMENT_TYPES = [
   { value: "RECEIPT", label: "استلام" },
@@ -75,6 +106,7 @@ const TABS = [
   { key: "items", label: "الأصناف والحركات" },
   { key: "stocktake", label: "الجرد الفعلي" },
   { key: "low-stock", label: "حدود المخزون والتنبيهات" },
+  { key: "transfers", label: "طلبات التحويل بين الفروع" },
 ];
 
 function fmt(n: number): string {
@@ -216,6 +248,88 @@ export function InventoryPage() {
   const board = boardQuery.data ?? [];
   const stocktakes = stocktakesQuery.data ?? [];
   const openStocktake = stocktakes.find((s) => s.id === openStocktakeId) ?? null;
+
+  const [transferForm, setTransferForm] = useState({ fromBranchId: "", toBranchId: "", requiredDate: "" });
+  const [transferLines, setTransferLines] = useState<{ inventoryItemId: string; requestedQuantity: string }[]>([
+    { inventoryItemId: "", requestedQuantity: "" },
+  ]);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferFilterBranchId, setTransferFilterBranchId] = useState("");
+
+  const transferRequestsQuery = useQuery({
+    queryKey: ["inventory", "transfer-requests", transferFilterBranchId],
+    queryFn: () =>
+      apiRequest<TransferRequest[]>(
+        transferFilterBranchId ? `/inventory/transfer-requests?fromBranchId=${transferFilterBranchId}` : "/inventory/transfer-requests"
+      ),
+  });
+
+  const createTransferRequest = useMutation({
+    mutationFn: () =>
+      apiRequest("/inventory/transfer-requests", {
+        method: "POST",
+        body: {
+          fromBranchId: transferForm.fromBranchId,
+          toBranchId: transferForm.toBranchId,
+          requiredDate: transferForm.requiredDate || undefined,
+          lines: transferLines
+            .filter((l) => l.inventoryItemId && l.requestedQuantity)
+            .map((l) => ({ inventoryItemId: l.inventoryItemId, requestedQuantity: Number(l.requestedQuantity) })),
+        },
+      }),
+    onSuccess: () => {
+      setTransferLines([{ inventoryItemId: "", requestedQuantity: "" }]);
+      setTransferError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory", "transfer-requests"] });
+    },
+    onError: (err) => setTransferError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const [transferActionError, setTransferActionError] = useState<string | null>(null);
+  const [transferCancelReasons, setTransferCancelReasons] = useState<Record<string, string>>({});
+
+  const approveTransferRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/inventory/transfer-requests/${id}/approve`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      setTransferActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory", "transfer-requests"] });
+    },
+    onError: (err) => setTransferActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const dispatchTransferRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/inventory/transfer-requests/${id}/dispatch`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      setTransferActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory", "transfer-requests"] });
+    },
+    onError: (err) => setTransferActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const receiveTransferRequest = useMutation({
+    mutationFn: (id: string) => apiRequest(`/inventory/transfer-requests/${id}/receive`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      setTransferActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory", "transfer-requests"] });
+    },
+    onError: (err) => setTransferActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const cancelTransferRequest = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest(`/inventory/transfer-requests/${id}/cancel`, { method: "POST", body: { reason } }),
+    onSuccess: () => {
+      setTransferActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory", "transfer-requests"] });
+    },
+    onError: (err) => setTransferActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const transferRequests = transferRequestsQuery.data ?? [];
+
+  function branchName(id: string): string {
+    return branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
+  }
+  function itemName(id: string): string {
+    return items.find((i) => i.id === id)?.name ?? id;
+  }
 
   return (
     <div>
@@ -533,6 +647,151 @@ export function InventoryPage() {
             </>
           )}
           {!lowStockBranchId && <EmptyState>اختر فرع عشان تشوف حدود المخزون والتنبيهات</EmptyState>}
+        </div>
+      )}
+
+      {tab === "transfers" && (
+        <div className="mt-6 space-y-6">
+          <Card>
+            <CardHeader><CardTitle>طلب تحويل جديد</CardTitle></CardHeader>
+            <CardBody>
+              <form
+                onSubmit={(e: FormEvent) => { e.preventDefault(); createTransferRequest.mutate(); }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Field label="من فرع (المصدر - غالبًا السنتر كيتشن)">
+                    <Select required value={transferForm.fromBranchId} onChange={(e) => setTransferForm({ ...transferForm, fromBranchId: e.target.value })}>
+                      <option value="">اختر فرع</option>
+                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="لفرع (الطالب)">
+                    <Select required value={transferForm.toBranchId} onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}>
+                      <option value="">اختر فرع</option>
+                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="التاريخ المطلوب (اختياري)">
+                    <Input type="date" value={transferForm.requiredDate} onChange={(e) => setTransferForm({ ...transferForm, requiredDate: e.target.value })} />
+                  </Field>
+                </div>
+
+                <div className="space-y-2">
+                  {transferLines.map((line, i) => (
+                    <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Select
+                        value={line.inventoryItemId}
+                        onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, inventoryItemId: e.target.value } : l)))}
+                      >
+                        <option value="">اختر صنف</option>
+                        {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
+                      </Select>
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="الكمية المطلوبة"
+                        value={line.requestedQuantity}
+                        onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, requestedQuantity: e.target.value } : l)))}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setTransferLines((prev) => [...prev, { inventoryItemId: "", requestedQuantity: "" }])}
+                >
+                  + صنف
+                </Button>
+
+                {transferError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferError}</p>}
+                <div><Button type="submit" disabled={createTransferRequest.isPending}>إرسال الطلب</Button></div>
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>سجل طلبات التحويل ({transferRequests.length})</CardTitle></CardHeader>
+            <CardBody className="p-0">
+              <div className="border-b border-slate-100 p-4">
+                <Field label="فلترة حسب فرع المصدر (اختياري)">
+                  <Select value={transferFilterBranchId} onChange={(e) => setTransferFilterBranchId(e.target.value)}>
+                    <option value="">كل الفروع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              {transferActionError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferActionError}</p>}
+              <Table>
+                <THead>
+                  <TR><TH>من</TH><TH>لـ</TH><TH>البنود</TH><TH>التاريخ المطلوب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+                </THead>
+                <TBody>
+                  {transferRequests.map((r) => (
+                    <TR key={r.id}>
+                      <TD className="font-semibold text-slate-900">{branchName(r.fromBranchId)}</TD>
+                      <TD>{branchName(r.toBranchId)}</TD>
+                      <TD className="max-w-xs truncate">
+                        {r.lines.map((l) => `${itemName(l.inventoryItemId)} (${l.requestedQuantity})`).join("، ")}
+                      </TD>
+                      <TD>{r.requiredDate ? r.requiredDate.slice(0, 10) : "-"}</TD>
+                      <TD>
+                        <Badge tone={TRANSFER_STATUS_TONES[r.status]}>{TRANSFER_STATUS_LABELS[r.status]}</Badge>
+                        {r.status === "CANCELLED" && r.cancellationReason && <div className="mt-1 text-xs text-slate-500">{r.cancellationReason}</div>}
+                      </TD>
+                      <TD>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {r.status === "SUBMITTED" && (
+                            <>
+                              <Button size="sm" onClick={() => approveTransferRequest.mutate(r.id)} disabled={approveTransferRequest.isPending}>اعتماد</Button>
+                              <Input
+                                placeholder="سبب الإلغاء"
+                                className="w-32"
+                                value={transferCancelReasons[r.id] ?? ""}
+                                onChange={(e) => setTransferCancelReasons({ ...transferCancelReasons, [r.id]: e.target.value })}
+                              />
+                              <Button
+                                size="sm" variant="danger"
+                                onClick={() => cancelTransferRequest.mutate({ id: r.id, reason: transferCancelReasons[r.id] ?? "" })}
+                                disabled={cancelTransferRequest.isPending}
+                              >
+                                إلغاء
+                              </Button>
+                            </>
+                          )}
+                          {r.status === "APPROVED" && (
+                            <>
+                              <Button size="sm" onClick={() => dispatchTransferRequest.mutate(r.id)} disabled={dispatchTransferRequest.isPending}>شحن</Button>
+                              <Input
+                                placeholder="سبب الإلغاء"
+                                className="w-32"
+                                value={transferCancelReasons[r.id] ?? ""}
+                                onChange={(e) => setTransferCancelReasons({ ...transferCancelReasons, [r.id]: e.target.value })}
+                              />
+                              <Button
+                                size="sm" variant="danger"
+                                onClick={() => cancelTransferRequest.mutate({ id: r.id, reason: transferCancelReasons[r.id] ?? "" })}
+                                disabled={cancelTransferRequest.isPending}
+                              >
+                                إلغاء
+                              </Button>
+                            </>
+                          )}
+                          {r.status === "DISPATCHED" && (
+                            <Button size="sm" onClick={() => receiveTransferRequest.mutate(r.id)} disabled={receiveTransferRequest.isPending}>استلام</Button>
+                          )}
+                        </div>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {transferRequests.length === 0 && <EmptyState>مفيش طلبات تحويل لسه</EmptyState>}
+            </CardBody>
+          </Card>
         </div>
       )}
     </div>

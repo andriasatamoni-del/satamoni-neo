@@ -73,3 +73,63 @@ export class NegativeStockThresholdError extends DomainError {
     super("حدود المخزون لازم تكون صفر أو أكبر");
   }
 }
+
+export class EmptyTransferRequestError extends DomainError {
+  constructor() {
+    super("لازم طلب التحويل يكون فيه بند واحد على الأقل");
+  }
+}
+
+export class InvalidTransferRequestLineError extends DomainError {
+  constructor() {
+    super("كل بند لازم يكون له صنف وكمية مطلوبة أكبر من صفر");
+  }
+}
+
+export class SameBranchTransferError extends DomainError {
+  constructor() {
+    super("مايصحش تحويل من فرع للفرع نفسه");
+  }
+}
+
+export class TransferRequestNotDecidableError extends DomainError {
+  constructor() {
+    super("طلب التحويل ده مش في حالة تسمح بالاعتماد أو الرفض");
+  }
+}
+
+export class TransferRequestRejectionReasonRequiredError extends DomainError {
+  constructor() {
+    super("لازم تحدد سبب الرفض");
+  }
+}
+
+export class TransferRequestNotCancellableError extends DomainError {
+  constructor() {
+    super("طلب التحويل ده مش ممكن يتلغي في حالته الحالية");
+  }
+}
+
+export class TransferRequestCancellationReasonRequiredError extends DomainError {
+  constructor() {
+    super("لازم تحدد سبب الإلغاء");
+  }
+}
+
+export class TransferRequestNotDispatchableError extends DomainError {
+  constructor() {
+    super("طلب التحويل لازم يكون معتمد الأول قبل الشحن");
+  }
+}
+
+export class TransferRequestNotReceivableError extends DomainError {
+  constructor() {
+    super("طلب التحويل لازم يكون متشحن الأول قبل الاستلام");
+  }
+}
+
+export class TransferRequestNotFoundError extends DomainError {
+  constructor() {
+    super("طلب التحويل ده مش موجود");
+  }
+}

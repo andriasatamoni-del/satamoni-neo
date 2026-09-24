@@ -25,9 +25,27 @@ interface ConversionOrder {
   varianceReason: string | null; inputLines: ConversionOrderInputLine[]; createdAt: string;
 }
 
+interface ProductionPlanRow {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  approvedDemand: number;
+  pendingDemand: number;
+  availableStock: number;
+  plannedOrInProgress: number;
+  requiredProduction: number;
+  hasActiveRecipe: boolean;
+  recipeId: string | null;
+  recipeVersionId: string | null;
+}
+interface ProductionPlanResponse { ckBranchId: string; fromDate: string; toDate: string; plan: ProductionPlanRow[]; }
+interface RawMaterialRow { inventoryItemId: string; itemName: string | null; unit: string | null; required: number; available: number; shortage: number; }
+interface RawMaterialRequirementResponse { hasRecipe: boolean; raw: RawMaterialRow[]; }
+
 const TABS = [
   { key: "orders", label: "أوامر التحويل" },
   { key: "recipes", label: "الوصفات" },
+  { key: "planning", label: "تخطيط التصنيع" },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -159,6 +177,31 @@ export function ProductionPage() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (err, id) => setCompleteError((prev) => ({ ...prev, [id]: err instanceof ApiError ? err.message : "حصل خطأ غير متوقع" })),
+  });
+
+  // ---------- تخطيط التصنيع ----------
+  const [planCkBranchId, setPlanCkBranchId] = useState("");
+  const [planFromDate, setPlanFromDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [planToDate, setPlanToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [rawMaterialOpenItemId, setRawMaterialOpenItemId] = useState<string | null>(null);
+
+  const planQuery = useQuery({
+    queryKey: ["production", "planning", "plan", planCkBranchId, planFromDate, planToDate],
+    queryFn: () =>
+      apiRequest<ProductionPlanResponse>(
+        `/production/planning/plan?ckBranchId=${planCkBranchId}&fromDate=${planFromDate}&toDate=${planToDate}`
+      ),
+    enabled: !!planCkBranchId,
+  });
+
+  const rawMaterialRow = planQuery.data?.plan.find((r) => r.inventoryItemId === rawMaterialOpenItemId) ?? null;
+  const rawMaterialsQuery = useQuery({
+    queryKey: ["production", "planning", "raw-materials", planCkBranchId, rawMaterialOpenItemId],
+    queryFn: () =>
+      apiRequest<RawMaterialRequirementResponse>(
+        `/production/planning/raw-materials?ckBranchId=${planCkBranchId}&inventoryItemId=${rawMaterialOpenItemId}&quantity=${rawMaterialRow?.requiredProduction}`
+      ),
+    enabled: !!planCkBranchId && !!rawMaterialOpenItemId && !!rawMaterialRow?.requiredProduction,
   });
 
   function handleRecipeSubmit(e: FormEvent) {
@@ -347,6 +390,106 @@ export function ProductionPage() {
               {orders.length === 0 && <EmptyState>مفيش أوامر تحويل لسه</EmptyState>}
             </CardBody>
           </Card>
+        </div>
+      )}
+
+      {tab === "planning" && (
+        <div className="space-y-6">
+          <Card>
+            <CardBody>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="فرع السنتر كيتشن">
+                  <Select
+                    value={planCkBranchId}
+                    onChange={(e) => { setPlanCkBranchId(e.target.value); setRawMaterialOpenItemId(null); }}
+                  >
+                    <option value="">اختر فرع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="من تاريخ">
+                  <Input type="date" value={planFromDate} onChange={(e) => setPlanFromDate(e.target.value)} />
+                </Field>
+                <Field label="لتاريخ">
+                  <Input type="date" value={planToDate} onChange={(e) => setPlanToDate(e.target.value)} />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
+
+          {planCkBranchId && (
+            <Card>
+              <CardHeader><CardTitle>خطة التصنيع ({planQuery.data?.plan.length ?? 0} صنف مصنّع)</CardTitle></CardHeader>
+              <CardBody className="p-0">
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>الصنف</TH><TH>الطلب المعتمد</TH><TH>طلب بانتظار الاعتماد</TH><TH>المتاح</TH>
+                      <TH>تحت التنفيذ/مخطط</TH><TH>المطلوب تصنيعه</TH><TH>الوصفة</TH><TH></TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {planQuery.data?.plan.map((row) => (
+                      <Fragment key={row.inventoryItemId}>
+                        <TR>
+                          <TD className="font-semibold text-slate-900">{row.itemName}</TD>
+                          <TD>{fmt(row.approvedDemand)} {row.unit}</TD>
+                          <TD className="text-slate-500">{fmt(row.pendingDemand)} {row.unit}</TD>
+                          <TD>{fmt(row.availableStock)} {row.unit}</TD>
+                          <TD>{fmt(row.plannedOrInProgress)} {row.unit}</TD>
+                          <TD className={row.requiredProduction > 0 ? "font-bold text-amber-700" : "text-emerald-700"}>
+                            {fmt(row.requiredProduction)} {row.unit}
+                          </TD>
+                          <TD>
+                            <Badge tone={row.hasActiveRecipe ? "brand" : "neutral"}>{row.hasActiveRecipe ? "فيها وصفة" : "من غير وصفة"}</Badge>
+                          </TD>
+                          <TD>
+                            {row.requiredProduction > 0 && row.hasActiveRecipe && (
+                              <Button
+                                size="sm" variant="ghost"
+                                onClick={() => setRawMaterialOpenItemId(rawMaterialOpenItemId === row.inventoryItemId ? null : row.inventoryItemId)}
+                              >
+                                {rawMaterialOpenItemId === row.inventoryItemId ? "إخفاء الخامات" : "احتياج الخامات"}
+                              </Button>
+                            )}
+                          </TD>
+                        </TR>
+                        {rawMaterialOpenItemId === row.inventoryItemId && (
+                          <TR>
+                            <TD colSpan={8}>
+                              {rawMaterialsQuery.data?.raw.length ? (
+                                <Table>
+                                  <THead>
+                                    <TR><TH>الخامة</TH><TH>المطلوب</TH><TH>المتاح عند السنتر كيتشن</TH><TH>النقص</TH></TR>
+                                  </THead>
+                                  <TBody>
+                                    {rawMaterialsQuery.data.raw.map((r) => (
+                                      <TR key={r.inventoryItemId}>
+                                        <TD className="font-semibold text-slate-900">{r.itemName ?? r.inventoryItemId}</TD>
+                                        <TD>{fmt(r.required)} {r.unit}</TD>
+                                        <TD>{fmt(r.available)} {r.unit}</TD>
+                                        <TD className={r.shortage > 0 ? "font-bold text-red-700" : "text-emerald-700"}>
+                                          {r.shortage > 0 ? `${fmt(r.shortage)} ${r.unit}` : "كفاية"}
+                                        </TD>
+                                      </TR>
+                                    ))}
+                                  </TBody>
+                                </Table>
+                              ) : (
+                                <p className="p-3 text-sm text-slate-400">مفيش خامات محتاجة (لسه بيتحمّل أو مفيش وصفة)</p>
+                              )}
+                            </TD>
+                          </TR>
+                        )}
+                      </Fragment>
+                    ))}
+                  </TBody>
+                </Table>
+                {planQuery.data?.plan.length === 0 && <EmptyState>مفيش أصناف مصنّعة مسجلة لسه</EmptyState>}
+              </CardBody>
+            </Card>
+          )}
+          {!planCkBranchId && <EmptyState>اختر فرع السنتر كيتشن عشان تشوف خطة التصنيع</EmptyState>}
         </div>
       )}
     </div>

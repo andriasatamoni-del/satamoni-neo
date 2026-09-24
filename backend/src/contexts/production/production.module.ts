@@ -13,6 +13,8 @@ import { CompleteConversionOrderHandler } from "./application/commands/complete-
 import { CancelConversionOrderHandler } from "./application/commands/cancel-conversion-order.handler";
 import { ListConversionOrdersHandler } from "./application/queries/list-conversion-orders.handler";
 import { GetConversionOrderHandler } from "./application/queries/get-conversion-order.handler";
+import { GetProductionPlanHandler } from "./application/queries/get-production-plan.handler";
+import { GetRawMaterialRequirementHandler } from "./application/queries/get-raw-material-requirement.handler";
 import { ProductionController } from "./api/production.controller";
 
 @Module({
@@ -27,6 +29,8 @@ import { ProductionController } from "./api/production.controller";
     CancelConversionOrderHandler,
     ListConversionOrdersHandler,
     GetConversionOrderHandler,
+    GetProductionPlanHandler,
+    GetRawMaterialRequirementHandler,
   ],
 })
 export class ProductionModule implements OnModuleInit {
