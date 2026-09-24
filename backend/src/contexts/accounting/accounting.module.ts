@@ -27,6 +27,7 @@ import { PostDriverWageJournalEntryHandler } from "./application/commands/post-d
 import { PostStocktakeVarianceJournalEntryHandler } from "./application/commands/post-stocktake-variance-journal-entry.handler";
 import { PostConversionOrderJournalEntryHandler } from "./application/commands/post-conversion-order-journal-entry.handler";
 import { PostCashDrawerEntryJournalEntryHandler } from "./application/commands/post-cash-drawer-entry-journal-entry.handler";
+import { PostPurchaseJournalEntryHandler } from "./application/commands/post-purchase-journal-entry.handler";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { GetTrialBalanceHandler } from "./application/queries/get-trial-balance.handler";
@@ -44,6 +45,7 @@ import type { DriverSettlementCreatedEvent } from "../delivery/domain/events/dri
 import type { DriverAttendanceShiftClosedEvent } from "../delivery/domain/events/driver-attendance-shift-closed.event";
 import type { StocktakeCommittedEvent } from "../inventory/domain/events/stocktake-committed.event";
 import type { ConversionOrderCompletedEvent } from "../production/domain/events/conversion-order-completed.event";
+import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase-confirmed.event";
 
 @Module({
   imports: [IdentityAccessModule],
@@ -69,6 +71,7 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     PostStocktakeVarianceJournalEntryHandler,
     PostConversionOrderJournalEntryHandler,
     PostCashDrawerEntryJournalEntryHandler,
+    PostPurchaseJournalEntryHandler,
     ListAccountsHandler,
     ListJournalEntriesHandler,
     GetTrialBalanceHandler,
@@ -91,7 +94,8 @@ export class AccountingModule implements OnModuleInit {
     private readonly postDriverWageJournalEntry: PostDriverWageJournalEntryHandler,
     private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler,
     private readonly postConversionOrderJournalEntry: PostConversionOrderJournalEntryHandler,
-    private readonly postCashDrawerEntryJournalEntry: PostCashDrawerEntryJournalEntryHandler
+    private readonly postCashDrawerEntryJournalEntry: PostCashDrawerEntryJournalEntryHandler,
+    private readonly postPurchaseJournalEntry: PostPurchaseJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -158,6 +162,11 @@ export class AccountingModule implements OnModuleInit {
     // يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<CashDrawerEntryRegisteredEvent>("CashDrawerEntryRegistered", (event) =>
       this.postCashDrawerEntryJournalEntry.handle(event)
+    );
+    // حداشر مستهلك - مشترى طارئ (PO-less) اتأكد وبيه بنود بترحّل مخزون بيترحّل قيد نقدي تلقائيًا، من
+    // غير ما Purchases context يعرف حاجة عن وجود Accounting
+    this.eventBus.subscribe<PurchaseConfirmedEvent>("PurchaseConfirmed", (event) =>
+      this.postPurchaseJournalEntry.handle(event)
     );
   }
 }

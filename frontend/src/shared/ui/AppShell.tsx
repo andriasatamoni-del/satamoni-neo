@@ -46,6 +46,7 @@ const NAV_ITEMS = [
   { to: "/branch-day", label: "قفل يوم الفرع", icon: LockIcon },
   { to: "/accounting", label: "المحاسبة", icon: CoinsIcon },
   { to: "/expenses", label: "المصروفات", icon: ReceiptIcon },
+  { to: "/purchases", label: "المشتريات النقدية", icon: CartIcon },
   { to: "/financial-reports", label: "التقارير المحاسبية", icon: ChartIcon },
   { to: "/treasuries", label: "الخزائن والبنوك", icon: VaultIcon },
   { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },

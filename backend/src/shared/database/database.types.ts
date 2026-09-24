@@ -101,6 +101,7 @@ import type {
 } from "../../contexts/inventory/infrastructure/persistence/transfer-request.schema";
 import type { ExpenseCategoriesTable } from "../../contexts/expenses/infrastructure/persistence/expense-category.schema";
 import type { ExpensesTable } from "../../contexts/expenses/infrastructure/persistence/expense.schema";
+import type { PurchasesTable, PurchaseLinesTable } from "../../contexts/purchases/infrastructure/persistence/purchase.schema";
 
 export interface Database {
   users: UsersTable;
@@ -178,4 +179,6 @@ export interface Database {
   transfer_request_lines: TransferRequestLinesTable;
   expense_categories: ExpenseCategoriesTable;
   expenses: ExpensesTable;
+  purchases: PurchasesTable;
+  purchase_lines: PurchaseLinesTable;
 }
