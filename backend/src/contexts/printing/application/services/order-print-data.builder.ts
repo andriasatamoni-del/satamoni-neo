@@ -3,6 +3,7 @@ import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../../orders/doma
 import { BRANCH_REPOSITORY, type BranchRepositoryPort } from "../../../branches/domain/ports/branch-repository.port";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
 import { MENU_CATEGORY_REPOSITORY, type MenuCategoryRepositoryPort } from "../../../catalog/domain/ports/menu-category-repository.port";
+import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../../catalog/domain/ports/combo-repository.port";
 import { PAYMENT_METHOD_REPOSITORY, type PaymentMethodRepositoryPort } from "../../../payment-control/domain/ports/payment-method-repository.port";
 import type { Order } from "../../../orders/domain/order.aggregate";
 import type { PrintOrderSummary, PrintItemLine } from "../../infrastructure/print-templates";
@@ -29,7 +30,8 @@ export class OrderPrintDataBuilder {
     @Inject(BRANCH_REPOSITORY) private readonly branches: BranchRepositoryPort,
     @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepositoryPort,
     @Inject(MENU_CATEGORY_REPOSITORY) private readonly menuCategories: MenuCategoryRepositoryPort,
-    @Inject(PAYMENT_METHOD_REPOSITORY) private readonly paymentMethods: PaymentMethodRepositoryPort
+    @Inject(PAYMENT_METHOD_REPOSITORY) private readonly paymentMethods: PaymentMethodRepositoryPort,
+    @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort
   ) {}
 
   async build(orderId: string): Promise<OrderPrintData | null> {
@@ -41,7 +43,34 @@ export class OrderPrintDataBuilder {
 
     const items: ResolvedPrintItem[] = [];
     for (const line of order.items) {
-      const menuItem = await this.menuItems.findByVariantId(line.variantId);
+      // سطر عرض (combo) - بيتفكّ لأصنافه الأصلية عشان كل صنف يوصل لمحطة تحضيره الصحيحة (نفس فلسفة
+      // combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
+      if (line.comboId) {
+        const combo = await this.combos.findById(line.comboId);
+        const components = combo?.items ?? [];
+        for (const [index, component] of components.entries()) {
+          const menuItem = await this.menuItems.findByVariantId(component.variantId);
+          const variant = menuItem?.variants.find((v) => v.id === component.variantId);
+          let stationId = menuItem?.stationId ?? null;
+          if (!stationId && menuItem?.categoryId) {
+            const category = await this.menuCategories.findById(menuItem.categoryId);
+            stationId = category?.stationId ?? null;
+          }
+          // سعر العرض بالكامل بيتحط على أول مكوّن بس (عشان مجموع أعمدة السعر في الفاتورة يطابق سعر
+          // العرض الحقيقي) - باقي المكوّنات بسعر صفر، نفس فكرة الريبو القديم في تفكيك الـcombo_components
+          items.push({
+            name: `${combo?.name ?? "عرض"}: ${menuItem?.name ?? "صنف"}`,
+            variantLabel: variant?.label ?? null,
+            quantity: component.quantity * line.quantity,
+            unitPrice: index === 0 ? line.unitPrice : 0,
+            lineTotal: index === 0 ? line.lineTotal : 0,
+            stationId,
+          });
+        }
+        continue;
+      }
+
+      const menuItem = await this.menuItems.findByVariantId(line.variantId!);
       const variant = menuItem?.variants.find((v) => v.id === line.variantId);
       let stationId = menuItem?.stationId ?? null;
       if (!stationId && menuItem?.categoryId) {

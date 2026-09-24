@@ -2,6 +2,8 @@ import { ArgumentsHost, Catch, ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
 import { DomainError } from "../../../../shared/domain/domain-error";
 import {
+  ComboNotFoundError,
+  DuplicateComboNameError,
   MenuCategoryNotFoundError,
   MenuItemNotFoundError,
   ModifierNotFoundError,
@@ -20,9 +22,12 @@ export class CatalogDomainErrorFilter implements ExceptionFilter {
       exception instanceof VariantNotFoundError ||
       exception instanceof ModifierNotFoundError ||
       exception instanceof RecipeNotFoundError ||
-      exception instanceof RecipeVersionNotFoundError
+      exception instanceof RecipeVersionNotFoundError ||
+      exception instanceof ComboNotFoundError
         ? 404
-        : 400;
+        : exception instanceof DuplicateComboNameError
+          ? 409
+          : 400;
     res.status(status).json({ error: exception.message });
   }
 }

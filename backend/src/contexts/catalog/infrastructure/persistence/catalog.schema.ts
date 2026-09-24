@@ -75,3 +75,19 @@ export interface RecipeIngredientsTable {
   quantity: number;
   unit: string | null;
 }
+
+export interface CombosTable {
+  id: Generated<string>;
+  name: string;
+  price: number;
+  is_active: boolean;
+  legacy_combo_id: number | null;
+  created_at: Generated<Date>;
+}
+
+export interface ComboItemsTable {
+  id: Generated<string>;
+  combo_id: string;
+  variant_id: string;
+  quantity: number;
+}

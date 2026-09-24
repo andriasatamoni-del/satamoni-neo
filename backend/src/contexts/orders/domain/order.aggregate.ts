@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   EmptyOrderError,
   InvalidKitchenStatusTransitionError,
+  InvalidOrderItemError,
   OrderAlreadyFinalizedError,
   OrderCancelledError,
   UnknownKitchenStatusError,
@@ -26,11 +27,15 @@ export interface OrderItemModifierLine {
 
 export interface OrderItemLine {
   id: string;
-  menuItemId: string;
-  variantId: string;
+  // إما (menuItemId+variantId) لصنف عادي أو comboId لعرض - مش الاتنين ومش من غيرهم خالص (نفس تصميم
+  // order_items.combo_id في الريبو القديم بالظبط - راجع تعليق Combo.aggregate.ts)
+  menuItemId: string | null;
+  variantId: string | null;
+  comboId: string | null;
   quantity: number;
   // شامل مجموع أسعار المرفقات المختارة (basePrice + sum(modifiers.priceAtSale)) - نفس منطق الريبو
-  // القديم بالظبط (unitPrice = basePrice + modifierTotal)، مش سعر الحجم الأساسي لوحده
+  // القديم بالظبط (unitPrice = basePrice + modifierTotal)، مش سعر الحجم الأساسي لوحده. للعروض: سعر
+  // العرض نفسه (العروض مالهاش مرفقات - نفس الريبو القديم)
   unitPrice: number;
   lineTotal: number;
   modifiers: OrderItemModifierLine[];
@@ -89,8 +94,9 @@ export class Order {
     customerPhone?: string | null;
     addressDetails?: string | null;
     items: {
-      menuItemId: string;
-      variantId: string;
+      menuItemId?: string | null;
+      variantId?: string | null;
+      comboId?: string | null;
       quantity: number;
       unitPrice: number;
       modifiers?: OrderItemModifierLine[];
@@ -104,15 +110,20 @@ export class Order {
     if (!ORDER_TYPES.includes(input.orderType as OrderType)) throw new UnknownOrderTypeError(input.orderType);
     if (input.items.length === 0) throw new EmptyOrderError();
 
-    const items: OrderItemLine[] = input.items.map((i) => ({
-      id: randomUUID(),
-      menuItemId: i.menuItemId,
-      variantId: i.variantId,
-      quantity: i.quantity,
-      unitPrice: i.unitPrice,
-      lineTotal: i.quantity * i.unitPrice,
-      modifiers: i.modifiers ?? [],
-    }));
+    const items: OrderItemLine[] = input.items.map((i) => {
+      const isCombo = !!i.comboId;
+      if (isCombo ? i.menuItemId || i.variantId : !i.menuItemId || !i.variantId) throw new InvalidOrderItemError();
+      return {
+        id: randomUUID(),
+        menuItemId: isCombo ? null : i.menuItemId!,
+        variantId: isCombo ? null : i.variantId!,
+        comboId: isCombo ? i.comboId! : null,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        lineTotal: i.quantity * i.unitPrice,
+        modifiers: i.modifiers ?? [],
+      };
+    });
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
     const discount = input.discount ?? 0;
 

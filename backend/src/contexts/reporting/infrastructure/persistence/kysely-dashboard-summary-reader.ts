@@ -67,10 +67,13 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
         .where("order_items.order_id", "in", activeOrderIds)
         .execute();
       for (const row of itemRows) {
-        const entry = itemMap.get(row.menu_item_id) ?? { name: row.name, quantity: 0, revenue: 0 };
+        // INNER JOIN على menu_items بيستبعد سطور العروض (menu_item_id فاضي) من الأساس - الـ! هنا أمان
+        // نوعي بس، مش افتراض جديد
+        const menuItemId = row.menu_item_id!;
+        const entry = itemMap.get(menuItemId) ?? { name: row.name, quantity: 0, revenue: 0 };
         entry.quantity += row.quantity;
         entry.revenue += Number(row.line_total);
-        itemMap.set(row.menu_item_id, entry);
+        itemMap.set(menuItemId, entry);
       }
     }
     const topItemsByRevenue = [...itemMap.entries()]

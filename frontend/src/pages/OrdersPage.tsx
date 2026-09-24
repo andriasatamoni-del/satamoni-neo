@@ -49,9 +49,19 @@ interface MenuItem {
   variants: MenuItemVariant[];
   modifiers: MenuItemModifier[];
 }
+interface ComboItem { variantId: string; quantity: number; }
+interface Combo { id: string; name: string; price: number; isActive: boolean; items: ComboItem[]; }
 interface PaymentMethod { id: string; name: string; }
 interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
-interface OrderLine { menuItemId: string; variantId: string; quantity: number; unitPrice: number; lineTotal: number; modifiers: OrderLineModifier[]; }
+interface OrderLine {
+  menuItemId: string | null;
+  variantId: string | null;
+  comboId: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  modifiers: OrderLineModifier[];
+}
 interface Order {
   id: string;
   branchId: string;
@@ -71,7 +81,8 @@ interface Order {
 interface CartLineModifier { modifierId: string; name: string; priceDelta: number; }
 interface CartLine {
   key: string;
-  variantId: string;
+  variantId: string | null;
+  comboId: string | null;
   itemName: string;
   variantLabel: string;
   unitPrice: number;
@@ -102,6 +113,7 @@ export function OrdersPage() {
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches") });
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items") });
+  const combosQuery = useQuery({ queryKey: ["catalog", "combos"], queryFn: () => offlineFallbackQuery<Combo[]>("/catalog/combos", "catalog-combos") });
   const paymentMethodsQuery = useQuery({
     queryKey: ["payment-control", "methods"],
     queryFn: () => offlineFallbackQuery<PaymentMethod[]>("/payment-control/payment-methods", "payment-methods"),
@@ -172,10 +184,25 @@ export function OrdersPage() {
       }
       return [
         ...lines,
-        { key, variantId: variant.id, itemName: item.name, variantLabel: variant.label, unitPrice: variant.price + modifierTotal, quantity: 1, modifiers },
+        {
+          key, variantId: variant.id, comboId: null, itemName: item.name, variantLabel: variant.label,
+          unitPrice: variant.price + modifierTotal, quantity: 1, modifiers,
+        },
       ];
     });
     setPickerItem(null);
+  }
+
+  function addComboToCart(combo: Combo) {
+    const key = `combo:${combo.id}`;
+    setCart((lines) => {
+      const existing = lines.find((l) => l.key === key);
+      if (existing) return lines.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l));
+      return [
+        ...lines,
+        { key, variantId: null, comboId: combo.id, itemName: combo.name, variantLabel: "", unitPrice: combo.price, quantity: 1, modifiers: [] },
+      ];
+    });
   }
 
   function handleItemClick(item: MenuItem) {
@@ -219,11 +246,15 @@ export function OrdersPage() {
         customerName: customerName || undefined,
         customerPhone: customerPhone || undefined,
         addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
-        items: cart.map((l) => ({
-          variantId: l.variantId,
-          quantity: l.quantity,
-          modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
-        })),
+        items: cart.map((l) =>
+          l.comboId
+            ? { comboId: l.comboId, quantity: l.quantity }
+            : {
+                variantId: l.variantId,
+                quantity: l.quantity,
+                modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
+              }
+        ),
         discount: discountNum > 0 ? discountNum : undefined,
         paymentMethodId: paymentMethodId || undefined,
         // معرّف بيتولّد هنا (مش في السيرفر) عشان لو الطلب اتسجّل في الطابور المحلي وبعدين اتزامن أكتر
@@ -280,7 +311,10 @@ export function OrdersPage() {
     }
     return variantId;
   };
+  const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
+  const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
   const orders = ordersQuery.data ?? [];
+  const combos = combosQuery.data ?? [];
 
   return (
     <div>
@@ -375,6 +409,34 @@ export function OrdersPage() {
                   </button>
                 ))}
               </div>
+
+              {combos.length > 0 && categoryId === "all" && !search.trim() && (
+                <div className="mb-4">
+                  <p className="mb-2 text-xs font-semibold text-slate-500">العروض</p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {combos.map((combo) => {
+                      const inCartQty = cart.filter((l) => l.comboId === combo.id).reduce((sum, l) => sum + l.quantity, 0);
+                      return (
+                        <button
+                          key={combo.id}
+                          type="button"
+                          onClick={() => addComboToCart(combo)}
+                          className="relative flex flex-col items-start gap-1 rounded-xl border border-brand-300 bg-brand-50/50 p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                        >
+                          {inCartQty > 0 && (
+                            <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+                              {inCartQty}
+                            </span>
+                          )}
+                          <Badge tone="warning" className="mb-0.5">عرض</Badge>
+                          <p className="text-sm font-bold text-slate-900">{combo.name}</p>
+                          <p className="text-sm font-semibold text-brand-700">{combo.price}ج</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {visibleItems.map((item) => {
@@ -586,7 +648,7 @@ export function OrdersPage() {
               {orders.map((o) => (
                 <TR key={o.id}>
                   <TD><Badge tone="neutral">{ORDER_TYPES.find((t) => t.value === o.orderType)?.label ?? o.orderType}</Badge></TD>
-                  <TD className="max-w-xs">{o.items.map((i) => `${variantLabel(i.variantId)} × ${i.quantity}`).join("، ")}</TD>
+                  <TD className="max-w-xs">{o.items.map((i) => `${orderLineLabel(i)} × ${i.quantity}`).join("، ")}</TD>
                   <TD className="font-bold text-slate-900">{o.total}ج</TD>
                   <TD><StatusBadge status={STATUS_LABELS[o.status] ?? o.status} /></TD>
                   <TD>

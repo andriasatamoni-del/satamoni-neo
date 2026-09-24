@@ -85,3 +85,33 @@ export class EmptyRecipeIngredientsError extends DomainError {
     super("لازم الوصفة يكون فيها مكوّن واحد على الأقل قبل ما تتفعّل");
   }
 }
+
+export class ComboNameRequiredError extends DomainError {
+  constructor() {
+    super("اسم العرض مطلوب");
+  }
+}
+
+export class DuplicateComboNameError extends DomainError {
+  constructor() {
+    super("في عرض بنفس الاسم ده موجود بالفعل");
+  }
+}
+
+export class ComboMissingItemsError extends DomainError {
+  constructor() {
+    super("لازم العرض يكون فيه صنف (حجم) واحد على الأقل");
+  }
+}
+
+export class InvalidComboItemError extends DomainError {
+  constructor() {
+    super("كل صنف في العرض لازم يكون له حجم صحيح وكمية أكبر من صفر");
+  }
+}
+
+export class ComboNotFoundError extends DomainError {
+  constructor() {
+    super("العرض ده مش موجود");
+  }
+}

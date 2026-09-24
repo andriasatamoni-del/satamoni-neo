@@ -4,9 +4,11 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { MENU_CATEGORY_REPOSITORY } from "./domain/ports/menu-category-repository.port";
 import { MENU_ITEM_REPOSITORY } from "./domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY } from "./domain/ports/recipe-repository.port";
+import { COMBO_REPOSITORY } from "./domain/ports/combo-repository.port";
 import { KyselyMenuCategoryRepository } from "./infrastructure/persistence/kysely-menu-category.repository";
 import { KyselyMenuItemRepository } from "./infrastructure/persistence/kysely-menu-item.repository";
 import { KyselyRecipeRepository } from "./infrastructure/persistence/kysely-recipe.repository";
+import { KyselyComboRepository } from "./infrastructure/persistence/kysely-combo.repository";
 import { RegisterMenuCategoryHandler } from "./application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "./application/commands/register-menu-item.handler";
 import { AddVariantHandler } from "./application/commands/add-variant.handler";
@@ -20,10 +22,14 @@ import { ClearModifierVariantPriceHandler } from "./application/commands/clear-m
 import { RegisterRecipeHandler } from "./application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "./application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "./application/commands/activate-recipe-version.handler";
+import { RegisterComboHandler } from "./application/commands/register-combo.handler";
+import { UpdateComboHandler } from "./application/commands/update-combo.handler";
+import { ReplaceComboItemsHandler } from "./application/commands/replace-combo-items.handler";
 import { ListMenuCategoriesHandler } from "./application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "./application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "./application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "./application/queries/list-recipes.handler";
+import { ListCombosHandler } from "./application/queries/list-combos.handler";
 import { CatalogController } from "./api/catalog.controller";
 
 @Module({
@@ -33,6 +39,7 @@ import { CatalogController } from "./api/catalog.controller";
     { provide: MENU_CATEGORY_REPOSITORY, useClass: KyselyMenuCategoryRepository },
     { provide: MENU_ITEM_REPOSITORY, useClass: KyselyMenuItemRepository },
     { provide: RECIPE_REPOSITORY, useClass: KyselyRecipeRepository },
+    { provide: COMBO_REPOSITORY, useClass: KyselyComboRepository },
     RegisterMenuCategoryHandler,
     RegisterMenuItemHandler,
     AddVariantHandler,
@@ -46,12 +53,16 @@ import { CatalogController } from "./api/catalog.controller";
     RegisterRecipeHandler,
     CreateRecipeVersionHandler,
     ActivateRecipeVersionHandler,
+    RegisterComboHandler,
+    UpdateComboHandler,
+    ReplaceComboItemsHandler,
     ListMenuCategoriesHandler,
     ListMenuItemsHandler,
     GetRecipeByVariantHandler,
     ListRecipesHandler,
+    ListCombosHandler,
   ],
-  exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY],
+  exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY, COMBO_REPOSITORY],
 })
 export class CatalogModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

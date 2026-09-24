@@ -34,10 +34,16 @@ interface MenuItem {
   modifiers: MenuItemModifier[];
 }
 
+interface ComboItem { variantId: string; quantity: number; }
+interface Combo { id: string; name: string; price: number; isActive: boolean; items: ComboItem[]; }
+
+interface ComboItemRow { variantId: string; quantity: string; }
+
 export function CatalogPage() {
   const queryClient = useQueryClient();
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
+  const combosQuery = useQuery({ queryKey: ["catalog", "combos", "all"], queryFn: () => apiRequest<Combo[]>("/catalog/combos/all") });
 
   const invalidateCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "categories"] });
@@ -142,6 +148,52 @@ export function CatalogPage() {
     onSuccess: () => invalidateCatalog(),
   });
 
+  const [comboForm, setComboForm] = useState({ name: "", price: "" });
+  const [comboItemRows, setComboItemRows] = useState<ComboItemRow[]>([{ variantId: "", quantity: "1" }]);
+  const [comboError, setComboError] = useState<string | null>(null);
+  const createCombo = useMutation({
+    mutationFn: () =>
+      apiRequest("/catalog/combos", {
+        method: "POST",
+        body: {
+          name: comboForm.name,
+          price: Number(comboForm.price),
+          items: comboItemRows
+            .filter((r) => r.variantId)
+            .map((r) => ({ variantId: r.variantId, quantity: Number(r.quantity) || 1 })),
+        },
+      }),
+    onSuccess: () => {
+      setComboForm({ name: "", price: "" });
+      setComboItemRows([{ variantId: "", quantity: "1" }]);
+      setComboError(null);
+      queryClient.invalidateQueries({ queryKey: ["catalog", "combos"] });
+    },
+    onError: (err) => setComboError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const updateCombo = useMutation({
+    mutationFn: ({ id, ...input }: { id: string; isActive?: boolean; price?: number }) =>
+      apiRequest(`/catalog/combos/${id}`, { method: "PATCH", body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["catalog", "combos"] }),
+  });
+
+  function addComboItemRow() {
+    setComboItemRows([...comboItemRows, { variantId: "", quantity: "1" }]);
+  }
+  function updateComboItemRow(idx: number, patch: Partial<ComboItemRow>) {
+    setComboItemRows(comboItemRows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+  function removeComboItemRow(idx: number) {
+    setComboItemRows(comboItemRows.filter((_, i) => i !== idx));
+  }
+  function variantDisplayName(variantId: string): string {
+    for (const item of items) {
+      const v = item.variants.find((vv) => vv.id === variantId);
+      if (v) return `${item.name} - ${v.label}`;
+    }
+    return variantId;
+  }
+
   function handleCategorySubmit(e: FormEvent) {
     e.preventDefault();
     createCategory.mutate();
@@ -161,6 +213,7 @@ export function CatalogPage() {
 
   const categories = categoriesQuery.data ?? [];
   const items = itemsQuery.data ?? [];
+  const combos = combosQuery.data ?? [];
   const categoryName_ = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "بدون قسم";
 
   return (
@@ -348,6 +401,76 @@ export function CatalogPage() {
             </TBody>
           </Table>
           {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+        </CardBody>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>العروض ({combos.length})</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <p className="mb-4 text-sm text-slate-500">عرض بيجمع أكتر من حجم بسعر واحد مختلف عن مجموع أسعارهم</p>
+          <form
+            onSubmit={(e: FormEvent) => { e.preventDefault(); createCombo.mutate(); }}
+            className="mb-6 space-y-3 border-b border-slate-100 pb-6"
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="اسم العرض">
+                <Input required value={comboForm.name} onChange={(e) => setComboForm({ ...comboForm, name: e.target.value })} />
+              </Field>
+              <Field label="السعر">
+                <Input required type="number" min="0.01" step="any" value={comboForm.price} onChange={(e) => setComboForm({ ...comboForm, price: e.target.value })} />
+              </Field>
+            </div>
+            <div className="space-y-2">
+              {comboItemRows.map((row, idx) => (
+                <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
+                  <Field label="الصنف/الحجم">
+                    <Select value={row.variantId} onChange={(e) => updateComboItemRow(idx, { variantId: e.target.value })}>
+                      <option value="">اختر حجم</option>
+                      {items.flatMap((it) => it.variants.map((v) => (
+                        <option key={v.id} value={v.id}>{it.name} - {v.label}</option>
+                      )))}
+                    </Select>
+                  </Field>
+                  <Field label="الكمية">
+                    <Input type="number" min="1" value={row.quantity} onChange={(e) => updateComboItemRow(idx, { quantity: e.target.value })} />
+                  </Field>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => removeComboItemRow(idx)}>حذف</Button>
+                </div>
+              ))}
+              <Button type="button" variant="secondary" size="sm" onClick={addComboItemRow}>+ بند تاني</Button>
+            </div>
+            {comboError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{comboError}</p>}
+            <Button type="submit" disabled={createCombo.isPending}>إضافة عرض</Button>
+          </form>
+
+          <Table>
+            <THead>
+              <TR><TH>الاسم</TH><TH>السعر</TH><TH>الأصناف</TH><TH>الحالة</TH><TH></TH></TR>
+            </THead>
+            <TBody>
+              {combos.map((c) => (
+                <TR key={c.id}>
+                  <TD className="font-semibold text-slate-900">{c.name}</TD>
+                  <TD>{c.price}ج</TD>
+                  <TD className="text-xs text-slate-500">{c.items.map((i) => `${variantDisplayName(i.variantId)} ×${i.quantity}`).join("، ")}</TD>
+                  <TD>{c.isActive ? <Badge tone="success">نشط</Badge> : <Badge tone="neutral">معطّل</Badge>}</TD>
+                  <TD>
+                    <Button
+                      size="sm"
+                      variant={c.isActive ? "secondary" : "primary"}
+                      onClick={() => updateCombo.mutate({ id: c.id, isActive: !c.isActive })}
+                      disabled={updateCombo.isPending}
+                    >
+                      {c.isActive ? "تعطيل" : "تفعيل"}
+                    </Button>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+          {combos.length === 0 && <EmptyState>مفيش عروض لسه</EmptyState>}
         </CardBody>
       </Card>
 

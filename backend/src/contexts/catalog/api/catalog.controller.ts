@@ -13,10 +13,14 @@ import { ClearModifierVariantPriceHandler } from "../application/commands/clear-
 import { RegisterRecipeHandler } from "../application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "../application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "../application/commands/activate-recipe-version.handler";
+import { RegisterComboHandler } from "../application/commands/register-combo.handler";
+import { UpdateComboHandler } from "../application/commands/update-combo.handler";
+import { ReplaceComboItemsHandler } from "../application/commands/replace-combo-items.handler";
 import { ListMenuCategoriesHandler } from "../application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "../application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "../application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "../application/queries/list-recipes.handler";
+import { ListCombosHandler } from "../application/queries/list-combos.handler";
 import { RegisterMenuCategoryDto } from "./dto/register-menu-category.dto";
 import { RegisterMenuItemDto } from "./dto/register-menu-item.dto";
 import { AddVariantDto } from "./dto/add-variant.dto";
@@ -28,6 +32,9 @@ import { UpdateModifierDto } from "./dto/update-modifier.dto";
 import { SetModifierVariantPriceDto } from "./dto/set-modifier-variant-price.dto";
 import { RegisterRecipeDto } from "./dto/register-recipe.dto";
 import { CreateRecipeVersionDto } from "./dto/create-recipe-version.dto";
+import { RegisterComboDto } from "./dto/register-combo.dto";
+import { UpdateComboDto } from "./dto/update-combo.dto";
+import { ReplaceComboItemsDto } from "./dto/replace-combo-items.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -36,6 +43,7 @@ import { CatalogDomainErrorFilter } from "./filters/domain-error.filter";
 import type { MenuCategory } from "../domain/menu-category.aggregate";
 import type { MenuItem } from "../domain/menu-item.aggregate";
 import type { Recipe } from "../domain/recipe.aggregate";
+import type { Combo } from "../domain/combo.aggregate";
 
 @Controller("catalog")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -58,7 +66,11 @@ export class CatalogController {
     private readonly listCategories: ListMenuCategoriesHandler,
     private readonly listItems: ListMenuItemsHandler,
     private readonly getRecipeByVariant: GetRecipeByVariantHandler,
-    private readonly listRecipes: ListRecipesHandler
+    private readonly listRecipes: ListRecipesHandler,
+    private readonly registerCombo: RegisterComboHandler,
+    private readonly updateCombo: UpdateComboHandler,
+    private readonly replaceComboItems: ReplaceComboItemsHandler,
+    private readonly listCombos: ListCombosHandler
   ) {}
 
   @Get("recipes")
@@ -183,6 +195,38 @@ export class CatalogController {
     const recipe = await this.getRecipeByVariant.execute(variantId);
     return recipe ? toPublicRecipe(recipe) : null;
   }
+
+  // العروض النشطة بس - نفس GET /api/combos بالريبو القديم (لأي حد يقدر يسجّل/يشوف طلبات)
+  @Get("combos")
+  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  async combos() {
+    return (await this.listCombos.execute({ activeOnly: true })).map(toPublicCombo);
+  }
+
+  // كل العروض (نشطة وغير نشطة) - نفس GET /api/combos/all بالريبو القديم (لشاشة الإدارة بس)
+  @Get("combos/all")
+  @RequirePermission("catalog.items.manage")
+  async allCombos() {
+    return (await this.listCombos.execute()).map(toPublicCombo);
+  }
+
+  @Post("combos")
+  @RequirePermission("catalog.items.manage")
+  async createCombo(@Body() dto: RegisterComboDto) {
+    return toPublicCombo(await this.registerCombo.execute(dto));
+  }
+
+  @Patch("combos/:id")
+  @RequirePermission("catalog.items.manage")
+  async updateComboHandler(@Param("id") id: string, @Body() dto: UpdateComboDto) {
+    return toPublicCombo(await this.updateCombo.execute({ comboId: id, ...dto }));
+  }
+
+  @Put("combos/:id/items")
+  @RequirePermission("catalog.items.manage")
+  async replaceComboItemsHandler(@Param("id") id: string, @Body() dto: ReplaceComboItemsDto) {
+    return toPublicCombo(await this.replaceComboItems.execute({ comboId: id, items: dto.items }));
+  }
 }
 
 function toPublicCategory(category: MenuCategory) {
@@ -212,6 +256,16 @@ function toPublicItem(item: MenuItem) {
       isActive: m.isActive,
       variantPrices: m.variantPrices.map((vp) => ({ variantId: vp.variantId, priceDelta: vp.priceDelta })),
     })),
+  };
+}
+
+function toPublicCombo(combo: Combo) {
+  return {
+    id: combo.id,
+    name: combo.name,
+    price: combo.price,
+    isActive: combo.isActive,
+    items: combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
   };
 }
 

@@ -56,6 +56,18 @@ export class VariantNotFoundForOrderError extends DomainError {
   }
 }
 
+export class InvalidOrderItemError extends DomainError {
+  constructor() {
+    super("كل سطر في الطلب لازم يكون إما صنف (حجم) أو عرض، مش الاتنين ومش من غيرهم");
+  }
+}
+
+export class ComboNotFoundForOrderError extends DomainError {
+  constructor() {
+    super("في سطر بيشاور على عرض مش موجود أو متوقف حاليًا");
+  }
+}
+
 export class ModifierNotFoundForOrderError extends DomainError {
   constructor() {
     super("في سطر بيشاور على مرفق مش موجود أو مش تابع للصنف ده أو مش نشط");

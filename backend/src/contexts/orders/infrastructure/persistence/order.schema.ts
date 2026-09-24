@@ -26,8 +26,9 @@ export interface OrdersTable {
 export interface OrderItemsTable {
   id: Generated<string>;
   order_id: string;
-  menu_item_id: string;
-  variant_id: string;
+  menu_item_id: string | null;
+  variant_id: string | null;
+  combo_id: string | null;
   quantity: number;
   unit_price: number;
   line_total: number;

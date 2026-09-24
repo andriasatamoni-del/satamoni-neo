@@ -71,6 +71,7 @@ function toPublicOrder(order: Order) {
     items: order.items.map((i) => ({
       menuItemId: i.menuItemId,
       variantId: i.variantId,
+      comboId: i.comboId,
       quantity: i.quantity,
       unitPrice: i.unitPrice,
       lineTotal: i.lineTotal,

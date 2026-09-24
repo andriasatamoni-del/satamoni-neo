@@ -4,6 +4,7 @@ import { ORDER_RATING_REPOSITORY, type OrderRatingRepositoryPort } from "../../d
 import { InvalidRatingTokenError } from "../../domain/errors";
 import { BRANCH_REPOSITORY, type BranchRepositoryPort } from "../../../branches/domain/ports/branch-repository.port";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
+import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../../catalog/domain/ports/combo-repository.port";
 
 export interface GetPublicOrderRatingQuery {
   orderId: string;
@@ -28,7 +29,8 @@ export class GetPublicOrderRatingHandler {
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     @Inject(ORDER_RATING_REPOSITORY) private readonly ratings: OrderRatingRepositoryPort,
     @Inject(BRANCH_REPOSITORY) private readonly branches: BranchRepositoryPort,
-    @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepositoryPort
+    @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepositoryPort,
+    @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort
   ) {}
 
   async execute(query: GetPublicOrderRatingQuery): Promise<PublicOrderRatingView> {
@@ -38,7 +40,12 @@ export class GetPublicOrderRatingHandler {
     const branch = await this.branches.findById(order.branchId);
     const items = [];
     for (const line of order.items) {
-      const menuItem = await this.menuItems.findByVariantId(line.variantId);
+      if (line.comboId) {
+        const combo = await this.combos.findById(line.comboId);
+        items.push({ name: combo?.name ?? "عرض", variant: null, quantity: line.quantity });
+        continue;
+      }
+      const menuItem = await this.menuItems.findByVariantId(line.variantId!);
       const variant = menuItem?.variants.find((v) => v.id === line.variantId);
       items.push({ name: menuItem?.name ?? "صنف", variant: variant?.label ?? null, quantity: line.quantity });
     }

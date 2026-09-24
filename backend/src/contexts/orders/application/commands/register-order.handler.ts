@@ -5,9 +5,11 @@ import {
   VariantNotFoundForOrderError,
   InsufficientStockForOrderError,
   ModifierNotFoundForOrderError,
+  ComboNotFoundForOrderError,
 } from "../../domain/errors";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY, type RecipeRepositoryPort } from "../../../catalog/domain/ports/recipe-repository.port";
+import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../../catalog/domain/ports/combo-repository.port";
 import {
   INVENTORY_ITEM_REPOSITORY,
   type InventoryItemRepositoryPort,
@@ -27,7 +29,7 @@ export interface RegisterOrderCommand {
   customerName?: string | null;
   customerPhone?: string | null;
   addressDetails?: string | null;
-  items: { variantId: string; quantity: number; modifierIds?: string[] }[];
+  items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
   discount?: number;
   createdBy?: string | null;
   // موافقة صريحة تسمح باستهلاك يخلي رصيد صنف معينه ALLOW_WITH_APPROVAL يروح سالب - نفس فلسفة
@@ -50,6 +52,7 @@ export class RegisterOrderHandler {
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepositoryPort,
     @Inject(RECIPE_REPOSITORY) private readonly recipes: RecipeRepositoryPort,
+    @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     private readonly eventBus: EventBusService
@@ -62,13 +65,34 @@ export class RegisterOrderHandler {
     }
 
     const resolvedItems: {
-      menuItemId: string;
-      variantId: string;
+      menuItemId: string | null;
+      variantId: string | null;
+      comboId: string | null;
       quantity: number;
       unitPrice: number;
       modifiers: OrderItemModifierLine[];
     }[] = [];
+    // مكوّنات كل عرض (variantId+quantity) - مجمّعة هنا عشان تُستخدم في تجميع الاستهلاك تحت من غير ما
+    // نعيد قراءة العرض من الريبو تاني
+    const comboLineComponents = new Map<string, { variantId: string; quantity: number }[]>();
     for (const item of command.items) {
+      if (item.comboId) {
+        const combo = await this.combos.findById(item.comboId);
+        if (!combo || !combo.isActive) throw new ComboNotFoundForOrderError();
+
+        resolvedItems.push({
+          menuItemId: null,
+          variantId: null,
+          comboId: combo.id,
+          quantity: item.quantity,
+          unitPrice: combo.price,
+          modifiers: [],
+        });
+        comboLineComponents.set(combo.id, combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })));
+        continue;
+      }
+
+      if (!item.variantId) throw new VariantNotFoundForOrderError();
       const menuItem = await this.menuItems.findByVariantId(item.variantId);
       const variant = menuItem?.variants.find((v) => v.id === item.variantId);
       if (!menuItem || !variant) throw new VariantNotFoundForOrderError();
@@ -86,21 +110,35 @@ export class RegisterOrderHandler {
       resolvedItems.push({
         menuItemId: menuItem.id,
         variantId: item.variantId,
+        comboId: null,
         quantity: item.quantity,
         unitPrice: variant.price + modifierTotal,
         modifiers,
       });
     }
 
-    // تجميع الاستهلاك المطلوب لكل مكوّن عبر كل أصناف الطلب
-    const requiredByIngredient = new Map<string, number>();
+    // كل (variantId, quantity الطلب) لازم يتاخد وصفته في الاستهلاك - سواء صنف عادي أو صنف جوّه عرض
+    // (العروض مفيهاش وصفة مباشرة - بتتفكّ لأصنافها الأصلية، نفس فلسفة الريبو القديم بالظبط)
+    const variantConsumptions: { variantId: string; quantity: number }[] = [];
     for (const item of resolvedItems) {
-      const recipe = await this.recipes.findByVariantId(item.variantId);
+      if (item.comboId) {
+        for (const component of comboLineComponents.get(item.comboId) ?? []) {
+          variantConsumptions.push({ variantId: component.variantId, quantity: component.quantity * item.quantity });
+        }
+      } else if (item.variantId) {
+        variantConsumptions.push({ variantId: item.variantId, quantity: item.quantity });
+      }
+    }
+
+    // تجميع الاستهلاك المطلوب لكل مكوّن عبر كل أصناف/عروض الطلب
+    const requiredByIngredient = new Map<string, number>();
+    for (const consumption of variantConsumptions) {
+      const recipe = await this.recipes.findByVariantId(consumption.variantId);
       const activeVersion = recipe?.activeVersion;
       if (!activeVersion) continue; // مفيش وصفة نشطة لسه - مفيش استهلاك ليه، مش خطأ
       for (const ingredient of activeVersion.ingredients) {
         const current = requiredByIngredient.get(ingredient.ingredientItemId) ?? 0;
-        requiredByIngredient.set(ingredient.ingredientItemId, current + ingredient.quantity * item.quantity);
+        requiredByIngredient.set(ingredient.ingredientItemId, current + ingredient.quantity * consumption.quantity);
       }
     }
 

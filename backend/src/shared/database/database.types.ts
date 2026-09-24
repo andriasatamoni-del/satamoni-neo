@@ -32,6 +32,8 @@ import type {
   RecipesTable,
   RecipeVersionsTable,
   RecipeIngredientsTable,
+  CombosTable,
+  ComboItemsTable,
 } from "../../contexts/catalog/infrastructure/persistence/catalog.schema";
 import type {
   SuppliersTable,
@@ -129,6 +131,8 @@ export interface Database {
   recipes: RecipesTable;
   recipe_versions: RecipeVersionsTable;
   recipe_ingredients: RecipeIngredientsTable;
+  combos: CombosTable;
+  combo_items: ComboItemsTable;
   suppliers: SuppliersTable;
   purchase_orders: PurchaseOrdersTable;
   purchase_order_items: PurchaseOrderItemsTable;
