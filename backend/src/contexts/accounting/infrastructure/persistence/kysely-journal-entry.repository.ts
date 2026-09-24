@@ -41,6 +41,7 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
           branch_id: entry.branchId,
           status: "DRAFT",
           created_by: entry.createdBy,
+          posted_by: null,
           posted_at: null,
           reversed_at: null,
           reversal_of_entry_id: entry.reversalOfEntryId,
@@ -80,10 +81,34 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
 
         await trx
           .updateTable("journal_entries")
-          .set({ status: entry.status, posted_at: entry.postedAt, reversed_at: entry.reversedAt })
+          .set({ status: entry.status, posted_by: entry.postedBy, posted_at: entry.postedAt, reversed_at: entry.reversedAt })
           .where("id", "=", entry.id)
           .execute();
       }
+    });
+  }
+
+  // ترحيل قيد يدوي DRAFT -> POSTED - status/posted_by/posted_at بس، مش أي حاجة في سطوره (نفس نمط
+  // markReversed تمامًا). الـtrigger trg_prevent_posting_to_closed_period (migration 035) هو الدفاع
+  // الحقيقي التاني - هنا دفاع تطبيقي أول برسالة خطأ واضحة، نفس فلسفة save() بالظبط
+  async postEntry(entryId: string, postedAt: Date, postedBy: string | null): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      const row = await trx.selectFrom("journal_entries").select("entry_date").where("id", "=", entryId).executeTakeFirstOrThrow();
+      const year = row.entry_date.getUTCFullYear();
+      const month = row.entry_date.getUTCMonth() + 1;
+      const period = await trx
+        .selectFrom("accounting_periods")
+        .select("status")
+        .where("year", "=", year)
+        .where("month", "=", month)
+        .executeTakeFirst();
+      if (period?.status === "CLOSED") throw new AccountingPeriodClosedError(year, month);
+
+      await trx
+        .updateTable("journal_entries")
+        .set({ status: "POSTED", posted_by: postedBy, posted_at: postedAt })
+        .where("id", "=", entryId)
+        .execute();
     });
   }
 
@@ -137,6 +162,7 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
         referenceId: l.reference_id,
       })),
       createdBy: row.created_by,
+      postedBy: row.posted_by,
       postedAt: row.posted_at,
       reversedAt: row.reversed_at,
       reversalOfEntryId: row.reversal_of_entry_id,

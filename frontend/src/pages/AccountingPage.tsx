@@ -55,7 +55,6 @@ export function AccountingPage() {
       apiRequest("/accounting/journal-entries", {
         method: "POST",
         body: {
-          sourceType: "manual",
           description: entryDescription || undefined,
           lines: lines.map((l) => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
         },
@@ -72,6 +71,16 @@ export function AccountingPage() {
   const reverseEntry = useMutation({
     mutationFn: (id: string) => apiRequest(`/accounting/journal-entries/${id}/reverse`, { method: "POST", body: {} }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["accounting", "journal-entries"] }),
+  });
+
+  const [postError, setPostError] = useState<string | null>(null);
+  const postEntry = useMutation({
+    mutationFn: (id: string) => apiRequest(`/accounting/journal-entries/${id}/post`, { method: "POST" }),
+    onSuccess: () => {
+      setPostError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting", "journal-entries"] });
+    },
+    onError: (err) => setPostError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
   const [closeYear, setCloseYear] = useState(() => new Date().getFullYear());
@@ -188,6 +197,9 @@ export function AccountingPage() {
           <CardTitle>قيد يدوي جديد</CardTitle>
         </CardHeader>
         <CardBody>
+          <p className="mb-4 text-sm text-slate-500">
+            القيد بيتسجّل مسودة (DRAFT) الأول - لازم يترحّل بعد كده من جدول "القيود اليومية" تحت (صلاحية منفصلة) قبل ما يظهر في التقارير المحاسبية.
+          </p>
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEntry.mutate(); }} className="space-y-4">
             <Field label="البيان (اختياري)">
               <Input value={entryDescription} onChange={(e) => setEntryDescription(e.target.value)} />
@@ -229,6 +241,7 @@ export function AccountingPage() {
           <CardTitle>القيود اليومية ({entries.length})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
+          {postError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{postError}</p>}
           <Table>
             <THead>
               <TR><TH>رقم القيد</TH><TH>المصدر</TH><TH>البيان</TH><TH>السطور</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
@@ -248,6 +261,11 @@ export function AccountingPage() {
                     </TD>
                     <TD><Badge tone={meta.tone}>{meta.label}</Badge></TD>
                     <TD>
+                      {entry.status === "DRAFT" && (
+                        <Button size="sm" onClick={() => postEntry.mutate(entry.id)} disabled={postEntry.isPending}>
+                          ترحيل
+                        </Button>
+                      )}
                       {entry.status === "POSTED" && (
                         <Button size="sm" variant="secondary" onClick={() => reverseEntry.mutate(entry.id)} disabled={reverseEntry.isPending}>
                           عكس القيد

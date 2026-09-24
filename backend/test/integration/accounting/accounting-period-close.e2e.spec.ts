@@ -52,15 +52,20 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
     expenseId = await createAccount("6901-إقفال-جست", "مصروفات-إقفال-جست", "EXPENSE");
     retainedEarningsId = await createAccount("3200", "أرباح مرحّلة", "EQUITY");
 
+    async function createAndPostEntry(entryDate: string, lines: unknown[]): Promise<void> {
+      const created = await request(app.getHttpServer())
+        .post("/accounting/journal-entries")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ entryDate, lines });
+      expect(created.body.status).toBe("DRAFT"); // قيد يدوي دايمًا DRAFT الأول - راجع تعليق JournalEntry.register()
+      await request(app.getHttpServer())
+        .post(`/accounting/journal-entries/${created.body.id}/post`)
+        .set("Authorization", `Bearer ${adminToken}`);
+    }
+
     // بيع 1000 + مصروف 300 في يناير 2021 - صافي الربح المتوقع بعد الإقفال = 700
-    await request(app.getHttpServer())
-      .post("/accounting/journal-entries")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ entryDate: "2021-01-10", sourceType: "manual", lines: [{ accountId: cashId, debit: 1000, credit: 0 }, { accountId: salesId, debit: 0, credit: 1000 }] });
-    await request(app.getHttpServer())
-      .post("/accounting/journal-entries")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ entryDate: "2021-01-15", sourceType: "manual", lines: [{ accountId: expenseId, debit: 300, credit: 0 }, { accountId: cashId, debit: 0, credit: 300 }] });
+    await createAndPostEntry("2021-01-10", [{ accountId: cashId, debit: 1000, credit: 0 }, { accountId: salesId, debit: 0, credit: 1000 }]);
+    await createAndPostEntry("2021-01-15", [{ accountId: expenseId, debit: 300, credit: 0 }, { accountId: cashId, debit: 0, credit: 300 }]);
   });
 
   afterAll(async () => {
@@ -73,17 +78,25 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
     await app.close();
   });
 
-  test("POST /accounting/periods/:year/:month/close بيقفل الشهر ومينفعش يترحّل عليه قيد جديد بعد كده", async () => {
+  test("POST /accounting/periods/:year/:month/close بيقفل الشهر - قيد DRAFT جديد يتسجّل عادي بس مينفعش يترحّل", async () => {
     const close = await request(app.getHttpServer())
       .post("/accounting/periods/2021/1/close")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(close.status).toBe(201);
     expect(close.body.status).toBe("CLOSED");
 
-    const blocked = await request(app.getHttpServer())
+    // تسجيل قيد DRAFT مش "ترحيل" - مسموح في أي وقت بغض النظر عن حالة الشهر (نفس فلسفة الريبو القديم:
+    // فحص الشهر المقفول بيحصل وقت /post بس، مش وقت التسجيل)
+    const drafted = await request(app.getHttpServer())
       .post("/accounting/journal-entries")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ entryDate: "2021-01-20", sourceType: "manual", lines: [{ accountId: cashId, debit: 50, credit: 0 }, { accountId: salesId, debit: 0, credit: 50 }] });
+      .send({ entryDate: "2021-01-20", lines: [{ accountId: cashId, debit: 50, credit: 0 }, { accountId: salesId, debit: 0, credit: 50 }] });
+    expect(drafted.status).toBe(201);
+    expect(drafted.body.status).toBe("DRAFT");
+
+    const blocked = await request(app.getHttpServer())
+      .post(`/accounting/journal-entries/${drafted.body.id}/post`)
+      .set("Authorization", `Bearer ${adminToken}`);
     expect(blocked.status).toBe(400);
 
     const periods = await request(app.getHttpServer())

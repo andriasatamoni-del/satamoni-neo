@@ -14,12 +14,12 @@ export class JournalEntryLineInputDto {
   @IsOptional() @IsString() description?: string;
 }
 
+// sourceType مش موجود هنا عمدًا - القيد اليدوي من الـAPI العام ده دايمًا "manual" (مفروض من السيرفر،
+// راجع تعليق AccountingController.createJournalEntry)، مش قيمة العميل يقدر يتحكم فيها. لو سمحنا
+// بقيمة حرة هنا، أي عميل يقدر يدّعي sourceType زي "supplier_payment" ويتجنّب مسار DRAFT/post الجديد
 export class RegisterJournalEntryDto {
   @IsOptional() @IsDateString() entryDate?: string;
   @IsOptional() @IsString() description?: string;
-
-  @IsString()
-  sourceType!: string;
 
   @IsOptional() @IsUUID() branchId?: string;
 

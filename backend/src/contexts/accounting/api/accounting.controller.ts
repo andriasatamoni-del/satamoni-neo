@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Us
 import type { Request } from "express";
 import { RegisterAccountHandler } from "../application/commands/register-account.handler";
 import { RegisterJournalEntryHandler } from "../application/commands/register-journal-entry.handler";
+import { PostJournalEntryHandler } from "../application/commands/post-journal-entry.handler";
 import { ReverseJournalEntryHandler } from "../application/commands/reverse-journal-entry.handler";
 import { ClosePeriodHandler } from "../application/commands/close-period.handler";
 import { CloseFiscalYearHandler } from "../application/commands/close-fiscal-year.handler";
@@ -33,6 +34,7 @@ export class AccountingController {
   constructor(
     private readonly registerAccount: RegisterAccountHandler,
     private readonly registerJournalEntry: RegisterJournalEntryHandler,
+    private readonly postJournalEntry: PostJournalEntryHandler,
     private readonly reverseJournalEntry: ReverseJournalEntryHandler,
     private readonly listAccounts: ListAccountsHandler,
     private readonly listJournalEntries: ListJournalEntriesHandler,
@@ -63,16 +65,25 @@ export class AccountingController {
     return (await this.listJournalEntries.execute({ branchId, sourceType })).map(toPublicEntry);
   }
 
+  // قيد يدوي جديد - دايمًا DRAFT (sourceType مفروض "manual" من السيرفر، مش من العميل)، محتاج
+  // /post منفصل بصلاحية accounting.post - راجع تعليق RegisterJournalEntryDto وJournalEntry.post()
   @Post("journal-entries")
-  @RequirePermission("accounting.manage")
+  @RequirePermission("accounting.create")
   async createJournalEntry(@Body() dto: RegisterJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(
       await this.registerJournalEntry.execute({
         ...dto,
+        sourceType: "manual",
         entryDate: dto.entryDate ? new Date(dto.entryDate) : undefined,
         createdBy: req.user.id,
       })
     );
+  }
+
+  @Post("journal-entries/:id/post")
+  @RequirePermission("accounting.post")
+  async postJournalEntryRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicEntry(await this.postJournalEntry.execute({ entryId: id, postedBy: req.user.id }));
   }
 
   @Post("journal-entries/:id/reverse")
@@ -165,6 +176,8 @@ function toPublicEntry(entry: JournalEntry) {
     branchId: entry.branchId,
     status: entry.status,
     lines: entry.lines.map((l) => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: l.description })),
+    createdBy: entry.createdBy,
+    postedBy: entry.postedBy,
     postedAt: entry.postedAt,
     reversedAt: entry.reversedAt,
     reversalOfEntryId: entry.reversalOfEntryId,

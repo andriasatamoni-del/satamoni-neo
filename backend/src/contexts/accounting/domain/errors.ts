@@ -62,6 +62,12 @@ export class JournalEntryAlreadyReversedError extends DomainError {
   }
 }
 
+export class JournalEntryNotDraftError extends DomainError {
+  constructor() {
+    super("القيد ده لازم يكون DRAFT عشان تقدر ترحّله");
+  }
+}
+
 export class AccountingPeriodClosedError extends DomainError {
   constructor(year: number, month: number) {
     super(`الشهر المحاسبي ${year}-${String(month).padStart(2, "0")} مقفول - مينفعش يترحّل عليه أي قيد جديد`);

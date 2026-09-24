@@ -92,8 +92,11 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
   });
 
   test("الـDB trigger بيرفض فعليًا أي تعديل على سطور قيد POSTED", async () => {
+    // sourceType غير "manual" عمدًا هنا - القيد اليدوي بقى بيتسجل DRAFT (راجع تعليق
+    // JournalEntry.register())، والاختبار ده بيتأكد من قابلية التعديل لقيد POSTED فعليًا، مش من حالة
+    // القيد وقت التسجيل
     const entry = JournalEntry.register({
-      sourceType: "manual",
+      sourceType: "order_sale",
       lines: [
         { accountId: cashAccountId, debit: 75, credit: 0 },
         { accountId: salesAccountId, debit: 0, credit: 75 },
@@ -112,7 +115,7 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
 
   test("markReversed بيحدّث حالة القيد الأصلي من غير ما يلمس سطوره", async () => {
     const entry = JournalEntry.register({
-      sourceType: "manual",
+      sourceType: "order_sale",
       lines: [
         { accountId: cashAccountId, debit: 30, credit: 0 },
         { accountId: salesAccountId, debit: 0, credit: 30 },

@@ -53,8 +53,13 @@ describe("Accounting Reports - ميزان المراجعة/دفتر الأستا
       const res = await request(app.getHttpServer())
         .post("/accounting/journal-entries")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ entryDate, sourceType: "manual", lines });
+        .send({ entryDate, lines });
       expect(res.status).toBe(201);
+      expect(res.body.status).toBe("DRAFT"); // قيد يدوي دايمًا DRAFT الأول - راجع تعليق JournalEntry.register()
+      const posted = await request(app.getHttpServer())
+        .post(`/accounting/journal-entries/${res.body.id}/post`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(posted.status).toBe(201);
     }
 
     // يوم 1: بيع 1000 (كاش/مبيعات) + تكلفة مبيعاته 400 (تكلفة مبيعات/كاش) + مصروف 100 (مصروفات/كاش)

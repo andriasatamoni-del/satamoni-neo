@@ -14,6 +14,7 @@ import { KyselyAccountingPeriodRepository } from "./infrastructure/persistence/k
 import { KyselyFiscalYearClosingRepository } from "./infrastructure/persistence/kysely-fiscal-year-closing.repository";
 import { RegisterAccountHandler } from "./application/commands/register-account.handler";
 import { RegisterJournalEntryHandler } from "./application/commands/register-journal-entry.handler";
+import { PostJournalEntryHandler } from "./application/commands/post-journal-entry.handler";
 import { ReverseJournalEntryHandler } from "./application/commands/reverse-journal-entry.handler";
 import { ClosePeriodHandler } from "./application/commands/close-period.handler";
 import { CloseFiscalYearHandler } from "./application/commands/close-fiscal-year.handler";
@@ -55,6 +56,7 @@ import type { ConversionOrderCompletedEvent } from "../production/domain/events/
     { provide: FISCAL_YEAR_CLOSING_REPOSITORY, useClass: KyselyFiscalYearClosingRepository },
     RegisterAccountHandler,
     RegisterJournalEntryHandler,
+    PostJournalEntryHandler,
     ReverseJournalEntryHandler,
     ClosePeriodHandler,
     CloseFiscalYearHandler,
@@ -99,11 +101,19 @@ export class AccountingModule implements OnModuleInit {
       permissions: [
         { key: "accounting.view", label: "رؤية الحسابات والقيود" },
         { key: "accounting.manage", label: "إدارة الحسابات وتسجيل القيود" },
+        { key: "accounting.create", label: "تسجيل قيد يدوي (مسودة)" },
+        { key: "accounting.post", label: "ترحيل قيد يدوي (مراجعة واعتماد)" },
         { key: "accounting.close_period", label: "قفل شهر محاسبي" },
         { key: "accounting.close_year", label: "قفل سنة مالية" },
       ],
     });
-    this.permissions.setRoleDefaults("accountant", ["accounting.view", "accounting.manage", "accounting.close_period"]);
+    this.permissions.setRoleDefaults("accountant", [
+      "accounting.view",
+      "accounting.manage",
+      "accounting.create",
+      "accounting.post",
+      "accounting.close_period",
+    ]);
     // قفل السنة المالية أدمن بس (نفس الريبو القديم بالحرف: requireRole("admin") قبل حتى requirePermission)
     // - أثر أعمق وأصعب في التراجع من قفل شهر واحد
 

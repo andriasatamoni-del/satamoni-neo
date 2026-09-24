@@ -3,6 +3,7 @@ import {
   EmptyJournalEntryError,
   InvalidJournalEntryLineError,
   JournalEntryAlreadyReversedError,
+  JournalEntryNotDraftError,
   JournalEntryNotPostedError,
   UnbalancedJournalEntryError,
 } from "./errors";
@@ -30,6 +31,7 @@ export interface JournalEntryProps {
   status: JournalEntryStatus;
   lines: JournalEntryLine[];
   createdBy: string | null;
+  postedBy: string | null;
   postedAt: Date | null;
   reversedAt: Date | null;
   reversalOfEntryId: string | null;
@@ -79,6 +81,11 @@ export class JournalEntry {
     });
     if (Math.abs(totalDebit - totalCredit) > 0.0000001) throw new UnbalancedJournalEntryError(totalDebit, totalCredit);
 
+    // القيود الآلية (من الأحداث التشغيلية - بيع/رواتب/جرد...إلخ) بتتسجل POSTED مباشرة زي ما هي دايمًا -
+    // نفس فلسفة الريبو القديم. القيد اليدوي بس (sourceType="manual"، محاسب بيكتبه بنفسه من شاشة الحسابات)
+    // بيتسجل DRAFT ومحتاج خطوة post() منفصلة - نفس autoPost:false في routes/accounting.js بالريبو
+    // القديم بالحرف: مراجعة قبل الترحيل، مش ترحيل تلقائي لحاجة محدش راجعها
+    const isManual = input.sourceType === "manual";
     const now = new Date();
     return new JournalEntry(randomUUID(), {
       entryNumber: null,
@@ -87,10 +94,11 @@ export class JournalEntry {
       sourceType: input.sourceType,
       sourceId: input.sourceId ?? null,
       branchId: input.branchId ?? null,
-      status: "POSTED", // القيود الآلية (من الأحداث التشغيلية) بتتسجل POSTED مباشرة - نفس فلسفة الريبو القديم
+      status: isManual ? "DRAFT" : "POSTED",
       lines,
       createdBy: input.createdBy ?? null,
-      postedAt: now,
+      postedBy: null,
+      postedAt: isManual ? null : now,
       reversedAt: null,
       reversalOfEntryId: null,
       reversalReason: null,
@@ -104,6 +112,15 @@ export class JournalEntry {
 
   assignEntryNumber(entryNumber: string): void {
     this.props.entryNumber = entryNumber;
+  }
+
+  // ترحيل قيد يدوي (DRAFT -> POSTED) - راجع مراجعة صريحة، مش جزء من التسجيل نفسه. لازم صلاحية
+  // accounting.post منفصلة عن accounting.create على مستوى الـAPI (فصل مهام حقيقي، مش شكلي)
+  post(input: { postedBy?: string | null }): void {
+    if (this.props.status !== "DRAFT") throw new JournalEntryNotDraftError();
+    this.props.status = "POSTED";
+    this.props.postedBy = input.postedBy ?? null;
+    this.props.postedAt = new Date();
   }
 
   // بيرجع قيد عكسي جديد (كل سطر بمقلوب مدين/دائن) - القيد الأصلي مايتلمسش خالص، بيفضل POSTED وموجود
@@ -136,6 +153,7 @@ export class JournalEntry {
       status: "POSTED",
       lines: reversalLines,
       createdBy: input.reversedBy ?? null,
+      postedBy: input.reversedBy ?? null,
       postedAt: now,
       reversedAt: null,
       reversalOfEntryId: this.id,
@@ -153,6 +171,7 @@ export class JournalEntry {
   get status(): JournalEntryStatus { return this.props.status; }
   get lines(): readonly JournalEntryLine[] { return this.props.lines; }
   get createdBy(): string | null { return this.props.createdBy; }
+  get postedBy(): string | null { return this.props.postedBy; }
   get postedAt(): Date | null { return this.props.postedAt; }
   get reversedAt(): Date | null { return this.props.reversedAt; }
   get reversalOfEntryId(): string | null { return this.props.reversalOfEntryId; }

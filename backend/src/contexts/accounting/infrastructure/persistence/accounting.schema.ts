@@ -23,6 +23,7 @@ export interface JournalEntriesTable {
   branch_id: string | null;
   status: string;
   created_by: string | null;
+  posted_by: string | null;
   posted_at: Date | null;
   reversed_at: Date | null;
   reversal_of_entry_id: string | null;

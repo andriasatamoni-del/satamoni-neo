@@ -2,13 +2,14 @@ import { JournalEntry } from "../../../src/contexts/accounting/domain/journal-en
 import {
   EmptyJournalEntryError,
   InvalidJournalEntryLineError,
+  JournalEntryNotDraftError,
   UnbalancedJournalEntryError,
 } from "../../../src/contexts/accounting/domain/errors";
 
 describe("JournalEntry aggregate", () => {
-  it("بيسجّل قيد متزن صحيح، بحالة POSTED مباشرة", () => {
+  it("قيد آلي (مش يدوي) بيتسجّل POSTED مباشرة", () => {
     const entry = JournalEntry.register({
-      sourceType: "manual",
+      sourceType: "order_sale",
       lines: [
         { accountId: "acc-1", debit: 100, credit: 0 },
         { accountId: "acc-2", debit: 0, credit: 100 },
@@ -17,6 +18,19 @@ describe("JournalEntry aggregate", () => {
     expect(entry.status).toBe("POSTED");
     expect(entry.postedAt).not.toBeNull();
     expect(entry.entryNumber).toBeNull(); // بيتحدد وقت الحفظ بس (راجع KyselyJournalEntryRepository)
+  });
+
+  it("قيد يدوي (sourceType=manual) بيتسجّل DRAFT - محتاج مراجعة/post منفصل قبل ما يترحّل", () => {
+    const entry = JournalEntry.register({
+      sourceType: "manual",
+      lines: [
+        { accountId: "acc-1", debit: 100, credit: 0 },
+        { accountId: "acc-2", debit: 0, credit: 100 },
+      ],
+    });
+    expect(entry.status).toBe("DRAFT");
+    expect(entry.postedAt).toBeNull();
+    expect(entry.postedBy).toBeNull();
   });
 
   it("بيرفض قيد بسطر واحد بس", () => {
@@ -61,10 +75,47 @@ describe("JournalEntry aggregate", () => {
     ).toThrow(InvalidJournalEntryLineError);
   });
 
+  describe("post", () => {
+    function draftEntry() {
+      return JournalEntry.register({
+        sourceType: "manual",
+        lines: [
+          { accountId: "acc-1", debit: 100, credit: 0 },
+          { accountId: "acc-2", debit: 0, credit: 100 },
+        ],
+      });
+    }
+
+    it("بيرحّل قيد DRAFT ويسجّل مين رحّله وإمتى", () => {
+      const entry = draftEntry();
+      entry.post({ postedBy: "accountant-1" });
+      expect(entry.status).toBe("POSTED");
+      expect(entry.postedBy).toBe("accountant-1");
+      expect(entry.postedAt).not.toBeNull();
+    });
+
+    it("مايصحش ترحّل قيد اترحّل بالفعل", () => {
+      const entry = draftEntry();
+      entry.post({ postedBy: "u1" });
+      expect(() => entry.post({ postedBy: "u2" })).toThrow(JournalEntryNotDraftError);
+    });
+
+    it("مايصحش ترحّل قيد آلي أصلًا POSTED (مش DRAFT من الأول)", () => {
+      const entry = JournalEntry.register({
+        sourceType: "order_sale",
+        lines: [
+          { accountId: "acc-1", debit: 50, credit: 0 },
+          { accountId: "acc-2", debit: 0, credit: 50 },
+        ],
+      });
+      expect(() => entry.post({ postedBy: "u1" })).toThrow(JournalEntryNotDraftError);
+    });
+  });
+
   describe("reverse", () => {
     it("بيرجّع قيد عكسي جديد بمقلوب مدين/دائن، والأصلي بيتحوّل REVERSED", () => {
       const entry = JournalEntry.register({
-        sourceType: "manual",
+        sourceType: "order_sale",
         lines: [
           { accountId: "acc-1", debit: 100, credit: 0 },
           { accountId: "acc-2", debit: 0, credit: 100 },
