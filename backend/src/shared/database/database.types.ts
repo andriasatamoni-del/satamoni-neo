@@ -6,6 +6,7 @@ import type { EventOutboxTable } from "../events/event-outbox.schema";
 import type { AuditLogsTable } from "../audit/audit-log.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
+import type { CustomersTable, CustomerAddressesTable } from "../../contexts/customers/infrastructure/persistence/customer.schema";
 import type {
   WhatsappConversationsTable,
   WhatsappMessagesTable,
@@ -166,6 +167,8 @@ export interface Database {
   payment_reconciliation_records: PaymentReconciliationRecordsTable;
   departments: DepartmentsTable;
   positions: PositionsTable;
+  customers: CustomersTable;
+  customer_addresses: CustomerAddressesTable;
   employees: EmployeesTable;
   payroll_runs: PayrollRunsTable;
   payroll_run_employees: PayrollRunEmployeesTable;

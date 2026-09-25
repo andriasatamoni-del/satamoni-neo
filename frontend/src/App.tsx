@@ -27,6 +27,9 @@ import { BranchDayPage } from "./pages/BranchDayPage";
 import { FinancialReportsPage } from "./pages/FinancialReportsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
+import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage";
+import { CustomerPortalRegisterPage } from "./pages/portal/CustomerPortalRegisterPage";
+import { CustomerPortalProfilePage } from "./pages/portal/CustomerPortalProfilePage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -46,6 +49,9 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/rate/:orderId" element={<RateOrderPage />} />
+      <Route path="/portal/login" element={<CustomerPortalLoginPage />} />
+      <Route path="/portal/register" element={<CustomerPortalRegisterPage />} />
+      <Route path="/portal/me" element={<CustomerPortalProfilePage />} />
       <Route
         path="/"
         element={

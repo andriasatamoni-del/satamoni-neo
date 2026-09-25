@@ -25,6 +25,7 @@ import { SettingsModule } from "./contexts/settings/settings.module";
 import { BranchDayModule } from "./contexts/branch-day/branch-day.module";
 import { ExpensesModule } from "./contexts/expenses/expenses.module";
 import { PurchasesModule } from "./contexts/purchases/purchases.module";
+import { CustomersModule } from "./contexts/customers/customers.module";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PurchasesModule } from "./contexts/purchases/purchases.module";
     BranchDayModule,
     ExpensesModule,
     PurchasesModule,
+    CustomersModule,
   ],
   controllers: [HealthController],
 })
