@@ -75,6 +75,8 @@ import type {
   PaymentReconciliationRecordsTable,
 } from "../../contexts/payment-control/infrastructure/persistence/payment-control.schema";
 import type {
+  DepartmentsTable,
+  PositionsTable,
   EmployeesTable,
   PayrollRunsTable,
   PayrollRunEmployeesTable,
@@ -162,6 +164,8 @@ export interface Database {
   payments: PaymentsTable;
   payment_adjustment_requests: PaymentAdjustmentRequestsTable;
   payment_reconciliation_records: PaymentReconciliationRecordsTable;
+  departments: DepartmentsTable;
+  positions: PositionsTable;
   employees: EmployeesTable;
   payroll_runs: PayrollRunsTable;
   payroll_run_employees: PayrollRunEmployeesTable;

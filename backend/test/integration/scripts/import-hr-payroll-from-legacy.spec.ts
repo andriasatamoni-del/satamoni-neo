@@ -3,6 +3,8 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { importHrPayrollFromLegacy } from "../../../scripts/import-hr-payroll-from-legacy";
 import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
+import { KyselyDepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
+import { KyselyPositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
 import { KyselyPayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
 
 const LEGACY_FIXTURE_URL =
@@ -12,14 +14,27 @@ describe("importHrPayrollFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Kysely<Database>;
   let employeeRepo: KyselyEmployeeRepository;
+  let departmentRepo: KyselyDepartmentRepository;
+  let positionRepo: KyselyPositionRepository;
   let payrollRunRepo: KyselyPayrollRunRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
-    await legacyPool.query("DROP TABLE IF EXISTS payroll_run_employees, payroll_runs, employees");
+    await legacyPool.query("DROP TABLE IF EXISTS payroll_run_employees, payroll_runs, employees, positions, departments");
+    await legacyPool.query(`
+      CREATE TABLE departments (
+        id SERIAL PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'active'
+      )
+    `);
+    await legacyPool.query(`
+      CREATE TABLE positions (
+        id SERIAL PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL, department_id INTEGER, description TEXT,
+        status TEXT NOT NULL DEFAULT 'active'
+      )
+    `);
     await legacyPool.query(`
       CREATE TABLE employees (
-        id SERIAL PRIMARY KEY, user_id INTEGER, name TEXT NOT NULL, department TEXT, job_title TEXT,
+        id SERIAL PRIMARY KEY, user_id INTEGER, name TEXT NOT NULL, department_id INTEGER, position_id INTEGER,
         hire_date DATE, base_salary NUMERIC NOT NULL DEFAULT 0, wage_type TEXT NOT NULL DEFAULT 'fixed_monthly',
         hourly_rate NUMERIC, working_days_per_month INTEGER, shift TEXT, restricted_branch_id INTEGER,
         employee_code TEXT, phone TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active',
@@ -43,6 +58,8 @@ describe("importHrPayrollFromLegacy", () => {
 
     neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
     employeeRepo = new KyselyEmployeeRepository(neoDb);
+    departmentRepo = new KyselyDepartmentRepository(neoDb);
+    positionRepo = new KyselyPositionRepository(neoDb);
     payrollRunRepo = new KyselyPayrollRunRepository(neoDb);
     await sql`DELETE FROM employees`.execute(neoDb);
   });
@@ -51,6 +68,8 @@ describe("importHrPayrollFromLegacy", () => {
     await legacyPool.end();
     await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(neoDb);
     await sql`DELETE FROM employees`.execute(neoDb);
+    await sql`DELETE FROM positions`.execute(neoDb);
+    await sql`DELETE FROM departments`.execute(neoDb);
     await neoDb.destroy();
   });
 
@@ -58,8 +77,12 @@ describe("importHrPayrollFromLegacy", () => {
     await legacyPool.query("DELETE FROM payroll_run_employees");
     await legacyPool.query("DELETE FROM payroll_runs");
     await legacyPool.query("DELETE FROM employees");
+    await legacyPool.query("DELETE FROM positions");
+    await legacyPool.query("DELETE FROM departments");
     await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(neoDb);
     await sql`DELETE FROM employees`.execute(neoDb);
+    await sql`DELETE FROM positions`.execute(neoDb);
+    await sql`DELETE FROM departments`.execute(neoDb);
   });
 
   test("بيستورد موظف + قائمة رواتب APPROVED بحالتها التاريخية النهائية بسطرها", async () => {
@@ -116,5 +139,40 @@ describe("importHrPayrollFromLegacy", () => {
     const run = await payrollRunRepo.findByLegacyPayrollRunId(legacyRunId);
     expect(run?.employees).toHaveLength(0);
     expect(run?.totalNetPay).toBe(0);
+  });
+
+  test("بيستورد قسم + مسمى وظيفي، وبيربط الموظف بيهم عن طريق department_id/position_id - راجع فلسفة HRF-6", async () => {
+    const {
+      rows: [{ id: legacyDepartmentId }],
+    } = await legacyPool.query<{ id: number }>(
+      `INSERT INTO departments (code, name) VALUES ('KITCHEN', 'المطبخ') RETURNING id`
+    );
+    const {
+      rows: [{ id: legacyPositionId }],
+    } = await legacyPool.query<{ id: number }>(
+      `INSERT INTO positions (code, name, department_id) VALUES ('CHEF', 'شيف', $1) RETURNING id`,
+      [legacyDepartmentId]
+    );
+    const {
+      rows: [{ id: legacyEmployeeId }],
+    } = await legacyPool.query<{ id: number }>(
+      `INSERT INTO employees (name, base_salary, department_id, position_id) VALUES ('موظف-قسم-جست', 3000, $1, $2) RETURNING id`,
+      [legacyDepartmentId, legacyPositionId]
+    );
+
+    const result = await importHrPayrollFromLegacy(legacyPool, neoDb);
+    expect(result.departments).toEqual({ created: 1, updated: 0, skipped: 0 });
+    expect(result.positions).toEqual({ created: 1, updated: 0, skipped: 0 });
+    expect(result.employees).toEqual({ created: 1, updated: 0, skipped: 0 });
+
+    const department = await departmentRepo.findByLegacyDepartmentId(legacyDepartmentId);
+    expect(department?.name).toBe("المطبخ");
+    const position = await positionRepo.findByLegacyPositionId(legacyPositionId);
+    expect(position?.name).toBe("شيف");
+    expect(position?.departmentId).toBe(department?.id);
+
+    const employee = await employeeRepo.findByLegacyEmployeeId(legacyEmployeeId);
+    expect(employee?.departmentId).toBe(department?.id);
+    expect(employee?.positionId).toBe(position?.id);
   });
 });

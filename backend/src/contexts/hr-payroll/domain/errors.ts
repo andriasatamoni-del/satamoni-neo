@@ -127,3 +127,57 @@ export class CancellationReasonRequiredError extends DomainError {
     super("لازم سبب الإلغاء");
   }
 }
+
+export class DepartmentCodeRequiredError extends DomainError {
+  constructor() {
+    super("كود القسم مطلوب");
+  }
+}
+
+export class DepartmentNameRequiredError extends DomainError {
+  constructor() {
+    super("اسم القسم مطلوب");
+  }
+}
+
+export class DepartmentNotFoundError extends DomainError {
+  constructor() {
+    super("القسم ده مش موجود");
+  }
+}
+
+export class DuplicateDepartmentCodeError extends DomainError {
+  constructor() {
+    super("كود القسم ده مستخدم بالفعل");
+  }
+}
+
+export class DuplicateDepartmentNameError extends DomainError {
+  constructor() {
+    super("اسم القسم ده مستخدم بالفعل");
+  }
+}
+
+export class PositionCodeRequiredError extends DomainError {
+  constructor() {
+    super("كود المسمى الوظيفي مطلوب");
+  }
+}
+
+export class PositionNameRequiredError extends DomainError {
+  constructor() {
+    super("اسم المسمى الوظيفي مطلوب");
+  }
+}
+
+export class PositionNotFoundError extends DomainError {
+  constructor() {
+    super("المسمى الوظيفي ده مش موجود");
+  }
+}
+
+export class DuplicatePositionCodeError extends DomainError {
+  constructor() {
+    super("كود المسمى الوظيفي ده مستخدم بالفعل");
+  }
+}

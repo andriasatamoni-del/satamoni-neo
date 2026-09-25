@@ -12,14 +12,24 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import { Kysely, PostgresDialect } from "kysely";
 import type { Database } from "../src/shared/database/database.types";
 import { KyselyEmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
+import { KyselyDepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
+import { KyselyPositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
 import { KyselyPayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
 import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
+import { Department } from "../src/contexts/hr-payroll/domain/department.aggregate";
+import { Position } from "../src/contexts/hr-payroll/domain/position.aggregate";
 import { PayrollRun, type PayrollRunStatus } from "../src/contexts/hr-payroll/domain/payroll-run.aggregate";
 
+interface LegacyDepartmentRow {
+  id: number; code: string; name: string; description: string | null; status: string;
+}
+interface LegacyPositionRow {
+  id: number; code: string; name: string; department_id: number | null; description: string | null; status: string;
+}
 interface LegacyEmployeeRow {
-  id: number; user_id: number | null; name: string; department: string | null; job_title: string | null;
+  id: number; user_id: number | null; name: string; department_id: number | null; position_id: number | null;
   hire_date: Date | null; base_salary: string; wage_type: string; hourly_rate: string | null;
   working_days_per_month: number | null; shift: string | null; restricted_branch_id: number | null;
   employee_code: string | null; phone: string | null; notes: string | null; status: string;
@@ -37,12 +47,16 @@ interface LegacyPayrollRunEmployeeRow {
 
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 export interface HrPayrollImportResult {
+  departments: ImportCounts;
+  positions: ImportCounts;
   employees: ImportCounts;
   payrollRuns: ImportCounts;
 }
 
 export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<HrPayrollImportResult> {
   const employeeRepo = new KyselyEmployeeRepository(neoDb);
+  const departmentRepo = new KyselyDepartmentRepository(neoDb);
+  const positionRepo = new KyselyPositionRepository(neoDb);
   const payrollRunRepo = new KyselyPayrollRunRepository(neoDb);
   const branchRepo = new KyselyBranchRepository(neoDb);
   const userRepo = new KyselyUserRepository(neoDb);
@@ -64,11 +78,72 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<
     if (!employeeIdCache.has(legacyId)) employeeIdCache.set(legacyId, (await employeeRepo.findByLegacyEmployeeId(legacyId))?.id ?? null);
     return employeeIdCache.get(legacyId)!;
   }
+  const departmentIdCache = new Map<number, string | null>();
+  async function resolveDepartmentId(legacyId: number | null): Promise<string | null> {
+    if (legacyId == null) return null;
+    if (!departmentIdCache.has(legacyId)) departmentIdCache.set(legacyId, (await departmentRepo.findByLegacyDepartmentId(legacyId))?.id ?? null);
+    return departmentIdCache.get(legacyId)!;
+  }
+  const positionIdCache = new Map<number, string | null>();
+  async function resolvePositionId(legacyId: number | null): Promise<string | null> {
+    if (legacyId == null) return null;
+    if (!positionIdCache.has(legacyId)) positionIdCache.set(legacyId, (await positionRepo.findByLegacyPositionId(legacyId))?.id ?? null);
+    return positionIdCache.get(legacyId)!;
+  }
 
-  // 1) الموظفين
+  // 1) الأقسام - راجع فلسفة HRF-6 بالريبو القديم بالحرف (department.aggregate.ts)
+  const departments: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+  const { rows: departmentRows } = await legacyPool.query<LegacyDepartmentRow>(
+    `SELECT id, code, name, description, status FROM departments ORDER BY id`
+  );
+  for (const row of departmentRows) {
+    const existing = await departmentRepo.findByLegacyDepartmentId(row.id);
+    try {
+      if (existing) {
+        existing.update({ name: row.name, description: row.description, status: row.status as "active" | "inactive" });
+        await departmentRepo.save(existing);
+        departments.updated++;
+      } else {
+        const department = Department.register({ code: row.code, name: row.name, description: row.description, legacyDepartmentId: row.id });
+        if (row.status === "inactive") department.update({ status: "inactive" });
+        await departmentRepo.save(department);
+        departments.created++;
+      }
+    } catch (err) {
+      console.warn(`⚠ تخطّي قسم legacy_id=${row.id} (${row.name}): ${(err as Error).message}`);
+      departments.skipped++;
+    }
+  }
+
+  // 2) المسميات الوظيفية
+  const positions: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+  const { rows: positionRows } = await legacyPool.query<LegacyPositionRow>(
+    `SELECT id, code, name, department_id, description, status FROM positions ORDER BY id`
+  );
+  for (const row of positionRows) {
+    const departmentId = await resolveDepartmentId(row.department_id);
+    const existing = await positionRepo.findByLegacyPositionId(row.id);
+    try {
+      if (existing) {
+        existing.update({ name: row.name, departmentId, description: row.description, status: row.status as "active" | "inactive" });
+        await positionRepo.save(existing);
+        positions.updated++;
+      } else {
+        const position = Position.register({ code: row.code, name: row.name, departmentId, description: row.description, legacyPositionId: row.id });
+        if (row.status === "inactive") position.update({ status: "inactive" });
+        await positionRepo.save(position);
+        positions.created++;
+      }
+    } catch (err) {
+      console.warn(`⚠ تخطّي مسمى وظيفي legacy_id=${row.id} (${row.name}): ${(err as Error).message}`);
+      positions.skipped++;
+    }
+  }
+
+  // 3) الموظفين
   const employees: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: employeeRows } = await legacyPool.query<LegacyEmployeeRow>(
-    `SELECT id, user_id, name, department, job_title, hire_date, base_salary, wage_type, hourly_rate,
+    `SELECT id, user_id, name, department_id, position_id, hire_date, base_salary, wage_type, hourly_rate,
             working_days_per_month, shift, restricted_branch_id, employee_code, phone, notes, status,
             termination_date, termination_reason
      FROM employees ORDER BY id`
@@ -76,11 +151,13 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<
   for (const row of employeeRows) {
     const userId = await resolveUserId(row.user_id);
     const restrictedBranchId = await resolveBranchId(row.restricted_branch_id);
+    const departmentId = await resolveDepartmentId(row.department_id);
+    const positionId = await resolvePositionId(row.position_id);
     const existing = await employeeRepo.findByLegacyEmployeeId(row.id);
     try {
       if (existing) {
         existing.updateDetails({
-          name: row.name, department: row.department, jobTitle: row.job_title, hireDate: row.hire_date,
+          name: row.name, departmentId, positionId, hireDate: row.hire_date,
           baseSalary: Number(row.base_salary), wageType: row.wage_type,
           hourlyRate: row.hourly_rate != null ? Number(row.hourly_rate) : null,
           workingDaysPerMonth: row.working_days_per_month, shift: row.shift,
@@ -92,7 +169,7 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<
         employees.updated++;
       } else {
         const employee = Employee.register({
-          userId, name: row.name, department: row.department, jobTitle: row.job_title, hireDate: row.hire_date,
+          userId, name: row.name, departmentId, positionId, hireDate: row.hire_date,
           baseSalary: Number(row.base_salary), wageType: row.wage_type,
           hourlyRate: row.hourly_rate != null ? Number(row.hourly_rate) : null,
           workingDaysPerMonth: row.working_days_per_month, shift: row.shift,
@@ -110,7 +187,7 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<
     }
   }
 
-  // 2) قوائم الرواتب بسطورها - بحالتها التاريخية النهائية زي ما هي (مش re-approve/re-cancel)
+  // 4) قوائم الرواتب بسطورها - بحالتها التاريخية النهائية زي ما هي (مش re-approve/re-cancel)
   const payrollRuns: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: runRows } = await legacyPool.query<LegacyPayrollRunRow>(
     `SELECT id, year, month, status, created_by, created_at, approved_by, approved_at, cancelled_by,
@@ -177,7 +254,7 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<
     }
   }
 
-  return { employees, payrollRuns };
+  return { departments, positions, employees, payrollRuns };
 }
 
 async function main() {
@@ -191,6 +268,8 @@ async function main() {
 
   const result = await importHrPayrollFromLegacy(legacyPool, neoDb);
   console.log("✅ الاستيراد خلص:");
+  console.log(`  الأقسام: ${result.departments.created} جديد، ${result.departments.updated} اتحدّث، ${result.departments.skipped} اتخطّى`);
+  console.log(`  المسميات الوظيفية: ${result.positions.created} جديد، ${result.positions.updated} اتحدّث، ${result.positions.skipped} اتخطّى`);
   console.log(`  الموظفين: ${result.employees.created} جديد، ${result.employees.updated} اتحدّث، ${result.employees.skipped} اتخطّى`);
   console.log(`  قوائم الرواتب: ${result.payrollRuns.created} جديد، ${result.payrollRuns.updated} اتحدّث، ${result.payrollRuns.skipped} اتخطّى`);
 

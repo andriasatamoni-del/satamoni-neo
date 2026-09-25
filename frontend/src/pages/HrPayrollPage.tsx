@@ -9,7 +9,9 @@ import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
 
-interface Employee { id: string; name: string; department: string | null; jobTitle: string | null; baseSalary: number; wageType: string; status: string; }
+interface Employee { id: string; name: string; departmentId: string | null; positionId: string | null; baseSalary: number; wageType: string; status: string; }
+interface Department { id: string; code: string; name: string; description: string | null; status: string; }
+interface Position { id: string; code: string; name: string; departmentId: string | null; description: string | null; status: string; }
 interface PayrollRunEmployeeLine { employeeId: string; employeeName: string; grossPay: number; advances: number; penalties: number; bonuses: number; netPay: number; }
 interface PayrollRun {
   id: string; year: number; month: number; status: string; totalNetPay: number;
@@ -33,6 +35,7 @@ const ADJUSTMENT_STATUS_LABELS: Record<string, string> = { ACTIVE: "فعّال",
 
 const TABS = [
   { key: "employees", label: "الموظفين والرواتب" },
+  { key: "organization", label: "الهيكل التنظيمي" },
   { key: "leave", label: "طلبات الإجازة" },
   { key: "adjustments", label: "سلف وجزاءات ومكافآت" },
 ];
@@ -41,6 +44,8 @@ export function HrPayrollPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("employees");
   const employeesQuery = useQuery({ queryKey: ["hr", "employees"], queryFn: () => apiRequest<Employee[]>("/hr/employees") });
+  const departmentsQuery = useQuery({ queryKey: ["hr", "departments"], queryFn: () => apiRequest<Department[]>("/hr/departments") });
+  const positionsQuery = useQuery({ queryKey: ["hr", "positions"], queryFn: () => apiRequest<Position[]>("/hr/positions") });
   const payrollRunsQuery = useQuery({ queryKey: ["hr", "payroll-runs"], queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs") });
   const leaveRequestsQuery = useQuery({ queryKey: ["hr", "leave-requests"], queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests") });
   const adjustmentsQuery = useQuery({ queryKey: ["hr", "adjustments"], queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments") });
@@ -51,17 +56,63 @@ export function HrPayrollPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hr", "leave-requests"] }),
   });
 
-  const [employeeForm, setEmployeeForm] = useState({ name: "", department: "", baseSalary: "" });
+  const [employeeForm, setEmployeeForm] = useState({ name: "", departmentId: "", positionId: "", baseSalary: "" });
+  const [employeeError, setEmployeeError] = useState<string | null>(null);
   const createEmployee = useMutation({
     mutationFn: () =>
       apiRequest("/hr/employees", {
         method: "POST",
-        body: { name: employeeForm.name, department: employeeForm.department || undefined, baseSalary: Number(employeeForm.baseSalary) || undefined },
+        body: {
+          name: employeeForm.name,
+          departmentId: employeeForm.departmentId || undefined,
+          positionId: employeeForm.positionId || undefined,
+          baseSalary: Number(employeeForm.baseSalary) || undefined,
+        },
       }),
     onSuccess: () => {
-      setEmployeeForm({ name: "", department: "", baseSalary: "" });
+      setEmployeeForm({ name: "", departmentId: "", positionId: "", baseSalary: "" });
+      setEmployeeError(null);
       queryClient.invalidateQueries({ queryKey: ["hr", "employees"] });
     },
+    onError: (err) => setEmployeeError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const [departmentForm, setDepartmentForm] = useState({ code: "", name: "" });
+  const [departmentError, setDepartmentError] = useState<string | null>(null);
+  const createDepartment = useMutation({
+    mutationFn: () => apiRequest("/hr/departments", { method: "POST", body: departmentForm }),
+    onSuccess: () => {
+      setDepartmentForm({ code: "", name: "" });
+      setDepartmentError(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "departments"] });
+    },
+    onError: (err) => setDepartmentError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const toggleDepartmentStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "active" | "inactive" }) =>
+      apiRequest(`/hr/departments/${id}`, { method: "PATCH", body: { status } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hr", "departments"] }),
+  });
+
+  const [positionForm, setPositionForm] = useState({ code: "", name: "", departmentId: "" });
+  const [positionError, setPositionError] = useState<string | null>(null);
+  const createPosition = useMutation({
+    mutationFn: () =>
+      apiRequest("/hr/positions", {
+        method: "POST",
+        body: { code: positionForm.code, name: positionForm.name, departmentId: positionForm.departmentId || undefined },
+      }),
+    onSuccess: () => {
+      setPositionForm({ code: "", name: "", departmentId: "" });
+      setPositionError(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "positions"] });
+    },
+    onError: (err) => setPositionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+  const togglePositionStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "active" | "inactive" }) =>
+      apiRequest(`/hr/positions/${id}`, { method: "PATCH", body: { status } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hr", "positions"] }),
   });
 
   const [runForm, setRunForm] = useState({ year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1) });
@@ -149,9 +200,20 @@ export function HrPayrollPage() {
   });
 
   const employees = employeesQuery.data ?? [];
+  const departments = departmentsQuery.data ?? [];
+  const positions = positionsQuery.data ?? [];
   const payrollRuns = payrollRunsQuery.data ?? [];
   const leaveRequests = leaveRequestsQuery.data ?? [];
   const adjustments = adjustmentsQuery.data ?? [];
+
+  function departmentName(id: string | null): string {
+    if (!id) return "-";
+    return departments.find((d) => d.id === id)?.name ?? id;
+  }
+  function positionName(id: string | null): string {
+    if (!id) return "-";
+    return positions.find((p) => p.id === id)?.name ?? id;
+  }
 
   return (
     <div>
@@ -171,12 +233,22 @@ export function HrPayrollPage() {
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="القسم (اختياري)">
-                  <Input value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} />
+                  <Select value={employeeForm.departmentId} onChange={(e) => setEmployeeForm({ ...employeeForm, departmentId: e.target.value })}>
+                    <option value="">بدون قسم</option>
+                    {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="المسمى الوظيفي (اختياري)">
+                  <Select value={employeeForm.positionId} onChange={(e) => setEmployeeForm({ ...employeeForm, positionId: e.target.value })}>
+                    <option value="">بدون مسمى</option>
+                    {positions.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </Select>
                 </Field>
                 <Field label="الراتب الأساسي">
                   <Input type="number" value={employeeForm.baseSalary} onChange={(e) => setEmployeeForm({ ...employeeForm, baseSalary: e.target.value })} />
                 </Field>
               </div>
+              {employeeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{employeeError}</p>}
               <Button type="submit" disabled={createEmployee.isPending}>إضافة</Button>
             </form>
           </CardBody>
@@ -187,13 +259,14 @@ export function HrPayrollPage() {
           <CardBody className="max-h-72 overflow-y-auto p-0">
             <Table>
               <THead>
-                <TR><TH>الاسم</TH><TH>القسم</TH><TH>الراتب</TH><TH>الحالة</TH></TR>
+                <TR><TH>الاسم</TH><TH>القسم</TH><TH>المسمى الوظيفي</TH><TH>الراتب</TH><TH>الحالة</TH></TR>
               </THead>
               <TBody>
                 {employees.map((e) => (
                   <TR key={e.id}>
                     <TD className="font-semibold text-slate-900">{e.name}</TD>
-                    <TD>{e.department ?? "-"}</TD>
+                    <TD>{departmentName(e.departmentId)}</TD>
+                    <TD>{positionName(e.positionId)}</TD>
                     <TD>{e.baseSalary}ج</TD>
                     <TD><StatusBadge status={STATUS_LABELS[e.status] ?? e.status} /></TD>
                   </TR>
@@ -285,6 +358,107 @@ export function HrPayrollPage() {
         </CardBody>
       </Card>
       </>
+      )}
+
+      {tab === "organization" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>الأقسام ({departments.length})</CardTitle></CardHeader>
+            <CardBody>
+              <form
+                onSubmit={(e: FormEvent) => { e.preventDefault(); createDepartment.mutate(); }}
+                className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end"
+              >
+                <Field label="الكود">
+                  <Input required value={departmentForm.code} onChange={(e) => setDepartmentForm({ ...departmentForm, code: e.target.value })} />
+                </Field>
+                <Field label="اسم القسم">
+                  <Input required value={departmentForm.name} onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })} />
+                </Field>
+                <Button type="submit" disabled={createDepartment.isPending}>إضافة</Button>
+              </form>
+              {departmentError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{departmentError}</p>}
+              <Table>
+                <THead>
+                  <TR><TH>الكود</TH><TH>الاسم</TH><TH>الحالة</TH><TH></TH></TR>
+                </THead>
+                <TBody>
+                  {departments.map((d) => (
+                    <TR key={d.id}>
+                      <TD className="text-xs text-slate-400">{d.code}</TD>
+                      <TD className="font-semibold text-slate-900">{d.name}</TD>
+                      <TD><StatusBadge status={d.status === "active" ? "فعّال" : "معطّل"} /></TD>
+                      <TD>
+                        <Button
+                          size="sm"
+                          variant={d.status === "active" ? "secondary" : "primary"}
+                          onClick={() => toggleDepartmentStatus.mutate({ id: d.id, status: d.status === "active" ? "inactive" : "active" })}
+                          disabled={toggleDepartmentStatus.isPending}
+                        >
+                          {d.status === "active" ? "تعطيل" : "تفعيل"}
+                        </Button>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {departments.length === 0 && <EmptyState>مفيش أقسام لسه</EmptyState>}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>المسميات الوظيفية ({positions.length})</CardTitle></CardHeader>
+            <CardBody>
+              <form
+                onSubmit={(e: FormEvent) => { e.preventDefault(); createPosition.mutate(); }}
+                className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
+              >
+                <Field label="الكود">
+                  <Input required value={positionForm.code} onChange={(e) => setPositionForm({ ...positionForm, code: e.target.value })} />
+                </Field>
+                <Field label="الاسم">
+                  <Input required value={positionForm.name} onChange={(e) => setPositionForm({ ...positionForm, name: e.target.value })} />
+                </Field>
+                <Field label="القسم (اختياري)">
+                  <Select value={positionForm.departmentId} onChange={(e) => setPositionForm({ ...positionForm, departmentId: e.target.value })}>
+                    <option value="">بدون قسم</option>
+                    {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </Select>
+                </Field>
+                <div className="flex items-end">
+                  <Button type="submit" disabled={createPosition.isPending}>إضافة</Button>
+                </div>
+              </form>
+              {positionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{positionError}</p>}
+              <Table>
+                <THead>
+                  <TR><TH>الكود</TH><TH>الاسم</TH><TH>القسم</TH><TH>الحالة</TH><TH></TH></TR>
+                </THead>
+                <TBody>
+                  {positions.map((p) => (
+                    <TR key={p.id}>
+                      <TD className="text-xs text-slate-400">{p.code}</TD>
+                      <TD className="font-semibold text-slate-900">{p.name}</TD>
+                      <TD>{departmentName(p.departmentId)}</TD>
+                      <TD><StatusBadge status={p.status === "active" ? "فعّال" : "معطّل"} /></TD>
+                      <TD>
+                        <Button
+                          size="sm"
+                          variant={p.status === "active" ? "secondary" : "primary"}
+                          onClick={() => togglePositionStatus.mutate({ id: p.id, status: p.status === "active" ? "inactive" : "active" })}
+                          disabled={togglePositionStatus.isPending}
+                        >
+                          {p.status === "active" ? "تعطيل" : "تفعيل"}
+                        </Button>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {positions.length === 0 && <EmptyState>مفيش مسميات وظيفية لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </div>
       )}
 
       {tab === "leave" && (

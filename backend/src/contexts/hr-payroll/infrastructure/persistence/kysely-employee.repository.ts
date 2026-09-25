@@ -18,8 +18,8 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
           name: row.name,
-          department: row.department,
-          job_title: row.job_title,
+          department_id: row.department_id,
+          position_id: row.position_id,
           hire_date: row.hire_date,
           base_salary: row.base_salary,
           wage_type: row.wage_type,
@@ -65,8 +65,8 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
       id: employee.id,
       user_id: employee.userId,
       name: employee.name,
-      department: employee.department,
-      job_title: employee.jobTitle,
+      department_id: employee.departmentId,
+      position_id: employee.positionId,
       hire_date: employee.hireDate,
       base_salary: employee.baseSalary,
       wage_type: employee.wageType,
@@ -89,8 +89,8 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
     return Employee.reconstitute(row.id, {
       userId: row.user_id,
       name: row.name,
-      department: row.department,
-      jobTitle: row.job_title,
+      departmentId: row.department_id,
+      positionId: row.position_id,
       hireDate: row.hire_date,
       baseSalary: Number(row.base_salary),
       wageType: row.wage_type as WageType,

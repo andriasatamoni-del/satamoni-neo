@@ -1,11 +1,32 @@
 import type { Generated } from "kysely";
 
+export interface DepartmentsTable {
+  id: Generated<string>;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
+  legacy_department_id: number | null;
+  created_at: Generated<Date>;
+}
+
+export interface PositionsTable {
+  id: Generated<string>;
+  code: string;
+  name: string;
+  department_id: string | null;
+  description: string | null;
+  status: string;
+  legacy_position_id: number | null;
+  created_at: Generated<Date>;
+}
+
 export interface EmployeesTable {
   id: Generated<string>;
   user_id: string | null;
   name: string;
-  department: string | null;
-  job_title: string | null;
+  department_id: string | null;
+  position_id: string | null;
   hire_date: Date | null;
   base_salary: number;
   wage_type: string;

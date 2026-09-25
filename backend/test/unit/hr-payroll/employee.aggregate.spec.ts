@@ -46,9 +46,18 @@ describe("Employee aggregate", () => {
 
   it("updateDetails بيحدّث فعليًا (idempotency لسكريبت الاستيراد)", () => {
     const employee = Employee.register({ name: "أحمد", baseSalary: 4000 });
-    employee.updateDetails({ name: "أحمد معدّل", baseSalary: 5000, department: "المبيعات" });
+    employee.updateDetails({ name: "أحمد معدّل", baseSalary: 5000, departmentId: "dept-1" });
     expect(employee.name).toBe("أحمد معدّل");
     expect(employee.baseSalary).toBe(5000);
-    expect(employee.department).toBe("المبيعات");
+    expect(employee.departmentId).toBe("dept-1");
+  });
+
+  it("departmentId/positionId اختياريين، وbيتحدّثوا مستقلين عن بعض", () => {
+    const employee = Employee.register({ name: "أحمد", departmentId: "dept-1" });
+    expect(employee.departmentId).toBe("dept-1");
+    expect(employee.positionId).toBeNull();
+    employee.updateDetails({ name: "أحمد", positionId: "pos-1" });
+    expect(employee.departmentId).toBe("dept-1");
+    expect(employee.positionId).toBe("pos-1");
   });
 });

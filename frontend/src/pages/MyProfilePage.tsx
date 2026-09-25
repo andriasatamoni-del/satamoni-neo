@@ -12,8 +12,8 @@ import { Tabs } from "../shared/ui/Tabs";
 interface EmployeeProfile {
   id: string;
   name: string;
-  department: string | null;
-  jobTitle: string | null;
+  departmentName: string | null;
+  positionName: string | null;
   baseSalary: number;
   wageType: string;
   status: string;
@@ -189,11 +189,11 @@ export function MyProfilePage() {
                 <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <dt className="text-xs font-semibold text-slate-500">القسم</dt>
-                    <dd className="text-sm text-slate-900">{profile.department ?? "-"}</dd>
+                    <dd className="text-sm text-slate-900">{profile.departmentName ?? "-"}</dd>
                   </div>
                   <div>
                     <dt className="text-xs font-semibold text-slate-500">المسمى الوظيفي</dt>
-                    <dd className="text-sm text-slate-900">{profile.jobTitle ?? "-"}</dd>
+                    <dd className="text-sm text-slate-900">{profile.positionName ?? "-"}</dd>
                   </div>
                   <div>
                     <dt className="text-xs font-semibold text-slate-500">الراتب الأساسي</dt>

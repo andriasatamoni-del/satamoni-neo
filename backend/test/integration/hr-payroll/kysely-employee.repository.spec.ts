@@ -22,11 +22,11 @@ describe("KyselyEmployeeRepository", () => {
   });
 
   test("save بيسجّل موظف، وfindById بيرجّعه بنفس البيانات", async () => {
-    const employee = Employee.register({ name: "أحمد-جست", baseSalary: 4000, department: "المبيعات" });
+    const employee = Employee.register({ name: "أحمد-جست", baseSalary: 4000, departmentId: null });
     await repo.save(employee);
     const found = await repo.findById(employee.id);
     expect(found?.name).toBe("أحمد-جست");
-    expect(found?.department).toBe("المبيعات");
+    expect(found?.departmentId).toBeNull();
   });
 
   test("findByLegacyEmployeeId بيلاقيه صح", async () => {

@@ -8,6 +8,11 @@ import {
   LeaveRequestNotFoundError,
   EmployeeAttendanceShiftNotFoundError,
   PayrollAdjustmentNotFoundError,
+  DepartmentNotFoundError,
+  PositionNotFoundError,
+  DuplicateDepartmentCodeError,
+  DuplicateDepartmentNameError,
+  DuplicatePositionCodeError,
 } from "../../domain/errors";
 
 @Catch(DomainError)
@@ -20,7 +25,13 @@ export class HrPayrollDomainErrorFilter implements ExceptionFilter {
       exception instanceof EmployeeProfileNotLinkedError ||
       exception instanceof LeaveRequestNotFoundError ||
       exception instanceof EmployeeAttendanceShiftNotFoundError ||
-      exception instanceof PayrollAdjustmentNotFoundError;
-    res.status(isNotFound ? 404 : 400).json({ error: exception.message });
+      exception instanceof PayrollAdjustmentNotFoundError ||
+      exception instanceof DepartmentNotFoundError ||
+      exception instanceof PositionNotFoundError;
+    const isConflict =
+      exception instanceof DuplicateDepartmentCodeError ||
+      exception instanceof DuplicateDepartmentNameError ||
+      exception instanceof DuplicatePositionCodeError;
+    res.status(isNotFound ? 404 : isConflict ? 409 : 400).json({ error: exception.message });
   }
 }

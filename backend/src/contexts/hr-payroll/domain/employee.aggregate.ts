@@ -10,8 +10,8 @@ export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 export interface EmployeeProps {
   userId: string | null;
   name: string;
-  department: string | null;
-  jobTitle: string | null;
+  departmentId: string | null;
+  positionId: string | null;
   hireDate: Date | null;
   baseSalary: number;
   wageType: WageType;
@@ -43,8 +43,8 @@ export class Employee {
   static register(input: {
     userId?: string | null;
     name: string;
-    department?: string | null;
-    jobTitle?: string | null;
+    departmentId?: string | null;
+    positionId?: string | null;
     hireDate?: Date | null;
     baseSalary?: number;
     wageType?: string;
@@ -65,8 +65,8 @@ export class Employee {
     return new Employee(randomUUID(), {
       userId: input.userId ?? null,
       name,
-      department: input.department ?? null,
-      jobTitle: input.jobTitle ?? null,
+      departmentId: input.departmentId ?? null,
+      positionId: input.positionId ?? null,
       hireDate: input.hireDate ?? null,
       baseSalary: input.baseSalary ?? 0,
       wageType: wageType as WageType,
@@ -93,8 +93,8 @@ export class Employee {
   // بس عن طريق suspend()/activate()/terminate()
   updateDetails(input: {
     name: string;
-    department?: string | null;
-    jobTitle?: string | null;
+    departmentId?: string | null;
+    positionId?: string | null;
     hireDate?: Date | null;
     baseSalary?: number;
     wageType?: string;
@@ -111,8 +111,8 @@ export class Employee {
     if (input.wageType && !WAGE_TYPES.includes(input.wageType as WageType)) throw new UnknownWageTypeError(input.wageType);
 
     this.props.name = name;
-    if (input.department !== undefined) this.props.department = input.department;
-    if (input.jobTitle !== undefined) this.props.jobTitle = input.jobTitle;
+    if (input.departmentId !== undefined) this.props.departmentId = input.departmentId;
+    if (input.positionId !== undefined) this.props.positionId = input.positionId;
     if (input.hireDate !== undefined) this.props.hireDate = input.hireDate;
     if (input.baseSalary !== undefined) this.props.baseSalary = input.baseSalary;
     if (input.wageType) this.props.wageType = input.wageType as WageType;
@@ -142,8 +142,8 @@ export class Employee {
 
   get userId(): string | null { return this.props.userId; }
   get name(): string { return this.props.name; }
-  get department(): string | null { return this.props.department; }
-  get jobTitle(): string | null { return this.props.jobTitle; }
+  get departmentId(): string | null { return this.props.departmentId; }
+  get positionId(): string | null { return this.props.positionId; }
   get hireDate(): Date | null { return this.props.hireDate; }
   get baseSalary(): number { return this.props.baseSalary; }
   get wageType(): WageType { return this.props.wageType; }

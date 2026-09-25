@@ -2,6 +2,12 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseFilte
 import type { Request } from "express";
 import { RegisterEmployeeHandler } from "../application/commands/register-employee.handler";
 import { SetEmployeeStatusHandler } from "../application/commands/set-employee-status.handler";
+import { RegisterDepartmentHandler } from "../application/commands/register-department.handler";
+import { UpdateDepartmentHandler } from "../application/commands/update-department.handler";
+import { RegisterPositionHandler } from "../application/commands/register-position.handler";
+import { UpdatePositionHandler } from "../application/commands/update-position.handler";
+import { ListDepartmentsHandler } from "../application/queries/list-departments.handler";
+import { ListPositionsHandler } from "../application/queries/list-positions.handler";
 import { RegisterPayrollRunHandler } from "../application/commands/register-payroll-run.handler";
 import { ApprovePayrollRunHandler } from "../application/commands/approve-payroll-run.handler";
 import { CancelPayrollRunHandler } from "../application/commands/cancel-payroll-run.handler";
@@ -23,6 +29,10 @@ import { CancelPayrollAdjustmentHandler } from "../application/commands/cancel-p
 import { ListPayrollAdjustmentsHandler } from "../application/queries/list-payroll-adjustments.handler";
 import { RegisterEmployeeDto } from "./dto/register-employee.dto";
 import { SetEmployeeStatusDto } from "./dto/set-employee-status.dto";
+import { RegisterDepartmentDto } from "./dto/register-department.dto";
+import { UpdateDepartmentDto } from "./dto/update-department.dto";
+import { RegisterPositionDto } from "./dto/register-position.dto";
+import { UpdatePositionDto } from "./dto/update-position.dto";
 import { RegisterPayrollRunDto } from "./dto/register-payroll-run.dto";
 import { CancelPayrollRunDto } from "./dto/cancel-payroll-run.dto";
 import { RegisterLeaveRequestDto } from "./dto/register-leave-request.dto";
@@ -37,6 +47,8 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { HrPayrollDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Employee } from "../domain/employee.aggregate";
+import type { Department } from "../domain/department.aggregate";
+import type { Position } from "../domain/position.aggregate";
 import type { PayrollRun } from "../domain/payroll-run.aggregate";
 import type { LeaveRequest } from "../domain/leave-request.aggregate";
 import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shift.aggregate";
@@ -49,6 +61,12 @@ export class HrPayrollController {
   constructor(
     private readonly registerEmployee: RegisterEmployeeHandler,
     private readonly setEmployeeStatus: SetEmployeeStatusHandler,
+    private readonly registerDepartment: RegisterDepartmentHandler,
+    private readonly updateDepartment: UpdateDepartmentHandler,
+    private readonly registerPosition: RegisterPositionHandler,
+    private readonly updatePosition: UpdatePositionHandler,
+    private readonly listDepartments: ListDepartmentsHandler,
+    private readonly listPositions: ListPositionsHandler,
     private readonly registerPayrollRun: RegisterPayrollRunHandler,
     private readonly approvePayrollRun: ApprovePayrollRunHandler,
     private readonly cancelPayrollRun: CancelPayrollRunHandler,
@@ -95,6 +113,44 @@ export class HrPayrollController {
     );
   }
 
+  // الهيكل التنظيمي - أقسام ومسميات وظيفية حقيقية (نفس فلسفة HRF-6 بالريبو القديم بالحرف) بدل ما تكون
+  // نص حر على employees.department/job_title
+  @Get("departments")
+  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  async departments(@Query("status") status?: string) {
+    return (await this.listDepartments.execute({ status })).map(toPublicDepartment);
+  }
+
+  @Post("departments")
+  @RequirePermission("hr.organization.manage")
+  async createDepartment(@Body() dto: RegisterDepartmentDto) {
+    return toPublicDepartment(await this.registerDepartment.execute(dto));
+  }
+
+  @Patch("departments/:id")
+  @RequirePermission("hr.organization.manage")
+  async updateDepartmentHandler(@Param("id") id: string, @Body() dto: UpdateDepartmentDto) {
+    return toPublicDepartment(await this.updateDepartment.execute({ departmentId: id, ...dto }));
+  }
+
+  @Get("positions")
+  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  async positions(@Query("status") status?: string, @Query("departmentId") departmentId?: string) {
+    return (await this.listPositions.execute({ status, departmentId })).map(toPublicPosition);
+  }
+
+  @Post("positions")
+  @RequirePermission("hr.organization.manage")
+  async createPosition(@Body() dto: RegisterPositionDto) {
+    return toPublicPosition(await this.registerPosition.execute(dto));
+  }
+
+  @Patch("positions/:id")
+  @RequirePermission("hr.organization.manage")
+  async updatePositionHandler(@Param("id") id: string, @Body() dto: UpdatePositionDto) {
+    return toPublicPosition(await this.updatePosition.execute({ positionId: id, ...dto }));
+  }
+
   @Get("payroll-runs")
   @RequirePermission("hr.payroll.view", "hr.payroll.manage")
   async payrollRuns(@Query("status") status?: string) {
@@ -131,7 +187,8 @@ export class HrPayrollController {
   @Get("self/profile")
   @RequirePermission("hr.self.view")
   async ownProfile(@Req() req: Request & { user: AuthenticatedUser }) {
-    return toPublicEmployee(await this.getOwnEmployeeProfile.execute(req.user.id));
+    const { employee, departmentName, positionName } = await this.getOwnEmployeeProfile.execute(req.user.id);
+    return { ...toPublicEmployee(employee), departmentName, positionName };
   }
 
   @Get("self/payslips")
@@ -242,13 +299,34 @@ function toPublicEmployee(employee: Employee) {
     id: employee.id,
     userId: employee.userId,
     name: employee.name,
-    department: employee.department,
-    jobTitle: employee.jobTitle,
+    departmentId: employee.departmentId,
+    positionId: employee.positionId,
     baseSalary: employee.baseSalary,
     wageType: employee.wageType,
     status: employee.status,
     terminationDate: employee.terminationDate,
     terminationReason: employee.terminationReason,
+  };
+}
+
+function toPublicDepartment(department: Department) {
+  return {
+    id: department.id,
+    code: department.code,
+    name: department.name,
+    description: department.description,
+    status: department.status,
+  };
+}
+
+function toPublicPosition(position: Position) {
+  return {
+    id: position.id,
+    code: position.code,
+    name: position.name,
+    departmentId: position.departmentId,
+    description: position.description,
+    status: position.status,
   };
 }
 

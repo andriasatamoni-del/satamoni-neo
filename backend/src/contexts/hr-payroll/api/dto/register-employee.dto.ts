@@ -6,8 +6,8 @@ export class RegisterEmployeeDto {
   name!: string;
 
   @IsOptional() @IsUUID() userId?: string;
-  @IsOptional() @IsString() department?: string;
-  @IsOptional() @IsString() jobTitle?: string;
+  @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @IsUUID() positionId?: string;
   @IsOptional() @IsNumber() baseSalary?: number;
   @IsOptional() @IsIn(WAGE_TYPES) wageType?: string;
   @IsOptional() @IsNumber() hourlyRate?: number;
