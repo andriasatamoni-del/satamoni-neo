@@ -5,4 +5,5 @@ export class UpdateBranchDto {
   @IsOptional() @IsString() address?: string | null;
   @IsOptional() @IsString() phone?: string | null;
   @IsOptional() @IsString() hours?: string | null;
+  @IsOptional() @IsString() talabatBranchId?: string | null;
 }

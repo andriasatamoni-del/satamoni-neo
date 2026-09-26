@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterPaymentMethodHandler } from "../application/commands/register-payment-method.handler";
+import { LinkTalabatPaymentCodeHandler } from "../application/commands/link-talabat-payment-code.handler";
 import { RequestPaymentAdjustmentHandler } from "../application/commands/request-payment-adjustment.handler";
 import { ApprovePaymentAdjustmentHandler } from "../application/commands/approve-payment-adjustment.handler";
 import { RejectPaymentAdjustmentHandler } from "../application/commands/reject-payment-adjustment.handler";
@@ -17,6 +18,7 @@ import { ListReconciliationRecordsHandler } from "../application/queries/list-re
 import { ListExceptionsHandler } from "../application/queries/list-exceptions.handler";
 import { GetDailyOwnerReportHandler } from "../application/queries/get-daily-owner-report.handler";
 import { RegisterPaymentMethodDto } from "./dto/register-payment-method.dto";
+import { LinkTalabatPaymentCodeDto } from "./dto/link-talabat-payment-code.dto";
 import { RequestPaymentAdjustmentDto } from "./dto/request-payment-adjustment.dto";
 import { RegisterReconciliationRecordDto } from "./dto/register-reconciliation-record.dto";
 import { MatchReconciliationRecordDto } from "./dto/match-reconciliation-record.dto";
@@ -38,6 +40,7 @@ import type { ReconciliationRecord } from "../domain/reconciliation-record.aggre
 export class PaymentControlController {
   constructor(
     private readonly registerPaymentMethod: RegisterPaymentMethodHandler,
+    private readonly linkTalabatPaymentCode: LinkTalabatPaymentCodeHandler,
     private readonly requestAdjustment: RequestPaymentAdjustmentHandler,
     private readonly approveAdjustment: ApprovePaymentAdjustmentHandler,
     private readonly rejectAdjustment: RejectPaymentAdjustmentHandler,
@@ -68,6 +71,12 @@ export class PaymentControlController {
     return toPublicPaymentMethod(await this.registerPaymentMethod.execute(dto));
   }
 
+  @Patch("payment-methods/:id/talabat-code")
+  @RequirePermission("payment_control.methods.manage")
+  async linkTalabatCode(@Param("id") id: string, @Body() dto: LinkTalabatPaymentCodeDto) {
+    return toPublicPaymentMethod(await this.linkTalabatPaymentCode.execute({ paymentMethodId: id, talabatPaymentCode: dto.talabatPaymentCode ?? null }));
+  }
+
   @Get("payments")
   @RequirePermission("payment_control.view")
   async payments(@Query("branchId") branchId?: string, @Query("settlementChannel") settlementChannel?: string) {
@@ -93,8 +102,12 @@ export class PaymentControlController {
       grants: req.user.permissionGrants,
       revokes: req.user.permissionRevokes,
     });
+    const hasTalabatOverride = this.permissions.hasPermission(req.user.role, "talabat.payment_override", {
+      grants: req.user.permissionGrants,
+      revokes: req.user.permissionRevokes,
+    });
     return toPublicAdjustmentRequest(
-      await this.approveAdjustment.execute({ requestId: id, decidedBy: req.user.id, hasHighApproval })
+      await this.approveAdjustment.execute({ requestId: id, decidedBy: req.user.id, hasHighApproval, hasTalabatOverride })
     );
   }
 
@@ -175,7 +188,14 @@ export class PaymentControlController {
 }
 
 function toPublicPaymentMethod(method: PaymentMethod) {
-  return { id: method.id, name: method.name, kind: method.kind, settlementChannel: method.settlementChannel, isActive: method.isActive };
+  return {
+    id: method.id,
+    name: method.name,
+    kind: method.kind,
+    settlementChannel: method.settlementChannel,
+    isActive: method.isActive,
+    talabatPaymentCode: method.talabatPaymentCode,
+  };
 }
 
 function toPublicPayment(payment: Payment) {

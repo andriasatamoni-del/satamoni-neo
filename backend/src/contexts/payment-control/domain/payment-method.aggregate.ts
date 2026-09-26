@@ -13,6 +13,9 @@ export interface PaymentMethodProps {
   settlementChannel: SettlementChannel | null;
   isActive: boolean;
   legacyPaymentMethodId: number | null;
+  // كود دفع Talabat المقابل لطريقة الدفع دي - نفس مفهوم payment_methods.talabat_payment_code بالريبو
+  // القديم بالظبط (TAL-1). NULL يعني الطريقة دي لسه مش مربوطة بـTalabat.
+  talabatPaymentCode: string | null;
   createdAt: Date;
 }
 
@@ -44,6 +47,7 @@ export class PaymentMethod {
       settlementChannel: (input.settlementChannel as SettlementChannel) ?? null,
       isActive: true,
       legacyPaymentMethodId: input.legacyPaymentMethodId ?? null,
+      talabatPaymentCode: null,
       createdAt: new Date(),
     });
   }
@@ -68,10 +72,15 @@ export class PaymentMethod {
   deactivate(): void { this.props.isActive = false; }
   activate(): void { this.props.isActive = true; }
 
+  linkTalabatCode(talabatPaymentCode: string | null): void {
+    this.props.talabatPaymentCode = talabatPaymentCode;
+  }
+
   get name(): string { return this.props.name; }
   get kind(): PaymentMethodKind { return this.props.kind; }
   get settlementChannel(): SettlementChannel | null { return this.props.settlementChannel; }
   get isActive(): boolean { return this.props.isActive; }
   get legacyPaymentMethodId(): number | null { return this.props.legacyPaymentMethodId; }
+  get talabatPaymentCode(): string | null { return this.props.talabatPaymentCode; }
   get createdAt(): Date { return this.props.createdAt; }
 }

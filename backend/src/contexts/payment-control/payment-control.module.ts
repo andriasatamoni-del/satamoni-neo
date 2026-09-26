@@ -12,6 +12,7 @@ import { KyselyPaymentRepository } from "./infrastructure/persistence/kysely-pay
 import { KyselyPaymentAdjustmentRequestRepository } from "./infrastructure/persistence/kysely-payment-adjustment-request.repository";
 import { KyselyReconciliationRecordRepository } from "./infrastructure/persistence/kysely-reconciliation-record.repository";
 import { RegisterPaymentMethodHandler } from "./application/commands/register-payment-method.handler";
+import { LinkTalabatPaymentCodeHandler } from "./application/commands/link-talabat-payment-code.handler";
 import { LockPaymentForOrderHandler } from "./application/commands/lock-payment-for-order.handler";
 import { RequestPaymentAdjustmentHandler } from "./application/commands/request-payment-adjustment.handler";
 import { ApprovePaymentAdjustmentHandler } from "./application/commands/approve-payment-adjustment.handler";
@@ -40,6 +41,7 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     { provide: PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY, useClass: KyselyPaymentAdjustmentRequestRepository },
     { provide: RECONCILIATION_RECORD_REPOSITORY, useClass: KyselyReconciliationRecordRepository },
     RegisterPaymentMethodHandler,
+    LinkTalabatPaymentCodeHandler,
     LockPaymentForOrderHandler,
     RequestPaymentAdjustmentHandler,
     ApprovePaymentAdjustmentHandler,
@@ -57,7 +59,7 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     ListExceptionsHandler,
     GetDailyOwnerReportHandler,
   ],
-  exports: [PAYMENT_METHOD_REPOSITORY, PAYMENT_REPOSITORY],
+  exports: [PAYMENT_METHOD_REPOSITORY, PAYMENT_REPOSITORY, PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY],
 })
 export class PaymentControlModule implements OnModuleInit {
   constructor(

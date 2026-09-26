@@ -7,6 +7,7 @@ export interface PaymentMethodsTable {
   settlement_channel: string | null;
   is_active: boolean;
   legacy_payment_method_id: number | null;
+  talabat_payment_code: string | null;
   created_at: Generated<Date>;
 }
 

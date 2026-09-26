@@ -9,6 +9,7 @@ import { ORDER_RATING_REPOSITORY } from "./domain/ports/order-rating-repository.
 import { KyselyOrderRepository } from "./infrastructure/persistence/kysely-order.repository";
 import { KyselyOrderRatingRepository } from "./infrastructure/persistence/kysely-order-rating.repository";
 import { RegisterOrderHandler } from "./application/commands/register-order.handler";
+import { CancelOrderHandler } from "./application/commands/cancel-order.handler";
 import { UpdateOrderStatusHandler } from "./application/commands/update-order-status.handler";
 import { AdvanceKitchenStatusHandler } from "./application/commands/advance-kitchen-status.handler";
 import { SubmitOrderRatingHandler } from "./application/commands/submit-order-rating.handler";
@@ -25,6 +26,7 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
     { provide: ORDER_REPOSITORY, useClass: KyselyOrderRepository },
     { provide: ORDER_RATING_REPOSITORY, useClass: KyselyOrderRatingRepository },
     RegisterOrderHandler,
+    CancelOrderHandler,
     UpdateOrderStatusHandler,
     AdvanceKitchenStatusHandler,
     SubmitOrderRatingHandler,
@@ -32,7 +34,7 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
     ListKdsBoardHandler,
     GetPublicOrderRatingHandler,
   ],
-  exports: [ORDER_REPOSITORY, RegisterOrderHandler],
+  exports: [ORDER_REPOSITORY, RegisterOrderHandler, CancelOrderHandler],
 })
 export class OrdersModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

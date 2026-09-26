@@ -25,6 +25,7 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
           lng: row.lng,
           is_central_kitchen: row.is_central_kitchen,
           supports_dine_in: row.supports_dine_in,
+          talabat_branch_id: row.talabat_branch_id,
         })
       )
       .execute();
@@ -40,6 +41,15 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
       .selectFrom("branches")
       .selectAll()
       .where("legacy_branch_id", "=", legacyBranchId)
+      .executeTakeFirst();
+    return row ? this.toDomain(row) : null;
+  }
+
+  async findByTalabatBranchId(talabatBranchId: string): Promise<Branch | null> {
+    const row = await this.db
+      .selectFrom("branches")
+      .selectAll()
+      .where("talabat_branch_id", "=", talabatBranchId)
       .executeTakeFirst();
     return row ? this.toDomain(row) : null;
   }
@@ -61,6 +71,7 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
       is_central_kitchen: branch.isCentralKitchen,
       supports_dine_in: branch.supportsDineIn,
       legacy_branch_id: branch.legacyBranchId,
+      talabat_branch_id: branch.talabatBranchId,
     };
   }
 
@@ -75,6 +86,7 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
       isCentralKitchen: row.is_central_kitchen,
       supportsDineIn: row.supports_dine_in,
       legacyBranchId: row.legacy_branch_id,
+      talabatBranchId: row.talabat_branch_id,
     });
   }
 }

@@ -11,4 +11,5 @@ export interface BranchesTable {
   is_central_kitchen: boolean;
   supports_dine_in: boolean;
   legacy_branch_id: number | null;
+  talabat_branch_id: string | null;
 }

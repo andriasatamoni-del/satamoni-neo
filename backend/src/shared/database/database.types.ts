@@ -107,6 +107,12 @@ import type {
 import type { ExpenseCategoriesTable } from "../../contexts/expenses/infrastructure/persistence/expense-category.schema";
 import type { ExpensesTable } from "../../contexts/expenses/infrastructure/persistence/expense.schema";
 import type { PurchasesTable, PurchaseLinesTable } from "../../contexts/purchases/infrastructure/persistence/purchase.schema";
+import type {
+  TalabatOrdersTable,
+  TalabatProductMappingTable,
+  TalabatWebhookEventsTable,
+  TalabatIntegrationErrorsTable,
+} from "../../contexts/talabat/infrastructure/persistence/talabat.schema";
 
 export interface Database {
   users: UsersTable;
@@ -192,4 +198,8 @@ export interface Database {
   expenses: ExpensesTable;
   purchases: PurchasesTable;
   purchase_lines: PurchaseLinesTable;
+  talabat_orders: TalabatOrdersTable;
+  talabat_product_mapping: TalabatProductMappingTable;
+  talabat_webhook_events: TalabatWebhookEventsTable;
+  talabat_integration_errors: TalabatIntegrationErrorsTable;
 }

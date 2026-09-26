@@ -19,6 +19,7 @@ import { ReverseJournalEntryHandler } from "./application/commands/reverse-journ
 import { ClosePeriodHandler } from "./application/commands/close-period.handler";
 import { CloseFiscalYearHandler } from "./application/commands/close-fiscal-year.handler";
 import { PostOrderSaleJournalEntryHandler } from "./application/commands/post-order-sale-journal-entry.handler";
+import { PostOrderCancellationJournalEntryHandler } from "./application/commands/post-order-cancellation-journal-entry.handler";
 import { PostPayrollJournalEntryHandler } from "./application/commands/post-payroll-journal-entry.handler";
 import { PostShiftVarianceJournalEntryHandler } from "./application/commands/post-shift-variance-journal-entry.handler";
 import { PostGoodsReceiptApJournalEntryHandler } from "./application/commands/post-goods-receipt-ap-journal-entry.handler";
@@ -37,6 +38,7 @@ import { ListPeriodsHandler } from "./application/queries/list-periods.handler";
 import { ListFiscalYearClosingsHandler } from "./application/queries/list-fiscal-year-closings.handler";
 import { AccountingController } from "./api/accounting.controller";
 import type { OrderRegisteredEvent } from "../orders/domain/events/order-registered.event";
+import type { OrderCancelledEvent } from "../orders/domain/events/order-cancelled.event";
 import type { PayrollRunApprovedEvent } from "../hr-payroll/domain/events/payroll-run-approved.event";
 import type { ShiftClosedEvent } from "../shifts/domain/events/shift-closed.event";
 import type { CashDrawerEntryRegisteredEvent } from "../shifts/domain/events/cash-drawer-entry-registered.event";
@@ -63,6 +65,7 @@ import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase
     ClosePeriodHandler,
     CloseFiscalYearHandler,
     PostOrderSaleJournalEntryHandler,
+    PostOrderCancellationJournalEntryHandler,
     PostPayrollJournalEntryHandler,
     PostShiftVarianceJournalEntryHandler,
     PostGoodsReceiptApJournalEntryHandler,
@@ -87,6 +90,7 @@ export class AccountingModule implements OnModuleInit {
     private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
+    private readonly postOrderCancellationJournalEntry: PostOrderCancellationJournalEntryHandler,
     private readonly postPayrollJournalEntry: PostPayrollJournalEntryHandler,
     private readonly postShiftVarianceJournalEntry: PostShiftVarianceJournalEntryHandler,
     private readonly postGoodsReceiptApJournalEntry: PostGoodsReceiptApJournalEntryHandler,
@@ -125,6 +129,11 @@ export class AccountingModule implements OnModuleInit {
     // Orders يعرف حاجة عن وجود Accounting أصلًا (نفس فايدة الفصل اللي الـbus اتصمم لأجلها من الأول)
     this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) =>
       this.postOrderSaleJournalEntry.handle(event)
+    );
+    // اتناشر مستهلك - إلغاء طلب (Talabat أو يدوي) بيعكس قيد البيع التلقائي بتاعه تلقائيًا، من غير ما
+    // Orders context يعرف حاجة عن وجود Accounting (نفس فلسفة OrderRegistered بالظبط)
+    this.eventBus.subscribe<OrderCancelledEvent>("OrderCancelled", (event) =>
+      this.postOrderCancellationJournalEntry.handle(event)
     );
     // تالت مستهلك حقيقي للـevent bus (بعد Accounting نفسه على OrderRegistered) - نفس الفلسفة
     // بالظبط، Accounting هنا بيشترك في حدث HR & Payroll من غير ما HrPayroll يعرف حاجة عن وجوده

@@ -53,5 +53,6 @@ function toPublicBranch(branch: Branch) {
     lng: branch.lng,
     isCentralKitchen: branch.isCentralKitchen,
     supportsDineIn: branch.supportsDineIn,
+    talabatBranchId: branch.talabatBranchId,
   };
 }

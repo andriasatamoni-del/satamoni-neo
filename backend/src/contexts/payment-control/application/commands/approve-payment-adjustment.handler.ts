@@ -6,7 +6,13 @@ import {
 } from "../../domain/ports/payment-adjustment-request-repository.port";
 import { PAYMENT_REPOSITORY, type PaymentRepositoryPort } from "../../domain/ports/payment-repository.port";
 import { PAYMENT_METHOD_REPOSITORY, type PaymentMethodRepositoryPort } from "../../domain/ports/payment-method-repository.port";
-import { AdjustmentRequestNotFoundError, InsufficientApprovalLevelError, PaymentNotFoundError, PaymentMethodNotFoundError } from "../../domain/errors";
+import {
+  AdjustmentRequestNotFoundError,
+  InsufficientApprovalLevelError,
+  PaymentNotFoundError,
+  PaymentMethodNotFoundError,
+  TalabatPaymentOverrideRequiredError,
+} from "../../domain/errors";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 
 // نفس سقف الريبو القديم الافتراضي (pos_settings.payment_adjustment_high_threshold_egp) - القيمة
@@ -17,6 +23,9 @@ export interface ApprovePaymentAdjustmentCommand {
   requestId: string;
   decidedBy?: string | null;
   hasHighApproval: boolean; // بيتحسب في الـcontroller من صلاحية payment_control.adjustment.approve_high
+  // بيتحسب في الـcontroller من صلاحية talabat.payment_override - مطلوبة إضافيًا لو الدفعة دي مصدرها
+  // Talabat (طريقة الدفع الحالية مربوطة بكود Talabat - راجع TalabatPaymentOverrideRequiredError)
+  hasTalabatOverride: boolean;
 }
 
 @Injectable()
@@ -40,6 +49,11 @@ export class ApprovePaymentAdjustmentHandler {
 
     const payment = await this.payments.findById(request.paymentId);
     if (!payment) throw new PaymentNotFoundError();
+
+    const currentMethod = await this.methods.findById(payment.paymentMethodId);
+    if (currentMethod?.talabatPaymentCode && !command.hasTalabatOverride) {
+      throw new TalabatPaymentOverrideRequiredError();
+    }
 
     // proposedPaymentMethodId فاضي = "خليها زي ما هي" - بنفضّل حقول الدفعة الحالية نفسها، بنغيّر
     // المبلغ بس

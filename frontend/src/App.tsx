@@ -27,6 +27,7 @@ import { BranchDayPage } from "./pages/BranchDayPage";
 import { FinancialReportsPage } from "./pages/FinancialReportsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
+import { TalabatPage } from "./pages/TalabatPage";
 import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage";
 import { CustomerPortalRegisterPage } from "./pages/portal/CustomerPortalRegisterPage";
 import { CustomerPortalProfilePage } from "./pages/portal/CustomerPortalProfilePage";
@@ -161,6 +162,14 @@ export function App() {
         element={
           <RequireAuth>
             <PurchasesPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/talabat"
+        element={
+          <RequireAuth>
+            <TalabatPage />
           </RequireAuth>
         }
       />

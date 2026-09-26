@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterOrderHandler } from "../application/commands/register-order.handler";
+import { CancelOrderHandler } from "../application/commands/cancel-order.handler";
 import { UpdateOrderStatusHandler } from "../application/commands/update-order-status.handler";
 import { AdvanceKitchenStatusHandler } from "../application/commands/advance-kitchen-status.handler";
 import { ListOrdersHandler } from "../application/queries/list-orders.handler";
@@ -21,6 +22,7 @@ import type { Order } from "../domain/order.aggregate";
 export class OrdersController {
   constructor(
     private readonly registerOrder: RegisterOrderHandler,
+    private readonly cancelOrder: CancelOrderHandler,
     private readonly updateOrderStatus: UpdateOrderStatusHandler,
     private readonly advanceKitchenStatus: AdvanceKitchenStatusHandler,
     private readonly listOrders: ListOrdersHandler,
@@ -57,6 +59,15 @@ export class OrdersController {
   @RequirePermission("kitchen.advance")
   async updateKitchenStatus(@Param("id") id: string, @Body() dto: AdvanceKitchenStatusDto) {
     return toPublicOrder(await this.advanceKitchenStatus.execute({ orderId: id, kitchenStatus: dto.kitchenStatus }));
+  }
+
+  // إلغاء حقيقي (عكس مخزون + قيد محاسبي) - مش مجرد status='cancelled' زي updateStatus فوق. نفس مسار
+  // الاسترجاع اللي Talabat cancellation بيستخدمه (CancelTalabatOrderHandler)، متاح هنا كمان لأي إلغاء
+  // يدوي من الكاشير/مدير الفرع (نفس مفهوم "void order" بالريبو القديم)
+  @Patch(":id/cancel")
+  @RequirePermission("orders.manage")
+  async cancel(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicOrder(await this.cancelOrder.execute({ orderId: id, cancelledBy: req.user.id }));
   }
 }
 

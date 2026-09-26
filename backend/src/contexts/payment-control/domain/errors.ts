@@ -56,6 +56,15 @@ export class InsufficientApprovalLevelError extends DomainError {
   }
 }
 
+// طريقة الدفع دي مربوطة بكود Talabat (talabatPaymentCode) - يعني الدفعة دي مصدرها Talabat، وتعديلها
+// محتاج صلاحية منفصلة talabat.payment_override (محاسب/أدمن بس) - نفس فلسفة docs/TALABAT-INTEGRATION.md
+// قسم 6 بالحرف: الكاشير ومدير الفرع معندهمش، حتى لو معاهم payment_control.adjustment.approve العامة
+export class TalabatPaymentOverrideRequiredError extends DomainError {
+  constructor() {
+    super("الدفعة دي مصدرها Talabat - تعديلها محتاج صلاحية talabat.payment_override منفصلة (محاسب/أدمن بس)");
+  }
+}
+
 export class ReconciliationRecordNotFoundError extends DomainError {
   constructor() {
     super("سطر المطابقة ده مش موجود");
