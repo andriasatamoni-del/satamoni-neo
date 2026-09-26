@@ -27,6 +27,7 @@ import { ExpensesModule } from "./contexts/expenses/expenses.module";
 import { PurchasesModule } from "./contexts/purchases/purchases.module";
 import { CustomersModule } from "./contexts/customers/customers.module";
 import { TalabatModule } from "./contexts/talabat/talabat.module";
+import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { TalabatModule } from "./contexts/talabat/talabat.module";
     PurchasesModule,
     CustomersModule,
     TalabatModule,
+    HomeTilesModule,
   ],
   controllers: [HealthController],
 })

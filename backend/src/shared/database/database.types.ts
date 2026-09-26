@@ -113,6 +113,7 @@ import type {
   TalabatWebhookEventsTable,
   TalabatIntegrationErrorsTable,
 } from "../../contexts/talabat/infrastructure/persistence/talabat.schema";
+import type { HomeTilesTable } from "../../contexts/home-tiles/infrastructure/persistence/home-tile.schema";
 
 export interface Database {
   users: UsersTable;
@@ -202,4 +203,5 @@ export interface Database {
   talabat_product_mapping: TalabatProductMappingTable;
   talabat_webhook_events: TalabatWebhookEventsTable;
   talabat_integration_errors: TalabatIntegrationErrorsTable;
+  home_tiles: HomeTilesTable;
 }
