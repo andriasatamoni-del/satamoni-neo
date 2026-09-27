@@ -327,6 +327,7 @@ function toPublicGoodsReceipt(receipt: GoodsReceipt) {
     id: receipt.id,
     purchaseOrderId: receipt.purchaseOrderId,
     supplierId: receipt.supplierId,
+    supplierDocumentNumber: receipt.supplierDocumentNumber,
     branchId: receipt.branchId,
     status: receipt.status,
     lines: receipt.lines.map((l) => ({ inventoryItemId: l.inventoryItemId, quantity: l.quantity, unitCost: l.unitCost })),

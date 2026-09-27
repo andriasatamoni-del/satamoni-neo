@@ -30,7 +30,7 @@ describe("importProcurementFromLegacy", () => {
     await legacyPool.query(`CREATE TABLE suppliers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, contact_person TEXT, phone TEXT, email TEXT, address TEXT, payment_terms TEXT, status TEXT NOT NULL DEFAULT 'ACTIVE')`);
     await legacyPool.query(`CREATE TABLE purchase_orders (id SERIAL PRIMARY KEY, supplier_id INTEGER NOT NULL, branch_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'DRAFT', created_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     await legacyPool.query(`CREATE TABLE purchase_order_items (id SERIAL PRIMARY KEY, purchase_order_id INTEGER NOT NULL, inventory_item_id INTEGER NOT NULL, ordered_quantity NUMERIC NOT NULL, unit_price NUMERIC NOT NULL)`);
-    await legacyPool.query(`CREATE TABLE goods_receipts (id SERIAL PRIMARY KEY, purchase_order_id INTEGER, supplier_id INTEGER NOT NULL, branch_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'DRAFT', received_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), posted_at TIMESTAMPTZ)`);
+    await legacyPool.query(`CREATE TABLE goods_receipts (id SERIAL PRIMARY KEY, purchase_order_id INTEGER, supplier_id INTEGER NOT NULL, supplier_document_number TEXT, branch_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'DRAFT', received_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), posted_at TIMESTAMPTZ)`);
     await legacyPool.query(`CREATE TABLE goods_receipt_items (id SERIAL PRIMARY KEY, goods_receipt_id INTEGER NOT NULL, inventory_item_id INTEGER NOT NULL, accepted_quantity NUMERIC NOT NULL, unit_price NUMERIC NOT NULL)`);
 
     neoDb = new Kysely<Database>({

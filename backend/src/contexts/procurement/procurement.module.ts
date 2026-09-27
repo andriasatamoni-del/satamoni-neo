@@ -50,6 +50,7 @@ import { ListPurchaseRequestsHandler } from "./application/queries/list-purchase
 import { GetPurchaseRequestHandler } from "./application/queries/get-purchase-request.handler";
 import { ListPurchaseReturnsHandler } from "./application/queries/list-purchase-returns.handler";
 import { GetPurchaseReturnHandler } from "./application/queries/get-purchase-return.handler";
+import { PurchaseDuplicateCheckService } from "../../shared/procurement/purchase-duplicate-check.service";
 import { ProcurementController } from "./api/procurement.controller";
 
 @Module({
@@ -64,6 +65,7 @@ import { ProcurementController } from "./api/procurement.controller";
     { provide: SUPPLIER_BALANCE_READER, useClass: KyselySupplierBalanceReader },
     { provide: PURCHASE_REQUEST_REPOSITORY, useClass: KyselyPurchaseRequestRepository },
     { provide: PURCHASE_RETURN_REPOSITORY, useClass: KyselyPurchaseReturnRepository },
+    PurchaseDuplicateCheckService,
     RegisterSupplierHandler,
     RegisterPurchaseOrderHandler,
     SendPurchaseOrderHandler,

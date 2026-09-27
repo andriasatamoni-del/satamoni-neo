@@ -18,6 +18,7 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
           id: receipt.id,
           purchase_order_id: receipt.purchaseOrderId,
           supplier_id: receipt.supplierId,
+          supplier_document_number: receipt.supplierDocumentNumber,
           branch_id: receipt.branchId,
           status: receipt.status,
           received_by: receipt.receivedBy,
@@ -77,6 +78,7 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
     return GoodsReceipt.reconstitute(row.id, {
       purchaseOrderId: row.purchase_order_id,
       supplierId: row.supplier_id,
+      supplierDocumentNumber: row.supplier_document_number,
       branchId: row.branch_id,
       status: row.status as GoodsReceiptStatus,
       lines: lineRows.map((l) => ({

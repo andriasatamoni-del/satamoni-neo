@@ -160,24 +160,37 @@ export function ProcurementPage() {
     },
   });
 
-  const [receiptForm, setReceiptForm] = useState({ supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "" });
+  const [receiptForm, setReceiptForm] = useState({
+    supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "",
+  });
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [receiptDuplicateWarning, setReceiptDuplicateWarning] = useState(false);
   const createReceipt = useMutation({
-    mutationFn: () =>
+    mutationFn: (acknowledgeDuplicate?: boolean) =>
       apiRequest("/procurement/goods-receipts", {
         method: "POST",
         body: {
           supplierId: receiptForm.supplierId,
           branchId: receiptForm.branchId,
+          supplierDocumentNumber: receiptForm.supplierDocumentNumber || undefined,
+          acknowledgeDuplicate,
           lines: [{ inventoryItemId: receiptForm.inventoryItemId, quantity: Number(receiptForm.quantity), unitCost: Number(receiptForm.unitCost) }],
         },
       }),
     onSuccess: () => {
-      setReceiptForm({ supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "" });
+      setReceiptForm({ supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "" });
       setReceiptError(null);
+      setReceiptDuplicateWarning(false);
       queryClient.invalidateQueries({ queryKey: ["procurement", "goods-receipts"] });
     },
-    onError: (err) => setReceiptError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        setReceiptDuplicateWarning(true);
+        setReceiptError(err.message);
+      } else {
+        setReceiptError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع");
+      }
+    },
   });
 
   const confirmReceipt = useMutation({
@@ -505,8 +518,25 @@ export function ProcurementPage() {
                     <Field label="تكلفة الوحدة">
                       <Input required type="number" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} />
                     </Field>
+                    {receiptForm.supplierId && (
+                      <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">
+                        <Input
+                          value={receiptForm.supplierDocumentNumber}
+                          onChange={(e) => setReceiptForm({ ...receiptForm, supplierDocumentNumber: e.target.value })}
+                        />
+                      </Field>
+                    )}
                   </div>
-                  {receiptError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{receiptError}</p>}
+                  {receiptError && (
+                    <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                      <p>{receiptError}</p>
+                      {receiptDuplicateWarning && (
+                        <Button type="button" size="sm" variant="danger" onClick={() => createReceipt.mutate(true)}>
+                          تسجيل برضه (مش تكرار)
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   <Button type="submit" disabled={createReceipt.isPending}>تسجيل</Button>
                 </form>
               </CardBody>

@@ -35,6 +35,7 @@ export interface GoodsReceiptsTable {
   id: Generated<string>;
   purchase_order_id: string | null;
   supplier_id: string | null;
+  supplier_document_number: string | null;
   branch_id: string;
   status: string;
   received_by: string | null;

@@ -8,6 +8,7 @@ import {
   SupplierInvoiceNotFoundError,
   PurchaseRequestNotFoundError,
   PurchaseReturnNotFoundError,
+  DuplicateGoodsReceiptReferenceError,
 } from "../../domain/errors";
 import { TreasuryNotFoundError } from "../../../treasury/domain/errors";
 
@@ -24,7 +25,9 @@ export class ProcurementDomainErrorFilter implements ExceptionFilter {
       exception instanceof PurchaseReturnNotFoundError ||
       exception instanceof TreasuryNotFoundError
         ? 404
-        : 400;
+        : exception instanceof DuplicateGoodsReceiptReferenceError
+          ? 409
+          : 400;
     res.status(status).json({ error: exception.message });
   }
 }

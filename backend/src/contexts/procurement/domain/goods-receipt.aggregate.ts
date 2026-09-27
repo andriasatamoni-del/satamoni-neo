@@ -14,6 +14,7 @@ export interface GoodsReceiptLine {
 export interface GoodsReceiptProps {
   purchaseOrderId: string | null;
   supplierId: string | null;
+  supplierDocumentNumber: string | null;
   branchId: string;
   status: GoodsReceiptStatus;
   lines: GoodsReceiptLine[];
@@ -39,6 +40,7 @@ export class GoodsReceipt {
   static register(input: {
     purchaseOrderId?: string | null;
     supplierId?: string | null;
+    supplierDocumentNumber?: string | null;
     branchId: string;
     lines: { inventoryItemId: string; quantity: number; unitCost: number }[];
     receivedBy?: string | null;
@@ -49,6 +51,7 @@ export class GoodsReceipt {
     return new GoodsReceipt(randomUUID(), {
       purchaseOrderId: input.purchaseOrderId ?? null,
       supplierId: input.supplierId ?? null,
+      supplierDocumentNumber: input.supplierDocumentNumber ?? null,
       branchId: input.branchId,
       status: "DRAFT",
       lines: input.lines.map((l) => ({ id: randomUUID(), ...l })),
@@ -71,6 +74,7 @@ export class GoodsReceipt {
 
   get purchaseOrderId(): string | null { return this.props.purchaseOrderId; }
   get supplierId(): string | null { return this.props.supplierId; }
+  get supplierDocumentNumber(): string | null { return this.props.supplierDocumentNumber; }
   get branchId(): string { return this.props.branchId; }
   get status(): GoodsReceiptStatus { return this.props.status; }
   get lines(): readonly GoodsReceiptLine[] { return this.props.lines; }

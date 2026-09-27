@@ -86,6 +86,8 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
 
   afterAll(async () => {
     const db = app.get(KYSELY);
+    await sql`DELETE FROM goods_receipt_items WHERE goods_receipt_id IN (SELECT id FROM goods_receipts WHERE branch_id = ${branchId})`.execute(db);
+    await sql`DELETE FROM goods_receipts WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM purchase_lines WHERE purchase_id IN (SELECT id FROM purchases WHERE branch_id = ${branchId})`.execute(db);
     await sql`DELETE FROM purchases WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
@@ -177,6 +179,55 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, businessDate: "2026-02-01", amount: 100, supplierId, supplierDocumentNumber: "INV-001", acknowledgeDuplicate: true });
     expect(acknowledged.status).toBe(201);
+  });
+
+  test("SAFE-1: نفس المورد+رقم المستند مسجل كـGRN بالفعل -> مشترى نقدي بنفس المرجع بيرجّع 409 كمان (فحص متقاطع بين المسارين)", async () => {
+    const grn = await request(app.getHttpServer())
+      .post("/procurement/goods-receipts")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        supplierId, branchId, supplierDocumentNumber: "GRN-CROSS-001",
+        lines: [{ inventoryItemId: rawItemId, quantity: 5, unitCost: 4 }],
+      });
+    expect(grn.status).toBe(201);
+
+    const duplicate = await request(app.getHttpServer())
+      .post("/purchases")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, businessDate: "2026-02-01", amount: 20, supplierId, supplierDocumentNumber: "GRN-CROSS-001" });
+    expect(duplicate.status).toBe(409);
+
+    const acknowledged = await request(app.getHttpServer())
+      .post("/purchases")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, businessDate: "2026-02-01", amount: 20, supplierId, supplierDocumentNumber: "GRN-CROSS-001", acknowledgeDuplicate: true });
+    expect(acknowledged.status).toBe(201);
+  });
+
+  test("SAFE-1: نفس المورد+رقم المستند مسجل كمشترى نقدي بالفعل -> تسجيل GRN بنفس المرجع بيرجّع 409 كمان", async () => {
+    const purchase = await request(app.getHttpServer())
+      .post("/purchases")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, businessDate: "2026-02-01", amount: 30, supplierId, supplierDocumentNumber: "PURCHASE-CROSS-001" });
+    expect(purchase.status).toBe(201);
+
+    const duplicateGrn = await request(app.getHttpServer())
+      .post("/procurement/goods-receipts")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        supplierId, branchId, supplierDocumentNumber: "PURCHASE-CROSS-001",
+        lines: [{ inventoryItemId: rawItemId, quantity: 3, unitCost: 4 }],
+      });
+    expect(duplicateGrn.status).toBe(409);
+
+    const acknowledgedGrn = await request(app.getHttpServer())
+      .post("/procurement/goods-receipts")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        supplierId, branchId, supplierDocumentNumber: "PURCHASE-CROSS-001", acknowledgeDuplicate: true,
+        lines: [{ inventoryItemId: rawItemId, quantity: 3, unitCost: 4 }],
+      });
+    expect(acknowledgedGrn.status).toBe(201);
   });
 
   test("كاشير: تسجيل مشترى بيتفرض PENDING وفرعه وتاريخ النهاردة بغض النظر عن اللي اتبعت، ومتجاهل المورد", async () => {

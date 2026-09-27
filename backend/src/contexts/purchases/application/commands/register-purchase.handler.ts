@@ -10,6 +10,7 @@ import { SupplierNotFoundError } from "../../../procurement/domain/errors";
 import { DuplicatePurchaseReferenceError } from "../../domain/errors";
 import { PurchaseConfirmedEvent } from "../../domain/events/purchase-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { PurchaseDuplicateCheckService } from "../../../../shared/procurement/purchase-duplicate-check.service";
 
 export interface RegisterPurchaseCommand {
   branchId: string;
@@ -36,6 +37,7 @@ export class RegisterPurchaseHandler {
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(SUPPLIER_REPOSITORY) private readonly suppliers: SupplierRepositoryPort,
+    private readonly duplicateCheck: PurchaseDuplicateCheckService,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -43,7 +45,7 @@ export class RegisterPurchaseHandler {
     if (command.supplierId && !(await this.suppliers.findById(command.supplierId))) throw new SupplierNotFoundError();
 
     if (command.supplierId && command.supplierDocumentNumber && !command.acknowledgeDuplicate) {
-      const duplicates = await this.purchases.findDuplicateReference({
+      const duplicates = await this.duplicateCheck.findDuplicates({
         supplierId: command.supplierId,
         supplierDocumentNumber: command.supplierDocumentNumber,
         branchId: command.branchId,

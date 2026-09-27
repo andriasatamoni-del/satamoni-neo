@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsNumber, IsOptional, IsUUID, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } from "class-validator";
 
 export class GoodsReceiptLineInputDto {
   @IsUUID()
@@ -15,6 +15,8 @@ export class GoodsReceiptLineInputDto {
 export class RegisterGoodsReceiptDto {
   @IsOptional() @IsUUID() purchaseOrderId?: string;
   @IsOptional() @IsUUID() supplierId?: string;
+  @IsOptional() @IsString() supplierDocumentNumber?: string;
+  @IsOptional() @IsBoolean() acknowledgeDuplicate?: boolean;
 
   @IsUUID()
   branchId!: string;

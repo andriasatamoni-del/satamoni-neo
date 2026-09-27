@@ -67,20 +67,6 @@ export class KyselyPurchaseRepository implements PurchaseRepositoryPort {
     return row ? this.toDomain(row, await this.loadLines(id)) : null;
   }
 
-  async findDuplicateReference(input: { supplierId: string; supplierDocumentNumber: string; branchId: string }): Promise<Purchase[]> {
-    const rows = await this.db
-      .selectFrom("purchases")
-      .selectAll()
-      .where("supplier_id", "=", input.supplierId)
-      .where("supplier_document_number", "=", input.supplierDocumentNumber)
-      .where("branch_id", "=", input.branchId)
-      .where("status", "!=", "REJECTED")
-      .execute();
-    const purchases: Purchase[] = [];
-    for (const row of rows) purchases.push(this.toDomain(row, await this.loadLines(row.id)));
-    return purchases;
-  }
-
   async list(filter?: { branchId?: string; businessDate?: Date; status?: string }): Promise<Purchase[]> {
     let query = this.db.selectFrom("purchases").selectAll();
     if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);

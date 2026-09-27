@@ -30,7 +30,7 @@ interface LegacySupplierRow {
 interface LegacyPurchaseOrderRow { id: number; supplier_id: number; branch_id: number; status: string; created_by: number | null; created_at: Date; }
 interface LegacyPurchaseOrderItemRow { id: number; purchase_order_id: number; inventory_item_id: number; ordered_quantity: string; unit_price: string; }
 interface LegacyGoodsReceiptRow {
-  id: number; purchase_order_id: number; supplier_id: number; branch_id: number; status: string;
+  id: number; purchase_order_id: number; supplier_id: number; supplier_document_number: string | null; branch_id: number; status: string;
   received_by: number | null; created_at: Date; posted_at: Date | null;
 }
 interface LegacyGoodsReceiptItemRow { id: number; goods_receipt_id: number; inventory_item_id: number; accepted_quantity: string; unit_price: string; }
@@ -161,7 +161,7 @@ export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Kysel
   // 3) أذون الاستلام - بتتسجّل بحالتها التاريخية من غير ترحيل حركة مخزون جديدة (راجع تعليق الملف)
   const goodsReceipts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: grRows } = await legacyPool.query<LegacyGoodsReceiptRow>(
-    `SELECT id, purchase_order_id, supplier_id, branch_id, status, received_by, created_at, posted_at FROM goods_receipts ORDER BY id`
+    `SELECT id, purchase_order_id, supplier_id, supplier_document_number, branch_id, status, received_by, created_at, posted_at FROM goods_receipts ORDER BY id`
   );
   const { rows: grItemRows } = await legacyPool.query<LegacyGoodsReceiptItemRow>(
     `SELECT id, goods_receipt_id, inventory_item_id, accepted_quantity, unit_price FROM goods_receipt_items ORDER BY id`
@@ -205,6 +205,7 @@ export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Kysel
     const receipt = GoodsReceipt.reconstitute(randomUUID(), {
       purchaseOrderId: purchaseOrder?.id ?? null,
       supplierId,
+      supplierDocumentNumber: row.supplier_document_number ?? null,
       branchId,
       status: row.status === "POSTED" ? "CONFIRMED" : "DRAFT",
       lines: lines.map((l) => ({ id: randomUUID(), ...l })),

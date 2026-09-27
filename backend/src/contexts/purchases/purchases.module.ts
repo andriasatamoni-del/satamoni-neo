@@ -11,6 +11,7 @@ import { ConfirmPurchaseHandler } from "./application/commands/confirm-purchase.
 import { RejectPurchaseHandler } from "./application/commands/reject-purchase.handler";
 import { ListPurchasesHandler } from "./application/queries/list-purchases.handler";
 import { GetPurchaseHandler } from "./application/queries/get-purchase.handler";
+import { PurchaseDuplicateCheckService } from "../../shared/procurement/purchase-duplicate-check.service";
 import { PurchasesController } from "./api/purchases.controller";
 
 @Module({
@@ -18,6 +19,7 @@ import { PurchasesController } from "./api/purchases.controller";
   controllers: [PurchasesController],
   providers: [
     { provide: PURCHASE_REPOSITORY, useClass: KyselyPurchaseRepository },
+    PurchaseDuplicateCheckService,
     RegisterPurchaseHandler,
     EditPurchaseHandler,
     ConfirmPurchaseHandler,

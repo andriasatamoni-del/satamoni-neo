@@ -235,3 +235,9 @@ export class PurchaseReturnNotCancellableError extends DomainError {
     super("مرتجع المشتريات ده اترحّل بالفعل - مينفعش يتلغي (البضاعة خرجت فعليًا للمورد)");
   }
 }
+
+export class DuplicateGoodsReceiptReferenceError extends DomainError {
+  constructor() {
+    super("فيه سند استلام بضاعة (GRN) أو مشترى نقدي مسجل بالفعل لنفس المورد ونفس رقم المستند في هذا الفرع - ممكن تكون نفس التوريدة اتسجلت مرتين");
+  }
+}
