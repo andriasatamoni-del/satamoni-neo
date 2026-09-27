@@ -6,6 +6,7 @@ import { GetActionCenterHandler } from "../application/queries/get-action-center
 import { GetBranchHealthHandler } from "../application/queries/get-branch-health.handler";
 import { GetSalesOpsReportsHandler } from "../application/queries/get-sales-ops-reports.handler";
 import { GetInventoryReportsHandler } from "../application/queries/get-inventory-reports.handler";
+import { GetProcurementReportsHandler } from "../application/queries/get-procurement-reports.handler";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -20,7 +21,8 @@ export class ReportsController {
     private readonly getActionCenter: GetActionCenterHandler,
     private readonly getBranchHealth: GetBranchHealthHandler,
     private readonly getSalesOps: GetSalesOpsReportsHandler,
-    private readonly getInventoryReports: GetInventoryReportsHandler
+    private readonly getInventoryReports: GetInventoryReportsHandler,
+    private readonly getProcurementReports: GetProcurementReportsHandler
   ) {}
 
   @Get("dashboard")
@@ -221,5 +223,70 @@ export class ReportsController {
   @RequirePermission("reports.branch_health")
   async inventoryComparison(@Query("inventoryItemId") inventoryItemId: string | undefined) {
     return this.getInventoryReports.inventoryComparison({ inventoryItemId: inventoryItemId ?? null });
+  }
+
+  // قائمة أوامر الشراء في المدى - مع عدد البنود وإجمالي القيمة، وفلترة بالفرع/المورد/الحالة
+  @Get("purchase-orders")
+  @RequirePermission("purchasing.view")
+  async purchaseOrders(
+    @Query("branchId") branchId: string | undefined,
+    @Query("supplierId") supplierId: string | undefined,
+    @Query("status") status: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getProcurementReports.purchaseOrders({ branchId: this.effectiveBranchId(req, branchId), supplierId, status, from, to });
+  }
+
+  // أذون الاستلام المؤكّدة (CONFIRMED) في المدى - مع إجمالي القيمة
+  @Get("purchase-receipts")
+  @RequirePermission("purchasing.view")
+  async purchaseReceipts(
+    @Query("branchId") branchId: string | undefined,
+    @Query("supplierId") supplierId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getProcurementReports.purchaseReceipts({ branchId: this.effectiveBranchId(req, branchId), supplierId, from, to });
+  }
+
+  // تاريخ سعر صنف عبر كل أوامر الشراء (عند مورد معيّن أو كل الموردين) - مستنتج من بنود الأوامر الفعلية
+  // مش من كتالوج أسعار منفصل (راجع تعليق procurement-reports-reader.port.ts)
+  @Get("purchase-price-history")
+  @RequirePermission("purchasing.view")
+  async purchasePriceHistory(@Query("inventoryItemId") inventoryItemId: string, @Query("supplierId") supplierId: string | undefined) {
+    return this.getProcurementReports.purchasePriceHistory({ inventoryItemId, supplierId });
+  }
+
+  // كل بنود أوامر الشراء في المدى مع فرق سعرها عن آخر سعر سابق لنفس (مورد، صنف)
+  @Get("purchase-price-variance")
+  @RequirePermission("purchasing.view")
+  async purchasePriceVariance(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getProcurementReports.purchasePriceVariance({ branchId: this.effectiveBranchId(req, branchId), from, to });
+  }
+
+  // أداء مورد معيّن في المدى - معدّل التنفيذ، ومتوسط مدة التسليم (بالأيام) لحد تأكيد إذن الاستلام
+  @Get("supplier-performance")
+  @RequirePermission("purchasing.view")
+  async supplierPerformance(
+    @Query("supplierId") supplierId: string,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined
+  ) {
+    return this.getProcurementReports.supplierPerformance({ supplierId, from, to });
+  }
+
+  // أوامر شراء اتبعتت للمورد ولسه من غير إذن استلام مؤكّد عليها (لسه مستنية)
+  @Get("outstanding-purchase-orders")
+  @RequirePermission("purchasing.view")
+  async outstandingPurchaseOrders(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
+    return this.getProcurementReports.outstandingPurchaseOrders({ branchId: this.effectiveBranchId(req, branchId) });
   }
 }

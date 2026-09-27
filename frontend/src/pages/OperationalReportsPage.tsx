@@ -82,6 +82,32 @@ interface InventoryComparisonRow {
   branchId: string; branchName: string; itemName: string; unit: string; quantity: number;
 }
 
+interface Supplier { id: string; name: string; }
+
+interface PurchaseOrderReportRow {
+  id: string; createdAt: string; status: string; supplierName: string; branchName: string;
+  itemsCount: number; totalValue: number;
+}
+interface PurchaseReceiptReportRow {
+  id: string; confirmedAt: string | null; supplierName: string | null; branchName: string;
+  purchaseOrderId: string | null; totalValue: number;
+}
+interface PurchasePriceHistoryRow {
+  purchaseOrderId: string; orderDate: string; status: string; supplierName: string; quantity: number; unitPrice: number;
+}
+interface PurchasePriceVarianceRow {
+  purchaseOrderId: string; orderDate: string; supplierName: string; itemName: string;
+  previousPrice: number | null; newPrice: number; difference: number | null; differencePercent: number | null;
+}
+interface SupplierPerformanceReport {
+  ordersCount: number; receivedOrdersCount: number; fulfillmentRate: number | null; avgLeadTimeDays: number | null;
+}
+interface OutstandingPurchaseOrderRow {
+  id: string; createdAt: string; supplierName: string; branchName: string; itemsCount: number; totalValue: number;
+}
+
+const PO_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", SENT: "اترسل للمورد", RECEIVED: "اتسلّم", CANCELLED: "ملغي" };
+
 const TABS = [
   { key: "daily", label: "الملخّص اليومي" },
   { key: "sales-detail", label: "تفصيل المبيعات" },
@@ -96,6 +122,14 @@ const TABS = [
   { key: "negative-stock", label: "المخزون السالب" },
 ];
 const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع" };
+const PROCUREMENT_TABS = [
+  { key: "purchase-orders", label: "أوامر الشراء" },
+  { key: "purchase-receipts", label: "أذون الاستلام" },
+  { key: "purchase-price-history", label: "تاريخ سعر الصنف" },
+  { key: "purchase-price-variance", label: "فروق أسعار الشراء" },
+  { key: "supplier-performance", label: "أداء المورد" },
+  { key: "outstanding-purchase-orders", label: "أوامر شراء مستنية" },
+];
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
@@ -133,11 +167,17 @@ export function OperationalReportsPage() {
   const { user } = useAuth();
   // مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
   const canSeeBranchHealth = user?.role === "admin" || user?.role === "accountant";
-  const tabs = canSeeBranchHealth ? [...TABS, BRANCH_HEALTH_TAB] : TABS;
+  // نفس أدوار purchasing.view بالظبط (راجع procurement.module.ts) - أدمن/مدير فرع/محاسب
+  const canSeeProcurement = user?.role === "admin" || user?.role === "branch_manager" || user?.role === "accountant";
+  const tabs = [
+    ...TABS,
+    ...(canSeeBranchHealth ? [BRANCH_HEALTH_TAB] : []),
+    ...(canSeeProcurement ? PROCUREMENT_TABS : []),
+  ];
 
   return (
     <div>
-      <PageHeader title="تقارير المبيعات والتشغيل" description="ملخّصات يومية، تفصيل مبيعات، طلبات ملغاة، تأخيرات، أداء الأصناف، وتقارير المخزون" />
+      <PageHeader title="تقارير المبيعات والتشغيل" description="ملخّصات يومية، تفصيل مبيعات، طلبات ملغاة، تأخيرات، أداء الأصناف، وتقارير المخزون والمشتريات" />
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === "daily" && <DailyTab />}
       {tab === "sales-detail" && <SalesDetailTab />}
@@ -151,6 +191,12 @@ export function OperationalReportsPage() {
       {tab === "transfers" && <TransfersTab />}
       {tab === "negative-stock" && <NegativeStockTab />}
       {tab === "inventory-comparison" && canSeeBranchHealth && <InventoryComparisonTab />}
+      {tab === "purchase-orders" && canSeeProcurement && <PurchaseOrdersTab />}
+      {tab === "purchase-receipts" && canSeeProcurement && <PurchaseReceiptsTab />}
+      {tab === "purchase-price-history" && canSeeProcurement && <PurchasePriceHistoryTab />}
+      {tab === "purchase-price-variance" && canSeeProcurement && <PurchasePriceVarianceTab />}
+      {tab === "supplier-performance" && canSeeProcurement && <SupplierPerformanceTab />}
+      {tab === "outstanding-purchase-orders" && canSeeProcurement && <OutstandingPurchaseOrdersTab />}
     </div>
   );
 }
@@ -714,6 +760,316 @@ function InventoryComparisonTab() {
                   <TD>{r.itemName}</TD>
                   <TD>{r.branchName}</TD>
                   <TD className={r.quantity < 0 ? "font-semibold text-red-600" : ""}>{fmt(r.quantity)} {r.unit}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function useSuppliers() {
+  return useQuery({ queryKey: ["procurement", "suppliers"], queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers") });
+}
+
+function SupplierSelect({ value, onChange, suppliers, allowEmpty }: {
+  value: string; onChange: (v: string) => void; suppliers: Supplier[]; allowEmpty?: boolean;
+}) {
+  return (
+    <Field label="المورد">
+      <Select value={value} onChange={(e) => onChange(e.target.value)}>
+        {allowEmpty && <option value="">كل الموردين</option>}
+        {!allowEmpty && <option value="">اختار مورد</option>}
+        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
+function PurchaseOrdersTab() {
+  const [branchId, setBranchId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const suppliersQuery = useSuppliers();
+  const query = useQuery({
+    queryKey: ["reports", "purchase-orders", branchId, supplierId, from, to],
+    queryFn: () =>
+      apiRequest<PurchaseOrderReportRow[]>(
+        `/reports/purchase-orders?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}${supplierId ? `&supplierId=${supplierId}` : ""}`
+      ),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أوامر الشراء</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <SupplierSelect value={supplierId} onChange={setSupplierId} suppliers={suppliersQuery.data ?? []} allowEmpty />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش أوامر شراء في الفترة دي</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>التاريخ</TH><TH>المورد</TH><TH>الفرع</TH><TH>الحالة</TH><TH>عدد البنود</TH><TH>القيمة الإجمالية</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.id}>
+                  <TD>{new Date(r.createdAt).toLocaleDateString("en-GB")}</TD>
+                  <TD>{r.supplierName}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD>{PO_STATUS_LABELS[r.status] ?? r.status}</TD>
+                  <TD>{r.itemsCount}</TD>
+                  <TD className="font-semibold">{fmt(r.totalValue)}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function PurchaseReceiptsTab() {
+  const [branchId, setBranchId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const suppliersQuery = useSuppliers();
+  const query = useQuery({
+    queryKey: ["reports", "purchase-receipts", branchId, supplierId, from, to],
+    queryFn: () =>
+      apiRequest<PurchaseReceiptReportRow[]>(
+        `/reports/purchase-receipts?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}${supplierId ? `&supplierId=${supplierId}` : ""}`
+      ),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أذون الاستلام المؤكّدة</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <SupplierSelect value={supplierId} onChange={setSupplierId} suppliers={suppliersQuery.data ?? []} allowEmpty />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش أذون استلام مؤكّدة في الفترة دي</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>تاريخ التأكيد</TH><TH>المورد</TH><TH>الفرع</TH><TH>القيمة الإجمالية</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.id}>
+                  <TD>{r.confirmedAt ? new Date(r.confirmedAt).toLocaleDateString("en-GB") : "-"}</TD>
+                  <TD>{r.supplierName ?? "-"}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD className="font-semibold">{fmt(r.totalValue)}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function PurchasePriceHistoryTab() {
+  const [inventoryItemId, setInventoryItemId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const itemsQuery = useInventoryItems();
+  const suppliersQuery = useSuppliers();
+  const canQuery = !!inventoryItemId;
+  const query = useQuery({
+    queryKey: ["reports", "purchase-price-history", inventoryItemId, supplierId],
+    queryFn: () =>
+      apiRequest<PurchasePriceHistoryRow[]>(
+        `/reports/purchase-price-history?inventoryItemId=${inventoryItemId}${supplierId ? `&supplierId=${supplierId}` : ""}`
+      ),
+    enabled: canQuery,
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>تاريخ سعر الصنف عبر أوامر الشراء</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="الصنف">
+            <Select value={inventoryItemId} onChange={(e) => setInventoryItemId(e.target.value)}>
+              <option value="">اختار صنف</option>
+              {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          </Field>
+          <SupplierSelect value={supplierId} onChange={setSupplierId} suppliers={suppliersQuery.data ?? []} allowEmpty />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {!canQuery && <EmptyState>اختار صنف عشان تشوف تاريخ سعره</EmptyState>}
+        {canQuery && query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {canQuery && query.data && query.data.length === 0 && <EmptyState>مفيش أوامر شراء لسه للصنف ده</EmptyState>}
+        {canQuery && query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>التاريخ</TH><TH>المورد</TH><TH>الحالة</TH><TH>الكمية</TH><TH>سعر الوحدة</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.purchaseOrderId}>
+                  <TD>{new Date(r.orderDate).toLocaleDateString("en-GB")}</TD>
+                  <TD>{r.supplierName}</TD>
+                  <TD>{PO_STATUS_LABELS[r.status] ?? r.status}</TD>
+                  <TD>{fmt(r.quantity)}</TD>
+                  <TD className="font-semibold">{fmt(r.unitPrice)}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function PurchasePriceVarianceTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "purchase-price-variance", branchId, from, to],
+    queryFn: () =>
+      apiRequest<PurchasePriceVarianceRow[]>(`/reports/purchase-price-variance?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>فروق أسعار الشراء عن آخر سعر سابق لنفس المورد والصنف</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش بنود أوامر شراء في الفترة دي</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>التاريخ</TH><TH>المورد</TH><TH>الصنف</TH><TH>السعر السابق</TH><TH>السعر الجديد</TH><TH>الفرق</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r, i) => (
+                <TR key={i}>
+                  <TD>{new Date(r.orderDate).toLocaleDateString("en-GB")}</TD>
+                  <TD>{r.supplierName}</TD>
+                  <TD>{r.itemName}</TD>
+                  <TD>{r.previousPrice !== null ? fmt(r.previousPrice) : "-"}</TD>
+                  <TD>{fmt(r.newPrice)}</TD>
+                  <TD className={r.difference && r.difference > 0 ? "font-semibold text-red-600" : r.difference && r.difference < 0 ? "font-semibold text-emerald-600" : ""}>
+                    {r.difference !== null ? `${r.difference > 0 ? "+" : ""}${fmt(r.difference)} (${fmt(r.differencePercent ?? 0)}%)` : "أول سعر"}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function SupplierPerformanceTab() {
+  const [supplierId, setSupplierId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const suppliersQuery = useSuppliers();
+  const canQuery = !!supplierId;
+  const query = useQuery({
+    queryKey: ["reports", "supplier-performance", supplierId, from, to],
+    queryFn: () => apiRequest<SupplierPerformanceReport>(`/reports/supplier-performance?supplierId=${supplierId}&from=${from}&to=${to}`),
+    enabled: canQuery,
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أداء مورد</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <SupplierSelect value={supplierId} onChange={setSupplierId} suppliers={suppliersQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {!canQuery && <EmptyState>اختار مورد عشان تشوف أداءه</EmptyState>}
+        {canQuery && query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {canQuery && query.data && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">عدد أوامر الشراء</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.ordersCount}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">اتستلم منها</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.receivedOrdersCount}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">معدّل التنفيذ</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.fulfillmentRate !== null ? `${fmt(query.data.fulfillmentRate)}%` : "-"}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">متوسط مدة التسليم</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.avgLeadTimeDays !== null ? `${fmt(query.data.avgLeadTimeDays)} يوم` : "-"}</p>
+            </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function OutstandingPurchaseOrdersTab() {
+  const [branchId, setBranchId] = useState("");
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "outstanding-purchase-orders", branchId],
+    queryFn: () => apiRequest<OutstandingPurchaseOrderRow[]>(`/reports/outstanding-purchase-orders${branchId ? `?branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أوامر شراء اترسلت ولسه من غير إذن استلام مؤكّد</CardTitle>
+        <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش أوامر شراء مستنية - كله اتسلّم</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>التاريخ</TH><TH>المورد</TH><TH>الفرع</TH><TH>عدد البنود</TH><TH>القيمة</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.id}>
+                  <TD>{new Date(r.createdAt).toLocaleDateString("en-GB")}</TD>
+                  <TD>{r.supplierName}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD>{r.itemsCount}</TD>
+                  <TD className="font-semibold">{fmt(r.totalValue)}</TD>
                 </TR>
               ))}
             </TBody>
