@@ -12,6 +12,9 @@ import { GetFoodCostReportHandler } from "./application/queries/get-food-cost-re
 import { ACTION_CENTER_READER } from "./domain/ports/action-center-reader.port";
 import { KyselyActionCenterReader } from "./infrastructure/persistence/kysely-action-center-reader";
 import { GetActionCenterHandler } from "./application/queries/get-action-center.handler";
+import { BRANCH_HEALTH_READER } from "./domain/ports/branch-health-reader.port";
+import { KyselyBranchHealthReader } from "./infrastructure/persistence/kysely-branch-health-reader";
+import { GetBranchHealthHandler } from "./application/queries/get-branch-health.handler";
 import { ReportsController } from "./api/reports.controller";
 
 @Module({
@@ -24,6 +27,8 @@ import { ReportsController } from "./api/reports.controller";
     GetFoodCostReportHandler,
     { provide: ACTION_CENTER_READER, useClass: KyselyActionCenterReader },
     GetActionCenterHandler,
+    { provide: BRANCH_HEALTH_READER, useClass: KyselyBranchHealthReader },
+    GetBranchHealthHandler,
   ],
 })
 export class ReportingModule implements OnModuleInit {
@@ -33,10 +38,16 @@ export class ReportingModule implements OnModuleInit {
     this.permissions.registerGroup({
       group: "reports",
       groupLabel: "التقارير ولوحة التحكم",
-      permissions: [{ key: "reports.view", label: "رؤية لوحة التحكم والتقارير" }],
+      permissions: [
+        { key: "reports.view", label: "رؤية لوحة التحكم والتقارير" },
+        // مقارنة شاملة بين كل الفروع - نفس requireRole("admin", "accountant") في الريبو القديم بالظبط،
+        // مفتاح صلاحية منفصل بدل reports.view العام عشان مدير الفرع (اللي عنده reports.view لفرعه بس)
+        // ميشوفش بيانات فروع تانية
+        { key: "reports.branch_health", label: "رؤية بطاقة صحة الفروع (مقارنة كل الفروع)" },
+      ],
     });
     // نفس canSeeReports في الريبو القديم بالظبط: أدمن + محاسب + مدير فرع (مش كاشير/كول سنتر/سائق)
-    this.permissions.setRoleDefaults("accountant", ["reports.view"]);
+    this.permissions.setRoleDefaults("accountant", ["reports.view", "reports.branch_health"]);
     this.permissions.setRoleDefaults("branch_manager", ["reports.view"]);
   }
 }

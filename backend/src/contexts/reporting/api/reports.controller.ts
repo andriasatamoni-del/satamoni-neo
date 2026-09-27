@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { GetDashboardSummaryHandler } from "../application/queries/get-dashboard-summary.handler";
 import { GetFoodCostReportHandler } from "../application/queries/get-food-cost-report.handler";
 import { GetActionCenterHandler } from "../application/queries/get-action-center.handler";
+import { GetBranchHealthHandler } from "../application/queries/get-branch-health.handler";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -14,7 +15,8 @@ export class ReportsController {
   constructor(
     private readonly getDashboardSummary: GetDashboardSummaryHandler,
     private readonly getFoodCostReport: GetFoodCostReportHandler,
-    private readonly getActionCenter: GetActionCenterHandler
+    private readonly getActionCenter: GetActionCenterHandler,
+    private readonly getBranchHealth: GetBranchHealthHandler
   ) {}
 
   @Get("dashboard")
@@ -64,5 +66,13 @@ export class ReportsController {
   ) {
     const effectiveBranchId = req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
     return this.getActionCenter.execute({ branchId: effectiveBranchId, from, to });
+  }
+
+  // بطاقة صحة الفروع - مقارنة كل الفروع في مكان واحد (إيراد/تكلفة طعام%/فرق كاش/مخزون سالب/شكاوى)،
+  // أدمن/محاسب بس (نفس نطاق الريبو القديم - المقارنة الشاملة بين الفروع مش حاجة مدير فرع واحد يحتاجها)
+  @Get("branch-health")
+  @RequirePermission("reports.branch_health")
+  async branchHealth(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
+    return this.getBranchHealth.execute({ from, to });
   }
 }

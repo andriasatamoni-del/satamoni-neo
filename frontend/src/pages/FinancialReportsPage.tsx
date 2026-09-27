@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
@@ -86,7 +87,25 @@ interface FoodCostReport {
   byItem: FoodCostItemRow[];
 }
 
-const TABS = [
+interface BranchHealthRow {
+  branchId: string;
+  branchName: string;
+  ordersCount: number;
+  revenue: number;
+  avgOrderValue: number;
+  foodCostPercent: number | null;
+  cashVariance: number;
+  shiftsPendingReview: number;
+  negativeStockItems: number;
+  openComplaints: number;
+}
+interface BranchHealthReport {
+  from: string;
+  to: string;
+  branches: BranchHealthRow[];
+}
+
+const BASE_TABS = [
   { key: "income-statement", label: "قائمة الدخل" },
   { key: "trial-balance", label: "ميزان المراجعة" },
   { key: "general-ledger", label: "دفتر الأستاذ" },
@@ -108,17 +127,24 @@ function monthAgoStr(): string {
 }
 
 export function FinancialReportsPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState("income-statement");
   const accountsQuery = useQuery({ queryKey: ["accounting", "accounts"], queryFn: () => apiRequest<Account[]>("/accounting/accounts") });
+
+  // بطاقة صحة الفروع مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
+  // في الباك إند بالظبط (مدير الفرع مقفول على فرعه، مش له معنى يقارن فروع تانية)
+  const canSeeBranchHealth = user?.role === "admin" || user?.role === "accountant";
+  const tabs = canSeeBranchHealth ? [...BASE_TABS, { key: "branch-health", label: "صحة الفروع" }] : BASE_TABS;
 
   return (
     <div>
       <PageHeader title="التقارير المحاسبية" description="قائمة الدخل، ميزان المراجعة، ودفتر الأستاذ - مشتقّة مباشرة من القيود المرحّلة" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === "income-statement" && <IncomeStatementTab />}
       {tab === "trial-balance" && <TrialBalanceTab />}
       {tab === "general-ledger" && <GeneralLedgerTab accounts={accountsQuery.data ?? []} />}
       {tab === "food-cost" && <FoodCostTab />}
+      {tab === "branch-health" && canSeeBranchHealth && <BranchHealthTab />}
     </div>
   );
 }
@@ -395,6 +421,69 @@ function GeneralLedgerTab({ accounts }: { accounts: Account[] }) {
               رصيد آخر المدة: {fmt(query.data.closingBalance)} ج.م
             </p>
           </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function BranchHealthTab() {
+  const [from, setFrom] = useState(monthAgoStr());
+  const [to, setTo] = useState(todayStr());
+  const query = useQuery({
+    queryKey: ["reports", "branch-health", from, to],
+    queryFn: () => apiRequest<BranchHealthReport>(`/reports/branch-health?from=${from}&to=${to}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>صحة الفروع - مقارنة شاملة</CardTitle>
+        <div className="flex items-end gap-3">
+          <Field label="من">
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </Field>
+          <Field label="إلى">
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </Field>
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.branches.length === 0 && <EmptyState>مفيش فروع مسجّلة</EmptyState>}
+        {query.data && query.data.branches.length > 0 && (
+          <Table>
+            <THead>
+              <TR>
+                <TH>الفرع</TH>
+                <TH>عدد الطلبات</TH>
+                <TH>الإيراد</TH>
+                <TH>متوسط الطلب</TH>
+                <TH>تكلفة الطعام%</TH>
+                <TH>فرق الكاش</TH>
+                <TH>شيفتات محتاجة مراجعة</TH>
+                <TH>مخزون سالب</TH>
+                <TH>شكاوى فاضلة</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {query.data.branches.map((b) => (
+                <TR key={b.branchId}>
+                  <TD className="font-semibold">{b.branchName}</TD>
+                  <TD>{b.ordersCount}</TD>
+                  <TD>{fmt(b.revenue)}</TD>
+                  <TD>{fmt(b.avgOrderValue)}</TD>
+                  <TD>{b.foodCostPercent !== null ? `${fmt(b.foodCostPercent)}%` : "-"}</TD>
+                  <TD className={b.cashVariance < 0 ? "font-semibold text-red-700" : b.cashVariance > 0 ? "font-semibold text-emerald-700" : ""}>
+                    {fmt(b.cashVariance)}
+                  </TD>
+                  <TD className={b.shiftsPendingReview > 0 ? "font-semibold text-amber-700" : ""}>{b.shiftsPendingReview}</TD>
+                  <TD className={b.negativeStockItems > 0 ? "font-semibold text-red-700" : ""}>{b.negativeStockItems}</TD>
+                  <TD className={b.openComplaints > 0 ? "font-semibold text-amber-700" : ""}>{b.openComplaints}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
         )}
       </CardBody>
     </Card>
