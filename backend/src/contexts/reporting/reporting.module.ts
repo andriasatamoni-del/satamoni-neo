@@ -4,6 +4,9 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { DASHBOARD_SUMMARY_READER } from "./domain/ports/dashboard-summary-reader.port";
 import { KyselyDashboardSummaryReader } from "./infrastructure/persistence/kysely-dashboard-summary-reader";
 import { GetDashboardSummaryHandler } from "./application/queries/get-dashboard-summary.handler";
+import { FOOD_COST_READER } from "./domain/ports/food-cost-reader.port";
+import { KyselyFoodCostReader } from "./infrastructure/persistence/kysely-food-cost-reader";
+import { GetFoodCostReportHandler } from "./application/queries/get-food-cost-report.handler";
 import { ReportsController } from "./api/reports.controller";
 
 @Module({
@@ -12,6 +15,8 @@ import { ReportsController } from "./api/reports.controller";
   providers: [
     { provide: DASHBOARD_SUMMARY_READER, useClass: KyselyDashboardSummaryReader },
     GetDashboardSummaryHandler,
+    { provide: FOOD_COST_READER, useClass: KyselyFoodCostReader },
+    GetFoodCostReportHandler,
   ],
 })
 export class ReportingModule implements OnModuleInit {

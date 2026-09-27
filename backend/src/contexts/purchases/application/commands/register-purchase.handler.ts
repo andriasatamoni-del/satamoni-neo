@@ -73,8 +73,15 @@ export class RegisterPurchaseHandler {
           referenceType: "purchase",
           referenceId: purchase.id,
           performedBy: command.createdBy ?? null,
+          unitCost: line.unitPrice,
         });
         await this.movements.recordMovement(movement, { allowNegativeBalance: true });
+
+        const inventoryItem = await this.inventoryItems.findById(line.inventoryItemId);
+        if (inventoryItem) {
+          inventoryItem.updateUnitCost(line.unitPrice);
+          await this.inventoryItems.save(inventoryItem);
+        }
       }
       purchase.markPostedToInventory();
       await this.eventBus.publish(new PurchaseConfirmedEvent(purchase.id, purchase.branchId, purchase.amount, command.createdBy ?? null));

@@ -12,6 +12,8 @@ export interface StockMovementsTable {
   performed_by: string | null;
   occurred_at: Generated<Date>;
   legacy_reference_key: string | null;
+  unit_cost: number | null;
+  total_cost: number | null;
 }
 
 export interface BranchStockBalancesTable {

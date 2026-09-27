@@ -49,6 +49,7 @@ export class StartConversionOrderHandler {
         referenceType: "conversion_order",
         referenceId: order.id,
         performedBy: command.performedBy,
+        unitCost: inventoryItem?.unitCost ?? null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
 

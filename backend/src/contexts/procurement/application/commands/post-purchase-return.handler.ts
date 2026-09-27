@@ -51,6 +51,7 @@ export class PostPurchaseReturnHandler {
         referenceType: "purchase_return",
         referenceId: purchaseReturn.id,
         performedBy: command.postedBy,
+        unitCost: line.unitCost,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
     }

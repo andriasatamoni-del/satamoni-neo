@@ -44,6 +44,7 @@ export class DispatchTransferRequestHandler {
         referenceType: "transfer_request",
         referenceId: request.id,
         performedBy: command.dispatchedBy,
+        unitCost: item?.unitCost ?? null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance });
       movementResults.push({ lineId: line.id, quantity, movementId: movement.id });

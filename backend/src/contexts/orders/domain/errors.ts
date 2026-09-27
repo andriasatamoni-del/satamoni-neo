@@ -14,6 +14,12 @@ export class UnknownOrderTypeError extends DomainError {
   }
 }
 
+export class CancelledStatusRequiresDedicatedEndpointError extends DomainError {
+  constructor() {
+    super("إلغاء الطلب لازم يتم عن طريق PATCH /orders/:id/cancel - ده بيعكس استهلاك المخزون والقيد المحاسبي، مش تحديث حالة عادي");
+  }
+}
+
 export class UnknownOrderStatusError extends DomainError {
   constructor(value: string) {
     super(`حالة الطلب دي مش معروفة: ${value}`);

@@ -66,10 +66,31 @@ interface IncomeStatementResult {
   netIncome: number;
 }
 
+interface FoodCostBucket {
+  theoreticalCost: number;
+  theoreticalIncomplete: boolean;
+  usageAdjustmentCost: number;
+  usageAdjustmentIncomplete: boolean;
+  actualUsageCost: number;
+  variance: number;
+  variancePercent: number | null;
+}
+interface FoodCostItemRow extends FoodCostBucket {
+  inventoryItemId: string;
+  itemName: string;
+}
+interface FoodCostReport {
+  from: string;
+  to: string;
+  totals: FoodCostBucket;
+  byItem: FoodCostItemRow[];
+}
+
 const TABS = [
   { key: "income-statement", label: "قائمة الدخل" },
   { key: "trial-balance", label: "ميزان المراجعة" },
   { key: "general-ledger", label: "دفتر الأستاذ" },
+  { key: "food-cost", label: "تكلفة الطعام" },
 ];
 
 function fmt(n: number): string {
@@ -97,7 +118,83 @@ export function FinancialReportsPage() {
       {tab === "income-statement" && <IncomeStatementTab />}
       {tab === "trial-balance" && <TrialBalanceTab />}
       {tab === "general-ledger" && <GeneralLedgerTab accounts={accountsQuery.data ?? []} />}
+      {tab === "food-cost" && <FoodCostTab />}
     </div>
+  );
+}
+
+function FoodCostTab() {
+  const [from, setFrom] = useState(monthAgoStr());
+  const [to, setTo] = useState(todayStr());
+  const query = useQuery({
+    queryKey: ["reports", "food-cost", from, to],
+    queryFn: () => apiRequest<FoodCostReport>(`/reports/food-cost?from=${from}&to=${to}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>تكلفة الطعام - النظري مقابل الفعلي</CardTitle>
+        <div className="flex items-end gap-3">
+          <Field label="من">
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </Field>
+          <Field label="إلى">
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </Field>
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">التكلفة النظرية (حسب الوصفة)</p>
+                <p className="text-lg font-bold text-slate-900">{fmt(query.data.totals.theoreticalCost)} ج.م</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">التكلفة الفعلية (بعد التصحيحات)</p>
+                <p className="text-lg font-bold text-slate-900">{fmt(query.data.totals.actualUsageCost)} ج.م</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">الفرق (Variance)</p>
+                <p className={`text-lg font-bold ${query.data.totals.variance > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                  {fmt(query.data.totals.variance)} ج.م
+                  {query.data.totals.variancePercent !== null && ` (${fmt(query.data.totals.variancePercent)}%)`}
+                </p>
+              </div>
+            </div>
+            {query.data.byItem.length === 0 ? (
+              <EmptyState>مفيش حركات استهلاك في الفترة دي</EmptyState>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>الصنف</TH>
+                    <TH>النظري</TH>
+                    <TH>الفعلي</TH>
+                    <TH>الفرق</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {query.data.byItem.map((row) => (
+                    <TR key={row.inventoryItemId}>
+                      <TD>{row.itemName}</TD>
+                      <TD>{fmt(row.theoreticalCost)}</TD>
+                      <TD>{fmt(row.actualUsageCost)}</TD>
+                      <TD className={row.variance > 0 ? "font-semibold text-red-700" : row.variance < 0 ? "font-semibold text-emerald-700" : ""}>
+                        {fmt(row.variance)}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

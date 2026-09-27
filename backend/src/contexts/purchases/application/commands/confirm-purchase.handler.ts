@@ -3,6 +3,7 @@ import { Purchase } from "../../domain/purchase.aggregate";
 import { PURCHASE_REPOSITORY, type PurchaseRepositoryPort } from "../../domain/ports/purchase-repository.port";
 import { PurchaseNotFoundError } from "../../domain/errors";
 import { STOCK_MOVEMENT_REPOSITORY, type StockMovementRepositoryPort } from "../../../inventory/domain/ports/stock-movement-repository.port";
+import { INVENTORY_ITEM_REPOSITORY, type InventoryItemRepositoryPort } from "../../../inventory/domain/ports/inventory-item-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { PurchaseConfirmedEvent } from "../../domain/events/purchase-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
@@ -21,6 +22,7 @@ export class ConfirmPurchaseHandler {
   constructor(
     @Inject(PURCHASE_REPOSITORY) private readonly purchases: PurchaseRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -40,8 +42,15 @@ export class ConfirmPurchaseHandler {
           referenceType: "purchase",
           referenceId: purchase.id,
           performedBy: command.reviewedBy,
+          unitCost: line.unitPrice,
         });
         await this.movements.recordMovement(movement, { allowNegativeBalance: true });
+
+        const inventoryItem = await this.inventoryItems.findById(line.inventoryItemId);
+        if (inventoryItem) {
+          inventoryItem.updateUnitCost(line.unitPrice);
+          await this.inventoryItems.save(inventoryItem);
+        }
       }
       purchase.markPostedToInventory();
       await this.eventBus.publish(new PurchaseConfirmedEvent(purchase.id, purchase.branchId, purchase.amount, command.reviewedBy));

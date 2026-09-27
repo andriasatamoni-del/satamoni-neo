@@ -57,6 +57,7 @@ export class RegisterStocktakeHandler {
         referenceType: "stocktake",
         referenceId: stocktake.id,
         performedBy: command.createdBy,
+        unitCost: line.unitCost,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
       stocktake.assignMovementToLine(line.id, movement.id);

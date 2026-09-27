@@ -51,6 +51,7 @@ export class CompleteConversionOrderHandler {
       referenceType: "conversion_order",
       referenceId: order.id,
       performedBy: command.completedBy,
+      unitCost: standardUnitCost,
     });
     await this.movements.recordMovement(movement, { allowNegativeBalance: true });
 

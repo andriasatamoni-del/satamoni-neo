@@ -9,6 +9,10 @@ import {
   STOCK_MOVEMENT_REPOSITORY,
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
+import {
+  INVENTORY_ITEM_REPOSITORY,
+  type InventoryItemRepositoryPort,
+} from "../../../inventory/domain/ports/inventory-item-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { GoodsReceiptConfirmedEvent } from "../../domain/events/goods-receipt-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
@@ -29,6 +33,7 @@ export class ConfirmGoodsReceiptHandler {
   constructor(
     @Inject(GOODS_RECEIPT_REPOSITORY) private readonly receipts: GoodsReceiptRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -50,10 +55,20 @@ export class ConfirmGoodsReceiptHandler {
         referenceType: "goods_receipt",
         referenceId: receipt.id,
         performedBy: command.confirmedBy,
+        unitCost: line.unitCost,
       });
       // استلام دايمًا بيزوّد الرصيد (كمية موجبة) - سياسة الرصيد السالب مش هتتفعّل خالص هنا عمليًا،
       // allowNegativeBalance: true بس عشان مفيش داعي نجيب الصنف ونتأكد من سياسته لحاجة مستحيل تحصل
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
+
+      // تكلفة الاستلام الفعلية بتحدّث سعر مرجع الصنف (last-cost) - عشان محرك تكلفة الطعام يحسب
+      // "النظري" بأحدث سعر شراء حقيقي، مش سعر التأسيس الأول اللي ممكن يبقى قديم جدًا. قرار متعمد:
+      // last-cost مش weighted-average - أبسط ويطابق نفس مستوى الدقة اللي الريبو القديم بيوفره فعليًا
+      const inventoryItem = await this.inventoryItems.findById(line.inventoryItemId);
+      if (inventoryItem) {
+        inventoryItem.updateUnitCost(line.unitCost);
+        await this.inventoryItems.save(inventoryItem);
+      }
     }
 
     await this.eventBus.publish(

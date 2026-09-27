@@ -88,9 +88,8 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 1 }] });
     await request(app.getHttpServer())
-      .patch(`/orders/${toCancel.body.id}/status`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: "cancelled" });
+      .patch(`/orders/${toCancel.body.id}/cancel`)
+      .set("Authorization", `Bearer ${adminToken}`);
   });
 
   afterAll(async () => {

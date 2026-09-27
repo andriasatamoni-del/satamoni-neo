@@ -27,6 +27,10 @@ export interface StockMovementProps {
   performedBy: string | null;
   occurredAt: Date;
   legacyReferenceKey: string | null;
+  // تكلفة الوحدة مجمّدة وقت الحركة نفسها (مش سعر الصنف الحالي وقت أي قراءة لاحقة) - أساس محرك تكلفة
+  // الطعام (راجع reporting context). null لحركة صنف من غير unit_cost معروف وقتها - عمدًا، مش تخمين
+  unitCost: number | null;
+  totalCost: number | null;
 }
 
 // StockMovement - سطر واحد في ليدجر المخزون (نفس مفهوم inventory_movements في الريبو القديم: مصدر
@@ -52,11 +56,15 @@ export class StockMovement {
     referenceId?: string | null;
     performedBy?: string | null;
     legacyReferenceKey?: string | null;
+    unitCost?: number | null;
   }): StockMovement {
     if (!MOVEMENT_TYPES.includes(input.movementType as MovementType)) {
       throw new UnknownMovementTypeError(input.movementType);
     }
     if (input.quantityDelta === 0) throw new ZeroQuantityMovementError();
+
+    const unitCost = input.unitCost ?? null;
+    const totalCost = unitCost != null ? unitCost * Math.abs(input.quantityDelta) : null;
 
     return new StockMovement(randomUUID(), {
       inventoryItemId: input.inventoryItemId,
@@ -69,6 +77,8 @@ export class StockMovement {
       performedBy: input.performedBy ?? null,
       occurredAt: new Date(),
       legacyReferenceKey: input.legacyReferenceKey ?? null,
+      unitCost,
+      totalCost,
     });
   }
 
@@ -86,4 +96,6 @@ export class StockMovement {
   get performedBy(): string | null { return this.props.performedBy; }
   get occurredAt(): Date { return this.props.occurredAt; }
   get legacyReferenceKey(): string | null { return this.props.legacyReferenceKey; }
+  get unitCost(): number | null { return this.props.unitCost; }
+  get totalCost(): number | null { return this.props.totalCost; }
 }

@@ -3,6 +3,7 @@ import { TransferRequest } from "../../domain/transfer-request.aggregate";
 import { StockMovement } from "../../domain/stock-movement.aggregate";
 import { TRANSFER_REQUEST_REPOSITORY, type TransferRequestRepositoryPort } from "../../domain/ports/transfer-request-repository.port";
 import { STOCK_MOVEMENT_REPOSITORY, type StockMovementRepositoryPort } from "../../domain/ports/stock-movement-repository.port";
+import { INVENTORY_ITEM_REPOSITORY, type InventoryItemRepositoryPort } from "../../domain/ports/inventory-item-repository.port";
 import { TransferRequestNotFoundError } from "../../domain/errors";
 
 export interface ReceiveTransferRequestCommand {
@@ -20,7 +21,8 @@ export interface ReceiveTransferRequestCommand {
 export class ReceiveTransferRequestHandler {
   constructor(
     @Inject(TRANSFER_REQUEST_REPOSITORY) private readonly requests: TransferRequestRepositoryPort,
-    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort
+    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(INVENTORY_ITEM_REPOSITORY) private readonly items: InventoryItemRepositoryPort
   ) {}
 
   async execute(command: ReceiveTransferRequestCommand): Promise<TransferRequest> {
@@ -32,6 +34,7 @@ export class ReceiveTransferRequestHandler {
       const quantity = command.quantities?.[line.id] ?? line.dispatchedQuantity ?? 0;
       if (!quantity || quantity <= 0) continue;
 
+      const item = await this.items.findById(line.inventoryItemId);
       const movement = StockMovement.register({
         inventoryItemId: line.inventoryItemId,
         branchId: request.toBranchId,
@@ -40,6 +43,7 @@ export class ReceiveTransferRequestHandler {
         referenceType: "transfer_request",
         referenceId: request.id,
         performedBy: command.receivedBy,
+        unitCost: item?.unitCost ?? null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
       movementResults.push({ lineId: line.id, quantity, movementId: movement.id });

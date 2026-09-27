@@ -37,6 +37,7 @@ export class CancelConversionOrderHandler {
           referenceType: "conversion_order",
           referenceId: order.id,
           performedBy: command.cancelledBy,
+          unitCost: line.unitCost,
         });
         await this.movements.recordMovement(reversal, { allowNegativeBalance: true });
       }

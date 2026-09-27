@@ -46,6 +46,7 @@ export class RecordStockMovementHandler {
       referenceType: command.referenceType,
       referenceId: command.referenceId,
       performedBy: command.performedBy,
+      unitCost: item.unitCost,
     });
 
     const { balanceAfter } = await this.movements.recordMovement(movement, { allowNegativeBalance });

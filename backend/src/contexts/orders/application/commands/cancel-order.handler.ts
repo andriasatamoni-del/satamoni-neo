@@ -8,6 +8,10 @@ import {
   STOCK_MOVEMENT_REPOSITORY,
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
+import {
+  INVENTORY_ITEM_REPOSITORY,
+  type InventoryItemRepositoryPort,
+} from "../../../inventory/domain/ports/inventory-item-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { OrderCancelledEvent } from "../../domain/events/order-cancelled.event";
@@ -28,6 +32,7 @@ export class CancelOrderHandler {
     @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort,
     @Inject(RECIPE_REPOSITORY) private readonly recipes: RecipeRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -62,6 +67,7 @@ export class CancelOrderHandler {
     await this.orders.save(order);
 
     for (const [ingredientItemId, requiredQty] of requiredByIngredient) {
+      const inventoryItem = await this.inventoryItems.findById(ingredientItemId);
       const movement = StockMovement.register({
         inventoryItemId: ingredientItemId,
         branchId: order.branchId,
@@ -70,6 +76,7 @@ export class CancelOrderHandler {
         referenceType: "order_cancellation",
         referenceId: order.id,
         performedBy: command.cancelledBy,
+        unitCost: inventoryItem?.unitCost ?? null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
     }

@@ -95,6 +95,8 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
       performed_by: movement.performedBy,
       occurred_at: movement.occurredAt,
       legacy_reference_key: movement.legacyReferenceKey,
+      unit_cost: movement.unitCost,
+      total_cost: movement.totalCost,
     };
   }
 
@@ -110,6 +112,8 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
       performedBy: row.performed_by,
       occurredAt: row.occurred_at,
       legacyReferenceKey: row.legacy_reference_key,
+      unitCost: row.unit_cost != null ? Number(row.unit_cost) : null,
+      totalCost: row.total_cost != null ? Number(row.total_cost) : null,
     });
   }
 }

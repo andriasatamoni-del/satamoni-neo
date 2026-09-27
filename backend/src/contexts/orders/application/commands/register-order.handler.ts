@@ -167,6 +167,7 @@ export class RegisterOrderHandler {
         referenceType: "order",
         referenceId: order.id,
         performedBy: command.createdBy,
+        unitCost: inventoryItem?.unitCost ?? null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
     }
