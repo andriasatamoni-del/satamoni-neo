@@ -18,7 +18,8 @@ export function setToken(token: string | null): void {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    public readonly data: unknown = null
   ) {
     super(message);
     this.name = "ApiError";
@@ -41,8 +42,10 @@ export async function apiRequest<T>(
 
   if (!res.ok) {
     const payload = await res.json().catch(() => null);
-    const message = payload?.message ?? `فشل الطلب (${res.status})`;
-    throw new ApiError(Array.isArray(message) ? message.join(", ") : message, res.status);
+    // فلاتر أخطاء الدومين في كل context بترجّع {error: ...} (راجع أي domain-error.filter.ts) - {message}
+    // بس من NestJS ValidationPipe الافتراضي (array أحيانًا)
+    const message = payload?.error ?? payload?.message ?? `فشل الطلب (${res.status})`;
+    throw new ApiError(Array.isArray(message) ? message.join(", ") : message, res.status, payload);
   }
 
   if (res.status === 204) return undefined as T;

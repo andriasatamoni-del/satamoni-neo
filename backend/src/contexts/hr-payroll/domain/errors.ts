@@ -1,6 +1,23 @@
 import { DomainError } from "../../../shared/domain/domain-error";
+import type { TerminationBlocker } from "./termination-blocker";
 
 export { DomainError };
+
+// فيه بنود معلّقة (شيفت شغال/راتب معتمد لسه) قبل إنهاء خدمة موظف - راجع TerminationBlockersService.
+// القرار مش قفل صارم: لو الطالب متأكد رغم المعلّقات، يبعت الطلب تاني مع acknowledgeBlockers:true
+// نفس قاعدة الريبو القديم بالحرف (db/employee-service.js): نقل موظف بين الفروع (restrictedBranchId)
+// أدمن بس، بغض النظر عن أي صلاحية hr.employees.manage تانية
+export class BranchTransferRequiresAdminError extends DomainError {
+  constructor() {
+    super("نقل موظف بين الفروع أدمن بس");
+  }
+}
+
+export class TerminationBlockersError extends DomainError {
+  constructor(public readonly blockers: TerminationBlocker[]) {
+    super("فيه بنود معلّقة لازم تراجعها قبل إنهاء خدمة الموظف - لو متأكد، ابعت الطلب تاني مع acknowledgeBlockers:true");
+  }
+}
 
 export class EmployeeNameRequiredError extends DomainError {
   constructor() {

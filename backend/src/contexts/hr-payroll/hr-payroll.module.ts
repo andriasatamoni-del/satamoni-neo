@@ -17,7 +17,10 @@ import { KyselyLeaveRequestRepository } from "./infrastructure/persistence/kysel
 import { KyselyEmployeeAttendanceShiftRepository } from "./infrastructure/persistence/kysely-employee-attendance-shift.repository";
 import { KyselyPayrollAdjustmentRepository } from "./infrastructure/persistence/kysely-payroll-adjustment.repository";
 import { RegisterEmployeeHandler } from "./application/commands/register-employee.handler";
+import { UpdateEmployeeHandler } from "./application/commands/update-employee.handler";
 import { SetEmployeeStatusHandler } from "./application/commands/set-employee-status.handler";
+import { EmployeeHistoryService } from "./application/services/employee-history.service";
+import { TerminationBlockersService } from "./application/services/termination-blockers.service";
 import { RegisterDepartmentHandler } from "./application/commands/register-department.handler";
 import { UpdateDepartmentHandler } from "./application/commands/update-department.handler";
 import { RegisterPositionHandler } from "./application/commands/register-position.handler";
@@ -57,7 +60,10 @@ import { HrPayrollController } from "./api/hr-payroll.controller";
     { provide: EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY, useClass: KyselyEmployeeAttendanceShiftRepository },
     { provide: PAYROLL_ADJUSTMENT_REPOSITORY, useClass: KyselyPayrollAdjustmentRepository },
     RegisterEmployeeHandler,
+    UpdateEmployeeHandler,
     SetEmployeeStatusHandler,
+    EmployeeHistoryService,
+    TerminationBlockersService,
     RegisterDepartmentHandler,
     UpdateDepartmentHandler,
     RegisterPositionHandler,

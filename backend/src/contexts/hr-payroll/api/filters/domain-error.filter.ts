@@ -13,12 +13,24 @@ import {
   DuplicateDepartmentCodeError,
   DuplicateDepartmentNameError,
   DuplicatePositionCodeError,
+  BranchTransferRequiresAdminError,
+  TerminationBlockersError,
 } from "../../domain/errors";
 
 @Catch(DomainError)
 export class HrPayrollDomainErrorFilter implements ExceptionFilter {
   catch(exception: DomainError, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
+
+    if (exception instanceof TerminationBlockersError) {
+      res.status(409).json({ error: exception.message, blockers: exception.blockers });
+      return;
+    }
+    if (exception instanceof BranchTransferRequiresAdminError) {
+      res.status(403).json({ error: exception.message });
+      return;
+    }
+
     const isNotFound =
       exception instanceof EmployeeNotFoundError ||
       exception instanceof PayrollRunNotFoundError ||

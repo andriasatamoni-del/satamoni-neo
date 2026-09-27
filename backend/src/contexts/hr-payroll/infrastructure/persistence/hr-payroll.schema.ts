@@ -100,6 +100,18 @@ export interface EmployeeAttendanceShiftsTable {
   created_at: Generated<Date>;
 }
 
+export interface EmployeeHistoryTable {
+  id: Generated<string>;
+  employee_id: string;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  effective_date: Date;
+  changed_by: string | null;
+  reason: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface PayrollAdjustmentsTable {
   id: Generated<string>;
   employee_id: string;

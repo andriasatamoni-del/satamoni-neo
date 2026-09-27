@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -9,9 +10,19 @@ import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
 
-interface Employee { id: string; name: string; departmentId: string | null; positionId: string | null; baseSalary: number; wageType: string; status: string; }
+interface Employee {
+  id: string; name: string; departmentId: string | null; positionId: string | null; baseSalary: number; wageType: string;
+  restrictedBranchId: string | null; employeeCode: string | null; phone: string | null; notes: string | null;
+  status: string; terminationDate: string | null; terminationReason: string | null;
+}
 interface Department { id: string; code: string; name: string; description: string | null; status: string; }
 interface Position { id: string; code: string; name: string; departmentId: string | null; description: string | null; status: string; }
+interface Branch { id: string; name: string; }
+interface EmployeeHistoryEntry {
+  id: string; fieldName: string; oldValue: string | null; newValue: string | null;
+  effectiveDate: string; changedByName: string | null; reason: string | null;
+}
+interface TerminationBlocker { code: string; message: string; }
 interface PayrollRunEmployeeLine { employeeId: string; employeeName: string; grossPay: number; advances: number; penalties: number; bonuses: number; netPay: number; }
 interface PayrollRun {
   id: string; year: number; month: number; status: string; totalNetPay: number;
@@ -28,6 +39,9 @@ interface PayrollAdjustment {
 }
 
 const STATUS_LABELS: Record<string, string> = { active: "فعّال", suspended: "موقوف", terminated: "منتهي الخدمة" };
+const FIELD_NAME_LABELS: Record<string, string> = {
+  department_id: "القسم", position_id: "المسمى الوظيفي", restricted_branch_id: "الفرع المقيّد", status: "الحالة",
+};
 const RUN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", APPROVED: "معتمدة", CANCELLED: "ملغاة" };
 const LEAVE_STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", APPROVED: "معتمد", REJECTED: "مرفوض", CANCELLED: "ملغى" };
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = { advance: "سلفة", penalty: "جزاء", bonus: "مكافأة" };
@@ -199,16 +213,98 @@ export function HrPayrollPage() {
     onError: (err) => setCancelAdjustmentError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
+  const { user } = useAuth();
+  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ departmentId: "", positionId: "", restrictedBranchId: "", reason: "" });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [terminationBlockers, setTerminationBlockers] = useState<TerminationBlocker[] | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const historyQuery = useQuery({
+    queryKey: ["hr", "employees", selectedEmployeeId, "history"],
+    queryFn: () => apiRequest<EmployeeHistoryEntry[]>(`/hr/employees/${selectedEmployeeId}/history`),
+    enabled: !!selectedEmployeeId,
+  });
+
+  function selectEmployee(e: Employee) {
+    setSelectedEmployeeId(e.id);
+    setEditForm({ departmentId: e.departmentId ?? "", positionId: e.positionId ?? "", restrictedBranchId: e.restrictedBranchId ?? "", reason: "" });
+    setEditError(null);
+    setStatusReason("");
+    setTerminationBlockers(null);
+    setStatusError(null);
+  }
+
+  const updateEmployeeMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`/hr/employees/${selectedEmployeeId}`, {
+        method: "PATCH",
+        body: {
+          departmentId: editForm.departmentId || null,
+          positionId: editForm.positionId || null,
+          restrictedBranchId: editForm.restrictedBranchId || null,
+          reason: editForm.reason || undefined,
+        },
+      }),
+    onSuccess: () => {
+      setEditError(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "employees"] });
+      queryClient.invalidateQueries({ queryKey: ["hr", "employees", selectedEmployeeId, "history"] });
+    },
+    onError: (err) => setEditError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
+  });
+
+  const setEmployeeStatusMutation = useMutation({
+    mutationFn: ({ status, acknowledgeBlockers }: { status: string; acknowledgeBlockers?: boolean }) =>
+      apiRequest(`/hr/employees/${selectedEmployeeId}/status`, {
+        method: "PATCH",
+        body: { status, terminationReason: status === "terminated" ? statusReason || undefined : undefined, reason: statusReason || undefined, acknowledgeBlockers },
+      }),
+    onSuccess: () => {
+      setStatusError(null);
+      setTerminationBlockers(null);
+      queryClient.invalidateQueries({ queryKey: ["hr", "employees"] });
+      queryClient.invalidateQueries({ queryKey: ["hr", "employees", selectedEmployeeId, "history"] });
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        const data = err.data as { blockers?: TerminationBlocker[] } | null;
+        if (data?.blockers) {
+          setTerminationBlockers(data.blockers);
+          return;
+        }
+      }
+      setStatusError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع");
+    },
+  });
+
   const employees = employeesQuery.data ?? [];
   const departments = departmentsQuery.data ?? [];
   const positions = positionsQuery.data ?? [];
+  const branches = branchesQuery.data ?? [];
   const payrollRuns = payrollRunsQuery.data ?? [];
   const leaveRequests = leaveRequestsQuery.data ?? [];
   const adjustments = adjustmentsQuery.data ?? [];
+  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId) ?? null;
 
   function departmentName(id: string | null): string {
     if (!id) return "-";
     return departments.find((d) => d.id === id)?.name ?? id;
+  }
+  function branchName(id: string | null): string {
+    if (!id) return "-";
+    return branches.find((b) => b.id === id)?.name ?? id;
+  }
+  function historyValueLabel(fieldName: string, value: string | null): string {
+    if (value === null) return "-";
+    if (fieldName === "department_id") return departmentName(value);
+    if (fieldName === "position_id") return positionName(value);
+    if (fieldName === "restricted_branch_id") return branchName(value);
+    if (fieldName === "status") return STATUS_LABELS[value] ?? value;
+    return value;
   }
   function positionName(id: string | null): string {
     if (!id) return "-";
@@ -263,7 +359,11 @@ export function HrPayrollPage() {
               </THead>
               <TBody>
                 {employees.map((e) => (
-                  <TR key={e.id}>
+                  <TR
+                    key={e.id}
+                    onClick={() => selectEmployee(e)}
+                    className={`cursor-pointer ${selectedEmployeeId === e.id ? "bg-brand-50" : ""}`}
+                  >
                     <TD className="font-semibold text-slate-900">{e.name}</TD>
                     <TD>{departmentName(e.departmentId)}</TD>
                     <TD>{positionName(e.positionId)}</TD>
@@ -276,6 +376,131 @@ export function HrPayrollPage() {
           </CardBody>
         </Card>
       </div>
+
+      {selectedEmployee && (
+        <Card className="mb-6">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>بيانات {selectedEmployee.name}</CardTitle>
+            <button className="text-sm text-slate-400 hover:text-slate-700" onClick={() => setSelectedEmployeeId(null)}>إغلاق</button>
+          </CardHeader>
+          <CardBody className="space-y-6">
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">تعديل القسم/الوظيفة/الفرع المقيّد</h3>
+              <form
+                onSubmit={(ev: FormEvent) => { ev.preventDefault(); updateEmployeeMutation.mutate(); }}
+                className="grid grid-cols-1 gap-3 sm:grid-cols-4"
+              >
+                <Field label="القسم">
+                  <Select value={editForm.departmentId} onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })}>
+                    <option value="">بدون قسم</option>
+                    {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="المسمى الوظيفي">
+                  <Select value={editForm.positionId} onChange={(e) => setEditForm({ ...editForm, positionId: e.target.value })}>
+                    <option value="">بدون مسمى</option>
+                    {positions.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="الفرع المقيّد">
+                  <Select
+                    value={editForm.restrictedBranchId}
+                    onChange={(e) => setEditForm({ ...editForm, restrictedBranchId: e.target.value })}
+                    disabled={user?.role !== "admin"}
+                  >
+                    <option value="">كل الفروع</option>
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="سبب التعديل (اختياري)">
+                  <Input value={editForm.reason} onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })} />
+                </Field>
+                <div className="sm:col-span-4">
+                  {editError && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{editError}</p>}
+                  <Button type="submit" size="sm" disabled={updateEmployeeMutation.isPending}>حفظ التعديل</Button>
+                </div>
+              </form>
+            </div>
+
+            {selectedEmployee.status !== "terminated" && (
+              <div>
+                <h3 className="mb-2 text-sm font-bold text-slate-700">حالة الموظف</h3>
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field label="سبب (لإنهاء الخدمة إجباري)">
+                    <Input value={statusReason} onChange={(e) => setStatusReason(e.target.value)} />
+                  </Field>
+                  {selectedEmployee.status === "active" && (
+                    <Button size="sm" variant="secondary" onClick={() => setEmployeeStatusMutation.mutate({ status: "suspended" })}>
+                      إيقاف مؤقت
+                    </Button>
+                  )}
+                  {selectedEmployee.status === "suspended" && (
+                    <Button size="sm" variant="secondary" onClick={() => setEmployeeStatusMutation.mutate({ status: "active" })}>
+                      إعادة تفعيل
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={!statusReason || setEmployeeStatusMutation.isPending}
+                    onClick={() => setEmployeeStatusMutation.mutate({ status: "terminated" })}
+                  >
+                    إنهاء الخدمة
+                  </Button>
+                </div>
+                {statusError && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{statusError}</p>}
+                {terminationBlockers && terminationBlockers.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="mb-2 text-sm font-bold text-amber-800">فيه بنود معلّقة قبل إنهاء الخدمة:</p>
+                    <ul className="mb-3 list-inside list-disc space-y-1 text-sm text-amber-800">
+                      {terminationBlockers.map((b, i) => <li key={i}>{b.message}</li>)}
+                    </ul>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={setEmployeeStatusMutation.isPending}
+                      onClick={() => setEmployeeStatusMutation.mutate({ status: "terminated", acknowledgeBlockers: true })}
+                    >
+                      تأكيد الإنهاء رغم المعلّقات
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+            {selectedEmployee.status === "terminated" && (
+              <p className="text-sm text-slate-600">
+                اتنهت خدمته بتاريخ {selectedEmployee.terminationDate ? selectedEmployee.terminationDate.slice(0, 10) : "-"} -{" "}
+                {selectedEmployee.terminationReason ?? "من غير سبب مسجّل"}
+              </p>
+            )}
+
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">سجل التغييرات</h3>
+              {historyQuery.isLoading && <p className="text-xs text-slate-400">بيتحمّل...</p>}
+              {historyQuery.data && historyQuery.data.length === 0 && <EmptyState>مفيش تغييرات مسجّلة لسه</EmptyState>}
+              {historyQuery.data && historyQuery.data.length > 0 && (
+                <Table>
+                  <THead>
+                    <TR><TH>التاريخ</TH><TH>الحقل</TH><TH>من</TH><TH>إلى</TH><TH>بواسطة</TH><TH>السبب</TH></TR>
+                  </THead>
+                  <TBody>
+                    {historyQuery.data.map((h) => (
+                      <TR key={h.id}>
+                        <TD>{h.effectiveDate}</TD>
+                        <TD>{FIELD_NAME_LABELS[h.fieldName] ?? h.fieldName}</TD>
+                        <TD>{historyValueLabel(h.fieldName, h.oldValue)}</TD>
+                        <TD className="font-semibold">{historyValueLabel(h.fieldName, h.newValue)}</TD>
+                        <TD>{h.changedByName ?? "-"}</TD>
+                        <TD>{h.reason ?? "-"}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <CardHeader><CardTitle>قائمة رواتب جديدة</CardTitle></CardHeader>

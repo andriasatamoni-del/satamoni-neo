@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterEmployeeHandler } from "../application/commands/register-employee.handler";
+import { UpdateEmployeeHandler } from "../application/commands/update-employee.handler";
 import { SetEmployeeStatusHandler } from "../application/commands/set-employee-status.handler";
+import { EmployeeHistoryService } from "../application/services/employee-history.service";
 import { RegisterDepartmentHandler } from "../application/commands/register-department.handler";
 import { UpdateDepartmentHandler } from "../application/commands/update-department.handler";
 import { RegisterPositionHandler } from "../application/commands/register-position.handler";
@@ -28,6 +30,7 @@ import { RegisterPayrollAdjustmentHandler } from "../application/commands/regist
 import { CancelPayrollAdjustmentHandler } from "../application/commands/cancel-payroll-adjustment.handler";
 import { ListPayrollAdjustmentsHandler } from "../application/queries/list-payroll-adjustments.handler";
 import { RegisterEmployeeDto } from "./dto/register-employee.dto";
+import { UpdateEmployeeDto } from "./dto/update-employee.dto";
 import { SetEmployeeStatusDto } from "./dto/set-employee-status.dto";
 import { RegisterDepartmentDto } from "./dto/register-department.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
@@ -60,7 +63,9 @@ import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
 export class HrPayrollController {
   constructor(
     private readonly registerEmployee: RegisterEmployeeHandler,
+    private readonly updateEmployee: UpdateEmployeeHandler,
     private readonly setEmployeeStatus: SetEmployeeStatusHandler,
+    private readonly employeeHistory: EmployeeHistoryService,
     private readonly registerDepartment: RegisterDepartmentHandler,
     private readonly updateDepartment: UpdateDepartmentHandler,
     private readonly registerPosition: RegisterPositionHandler,
@@ -100,17 +105,40 @@ export class HrPayrollController {
     return toPublicEmployee(await this.registerEmployee.execute(dto));
   }
 
-  @Patch("employees/:id/status")
+  @Patch("employees/:id")
   @RequirePermission("hr.employees.manage")
-  async updateEmployeeStatus(@Param("id") id: string, @Body() dto: SetEmployeeStatusDto) {
+  async updateEmployeeRoute(@Param("id") id: string, @Body() dto: UpdateEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEmployee(
-      await this.setEmployeeStatus.execute({
+      await this.updateEmployee.execute({
         employeeId: id,
-        status: dto.status,
-        terminationDate: dto.terminationDate ? new Date(dto.terminationDate) : undefined,
-        terminationReason: dto.terminationReason,
+        actorRole: req.user.role,
+        ...dto,
+        changedBy: req.user.id,
       })
     );
+  }
+
+  @Patch("employees/:id/status")
+  @RequirePermission("hr.employees.manage")
+  async updateEmployeeStatus(@Param("id") id: string, @Body() dto: SetEmployeeStatusDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const { employee, terminationCascade } = await this.setEmployeeStatus.execute({
+      employeeId: id,
+      status: dto.status,
+      terminationDate: dto.terminationDate ? new Date(dto.terminationDate) : undefined,
+      terminationReason: dto.terminationReason,
+      reason: dto.reason,
+      acknowledgeBlockers: dto.acknowledgeBlockers,
+      changedBy: req.user.id,
+    });
+    return { ...toPublicEmployee(employee), terminationCascade: terminationCascade ?? undefined };
+  }
+
+  // سجل التغييرات الجوهرية لموظف واحد (فرع/قسم/وظيفة/حالة) - نفس GET /api/hr/employees/:id/history
+  // بالريبو القديم بالظبط
+  @Get("employees/:id/history")
+  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  async employeeHistoryRoute(@Param("id") id: string) {
+    return this.employeeHistory.listByEmployee(id);
   }
 
   // الهيكل التنظيمي - أقسام ومسميات وظيفية حقيقية (نفس فلسفة HRF-6 بالريبو القديم بالحرف) بدل ما تكون
@@ -301,8 +329,16 @@ function toPublicEmployee(employee: Employee) {
     name: employee.name,
     departmentId: employee.departmentId,
     positionId: employee.positionId,
+    hireDate: employee.hireDate,
     baseSalary: employee.baseSalary,
     wageType: employee.wageType,
+    hourlyRate: employee.hourlyRate,
+    workingDaysPerMonth: employee.workingDaysPerMonth,
+    shift: employee.shift,
+    restrictedBranchId: employee.restrictedBranchId,
+    employeeCode: employee.employeeCode,
+    phone: employee.phone,
+    notes: employee.notes,
     status: employee.status,
     terminationDate: employee.terminationDate,
     terminationReason: employee.terminationReason,
