@@ -7,6 +7,7 @@ import { PageHeader } from "../shared/ui/PageHeader";
 import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Field";
 import { DashboardSummary } from "./home/DashboardSummary";
+import { ActionCenterPanel } from "./home/ActionCenterPanel";
 import {
   BoxIcon,
   BookIcon,
@@ -49,6 +50,7 @@ export function HomePage() {
   return (
     <div>
       <PageHeader title={`أهلاً ${user?.name ?? ""} 👋`} description="اختار من الأقسام تحت عشان تبدأ" />
+      <ActionCenterPanel />
       <DashboardSummary />
 
       {isAdmin && (

@@ -59,7 +59,7 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     ListExceptionsHandler,
     GetDailyOwnerReportHandler,
   ],
-  exports: [PAYMENT_METHOD_REPOSITORY, PAYMENT_REPOSITORY, PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY],
+  exports: [PAYMENT_METHOD_REPOSITORY, PAYMENT_REPOSITORY, PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY, ListExceptionsHandler],
 })
 export class PaymentControlModule implements OnModuleInit {
   constructor(

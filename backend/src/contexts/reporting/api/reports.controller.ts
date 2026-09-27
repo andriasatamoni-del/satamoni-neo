@@ -2,6 +2,7 @@ import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { GetDashboardSummaryHandler } from "../application/queries/get-dashboard-summary.handler";
 import { GetFoodCostReportHandler } from "../application/queries/get-food-cost-report.handler";
+import { GetActionCenterHandler } from "../application/queries/get-action-center.handler";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -12,7 +13,8 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 export class ReportsController {
   constructor(
     private readonly getDashboardSummary: GetDashboardSummaryHandler,
-    private readonly getFoodCostReport: GetFoodCostReportHandler
+    private readonly getFoodCostReport: GetFoodCostReportHandler,
+    private readonly getActionCenter: GetActionCenterHandler
   ) {}
 
   @Get("dashboard")
@@ -47,5 +49,20 @@ export class ReportsController {
   @RequirePermission("reports.view")
   async foodCostByBranch(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
     return this.getFoodCostReport.executeByBranch({ from, to });
+  }
+
+  // مركز التنبيهات - نقطة واحدة تجمّع كل استثناء يستاهل انتباه فوري (مخزون سالب/دفعات من غير مطابقة/
+  // فرق تصنيع/مصروف متجاوز الحد/فرق تكلفة طعام/فاتورة مورد متأخرة/شكوى عميل فاضلة) بدل ما يتفتح كل
+  // تقرير لوحده كل يوم
+  @Get("action-center")
+  @RequirePermission("reports.view")
+  async actionCenter(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    const effectiveBranchId = req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
+    return this.getActionCenter.execute({ branchId: effectiveBranchId, from, to });
   }
 }
