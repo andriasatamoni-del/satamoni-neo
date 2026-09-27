@@ -30,6 +30,7 @@ import { ListMenuItemsHandler } from "./application/queries/list-menu-items.hand
 import { GetRecipeByVariantHandler } from "./application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "./application/queries/list-recipes.handler";
 import { ListCombosHandler } from "./application/queries/list-combos.handler";
+import { MenuPriceHistoryService } from "./application/services/menu-price-history.service";
 import { CatalogController } from "./api/catalog.controller";
 
 @Module({
@@ -61,6 +62,7 @@ import { CatalogController } from "./api/catalog.controller";
     GetRecipeByVariantHandler,
     ListRecipesHandler,
     ListCombosHandler,
+    MenuPriceHistoryService,
   ],
   exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY, COMBO_REPOSITORY],
 })

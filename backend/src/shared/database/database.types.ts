@@ -30,6 +30,7 @@ import type {
   MenuItemVariantsTable,
   MenuItemModifiersTable,
   MenuItemModifierVariantPricesTable,
+  MenuPriceHistoryTable,
   RecipesTable,
   RecipeVersionsTable,
   RecipeIngredientsTable,
@@ -139,6 +140,7 @@ export interface Database {
   menu_item_variants: MenuItemVariantsTable;
   menu_item_modifiers: MenuItemModifiersTable;
   menu_item_modifier_variant_prices: MenuItemModifierVariantPricesTable;
+  menu_price_history: MenuPriceHistoryTable;
   recipes: RecipesTable;
   recipe_versions: RecipeVersionsTable;
   recipe_ingredients: RecipeIngredientsTable;

@@ -21,6 +21,7 @@ import { ListMenuItemsHandler } from "../application/queries/list-menu-items.han
 import { GetRecipeByVariantHandler } from "../application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "../application/queries/list-recipes.handler";
 import { ListCombosHandler } from "../application/queries/list-combos.handler";
+import { MenuPriceHistoryService } from "../application/services/menu-price-history.service";
 import { RegisterMenuCategoryDto } from "./dto/register-menu-category.dto";
 import { RegisterMenuItemDto } from "./dto/register-menu-item.dto";
 import { AddVariantDto } from "./dto/add-variant.dto";
@@ -70,7 +71,8 @@ export class CatalogController {
     private readonly registerCombo: RegisterComboHandler,
     private readonly updateCombo: UpdateComboHandler,
     private readonly replaceComboItems: ReplaceComboItemsHandler,
-    private readonly listCombos: ListCombosHandler
+    private readonly listCombos: ListCombosHandler,
+    private readonly priceHistory: MenuPriceHistoryService
   ) {}
 
   @Get("recipes")
@@ -124,8 +126,19 @@ export class CatalogController {
 
   @Patch("items/:id/variants/:variantId")
   @RequirePermission("catalog.items.manage")
-  async updateVariantHandler(@Param("id") id: string, @Param("variantId") variantId: string, @Body() dto: UpdateVariantDto) {
-    return toPublicItem(await this.updateVariant.execute({ itemId: id, variantId, ...dto }));
+  async updateVariantHandler(
+    @Param("id") id: string,
+    @Param("variantId") variantId: string,
+    @Body() dto: UpdateVariantDto,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return toPublicItem(await this.updateVariant.execute({ itemId: id, variantId, ...dto, changedBy: req.user.id }));
+  }
+
+  @Get("items/:id/variants/:variantId/price-history")
+  @RequirePermission("catalog.items.manage")
+  async variantPriceHistory(@Param("variantId") variantId: string) {
+    return this.priceHistory.listByVariant(variantId);
   }
 
   @Post("items/:id/modifiers")
@@ -137,8 +150,19 @@ export class CatalogController {
 
   @Patch("items/:id/modifiers/:modifierId")
   @RequirePermission("catalog.items.manage")
-  async updateModifierHandler(@Param("id") id: string, @Param("modifierId") modifierId: string, @Body() dto: UpdateModifierDto) {
-    return toPublicItem(await this.updateModifier.execute({ itemId: id, modifierId, ...dto }));
+  async updateModifierHandler(
+    @Param("id") id: string,
+    @Param("modifierId") modifierId: string,
+    @Body() dto: UpdateModifierDto,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return toPublicItem(await this.updateModifier.execute({ itemId: id, modifierId, ...dto, changedBy: req.user.id }));
+  }
+
+  @Get("items/:id/modifiers/:modifierId/price-history")
+  @RequirePermission("catalog.items.manage")
+  async modifierPriceHistory(@Param("modifierId") modifierId: string, @Query("variantId") variantId?: string) {
+    return this.priceHistory.listByModifier(modifierId, variantId);
   }
 
   @Put("items/:id/modifiers/:modifierId/variant-prices/:variantId")
@@ -147,9 +171,12 @@ export class CatalogController {
     @Param("id") id: string,
     @Param("modifierId") modifierId: string,
     @Param("variantId") variantId: string,
-    @Body() dto: SetModifierVariantPriceDto
+    @Body() dto: SetModifierVariantPriceDto,
+    @Req() req: Request & { user: AuthenticatedUser }
   ) {
-    return toPublicItem(await this.setModifierVariantPrice.execute({ itemId: id, modifierId, variantId, ...dto }));
+    return toPublicItem(
+      await this.setModifierVariantPrice.execute({ itemId: id, modifierId, variantId, ...dto, changedBy: req.user.id })
+    );
   }
 
   @Delete("items/:id/modifiers/:modifierId/variant-prices/:variantId")

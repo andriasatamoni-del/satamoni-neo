@@ -39,6 +39,17 @@ interface Combo { id: string; name: string; price: number; isActive: boolean; it
 
 interface ComboItemRow { variantId: string; quantity: string; }
 
+interface PriceHistoryEntry {
+  id: string;
+  fieldName: string;
+  oldPrice: number | null;
+  newPrice: number | null;
+  changedByName: string | null;
+  createdAt: string;
+}
+
+const PRICE_FIELD_LABELS: Record<string, string> = { price: "السعر", talabat_price: "سعر طلبات", price_delta: "سعر المرفق" };
+
 export function CatalogPage() {
   const queryClient = useQueryClient();
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
@@ -146,6 +157,19 @@ export function CatalogPage() {
     mutationFn: ({ itemId, modifierId, variantId }: { itemId: string; modifierId: string; variantId: string }) =>
       apiRequest(`/catalog/items/${itemId}/modifiers/${modifierId}/variant-prices/${variantId}`, { method: "DELETE" }),
     onSuccess: () => invalidateCatalog(),
+  });
+
+  type PriceHistoryTarget =
+    | { kind: "variant"; itemId: string; variantId: string; label: string }
+    | { kind: "modifier"; itemId: string; modifierId: string; label: string };
+  const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
+  const priceHistoryQuery = useQuery({
+    queryKey: ["catalog", "price-history", priceHistoryTarget],
+    queryFn: () =>
+      priceHistoryTarget!.kind === "variant"
+        ? apiRequest<PriceHistoryEntry[]>(`/catalog/items/${priceHistoryTarget!.itemId}/variants/${(priceHistoryTarget as { variantId: string }).variantId}/price-history`)
+        : apiRequest<PriceHistoryEntry[]>(`/catalog/items/${priceHistoryTarget!.itemId}/modifiers/${(priceHistoryTarget as { modifierId: string }).modifierId}/price-history`),
+    enabled: !!priceHistoryTarget,
   });
 
   const [comboForm, setComboForm] = useState({ name: "", price: "" });
@@ -372,6 +396,13 @@ export function CatalogPage() {
                                 >
                                   حفظ
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setPriceHistoryTarget({ kind: "variant", itemId: i.id, variantId: v.id, label: `${i.name} - ${v.label}` })}
+                                >
+                                  السجل
+                                </Button>
                               </div>
                             ))}
                           </div>
@@ -506,6 +537,13 @@ export function CatalogPage() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="ghost"
+                        onClick={() => setPriceHistoryTarget({ kind: "modifier", itemId: item.id, modifierId: m.id, label: m.name })}
+                      >
+                        السجل
+                      </Button>
+                      <Button
+                        size="sm"
                         variant={m.isActive ? "secondary" : "primary"}
                         disabled={updateModifier.isPending}
                         onClick={() => updateModifier.mutate({ itemId: item.id, modifierId: m.id, isActive: !m.isActive })}
@@ -590,6 +628,37 @@ export function CatalogPage() {
           </div>
         );
       })()}
+
+      {priceHistoryTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPriceHistoryTarget(null)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">سجل أسعار {priceHistoryTarget.label}</h3>
+              <button type="button" onClick={() => setPriceHistoryTarget(null)} className="text-slate-400 hover:text-slate-700">×</button>
+            </div>
+            {priceHistoryQuery.isLoading && <p className="text-xs text-slate-400">بيتحمّل...</p>}
+            {priceHistoryQuery.data && priceHistoryQuery.data.length === 0 && <EmptyState>مفيش تغييرات أسعار مسجّلة لسه</EmptyState>}
+            {priceHistoryQuery.data && priceHistoryQuery.data.length > 0 && (
+              <Table>
+                <THead>
+                  <TR><TH>التاريخ</TH><TH>الحقل</TH><TH>من</TH><TH>إلى</TH><TH>بواسطة</TH></TR>
+                </THead>
+                <TBody>
+                  {priceHistoryQuery.data.map((h) => (
+                    <TR key={h.id}>
+                      <TD className="text-xs">{h.createdAt.slice(0, 10)}</TD>
+                      <TD>{PRICE_FIELD_LABELS[h.fieldName] ?? h.fieldName}</TD>
+                      <TD>{h.oldPrice ?? "-"}</TD>
+                      <TD className="font-semibold">{h.newPrice ?? "-"}</TD>
+                      <TD>{h.changedByName ?? "-"}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

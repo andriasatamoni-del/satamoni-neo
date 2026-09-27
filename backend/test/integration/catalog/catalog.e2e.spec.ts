@@ -52,6 +52,7 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     await sql`DELETE FROM recipe_ingredients`.execute(db);
     await sql`DELETE FROM recipe_versions`.execute(db);
     await sql`DELETE FROM recipes`.execute(db);
+    await sql`DELETE FROM menu_price_history`.execute(db);
     await sql`DELETE FROM menu_item_variants`.execute(db);
     await sql`DELETE FROM menu_items`.execute(db);
     await sql`DELETE FROM menu_categories`.execute(db);

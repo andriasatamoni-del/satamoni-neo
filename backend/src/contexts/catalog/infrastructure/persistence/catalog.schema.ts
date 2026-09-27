@@ -48,6 +48,18 @@ export interface MenuItemModifierVariantPricesTable {
   price_delta: number;
 }
 
+export interface MenuPriceHistoryTable {
+  id: Generated<string>;
+  entity_type: string;
+  entity_id: string;
+  variant_id: string | null;
+  field_name: string;
+  old_price: number | null;
+  new_price: number | null;
+  changed_by: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface RecipesTable {
   id: Generated<string>;
   recipe_type: string;
