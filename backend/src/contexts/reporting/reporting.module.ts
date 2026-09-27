@@ -24,6 +24,9 @@ import { GetInventoryReportsHandler } from "./application/queries/get-inventory-
 import { PROCUREMENT_REPORTS_READER } from "./domain/ports/procurement-reports-reader.port";
 import { KyselyProcurementReportsReader } from "./infrastructure/persistence/kysely-procurement-reports-reader";
 import { GetProcurementReportsHandler } from "./application/queries/get-procurement-reports.handler";
+import { DELIVERY_CUSTOMER_REPORTS_READER } from "./domain/ports/delivery-customer-reports-reader.port";
+import { KyselyDeliveryCustomerReportsReader } from "./infrastructure/persistence/kysely-delivery-customer-reports-reader";
+import { GetDeliveryCustomerReportsHandler } from "./application/queries/get-delivery-customer-reports.handler";
 import { ReportsController } from "./api/reports.controller";
 
 @Module({
@@ -44,6 +47,8 @@ import { ReportsController } from "./api/reports.controller";
     GetInventoryReportsHandler,
     { provide: PROCUREMENT_REPORTS_READER, useClass: KyselyProcurementReportsReader },
     GetProcurementReportsHandler,
+    { provide: DELIVERY_CUSTOMER_REPORTS_READER, useClass: KyselyDeliveryCustomerReportsReader },
+    GetDeliveryCustomerReportsHandler,
   ],
 })
 export class ReportingModule implements OnModuleInit {

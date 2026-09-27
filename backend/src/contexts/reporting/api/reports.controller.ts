@@ -7,6 +7,7 @@ import { GetBranchHealthHandler } from "../application/queries/get-branch-health
 import { GetSalesOpsReportsHandler } from "../application/queries/get-sales-ops-reports.handler";
 import { GetInventoryReportsHandler } from "../application/queries/get-inventory-reports.handler";
 import { GetProcurementReportsHandler } from "../application/queries/get-procurement-reports.handler";
+import { GetDeliveryCustomerReportsHandler } from "../application/queries/get-delivery-customer-reports.handler";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -22,7 +23,8 @@ export class ReportsController {
     private readonly getBranchHealth: GetBranchHealthHandler,
     private readonly getSalesOps: GetSalesOpsReportsHandler,
     private readonly getInventoryReports: GetInventoryReportsHandler,
-    private readonly getProcurementReports: GetProcurementReportsHandler
+    private readonly getProcurementReports: GetProcurementReportsHandler,
+    private readonly getDeliveryCustomerReports: GetDeliveryCustomerReportsHandler
   ) {}
 
   @Get("dashboard")
@@ -288,5 +290,90 @@ export class ReportsController {
   @RequirePermission("purchasing.view")
   async outstandingPurchaseOrders(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     return this.getProcurementReports.outstandingPurchaseOrders({ branchId: this.effectiveBranchId(req, branchId) });
+  }
+
+  // أداء كل سائق: عدد الطلبات المسلّمة، الإيراد، عدد الفشل، متوسط وقت التوصيل الفعلي
+  @Get("drivers")
+  @RequirePermission("reports.view")
+  async drivers(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.drivers({ branchId: this.effectiveBranchId(req, branchId), from, to });
+  }
+
+  // مؤشرات خدمة الدليفري الإجمالية: متوسط وقت التحضير والتوصيل، نسبة الالتزام بالوقت، نسبة الفشل
+  @Get("delivery-service")
+  @RequirePermission("reports.view")
+  async deliveryService(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("thresholdMinutes") thresholdMinutes: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.deliveryService({
+      branchId: this.effectiveBranchId(req, branchId), from, to,
+      thresholdMinutes: thresholdMinutes ? Number(thresholdMinutes) : undefined,
+    });
+  }
+
+  // ساعات الذروة - عدد الطلبات والإيراد حسب الساعة ويوم الأسبوع
+  @Get("peak-hours")
+  @RequirePermission("reports.view")
+  async peakHours(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.peakHours({ branchId: this.effectiveBranchId(req, branchId), from, to });
+  }
+
+  // أعلى العملاء إنفاقًا وتكرار طلب في المدى + عدد العملاء الجدد
+  @Get("customer-spend")
+  @RequirePermission("reports.view")
+  async customerSpend(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("limit") limit: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.customerSpend({
+      branchId: this.effectiveBranchId(req, branchId), from, to, limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  // المصروفات مجمّعة حسب الفئة + الاتجاه الزمني + تنبيهات تجاوز الحد لكل فئة
+  @Get("expenses-report")
+  @RequirePermission("reports.view")
+  async expensesReport(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("groupBy") groupBy: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.expensesReport({
+      branchId: this.effectiveBranchId(req, branchId), from, to, groupBy: groupBy === "month" ? "month" : "day",
+    });
+  }
+
+  // المشتريات النقدية مجمّعة حسب الفئة + الاتجاه الزمني
+  @Get("purchases-report")
+  @RequirePermission("reports.view")
+  async purchasesReport(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("groupBy") groupBy: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getDeliveryCustomerReports.purchasesReport({
+      branchId: this.effectiveBranchId(req, branchId), from, to, groupBy: groupBy === "month" ? "month" : "day",
+    });
   }
 }

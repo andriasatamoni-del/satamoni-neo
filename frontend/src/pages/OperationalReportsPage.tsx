@@ -108,6 +108,36 @@ interface OutstandingPurchaseOrderRow {
 
 const PO_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", SENT: "اترسل للمورد", RECEIVED: "اتسلّم", CANCELLED: "ملغي" };
 
+interface DriverPerformanceRow {
+  driverId: string; driverName: string; ordersCount: number; revenue: number; failedCount: number; avgDeliveryMinutes: number | null;
+}
+interface DeliveryServiceReport {
+  thresholdMinutes: number; totalOrders: number; failedCount: number; failureRate: number | null;
+  avgPrepMinutes: number | null; avgDeliveryMinutes: number | null; avgTotalMinutes: number | null; onTimeRate: number | null;
+}
+interface PeakHoursReport {
+  byHour: { hour: number; ordersCount: number; revenue: number }[];
+  byDayOfWeek: { dow: number; dayName: string; ordersCount: number; revenue: number }[];
+}
+interface CustomerSpendRow {
+  phone: string; name: string | null; ordersCount: number; totalSpent: number; avgOrderValue: number; lastOrderAt: string;
+}
+interface CustomerSpendReport { newCustomersCount: number; topCustomers: CustomerSpendRow[]; }
+interface ExpensesReportRow {
+  id: string; businessDate: string; branchName: string | null; category: string; amount: number; alertThreshold: number; notes: string | null;
+}
+interface ExpensesReport {
+  total: number;
+  byCategory: { category: string; total: number; count: number }[];
+  trend: { period: string; total: number }[];
+  anomalies: ExpensesReportRow[];
+}
+interface PurchasesReport {
+  total: number;
+  byCategory: { category: string; total: number; count: number }[];
+  trend: { period: string; total: number }[];
+}
+
 const TABS = [
   { key: "daily", label: "الملخّص اليومي" },
   { key: "sales-detail", label: "تفصيل المبيعات" },
@@ -120,6 +150,12 @@ const TABS = [
   { key: "stock-card", label: "كارت الصنف" },
   { key: "transfers", label: "التحويلات بين الفروع" },
   { key: "negative-stock", label: "المخزون السالب" },
+  { key: "drivers", label: "أداء السائقين" },
+  { key: "delivery-service", label: "خدمة الدليفري" },
+  { key: "peak-hours", label: "ساعات الذروة" },
+  { key: "customer-spend", label: "أعلى العملاء إنفاقًا" },
+  { key: "expenses-report", label: "تقرير المصروفات" },
+  { key: "purchases-report", label: "تقرير المشتريات النقدية" },
 ];
 const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع" };
 const PROCUREMENT_TABS = [
@@ -197,6 +233,12 @@ export function OperationalReportsPage() {
       {tab === "purchase-price-variance" && canSeeProcurement && <PurchasePriceVarianceTab />}
       {tab === "supplier-performance" && canSeeProcurement && <SupplierPerformanceTab />}
       {tab === "outstanding-purchase-orders" && canSeeProcurement && <OutstandingPurchaseOrdersTab />}
+      {tab === "drivers" && <DriversTab />}
+      {tab === "delivery-service" && <DeliveryServiceTab />}
+      {tab === "peak-hours" && <PeakHoursTab />}
+      {tab === "customer-spend" && <CustomerSpendTab />}
+      {tab === "expenses-report" && <ExpensesReportTab />}
+      {tab === "purchases-report" && <PurchasesReportTab />}
     </div>
   );
 }
@@ -1074,6 +1116,329 @@ function OutstandingPurchaseOrdersTab() {
               ))}
             </TBody>
           </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function DriversTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "drivers", branchId, from, to],
+    queryFn: () => apiRequest<DriverPerformanceRow[]>(`/reports/drivers?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أداء السائقين</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش توصيلات في الفترة دي</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>السائق</TH><TH>عدد الطلبات المسلّمة</TH><TH>الإيراد</TH><TH>عدد الفشل</TH><TH>متوسط وقت التوصيل (دقيقة)</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.driverId}>
+                  <TD>{r.driverName}</TD>
+                  <TD>{r.ordersCount}</TD>
+                  <TD>{fmt(r.revenue)}</TD>
+                  <TD className={r.failedCount > 0 ? "text-red-600" : ""}>{r.failedCount}</TD>
+                  <TD>{r.avgDeliveryMinutes !== null ? fmt(r.avgDeliveryMinutes) : "-"}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function DeliveryServiceTab() {
+  const [branchId, setBranchId] = useState("");
+  const [threshold, setThreshold] = useState(45);
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "delivery-service", branchId, from, to, threshold],
+    queryFn: () =>
+      apiRequest<DeliveryServiceReport>(
+        `/reports/delivery-service?from=${from}&to=${to}&thresholdMinutes=${threshold}${branchId ? `&branchId=${branchId}` : ""}`
+      ),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>مؤشرات خدمة الدليفري</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <Field label="حد التحضير بالدقائق">
+            <Input type="number" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="w-24" />
+          </Field>
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">إجمالي الطلبات</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.totalOrders}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">نسبة الفشل</p>
+              <p className="text-lg font-bold text-red-700">{query.data.failureRate !== null ? `${fmt(query.data.failureRate * 100)}%` : "-"}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">متوسط وقت التحضير</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.avgPrepMinutes !== null ? `${fmt(query.data.avgPrepMinutes)} د` : "-"}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">متوسط وقت التوصيل</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.avgDeliveryMinutes !== null ? `${fmt(query.data.avgDeliveryMinutes)} د` : "-"}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">متوسط الوقت الكلي</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.avgTotalMinutes !== null ? `${fmt(query.data.avgTotalMinutes)} د` : "-"}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">نسبة الالتزام بالوقت</p>
+              <p className="text-lg font-bold text-slate-900">{query.data.onTimeRate !== null ? `${fmt(query.data.onTimeRate * 100)}%` : "-"}</p>
+            </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function PeakHoursTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "peak-hours", branchId, from, to],
+    queryFn: () => apiRequest<PeakHoursReport>(`/reports/peak-hours?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>ساعات الذروة</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">حسب الساعة</h3>
+              <ul className="space-y-1 text-sm">
+                {query.data.byHour.map((r) => (
+                  <li key={r.hour} className="flex items-center justify-between">
+                    <span className="text-slate-700">{r.hour}:00</span>
+                    <span className="text-slate-500">{r.ordersCount} طلب - {fmt(r.revenue)} ج.م</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">حسب يوم الأسبوع</h3>
+              <ul className="space-y-1 text-sm">
+                {query.data.byDayOfWeek.map((r) => (
+                  <li key={r.dow} className="flex items-center justify-between">
+                    <span className="text-slate-700">{r.dayName}</span>
+                    <span className="text-slate-500">{r.ordersCount} طلب - {fmt(r.revenue)} ج.م</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function CustomerSpendTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "customer-spend", branchId, from, to],
+    queryFn: () => apiRequest<CustomerSpendReport>(`/reports/customer-spend?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أعلى العملاء إنفاقًا</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <p className="mb-4 text-sm font-semibold text-slate-700">عملاء جدد في الفترة دي: {query.data.newCustomersCount}</p>
+            {query.data.topCustomers.length === 0 ? (
+              <EmptyState>مفيش عملاء في الفترة دي</EmptyState>
+            ) : (
+              <Table>
+                <THead>
+                  <TR><TH>العميل</TH><TH>الموبايل</TH><TH>عدد الطلبات</TH><TH>إجمالي الإنفاق</TH><TH>متوسط الطلب</TH><TH>آخر طلب</TH></TR>
+                </THead>
+                <TBody>
+                  {query.data.topCustomers.map((r, i) => (
+                    <TR key={i}>
+                      <TD>{r.name ?? "-"}</TD>
+                      <TD>{r.phone}</TD>
+                      <TD>{r.ordersCount}</TD>
+                      <TD className="font-semibold">{fmt(r.totalSpent)}</TD>
+                      <TD>{fmt(r.avgOrderValue)}</TD>
+                      <TD>{new Date(r.lastOrderAt).toLocaleDateString("en-GB")}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function ExpensesReportTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "expenses-report", branchId, from, to],
+    queryFn: () => apiRequest<ExpensesReport>(`/reports/expenses-report?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>تقرير المصروفات</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-6">
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">الإجمالي</p>
+              <p className="text-lg font-bold text-slate-900">{fmt(query.data.total)} ج.م</p>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">حسب الفئة</h3>
+              {query.data.byCategory.length === 0 ? (
+                <p className="text-xs text-slate-400">مفيش مصروفات</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {query.data.byCategory.map((r, i) => (
+                    <li key={i} className="flex items-center justify-between">
+                      <span className="text-slate-700">{r.category}</span>
+                      <span className="text-slate-500">{fmt(r.total)} ج.م ({r.count})</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {query.data.anomalies.length > 0 && (
+              <div>
+                <h3 className="mb-2 text-sm font-bold text-red-700">مصروفات تجاوزت حد التنبيه</h3>
+                <Table>
+                  <THead>
+                    <TR><TH>التاريخ</TH><TH>الفرع</TH><TH>الفئة</TH><TH>القيمة</TH><TH>حد التنبيه</TH></TR>
+                  </THead>
+                  <TBody>
+                    {query.data.anomalies.map((r) => (
+                      <TR key={r.id}>
+                        <TD>{r.businessDate}</TD>
+                        <TD>{r.branchName ?? "-"}</TD>
+                        <TD>{r.category}</TD>
+                        <TD className="font-semibold text-red-600">{fmt(r.amount)}</TD>
+                        <TD>{fmt(r.alertThreshold)}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </div>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function PurchasesReportTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "purchases-report", branchId, from, to],
+    queryFn: () => apiRequest<PurchasesReport>(`/reports/purchases-report?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>تقرير المشتريات النقدية</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-6">
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-500">الإجمالي</p>
+              <p className="text-lg font-bold text-slate-900">{fmt(query.data.total)} ج.م</p>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-700">حسب الفئة</h3>
+              {query.data.byCategory.length === 0 ? (
+                <p className="text-xs text-slate-400">مفيش مشتريات</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {query.data.byCategory.map((r, i) => (
+                    <li key={i} className="flex items-center justify-between">
+                      <span className="text-slate-700">{r.category}</span>
+                      <span className="text-slate-500">{fmt(r.total)} ج.م ({r.count})</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
         )}
       </CardBody>
     </Card>
