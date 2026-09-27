@@ -49,6 +49,7 @@ const NAV_ITEMS = [
   { to: "/purchases", label: "المشتريات النقدية", icon: CartIcon },
   { to: "/talabat", label: "تكامل Talabat", icon: TruckIcon },
   { to: "/financial-reports", label: "التقارير المحاسبية", icon: ChartIcon },
+  { to: "/operational-reports", label: "تقارير المبيعات والتشغيل", icon: ListSearchIcon },
   { to: "/treasuries", label: "الخزائن والبنوك", icon: VaultIcon },
   { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
   { to: "/hr-payroll", label: "الموارد البشرية والرواتب", icon: IdCardIcon },

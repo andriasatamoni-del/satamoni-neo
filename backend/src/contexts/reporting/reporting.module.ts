@@ -15,6 +15,9 @@ import { GetActionCenterHandler } from "./application/queries/get-action-center.
 import { BRANCH_HEALTH_READER } from "./domain/ports/branch-health-reader.port";
 import { KyselyBranchHealthReader } from "./infrastructure/persistence/kysely-branch-health-reader";
 import { GetBranchHealthHandler } from "./application/queries/get-branch-health.handler";
+import { SALES_OPS_READER } from "./domain/ports/sales-ops-reader.port";
+import { KyselySalesOpsReader } from "./infrastructure/persistence/kysely-sales-ops-reader";
+import { GetSalesOpsReportsHandler } from "./application/queries/get-sales-ops-reports.handler";
 import { ReportsController } from "./api/reports.controller";
 
 @Module({
@@ -29,6 +32,8 @@ import { ReportsController } from "./api/reports.controller";
     GetActionCenterHandler,
     { provide: BRANCH_HEALTH_READER, useClass: KyselyBranchHealthReader },
     GetBranchHealthHandler,
+    { provide: SALES_OPS_READER, useClass: KyselySalesOpsReader },
+    GetSalesOpsReportsHandler,
   ],
 })
 export class ReportingModule implements OnModuleInit {

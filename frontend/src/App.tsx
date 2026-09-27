@@ -25,6 +25,7 @@ import { PrintingPage } from "./pages/PrintingPage";
 import { PosSettingsPage } from "./pages/PosSettingsPage";
 import { BranchDayPage } from "./pages/BranchDayPage";
 import { FinancialReportsPage } from "./pages/FinancialReportsPage";
+import { OperationalReportsPage } from "./pages/OperationalReportsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { TalabatPage } from "./pages/TalabatPage";
@@ -250,6 +251,14 @@ export function App() {
         element={
           <RequireAuth>
             <FinancialReportsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/operational-reports"
+        element={
+          <RequireAuth>
+            <OperationalReportsPage />
           </RequireAuth>
         }
       />
