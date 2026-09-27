@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
-import { Field, Input } from "../shared/ui/Field";
+import { Field, Input, Select } from "../shared/ui/Field";
 import { Tabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
@@ -46,6 +47,41 @@ interface RecipeRow {
   ingredients: RecipeIngredient[]; hasActiveVersion: boolean; hasMissingCost: boolean;
 }
 
+interface Branch { id: string; name: string; }
+interface InventoryItem { id: string; name: string; unit: string; }
+
+interface InventoryValuationItemRow {
+  branchId: string; branchName: string; inventoryItemId: string; itemName: string;
+  unit: string; quantity: number; unitCost: number | null; value: number; costIncomplete: boolean;
+}
+interface InventoryValuationReport {
+  totalValue: number;
+  byBranch: { branchId: string; branchName: string; totalValue: number }[];
+  items: InventoryValuationItemRow[];
+}
+
+interface StockCardRow {
+  id: string; movementType: string; quantityDelta: number; unitCost: number | null;
+  totalCost: number | null; balanceAfter: number; reason: string | null; occurredAt: string;
+}
+
+interface TransferReportLine {
+  itemName: string; unit: string; requestedQuantity: number;
+  dispatchedQuantity: number | null; receivedQuantity: number | null; variance: number | null;
+}
+interface TransferReportRow {
+  id: string; fromBranchName: string | null; toBranchName: string; status: string;
+  createdAt: string; dispatchedAt: string | null; receivedAt: string | null; lines: TransferReportLine[];
+}
+
+interface NegativeStockRow {
+  branchName: string; itemName: string; unit: string; quantity: number; negativeStockPolicy: string;
+}
+
+interface InventoryComparisonRow {
+  branchId: string; branchName: string; itemName: string; unit: string; quantity: number;
+}
+
 const TABS = [
   { key: "daily", label: "الملخّص اليومي" },
   { key: "sales-detail", label: "تفصيل المبيعات" },
@@ -54,7 +90,12 @@ const TABS = [
   { key: "item-performance", label: "أداء الأصناف" },
   { key: "catalog", label: "قائمة الطعام" },
   { key: "recipes", label: "الوصفات" },
+  { key: "inventory-valuation", label: "تقييم المخزون" },
+  { key: "stock-card", label: "كارت الصنف" },
+  { key: "transfers", label: "التحويلات بين الفروع" },
+  { key: "negative-stock", label: "المخزون السالب" },
 ];
+const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع" };
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
@@ -89,11 +130,15 @@ function DateRangeFields({ from, setFrom, to, setTo }: { from: string; setFrom: 
 
 export function OperationalReportsPage() {
   const [tab, setTab] = useState("daily");
+  const { user } = useAuth();
+  // مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
+  const canSeeBranchHealth = user?.role === "admin" || user?.role === "accountant";
+  const tabs = canSeeBranchHealth ? [...TABS, BRANCH_HEALTH_TAB] : TABS;
 
   return (
     <div>
-      <PageHeader title="تقارير المبيعات والتشغيل" description="ملخّصات يومية، تفصيل مبيعات، طلبات ملغاة، تأخيرات، وأداء الأصناف" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <PageHeader title="تقارير المبيعات والتشغيل" description="ملخّصات يومية، تفصيل مبيعات، طلبات ملغاة، تأخيرات، أداء الأصناف، وتقارير المخزون" />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {tab === "daily" && <DailyTab />}
       {tab === "sales-detail" && <SalesDetailTab />}
       {tab === "cancelled-orders" && <CancelledOrdersTab />}
@@ -101,6 +146,11 @@ export function OperationalReportsPage() {
       {tab === "item-performance" && <ItemPerformanceTab />}
       {tab === "catalog" && <CatalogTab />}
       {tab === "recipes" && <RecipesTab />}
+      {tab === "inventory-valuation" && <InventoryValuationTab />}
+      {tab === "stock-card" && <StockCardTab />}
+      {tab === "transfers" && <TransfersTab />}
+      {tab === "negative-stock" && <NegativeStockTab />}
+      {tab === "inventory-comparison" && canSeeBranchHealth && <InventoryComparisonTab />}
     </div>
   );
 }
@@ -394,6 +444,276 @@ function CatalogTab() {
                   <TD className={r.quantitySold === 0 ? "text-slate-400" : ""}>{r.quantitySold}</TD>
                   <TD>{fmt(r.revenue)}</TD>
                   <TD>{r.isActive ? "نشط" : "متوقف"}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function useBranches() {
+  return useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+}
+function useInventoryItems() {
+  return useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
+}
+
+function BranchSelect({ value, onChange, branches }: { value: string; onChange: (v: string) => void; branches: Branch[] }) {
+  return (
+    <Field label="الفرع">
+      <Select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">كل الفروع</option>
+        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
+function InventoryValuationTab() {
+  const [branchId, setBranchId] = useState("");
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "inventory-valuation", branchId],
+    queryFn: () => apiRequest<InventoryValuationReport>(`/reports/inventory-valuation${branchId ? `?branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>تقييم المخزون - قيمة كل صنف في كل فرع</CardTitle>
+        <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+      </CardHeader>
+      <CardBody className="space-y-4">
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">القيمة الإجمالية</p>
+                <p className="text-lg font-bold text-slate-900">{fmt(query.data.totalValue)} ج.م</p>
+              </div>
+            </div>
+            {!branchId && query.data.byBranch.length > 0 && (
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {query.data.byBranch.map((b) => (
+                  <li key={b.branchId} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span className="text-slate-700">{b.branchName}</span>
+                    <span className="font-semibold text-slate-900">{fmt(b.totalValue)} ج.م</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {query.data.items.length === 0 ? (
+              <EmptyState>مفيش رصيد مخزون حاليًا</EmptyState>
+            ) : (
+              <Table>
+                <THead>
+                  <TR><TH>الصنف</TH><TH>الفرع</TH><TH>الكمية</TH><TH>تكلفة الوحدة</TH><TH>القيمة</TH></TR>
+                </THead>
+                <TBody>
+                  {query.data.items.map((r, i) => (
+                    <TR key={i}>
+                      <TD>{r.itemName}</TD>
+                      <TD>{r.branchName}</TD>
+                      <TD>{fmt(r.quantity)} {r.unit}</TD>
+                      <TD>{r.costIncomplete ? <span className="text-amber-600">بدون تكلفة</span> : fmt(r.unitCost!)}</TD>
+                      <TD className="font-semibold">{fmt(r.value)}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function StockCardTab() {
+  const { user } = useAuth();
+  const [branchId, setBranchId] = useState(user?.role === "branch_manager" ? (user.branchId ?? "") : "");
+  const [inventoryItemId, setInventoryItemId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const itemsQuery = useInventoryItems();
+  const canQuery = !!branchId && !!inventoryItemId;
+  const query = useQuery({
+    queryKey: ["reports", "stock-card", branchId, inventoryItemId, from, to],
+    queryFn: () =>
+      apiRequest<StockCardRow[]>(`/reports/stock-card?branchId=${branchId}&inventoryItemId=${inventoryItemId}&from=${from}&to=${to}`),
+    enabled: canQuery,
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>كارت الصنف - كل حركة بالترتيب مع الرصيد بعدها</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          {user?.role !== "branch_manager" && <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />}
+          <Field label="الصنف">
+            <Select value={inventoryItemId} onChange={(e) => setInventoryItemId(e.target.value)}>
+              <option value="">اختار صنف</option>
+              {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          </Field>
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {!canQuery && <EmptyState>اختار الفرع والصنف عشان تشوف كارت الحركة</EmptyState>}
+        {canQuery && query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {canQuery && query.data && query.data.length === 0 && <EmptyState>مفيش حركات في الفترة دي</EmptyState>}
+        {canQuery && query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>التاريخ</TH><TH>نوع الحركة</TH><TH>الكمية</TH><TH>تكلفة الوحدة</TH><TH>إجمالي التكلفة</TH><TH>الرصيد بعدها</TH><TH>السبب</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.id}>
+                  <TD>{new Date(r.occurredAt).toLocaleString("en-GB")}</TD>
+                  <TD>{r.movementType}</TD>
+                  <TD className={r.quantityDelta < 0 ? "text-red-600" : "text-emerald-600"}>{r.quantityDelta > 0 ? "+" : ""}{fmt(r.quantityDelta)}</TD>
+                  <TD>{r.unitCost !== null ? fmt(r.unitCost) : "-"}</TD>
+                  <TD>{r.totalCost !== null ? fmt(r.totalCost) : "-"}</TD>
+                  <TD className="font-semibold">{fmt(r.balanceAfter)}</TD>
+                  <TD>{r.reason ?? "-"}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function TransfersTab() {
+  const [branchId, setBranchId] = useState("");
+  const { from, setFrom, to, setTo } = useDateRange();
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "transfers", branchId, from, to],
+    queryFn: () => apiRequest<TransferReportRow[]>(`/reports/transfers?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>التحويلات بين الفروع</CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+          <DateRangeFields from={from} setFrom={setFrom} to={to} setTo={setTo} />
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش تحويلات في الفترة دي</EmptyState>}
+        {query.data?.map((t) => (
+          <div key={t.id} className="rounded-lg border border-slate-200 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-slate-800">{t.fromBranchName ?? "السنتر كيتشن"} ← {t.toBranchName}</span>
+              <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{t.status}</span>
+            </div>
+            <Table>
+              <THead>
+                <TR><TH>الصنف</TH><TH>المطلوب</TH><TH>اتشحن</TH><TH>اتستلم</TH><TH>الفرق</TH></TR>
+              </THead>
+              <TBody>
+                {t.lines.map((l, i) => (
+                  <TR key={i}>
+                    <TD>{l.itemName}</TD>
+                    <TD>{fmt(l.requestedQuantity)} {l.unit}</TD>
+                    <TD>{l.dispatchedQuantity !== null ? fmt(l.dispatchedQuantity) : "-"}</TD>
+                    <TD>{l.receivedQuantity !== null ? fmt(l.receivedQuantity) : "-"}</TD>
+                    <TD className={l.variance ? "font-semibold text-red-600" : ""}>{l.variance !== null ? fmt(l.variance) : "-"}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </div>
+        ))}
+      </CardBody>
+    </Card>
+  );
+}
+
+function NegativeStockTab() {
+  const [branchId, setBranchId] = useState("");
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "negative-stock", branchId],
+    queryFn: () => apiRequest<NegativeStockRow[]>(`/reports/negative-stock${branchId ? `?branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>أصناف برصيد سالب دلوقتي</CardTitle>
+        <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش أصناف برصيد سالب - ممتاز</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>الصنف</TH><TH>الفرع</TH><TH>الرصيد</TH><TH>سياسة الرصيد السالب</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r, i) => (
+                <TR key={i}>
+                  <TD>{r.itemName}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD className="font-semibold text-red-600">{fmt(r.quantity)} {r.unit}</TD>
+                  <TD>{r.negativeStockPolicy}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function InventoryComparisonTab() {
+  const [inventoryItemId, setInventoryItemId] = useState("");
+  const itemsQuery = useInventoryItems();
+  const query = useQuery({
+    queryKey: ["reports", "inventory-comparison", inventoryItemId],
+    queryFn: () => apiRequest<InventoryComparisonRow[]>(`/reports/inventory-comparison${inventoryItemId ? `?inventoryItemId=${inventoryItemId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>مقارنة رصيد الأصناف بين كل الفروع</CardTitle>
+        <Field label="الصنف">
+          <Select value={inventoryItemId} onChange={(e) => setInventoryItemId(e.target.value)}>
+            <option value="">كل الأصناف</option>
+            {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </Select>
+        </Field>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش بيانات</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>الصنف</TH><TH>الفرع</TH><TH>الرصيد</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r, i) => (
+                <TR key={i}>
+                  <TD>{r.itemName}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD className={r.quantity < 0 ? "font-semibold text-red-600" : ""}>{fmt(r.quantity)} {r.unit}</TD>
                 </TR>
               ))}
             </TBody>

@@ -1,10 +1,11 @@
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { GetDashboardSummaryHandler } from "../application/queries/get-dashboard-summary.handler";
 import { GetFoodCostReportHandler } from "../application/queries/get-food-cost-report.handler";
 import { GetActionCenterHandler } from "../application/queries/get-action-center.handler";
 import { GetBranchHealthHandler } from "../application/queries/get-branch-health.handler";
 import { GetSalesOpsReportsHandler } from "../application/queries/get-sales-ops-reports.handler";
+import { GetInventoryReportsHandler } from "../application/queries/get-inventory-reports.handler";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -18,7 +19,8 @@ export class ReportsController {
     private readonly getFoodCostReport: GetFoodCostReportHandler,
     private readonly getActionCenter: GetActionCenterHandler,
     private readonly getBranchHealth: GetBranchHealthHandler,
-    private readonly getSalesOps: GetSalesOpsReportsHandler
+    private readonly getSalesOps: GetSalesOpsReportsHandler,
+    private readonly getInventoryReports: GetInventoryReportsHandler
   ) {}
 
   @Get("dashboard")
@@ -171,5 +173,53 @@ export class ReportsController {
   @RequirePermission("reports.view")
   async recipes() {
     return this.getSalesOps.recipes();
+  }
+
+  // تقييم المخزون - قيمة كل صنف في كل فرع (كمية × تكلفة الوحدة)، وإجمالي لكل فرع وللكل
+  @Get("inventory-valuation")
+  @RequirePermission("reports.view")
+  async inventoryValuation(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
+    return this.getInventoryReports.valuation({ branchId: this.effectiveBranchId(req, branchId) });
+  }
+
+  // كارت الصنف - كل حركة اتسجلت على صنف في فرع بالترتيب الزمني، مع الرصيد بعد كل حركة
+  @Get("stock-card")
+  @RequirePermission("reports.view")
+  async stockCard(
+    @Query("branchId") branchId: string | undefined,
+    @Query("inventoryItemId") inventoryItemId: string,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    const effectiveBranchId = this.effectiveBranchId(req, branchId);
+    if (!effectiveBranchId) throw new BadRequestException("لازم تحدد branchId");
+    return this.getInventoryReports.stockCard({ branchId: effectiveBranchId, inventoryItemId, from, to });
+  }
+
+  // تقرير التحويلات بين الفروع في المدى - مع فرق المُرسل عن المُستلم (variance) لكل بند
+  @Get("transfers")
+  @RequirePermission("reports.view")
+  async transfers(
+    @Query("branchId") branchId: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getInventoryReports.transfers({ branchId: this.effectiveBranchId(req, branchId), from, to });
+  }
+
+  // أي صنف رصيده سالب دلوقتي - القائمة التفصيلية (مش العدد بس زي مركز التنبيهات)
+  @Get("negative-stock")
+  @RequirePermission("reports.view")
+  async negativeStock(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
+    return this.getInventoryReports.negativeStock({ branchId: this.effectiveBranchId(req, branchId) });
+  }
+
+  // مقارنة رصيد صنف (أو كل الأصناف) بين كل الفروع جنب بعض - أدمن/محاسب بس، زي بطاقة صحة الفروع بالظبط
+  @Get("inventory-comparison")
+  @RequirePermission("reports.branch_health")
+  async inventoryComparison(@Query("inventoryItemId") inventoryItemId: string | undefined) {
+    return this.getInventoryReports.inventoryComparison({ inventoryItemId: inventoryItemId ?? null });
   }
 }
