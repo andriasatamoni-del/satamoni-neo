@@ -12,7 +12,7 @@ export interface RegisterGoodsReceiptCommand {
   supplierId?: string | null;
   supplierDocumentNumber?: string | null;
   branchId: string;
-  lines: { inventoryItemId: string; quantity: number; unitCost: number }[];
+  lines: { inventoryItemId: string; quantity: number; unitCost: number; expiryDate?: Date | null; productionDate?: Date | null }[];
   receivedBy?: string | null;
   acknowledgeDuplicate?: boolean;
 }

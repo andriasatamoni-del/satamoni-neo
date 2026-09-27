@@ -18,6 +18,8 @@ import { DispatchTransferRequestHandler } from "../application/commands/dispatch
 import { ReceiveTransferRequestHandler } from "../application/commands/receive-transfer-request.handler";
 import { CancelTransferRequestHandler } from "../application/commands/cancel-transfer-request.handler";
 import { ListTransferRequestsHandler } from "../application/queries/list-transfer-requests.handler";
+import { ListInventoryBatchesHandler } from "../application/queries/list-inventory-batches.handler";
+import { WriteOffInventoryBatchHandler } from "../application/commands/write-off-inventory-batch.handler";
 import { RegisterInventoryItemDto } from "./dto/register-inventory-item.dto";
 import { RecordStockMovementDto } from "./dto/record-stock-movement.dto";
 import { RegisterStocktakeDto } from "./dto/register-stocktake.dto";
@@ -28,6 +30,7 @@ import { RejectTransferRequestDto } from "./dto/reject-transfer-request.dto";
 import { DispatchTransferRequestDto } from "./dto/dispatch-transfer-request.dto";
 import { ReceiveTransferRequestDto } from "./dto/receive-transfer-request.dto";
 import { CancelTransferRequestDto } from "./dto/cancel-transfer-request.dto";
+import { WriteOffInventoryBatchDto } from "./dto/write-off-inventory-batch.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -38,6 +41,7 @@ import type { StockMovement } from "../domain/stock-movement.aggregate";
 import type { Stocktake } from "../domain/stocktake.aggregate";
 import type { BranchStockThreshold } from "../domain/branch-stock-threshold.aggregate";
 import type { TransferRequest } from "../domain/transfer-request.aggregate";
+import type { InventoryBatch } from "../domain/inventory-batch.aggregate";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -61,7 +65,9 @@ export class InventoryController {
     private readonly dispatchTransferRequest: DispatchTransferRequestHandler,
     private readonly receiveTransferRequest: ReceiveTransferRequestHandler,
     private readonly cancelTransferRequest: CancelTransferRequestHandler,
-    private readonly listTransferRequests: ListTransferRequestsHandler
+    private readonly listTransferRequests: ListTransferRequestsHandler,
+    private readonly listInventoryBatches: ListInventoryBatchesHandler,
+    private readonly writeOffInventoryBatch: WriteOffInventoryBatchHandler
   ) {}
 
   @Get("items")
@@ -223,6 +229,38 @@ export class InventoryController {
   ) {
     return toPublicTransferRequest(await this.cancelTransferRequest.execute({ requestId: id, cancelledBy: req.user.id, reason: dto.reason }));
   }
+
+  // BATCH-1: دفعات/لوط - راجع تعليق inventory-batch.aggregate.ts لنطاق الميزة (استلام رسمي/إنتاج بس،
+  // استهلاك يدوي، تتبّع مستوى واحد)
+  @Get("items/:id/batches")
+  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  async batches(@Param("id") id: string, @Query("branchId") branchId: string) {
+    return (await this.listInventoryBatches.execute({ inventoryItemId: id, branchId })).map(toPublicBatch);
+  }
+
+  @Post("batches/:id/write-off")
+  @RequirePermission("inventory.batches.manage")
+  async writeOffBatch(@Param("id") id: string, @Body() dto: WriteOffInventoryBatchDto) {
+    return toPublicBatch(await this.writeOffInventoryBatch.execute({ batchId: id, quantity: dto.quantity, markExpired: dto.markExpired }));
+  }
+}
+
+function toPublicBatch(batch: InventoryBatch) {
+  return {
+    id: batch.id,
+    batchNumber: batch.batchNumber,
+    inventoryItemId: batch.inventoryItemId,
+    branchId: batch.branchId,
+    receivedQuantity: batch.receivedQuantity,
+    remainingQuantity: batch.remainingQuantity,
+    unitCost: batch.unitCost,
+    expiryDate: batch.expiryDate,
+    productionDate: batch.productionDate,
+    sourceType: batch.sourceType,
+    sourceId: batch.sourceId,
+    status: batch.status,
+    createdAt: batch.createdAt,
+  };
 }
 
 function toPublicItem(item: InventoryItem) {

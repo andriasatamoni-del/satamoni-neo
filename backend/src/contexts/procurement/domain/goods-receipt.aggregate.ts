@@ -9,6 +9,8 @@ export interface GoodsReceiptLine {
   inventoryItemId: string;
   quantity: number;
   unitCost: number;
+  expiryDate: Date | null;
+  productionDate: Date | null;
 }
 
 export interface GoodsReceiptProps {
@@ -42,7 +44,7 @@ export class GoodsReceipt {
     supplierId?: string | null;
     supplierDocumentNumber?: string | null;
     branchId: string;
-    lines: { inventoryItemId: string; quantity: number; unitCost: number }[];
+    lines: { inventoryItemId: string; quantity: number; unitCost: number; expiryDate?: Date | null; productionDate?: Date | null }[];
     receivedBy?: string | null;
     legacyGoodsReceiptId?: number | null;
   }): GoodsReceipt {
@@ -54,7 +56,14 @@ export class GoodsReceipt {
       supplierDocumentNumber: input.supplierDocumentNumber ?? null,
       branchId: input.branchId,
       status: "DRAFT",
-      lines: input.lines.map((l) => ({ id: randomUUID(), ...l })),
+      lines: input.lines.map((l) => ({
+        id: randomUUID(),
+        inventoryItemId: l.inventoryItemId,
+        quantity: l.quantity,
+        unitCost: l.unitCost,
+        expiryDate: l.expiryDate ?? null,
+        productionDate: l.productionDate ?? null,
+      })),
       receivedBy: input.receivedBy ?? null,
       createdAt: new Date(),
       confirmedAt: null,

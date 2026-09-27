@@ -208,7 +208,7 @@ export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Kysel
       supplierDocumentNumber: row.supplier_document_number ?? null,
       branchId,
       status: row.status === "POSTED" ? "CONFIRMED" : "DRAFT",
-      lines: lines.map((l) => ({ id: randomUUID(), ...l })),
+      lines: lines.map((l) => ({ id: randomUUID(), ...l, expiryDate: null, productionDate: null })),
       receivedBy,
       createdAt: row.created_at,
       confirmedAt: row.posted_at,

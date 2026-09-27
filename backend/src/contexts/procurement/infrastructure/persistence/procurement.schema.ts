@@ -50,6 +50,8 @@ export interface GoodsReceiptItemsTable {
   inventory_item_id: string;
   quantity: number;
   unit_cost: number;
+  expiry_date: Date | null;
+  production_date: Date | null;
 }
 
 export interface SupplierInvoicesTable {

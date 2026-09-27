@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Kysely } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
+import { sql } from "kysely";
 import type {
   InventoryReportsReaderPort,
   InventoryValuationReport,
@@ -9,6 +10,7 @@ import type {
   TransferReportRow,
   NegativeStockRow,
   InventoryComparisonRow,
+  ExpiringBatchRow,
 } from "../../domain/ports/inventory-reports-reader.port";
 
 @Injectable()
@@ -232,5 +234,41 @@ export class KyselyInventoryReportsReader implements InventoryReportsReaderPort 
       }
     }
     return result;
+  }
+
+  async getExpiringBatches(input: { days: number; branchId: string | null }): Promise<ExpiringBatchRow[]> {
+    let query = this.db
+      .selectFrom("inventory_batches")
+      .innerJoin("inventory_items", "inventory_items.id", "inventory_batches.inventory_item_id")
+      .innerJoin("branches", "branches.id", "inventory_batches.branch_id")
+      .select([
+        "inventory_batches.id as id",
+        "inventory_batches.batch_number as batch_number",
+        "inventory_batches.inventory_item_id as inventory_item_id",
+        "inventory_items.name as item_name",
+        "inventory_items.unit as unit",
+        "inventory_batches.branch_id as branch_id",
+        "branches.name as branch_name",
+        "inventory_batches.remaining_quantity as remaining_quantity",
+        "inventory_batches.expiry_date as expiry_date",
+      ])
+      .where("inventory_batches.status", "=", "active")
+      .where("inventory_batches.remaining_quantity", ">", 0)
+      .where("inventory_batches.expiry_date", "is not", null)
+      .where("inventory_batches.expiry_date", "<=", sql<Date>`(CURRENT_DATE + (${input.days} || ' days')::interval)`);
+    if (input.branchId) query = query.where("inventory_batches.branch_id", "=", input.branchId);
+    const rows = await query.orderBy("inventory_batches.expiry_date", "asc").execute();
+
+    return rows.map((r) => ({
+      id: r.id,
+      batchNumber: r.batch_number,
+      inventoryItemId: r.inventory_item_id,
+      itemName: r.item_name,
+      unit: r.unit,
+      branchId: r.branch_id,
+      branchName: r.branch_name,
+      remainingQuantity: Number(r.remaining_quantity),
+      expiryDate: r.expiry_date!.toISOString().slice(0, 10),
+    }));
   }
 }

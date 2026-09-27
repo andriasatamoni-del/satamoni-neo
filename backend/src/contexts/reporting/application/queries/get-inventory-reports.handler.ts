@@ -33,4 +33,8 @@ export class GetInventoryReportsHandler {
   async inventoryComparison(query: { inventoryItemId: string | null }) {
     return this.reader.getInventoryComparison(query);
   }
+
+  async expiringBatches(query: { days?: number; branchId: string | null }) {
+    return this.reader.getExpiringBatches({ days: query.days ?? 7, branchId: query.branchId });
+  }
 }

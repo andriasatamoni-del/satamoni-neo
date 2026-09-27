@@ -20,6 +20,7 @@ import type {
   BranchStockBalancesTable,
 } from "../../contexts/inventory/infrastructure/persistence/stock-movement.schema";
 import type { StocktakesTable, StocktakeLinesTable } from "../../contexts/inventory/infrastructure/persistence/stocktake.schema";
+import type { InventoryBatchesTable } from "../../contexts/inventory/infrastructure/persistence/inventory-batch.schema";
 import type {
   ConversionOrdersTable,
   ConversionOrderInputLinesTable,
@@ -131,6 +132,7 @@ export interface Database {
   inventory_items: InventoryItemsTable;
   stock_movements: StockMovementsTable;
   branch_stock_balances: BranchStockBalancesTable;
+  inventory_batches: InventoryBatchesTable;
   stocktakes: StocktakesTable;
   conversion_orders: ConversionOrdersTable;
   conversion_order_input_lines: ConversionOrderInputLinesTable;

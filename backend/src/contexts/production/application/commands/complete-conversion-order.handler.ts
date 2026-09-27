@@ -6,7 +6,12 @@ import {
   STOCK_MOVEMENT_REPOSITORY,
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
+import {
+  INVENTORY_BATCH_REPOSITORY,
+  type InventoryBatchRepositoryPort,
+} from "../../../inventory/domain/ports/inventory-batch-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { InventoryBatch } from "../../../inventory/domain/inventory-batch.aggregate";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { ConversionOrderCompletedEvent } from "../../domain/events/conversion-order-completed.event";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
@@ -15,6 +20,7 @@ export interface CompleteConversionOrderCommand {
   conversionOrderId: string;
   actualOutputQuantity: number;
   varianceReason?: string | null;
+  expiryDate?: Date | null;
   completedBy?: string | null;
 }
 
@@ -27,6 +33,7 @@ export class CompleteConversionOrderHandler {
   constructor(
     @Inject(CONVERSION_ORDER_REPOSITORY) private readonly conversionOrders: ConversionOrderRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(INVENTORY_BATCH_REPOSITORY) private readonly batches: InventoryBatchRepositoryPort,
     private readonly eventBus: EventBusService,
     private readonly getPosSettings: GetPosSettingsHandler
   ) {}
@@ -54,6 +61,22 @@ export class CompleteConversionOrderHandler {
       unitCost: standardUnitCost,
     });
     await this.movements.recordMovement(movement, { allowNegativeBalance: true });
+
+    // BATCH-1: دفعة للناتج بس لو تاريخ صلاحية فعلي اتحدد
+    if (command.expiryDate) {
+      const batch = InventoryBatch.register({
+        batchNumber: await this.batches.nextBatchNumber(),
+        inventoryItemId: order.outputItemId,
+        branchId: order.branchId,
+        quantity: command.actualOutputQuantity,
+        unitCost: standardUnitCost,
+        expiryDate: command.expiryDate,
+        sourceType: "production",
+        sourceId: order.id,
+        createdBy: command.completedBy,
+      });
+      await this.batches.save(batch);
+    }
 
     const settings = await this.getPosSettings.execute();
     order.complete({

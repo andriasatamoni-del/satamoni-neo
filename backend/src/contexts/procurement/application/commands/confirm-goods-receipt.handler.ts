@@ -13,7 +13,12 @@ import {
   INVENTORY_ITEM_REPOSITORY,
   type InventoryItemRepositoryPort,
 } from "../../../inventory/domain/ports/inventory-item-repository.port";
+import {
+  INVENTORY_BATCH_REPOSITORY,
+  type InventoryBatchRepositoryPort,
+} from "../../../inventory/domain/ports/inventory-batch-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { InventoryBatch } from "../../../inventory/domain/inventory-batch.aggregate";
 import { GoodsReceiptConfirmedEvent } from "../../domain/events/goods-receipt-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 
@@ -34,6 +39,7 @@ export class ConfirmGoodsReceiptHandler {
     @Inject(GOODS_RECEIPT_REPOSITORY) private readonly receipts: GoodsReceiptRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
+    @Inject(INVENTORY_BATCH_REPOSITORY) private readonly batches: InventoryBatchRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -68,6 +74,24 @@ export class ConfirmGoodsReceiptHandler {
       if (inventoryItem) {
         inventoryItem.updateUnitCost(line.unitCost);
         await this.inventoryItems.save(inventoryItem);
+      }
+
+      // BATCH-1: دفعة بس لو البند له تاريخ صلاحية/إنتاج فعلي - نفس شرط الريبو القديم بالظبط
+      // (batch_number || expiry_date)، هنا مبسّط لـexpiry_date/production_date بس
+      if (line.expiryDate || line.productionDate) {
+        const batch = InventoryBatch.register({
+          batchNumber: await this.batches.nextBatchNumber(),
+          inventoryItemId: line.inventoryItemId,
+          branchId: receipt.branchId,
+          quantity: line.quantity,
+          unitCost: line.unitCost,
+          expiryDate: line.expiryDate,
+          productionDate: line.productionDate,
+          sourceType: "purchase",
+          sourceId: receipt.id,
+          createdBy: command.confirmedBy,
+        });
+        await this.batches.save(batch);
       }
     }
 

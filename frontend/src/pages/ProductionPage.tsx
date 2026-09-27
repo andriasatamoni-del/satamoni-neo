@@ -158,7 +158,7 @@ export function ProductionPage() {
     },
   });
 
-  const [completeForm, setCompleteForm] = useState<Record<string, { actualOutputQuantity: string; varianceReason: string }>>({});
+  const [completeForm, setCompleteForm] = useState<Record<string, { actualOutputQuantity: string; varianceReason: string; expiryDate: string }>>({});
   const [completeOpenId, setCompleteOpenId] = useState<string | null>(null);
   const [completeError, setCompleteError] = useState<Record<string, string>>({});
   const completeOrder = useMutation({
@@ -168,6 +168,7 @@ export function ProductionPage() {
         body: {
           actualOutputQuantity: Number(completeForm[id]?.actualOutputQuantity),
           varianceReason: completeForm[id]?.varianceReason || undefined,
+          expiryDate: completeForm[id]?.expiryDate || undefined,
         },
       }),
     onSuccess: (_res, id) => {
@@ -374,7 +375,14 @@ export function ProductionPage() {
                               <Field label="سبب الفرق (لو الفرق كبير)">
                                 <Input
                                   value={completeForm[order.id]?.varianceReason ?? ""}
-                                  onChange={(e) => setCompleteForm((prev) => ({ ...prev, [order.id]: { ...prev[order.id], varianceReason: e.target.value, actualOutputQuantity: prev[order.id]?.actualOutputQuantity ?? "" } }))}
+                                  onChange={(e) => setCompleteForm((prev) => ({ ...prev, [order.id]: { ...prev[order.id], varianceReason: e.target.value, actualOutputQuantity: prev[order.id]?.actualOutputQuantity ?? "", expiryDate: prev[order.id]?.expiryDate ?? "" } }))}
+                                />
+                              </Field>
+                              <Field label="تاريخ الصلاحية (اختياري - بيعمل دفعة)">
+                                <Input
+                                  type="date"
+                                  value={completeForm[order.id]?.expiryDate ?? ""}
+                                  onChange={(e) => setCompleteForm((prev) => ({ ...prev, [order.id]: { ...prev[order.id], expiryDate: e.target.value, actualOutputQuantity: prev[order.id]?.actualOutputQuantity ?? "", varianceReason: prev[order.id]?.varianceReason ?? "" } }))}
                                 />
                               </Field>
                               <Button size="sm" onClick={() => completeOrder.mutate(order.id)} disabled={completeOrder.isPending}>تأكيد الإكمال</Button>

@@ -161,7 +161,7 @@ export function ProcurementPage() {
   });
 
   const [receiptForm, setReceiptForm] = useState({
-    supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "",
+    supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "", expiryDate: "",
   });
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [receiptDuplicateWarning, setReceiptDuplicateWarning] = useState(false);
@@ -174,11 +174,14 @@ export function ProcurementPage() {
           branchId: receiptForm.branchId,
           supplierDocumentNumber: receiptForm.supplierDocumentNumber || undefined,
           acknowledgeDuplicate,
-          lines: [{ inventoryItemId: receiptForm.inventoryItemId, quantity: Number(receiptForm.quantity), unitCost: Number(receiptForm.unitCost) }],
+          lines: [{
+            inventoryItemId: receiptForm.inventoryItemId, quantity: Number(receiptForm.quantity), unitCost: Number(receiptForm.unitCost),
+            expiryDate: receiptForm.expiryDate || undefined,
+          }],
         },
       }),
     onSuccess: () => {
-      setReceiptForm({ supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "" });
+      setReceiptForm({ supplierId: "", branchId: "", inventoryItemId: "", quantity: "", unitCost: "", supplierDocumentNumber: "", expiryDate: "" });
       setReceiptError(null);
       setReceiptDuplicateWarning(false);
       queryClient.invalidateQueries({ queryKey: ["procurement", "goods-receipts"] });
@@ -517,6 +520,9 @@ export function ProcurementPage() {
                     </Field>
                     <Field label="تكلفة الوحدة">
                       <Input required type="number" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} />
+                    </Field>
+                    <Field label="تاريخ الصلاحية (اختياري - بيعمل دفعة)">
+                      <Input type="date" value={receiptForm.expiryDate} onChange={(e) => setReceiptForm({ ...receiptForm, expiryDate: e.target.value })} />
                     </Field>
                     {receiptForm.supplierId && (
                       <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">

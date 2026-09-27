@@ -38,6 +38,8 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
             inventory_item_id: line.inventoryItemId,
             quantity: line.quantity,
             unit_cost: line.unitCost,
+            expiry_date: line.expiryDate,
+            production_date: line.productionDate,
           })
           .onConflict((oc) => oc.column("id").doNothing())
           .execute();
@@ -86,6 +88,8 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
         inventoryItemId: l.inventory_item_id,
         quantity: Number(l.quantity),
         unitCost: Number(l.unit_cost),
+        expiryDate: l.expiry_date,
+        productionDate: l.production_date,
       })),
       receivedBy: row.received_by,
       createdAt: row.created_at,

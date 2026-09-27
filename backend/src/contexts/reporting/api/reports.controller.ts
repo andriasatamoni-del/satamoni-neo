@@ -227,6 +227,20 @@ export class ReportsController {
     return this.getInventoryReports.inventoryComparison({ inventoryItemId: inventoryItemId ?? null });
   }
 
+  // BATCH-1: دفعات هتنتهي صلاحيتها خلال N يوم (افتراضي 7)
+  @Get("expiring-batches")
+  @RequirePermission("reports.view")
+  async expiringBatches(
+    @Query("days") days: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return this.getInventoryReports.expiringBatches({
+      days: days ? Number(days) : undefined,
+      branchId: this.effectiveBranchId(req, branchId),
+    });
+  }
+
   // قائمة أوامر الشراء في المدى - مع عدد البنود وإجمالي القيمة، وفلترة بالفرع/المورد/الحالة
   @Get("purchase-orders")
   @RequirePermission("purchasing.view")

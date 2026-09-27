@@ -83,6 +83,25 @@ interface TransferRequest {
   lines: TransferRequestLine[];
 }
 
+interface InventoryBatch {
+  id: string;
+  batchNumber: string;
+  inventoryItemId: string;
+  branchId: string;
+  receivedQuantity: number;
+  remainingQuantity: number;
+  unitCost: number | null;
+  expiryDate: string | null;
+  productionDate: string | null;
+  sourceType: "purchase" | "production";
+  sourceId: string;
+  status: "active" | "depleted" | "expired";
+  createdAt: string;
+}
+
+const BATCH_SOURCE_LABELS: Record<string, string> = { purchase: "استلام مشتريات", production: "إنتاج" };
+const BATCH_STATUS_LABELS: Record<string, string> = { active: "نشطة", depleted: "خلصت", expired: "منتهية الصلاحية" };
+
 const LOW_STOCK_STATUS_LABELS: Record<string, string> = { OUT: "خلص خالص", NEEDS_REORDER: "محتاج إعادة طلب" };
 
 const TRANSFER_STATUS_LABELS: Record<string, string> = {
@@ -107,6 +126,7 @@ const TABS = [
   { key: "stocktake", label: "الجرد الفعلي" },
   { key: "low-stock", label: "حدود المخزون والتنبيهات" },
   { key: "transfers", label: "طلبات التحويل بين الفروع" },
+  { key: "batches", label: "الدفعات" },
 ];
 
 function fmt(n: number): string {
@@ -198,6 +218,20 @@ export function InventoryPage() {
         body: { branchId: lowStockBranchId, inventoryItemId, reorderPoint },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "low-stock", lowStockBranchId] }),
+  });
+
+  const [batchesItemId, setBatchesItemId] = useState("");
+  const [batchesBranchId, setBatchesBranchId] = useState("");
+  const [writeOffDrafts, setWriteOffDrafts] = useState<Record<string, string>>({});
+  const batchesQuery = useQuery({
+    queryKey: ["inventory", "batches", batchesItemId, batchesBranchId],
+    queryFn: () => apiRequest<InventoryBatch[]>(`/inventory/items/${batchesItemId}/batches?branchId=${batchesBranchId}`),
+    enabled: !!batchesItemId && !!batchesBranchId,
+  });
+  const writeOffBatch = useMutation({
+    mutationFn: ({ id, quantity, markExpired }: { id: string; quantity?: number; markExpired?: boolean }) =>
+      apiRequest(`/inventory/batches/${id}/write-off`, { method: "POST", body: { quantity, markExpired } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "batches", batchesItemId, batchesBranchId] }),
   });
 
   const boardQuery = useQuery({
@@ -790,6 +824,86 @@ export function InventoryPage() {
                 </TBody>
               </Table>
               {transferRequests.length === 0 && <EmptyState>مفيش طلبات تحويل لسه</EmptyState>}
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {tab === "batches" && (
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>الدفعات (BATCH-1)</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <p className="mb-4 text-sm text-slate-500">
+                دفعة بتتسجّل تلقائيًا لما بند استلام (مشتريات) أو أمر تصنيع يتحدد له تاريخ صلاحية - راجع
+                تقرير "دفعات هتنتهي صلاحيتها" في صفحة التقارير كمان
+              </p>
+              <div className="mb-4 flex flex-wrap items-end gap-3">
+                <Field label="الصنف">
+                  <Select value={batchesItemId} onChange={(e) => setBatchesItemId(e.target.value)}>
+                    <option value="">اختر صنف</option>
+                    {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="الفرع">
+                  <Select value={batchesBranchId} onChange={(e) => setBatchesBranchId(e.target.value)}>
+                    <option value="">اختر فرع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+
+              {batchesQuery.isLoading && <p className="text-xs text-slate-400">بيتحمّل...</p>}
+              {batchesQuery.data && batchesQuery.data.length === 0 && <EmptyState>مفيش دفعات نشطة لهذا الصنف/الفرع</EmptyState>}
+              {batchesQuery.data && batchesQuery.data.length > 0 && (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>رقم الدفعة</TH><TH>المتبقي</TH><TH>الصلاحية</TH><TH>المصدر</TH><TH>الحالة</TH><TH>إجراء</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {batchesQuery.data.map((b) => (
+                      <TR key={b.id}>
+                        <TD className="font-mono text-xs">{b.batchNumber}</TD>
+                        <TD>{fmt(b.remainingQuantity)} / {fmt(b.receivedQuantity)}</TD>
+                        <TD>{b.expiryDate ? b.expiryDate.slice(0, 10) : "-"}</TD>
+                        <TD>{BATCH_SOURCE_LABELS[b.sourceType] ?? b.sourceType}</TD>
+                        <TD><Badge tone={b.status === "active" ? "success" : "neutral"}>{BATCH_STATUS_LABELS[b.status] ?? b.status}</Badge></TD>
+                        <TD>
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              placeholder="كمية"
+                              className="w-20 py-1 text-xs"
+                              value={writeOffDrafts[b.id] ?? ""}
+                              onChange={(e) => setWriteOffDrafts({ ...writeOffDrafts, [b.id]: e.target.value })}
+                            />
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={writeOffBatch.isPending || !(writeOffDrafts[b.id] ?? "").trim()}
+                              onClick={() => writeOffBatch.mutate({ id: b.id, quantity: Number(writeOffDrafts[b.id]) })}
+                            >
+                              تلف/هالك
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              disabled={writeOffBatch.isPending}
+                              onClick={() => writeOffBatch.mutate({ id: b.id, markExpired: true })}
+                            >
+                              انتهت الصلاحية
+                            </Button>
+                          </div>
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
             </CardBody>
           </Card>
         </div>

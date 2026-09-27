@@ -135,7 +135,17 @@ export class ProcurementController {
   @Post("goods-receipts")
   @RequirePermission("procurement.goods_receipts.manage")
   async createGoodsReceipt(@Body() dto: RegisterGoodsReceiptDto, @Req() req: Request & { user: AuthenticatedUser }) {
-    return toPublicGoodsReceipt(await this.registerGoodsReceipt.execute({ ...dto, receivedBy: req.user.id }));
+    return toPublicGoodsReceipt(
+      await this.registerGoodsReceipt.execute({
+        ...dto,
+        lines: dto.lines.map((l) => ({
+          ...l,
+          expiryDate: l.expiryDate ? new Date(l.expiryDate) : undefined,
+          productionDate: l.productionDate ? new Date(l.productionDate) : undefined,
+        })),
+        receivedBy: req.user.id,
+      })
+    );
   }
 
   @Post("goods-receipts/:id/confirm")
@@ -330,7 +340,13 @@ function toPublicGoodsReceipt(receipt: GoodsReceipt) {
     supplierDocumentNumber: receipt.supplierDocumentNumber,
     branchId: receipt.branchId,
     status: receipt.status,
-    lines: receipt.lines.map((l) => ({ inventoryItemId: l.inventoryItemId, quantity: l.quantity, unitCost: l.unitCost })),
+    lines: receipt.lines.map((l) => ({
+      inventoryItemId: l.inventoryItemId,
+      quantity: l.quantity,
+      unitCost: l.unitCost,
+      expiryDate: l.expiryDate,
+      productionDate: l.productionDate,
+    })),
     createdAt: receipt.createdAt,
     confirmedAt: receipt.confirmedAt,
   };

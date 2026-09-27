@@ -98,6 +98,7 @@ export class ProductionController {
         conversionOrderId: id,
         actualOutputQuantity: dto.actualOutputQuantity,
         varianceReason: dto.varianceReason,
+        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
         completedBy: req.user.id,
       })
     );

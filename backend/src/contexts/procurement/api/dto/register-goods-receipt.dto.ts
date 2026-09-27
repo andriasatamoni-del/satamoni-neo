@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsDateString, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } from "class-validator";
 
 export class GoodsReceiptLineInputDto {
   @IsUUID()
@@ -10,6 +10,10 @@ export class GoodsReceiptLineInputDto {
 
   @IsNumber()
   unitCost!: number;
+
+  // BATCH-1: لو فعليًا اتحدد، بتتسجّل دفعة (inventory_batches) للبند ده وقت تأكيد الاستلام
+  @IsOptional() @IsDateString() expiryDate?: string;
+  @IsOptional() @IsDateString() productionDate?: string;
 }
 
 export class RegisterGoodsReceiptDto {

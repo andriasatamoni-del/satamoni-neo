@@ -82,6 +82,11 @@ interface InventoryComparisonRow {
   branchId: string; branchName: string; itemName: string; unit: string; quantity: number;
 }
 
+interface ExpiringBatchRow {
+  id: string; batchNumber: string; itemName: string; unit: string; branchName: string;
+  remainingQuantity: number; expiryDate: string;
+}
+
 interface Supplier { id: string; name: string; }
 
 interface PurchaseOrderReportRow {
@@ -150,6 +155,7 @@ const TABS = [
   { key: "stock-card", label: "كارت الصنف" },
   { key: "transfers", label: "التحويلات بين الفروع" },
   { key: "negative-stock", label: "المخزون السالب" },
+  { key: "expiring-batches", label: "دفعات هتنتهي صلاحيتها" },
   { key: "drivers", label: "أداء السائقين" },
   { key: "delivery-service", label: "خدمة الدليفري" },
   { key: "peak-hours", label: "ساعات الذروة" },
@@ -226,6 +232,7 @@ export function OperationalReportsPage() {
       {tab === "stock-card" && <StockCardTab />}
       {tab === "transfers" && <TransfersTab />}
       {tab === "negative-stock" && <NegativeStockTab />}
+      {tab === "expiring-batches" && <ExpiringBatchesTab />}
       {tab === "inventory-comparison" && canSeeBranchHealth && <InventoryComparisonTab />}
       {tab === "purchase-orders" && canSeeProcurement && <PurchaseOrdersTab />}
       {tab === "purchase-receipts" && canSeeProcurement && <PurchaseReceiptsTab />}
@@ -759,6 +766,52 @@ function NegativeStockTab() {
                   <TD>{r.branchName}</TD>
                   <TD className="font-semibold text-red-600">{fmt(r.quantity)} {r.unit}</TD>
                   <TD>{r.negativeStockPolicy}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function ExpiringBatchesTab() {
+  const [branchId, setBranchId] = useState("");
+  const [days, setDays] = useState("7");
+  const branchesQuery = useBranches();
+  const query = useQuery({
+    queryKey: ["reports", "expiring-batches", branchId, days],
+    queryFn: () => apiRequest<ExpiringBatchRow[]>(`/reports/expiring-batches?days=${days}${branchId ? `&branchId=${branchId}` : ""}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3">
+        <CardTitle>دفعات هتنتهي صلاحيتها</CardTitle>
+        <div className="flex items-end gap-3">
+          <Field label="خلال كام يوم">
+            <Input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} className="w-20" />
+          </Field>
+          <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />
+        </div>
+      </CardHeader>
+      <CardBody>
+        {query.isLoading && <p className="text-sm text-slate-400">بيتحمّل...</p>}
+        {query.data && query.data.length === 0 && <EmptyState>مفيش دفعات هتنتهي صلاحيتها قريب</EmptyState>}
+        {query.data && query.data.length > 0 && (
+          <Table>
+            <THead>
+              <TR><TH>رقم الدفعة</TH><TH>الصنف</TH><TH>الفرع</TH><TH>المتبقي</TH><TH>الصلاحية</TH></TR>
+            </THead>
+            <TBody>
+              {query.data.map((r) => (
+                <TR key={r.id}>
+                  <TD className="font-mono text-xs">{r.batchNumber}</TD>
+                  <TD>{r.itemName}</TD>
+                  <TD>{r.branchName}</TD>
+                  <TD>{fmt(r.remainingQuantity)} {r.unit}</TD>
+                  <TD className="font-semibold text-amber-600">{r.expiryDate}</TD>
                 </TR>
               ))}
             </TBody>

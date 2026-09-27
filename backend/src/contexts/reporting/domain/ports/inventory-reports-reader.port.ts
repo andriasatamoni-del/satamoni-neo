@@ -71,15 +71,27 @@ export interface InventoryComparisonRow {
   quantity: number;
 }
 
-// قراءة عبر Inventory/Branches مباشرة. قرار نطاق موثّق: مفيش تقرير "دفعات هتنتهي صلاحيتها قريب"
-// (expiring-batches بالريبو القديم) هنا - neo لسه معندوش تتبّع دفعات/batches خالص (راجع BATCH-1 في
-// قايمة الفجوات المتبقية)، فمفيش تاريخ صلاحية يتقارن بيه أصلًا
+export interface ExpiringBatchRow {
+  id: string;
+  batchNumber: string;
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  branchId: string;
+  branchName: string;
+  remainingQuantity: number;
+  expiryDate: string;
+}
+
+// قراءة عبر Inventory/Branches مباشرة. تقرير "دفعات هتنتهي صلاحيتها قريب" (expiring-batches) بقى متاح
+// دلوقتي بعد BATCH-1 (inventory_batches)
 export interface InventoryReportsReaderPort {
   getValuation(input: { branchId: string | null }): Promise<InventoryValuationReport>;
   getStockCard(input: { branchId: string; inventoryItemId: string; from?: string; to?: string }): Promise<StockCardRow[]>;
   getTransfers(input: { branchId: string | null; from: string; to: string }): Promise<TransferReportRow[]>;
   getNegativeStock(input: { branchId: string | null }): Promise<NegativeStockRow[]>;
   getInventoryComparison(input: { inventoryItemId: string | null }): Promise<InventoryComparisonRow[]>;
+  getExpiringBatches(input: { days: number; branchId: string | null }): Promise<ExpiringBatchRow[]>;
 }
 
 export const INVENTORY_REPORTS_READER = Symbol("INVENTORY_REPORTS_READER");

@@ -133,3 +133,21 @@ export class TransferRequestNotFoundError extends DomainError {
     super("طلب التحويل ده مش موجود");
   }
 }
+
+export class InventoryBatchNotFoundError extends DomainError {
+  constructor() {
+    super("الدفعة دي مش موجودة");
+  }
+}
+
+export class InsufficientBatchQuantityError extends DomainError {
+  constructor() {
+    super("الكمية المطلوبة أكبر من المتبقي في الدفعة");
+  }
+}
+
+export class InventoryBatchNotActiveError extends DomainError {
+  constructor() {
+    super("الدفعة دي مش نشطة (خلصت أو انتهت صلاحيتها بالفعل)");
+  }
+}
