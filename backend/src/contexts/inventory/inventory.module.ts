@@ -33,6 +33,9 @@ import { GetStockThresholdHandler } from "./application/queries/get-stock-thresh
 import { ListLowStockHandler } from "./application/queries/list-low-stock.handler";
 import { ListTransferRequestsHandler } from "./application/queries/list-transfer-requests.handler";
 import { ListInventoryBatchesHandler } from "./application/queries/list-inventory-batches.handler";
+import { GetRequisitionSuggestionHandler } from "./application/queries/get-requisition-suggestion.handler";
+import { REQUISITION_SUGGESTION_READER } from "./domain/ports/requisition-suggestion-reader.port";
+import { KyselyRequisitionSuggestionReader } from "./infrastructure/persistence/kysely-requisition-suggestion.reader";
 import { InventoryController } from "./api/inventory.controller";
 
 @Module({
@@ -45,6 +48,8 @@ import { InventoryController } from "./api/inventory.controller";
     { provide: BRANCH_STOCK_THRESHOLD_REPOSITORY, useClass: KyselyBranchStockThresholdRepository },
     { provide: TRANSFER_REQUEST_REPOSITORY, useClass: KyselyTransferRequestRepository },
     { provide: INVENTORY_BATCH_REPOSITORY, useClass: KyselyInventoryBatchRepository },
+    { provide: REQUISITION_SUGGESTION_READER, useClass: KyselyRequisitionSuggestionReader },
+    GetRequisitionSuggestionHandler,
     RegisterInventoryItemHandler,
     RecordStockMovementHandler,
     RegisterStocktakeHandler,

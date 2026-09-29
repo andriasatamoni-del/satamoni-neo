@@ -83,6 +83,24 @@ interface TransferRequest {
   lines: TransferRequestLine[];
 }
 
+interface RequisitionSuggestion {
+  branchId: string;
+  targetDate: string;
+  coverageDays: number;
+  lines: {
+    inventoryItemId: string;
+    name: string;
+    unit: string;
+    currentStock: number;
+    avgWeekdayConsumption: number;
+    expectedConsumption: number;
+    target: number;
+    pendingPipelineQuantity: number;
+    inTransitQuantity: number;
+    suggestedQuantity: number;
+  }[];
+}
+
 interface InventoryBatch {
   id: string;
   batchNumber: string;
@@ -318,6 +336,32 @@ export function InventoryPage() {
     },
     onError: (err) => setTransferError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
+
+  // REQ-1: اقتراح الطلبية - معاينة بس، المدير بيراجع الكميات وبعدين ينقلها لفورم طلب التحويل
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [suggestionForm, setSuggestionForm] = useState({ branchId: "", targetDate: tomorrow, nextReplenishmentDate: "" });
+  const [suggestionRequest, setSuggestionRequest] = useState<typeof suggestionForm | null>(null);
+  const suggestionQuery = useQuery({
+    queryKey: ["inventory", "requisition-suggestion", suggestionRequest],
+    queryFn: () => {
+      const params = new URLSearchParams({ branchId: suggestionRequest!.branchId, targetDate: suggestionRequest!.targetDate });
+      if (suggestionRequest!.nextReplenishmentDate) params.set("nextReplenishmentDate", suggestionRequest!.nextReplenishmentDate);
+      return apiRequest<RequisitionSuggestion>(`/inventory/requisition-suggestion?${params.toString()}`);
+    },
+    enabled: suggestionRequest !== null,
+  });
+  function applySuggestionToTransferForm() {
+    const lines = (suggestionQuery.data?.lines ?? [])
+      .filter((l) => l.suggestedQuantity > 0)
+      .map((l) => ({ inventoryItemId: l.inventoryItemId, requestedQuantity: String(l.suggestedQuantity) }));
+    if (lines.length === 0) return;
+    setTransferLines(lines);
+    setTransferForm((prev) => ({
+      ...prev,
+      toBranchId: suggestionRequest?.branchId ?? prev.toBranchId,
+      requiredDate: suggestionRequest?.targetDate ?? prev.requiredDate,
+    }));
+  }
 
   const [transferActionError, setTransferActionError] = useState<string | null>(null);
   const [transferCancelReasons, setTransferCancelReasons] = useState<Record<string, string>>({});
@@ -686,6 +730,81 @@ export function InventoryPage() {
 
       {tab === "transfers" && (
         <div className="mt-6 space-y-6">
+          <Card>
+            <CardHeader><CardTitle>اقتراح الطلبية</CardTitle></CardHeader>
+            <CardBody>
+              <p className="mb-4 text-sm text-slate-600">
+                مبني على استهلاك نفس يوم الأسبوع في آخر 8 أسابيع + الحد الأدنى للمخزون، ومخصوم منه الرصيد الحالي وأي كمية مطلوبة أو في الطريق.
+                بيظهر بس للأصناف اللي ليها حدود مخزون مضبوطة للفرع.
+              </p>
+              <form
+                onSubmit={(e: FormEvent) => { e.preventDefault(); setSuggestionRequest({ ...suggestionForm }); }}
+                className="grid grid-cols-1 gap-4 sm:grid-cols-4"
+              >
+                <Field label="الفرع">
+                  <Select required value={suggestionForm.branchId} onChange={(e) => setSuggestionForm({ ...suggestionForm, branchId: e.target.value })}>
+                    <option value="">اختر فرع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="الطلبية ليوم">
+                  <Input required type="date" value={suggestionForm.targetDate} onChange={(e) => setSuggestionForm({ ...suggestionForm, targetDate: e.target.value })} />
+                </Field>
+                <Field label="التزويد الجاي (اختياري - لتغطية كام يوم)">
+                  <Input type="date" value={suggestionForm.nextReplenishmentDate} onChange={(e) => setSuggestionForm({ ...suggestionForm, nextReplenishmentDate: e.target.value })} />
+                </Field>
+                <div className="flex items-end"><Button type="submit">احسب الاقتراح</Button></div>
+              </form>
+
+              {suggestionQuery.error && (
+                <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                  {suggestionQuery.error instanceof Error ? suggestionQuery.error.message : "حصل خطأ"}
+                </p>
+              )}
+              {suggestionQuery.data && (
+                <div className="mt-4" data-testid="requisition-suggestion">
+                  {suggestionQuery.data.lines.length === 0 ? (
+                    <EmptyState>مفيش أصناف ليها حدود مخزون مضبوطة للفرع ده - اضبطها من تبويب "حدود المخزون والتنبيهات"</EmptyState>
+                  ) : (
+                    <>
+                      <Table>
+                        <THead>
+                          <TR>
+                            <TH>الصنف</TH><TH>الرصيد</TH><TH>متوسط الاستهلاك</TH><TH>المتوقع ({suggestionQuery.data.coverageDays} يوم)</TH>
+                            <TH>الهدف</TH><TH>مطلوب قبل كده</TH><TH>في الطريق</TH><TH>المقترح</TH>
+                          </TR>
+                        </THead>
+                        <TBody>
+                          {suggestionQuery.data.lines.map((l) => (
+                            <TR key={l.inventoryItemId}>
+                              <TD className="font-semibold text-slate-900">{l.name} ({l.unit})</TD>
+                              <TD>{l.currentStock}</TD>
+                              <TD>{l.avgWeekdayConsumption}</TD>
+                              <TD>{l.expectedConsumption}</TD>
+                              <TD>{l.target}</TD>
+                              <TD>{l.pendingPipelineQuantity}</TD>
+                              <TD>{l.inTransitQuantity}</TD>
+                              <TD className="font-bold text-slate-900">{l.suggestedQuantity}</TD>
+                            </TR>
+                          ))}
+                        </TBody>
+                      </Table>
+                      <div className="mt-3">
+                        <Button
+                          variant="secondary"
+                          onClick={applySuggestionToTransferForm}
+                          disabled={!suggestionQuery.data.lines.some((l) => l.suggestedQuantity > 0)}
+                        >
+                          انقل الاقتراح لطلب التحويل تحت
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle>طلب تحويل جديد</CardTitle></CardHeader>
             <CardBody>

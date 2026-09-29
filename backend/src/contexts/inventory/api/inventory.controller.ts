@@ -20,6 +20,8 @@ import { CancelTransferRequestHandler } from "../application/commands/cancel-tra
 import { ListTransferRequestsHandler } from "../application/queries/list-transfer-requests.handler";
 import { ListInventoryBatchesHandler } from "../application/queries/list-inventory-batches.handler";
 import { WriteOffInventoryBatchHandler } from "../application/commands/write-off-inventory-batch.handler";
+import { GetRequisitionSuggestionHandler } from "../application/queries/get-requisition-suggestion.handler";
+import { GetRequisitionSuggestionDto } from "./dto/get-requisition-suggestion.dto";
 import { RegisterInventoryItemDto } from "./dto/register-inventory-item.dto";
 import { RecordStockMovementDto } from "./dto/record-stock-movement.dto";
 import { RegisterStocktakeDto } from "./dto/register-stocktake.dto";
@@ -67,7 +69,8 @@ export class InventoryController {
     private readonly cancelTransferRequest: CancelTransferRequestHandler,
     private readonly listTransferRequests: ListTransferRequestsHandler,
     private readonly listInventoryBatches: ListInventoryBatchesHandler,
-    private readonly writeOffInventoryBatch: WriteOffInventoryBatchHandler
+    private readonly writeOffInventoryBatch: WriteOffInventoryBatchHandler,
+    private readonly getRequisitionSuggestion: GetRequisitionSuggestionHandler
   ) {}
 
   @Get("items")
@@ -123,6 +126,12 @@ export class InventoryController {
   @RequirePermission("inventory.items.view", "inventory.items.manage")
   async lowStock(@Query("branchId") branchId?: string) {
     return this.listLowStock.execute(branchId);
+  }
+
+  @Get("requisition-suggestion")
+  @RequirePermission("inventory.items.view", "inventory.movements.record")
+  async requisitionSuggestion(@Query() dto: GetRequisitionSuggestionDto) {
+    return this.getRequisitionSuggestion.execute(dto);
   }
 
   @Get("stocktakes/board")
