@@ -4,7 +4,7 @@ import {
   WHATSAPP_PENDING_ORDER_REPOSITORY,
   type WhatsappPendingOrderRepositoryPort,
 } from "../../domain/ports/whatsapp-pending-order-repository.port";
-import { WhatsappPendingOrderNotFoundError } from "../../domain/errors";
+import { WhatsappPendingOrderNotFoundError, WhatsappPendingOrderNotPendingError } from "../../domain/errors";
 import { RegisterOrderHandler } from "../../../orders/application/commands/register-order.handler";
 
 export interface ConfirmPendingOrderCommand {
@@ -27,13 +27,15 @@ export class ConfirmPendingOrderHandler {
     const pendingOrder = await this.pendingOrders.findById(command.pendingOrderId);
     if (!pendingOrder) throw new WhatsappPendingOrderNotFoundError();
 
+    if (pendingOrder.status !== "PENDING" || !pendingOrder.branchId) throw new WhatsappPendingOrderNotPendingError();
+
     const order = await this.registerOrder.execute({
       branchId: pendingOrder.branchId,
       orderType: pendingOrder.orderType,
       customerName: pendingOrder.customerName,
       customerPhone: pendingOrder.customerPhone,
       addressDetails: pendingOrder.addressDetails,
-      items: pendingOrder.lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+      items: pendingOrder.lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, modifierIds: l.modifierIds })),
       createdBy: command.reviewedBy,
       paymentMethodId: command.paymentMethodId,
     });

@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 
+// نفس تطبيق Meta بيوصّل رسايل واتساب وماسنجر وإنستجرام - phone هنا هو رقم واتساب أو معرّف
+// المستخدم (PSID/IGSID) على ماسنجر/إنستجرام، وunique لكل قناة
+export const CONVERSATION_CHANNELS = ["whatsapp", "messenger", "instagram"] as const;
+export type ConversationChannel = (typeof CONVERSATION_CHANNELS)[number];
+
 export interface WhatsappConversationProps {
+  channel: ConversationChannel;
   phone: string;
   customerName: string | null;
   lastMessageAt: Date | null;
   createdAt: Date;
 }
 
-// WhatsappConversation - نفس مفهوم whatsapp_conversations في الريبو القديم: صف واحد بس لكل رقم تليفون
+// WhatsappConversation - نفس مفهوم whatsapp_conversations في الريبو القديم: صف واحد بس لكل (قناة، رقم)
 // (thread واحد مستمر). أجريجيت بسيط عمدًا - مفيش قواعد عمل معقدة، مجرد "آخر رسالة امتى" + اسم العميل
 // لو اتعرف من المحادثة. الرسائل نفسها (WhatsappMessage) مش entities تابعة هنا - سجل وقائع append-only
 // بحت (زي AuditLogService بالظبط)، مش محتاجة تتحمّل مع الأجريجيت كل مرة عشان نغيّر lastMessageAt بس
@@ -17,8 +23,9 @@ export class WhatsappConversation {
     private props: WhatsappConversationProps
   ) {}
 
-  static register(input: { phone: string; customerName?: string | null }): WhatsappConversation {
+  static register(input: { channel?: ConversationChannel; phone: string; customerName?: string | null }): WhatsappConversation {
     return new WhatsappConversation(randomUUID(), {
+      channel: input.channel ?? "whatsapp",
       phone: input.phone,
       customerName: input.customerName ?? null,
       lastMessageAt: null,
@@ -35,6 +42,7 @@ export class WhatsappConversation {
     if (customerName) this.props.customerName = customerName;
   }
 
+  get channel(): ConversationChannel { return this.props.channel; }
   get phone(): string { return this.props.phone; }
   get customerName(): string | null { return this.props.customerName; }
   get lastMessageAt(): Date | null { return this.props.lastMessageAt; }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { UnknownComplaintCategoryError, UnknownComplaintStatusError } from "./errors";
 
-export const CHANNELS = ["phone_followup", "whatsapp"] as const;
+export const CHANNELS = ["phone_followup", "whatsapp", "messenger", "instagram"] as const;
 export type ComplaintChannel = (typeof CHANNELS)[number];
 
 export const CATEGORIES = ["late_order", "wrong_item", "quality", "other"] as const;

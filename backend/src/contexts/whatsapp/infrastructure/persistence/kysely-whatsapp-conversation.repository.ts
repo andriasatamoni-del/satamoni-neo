@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
-import { WhatsappConversation } from "../../domain/whatsapp-conversation.aggregate";
+import { WhatsappConversation, type ConversationChannel } from "../../domain/whatsapp-conversation.aggregate";
 import type { WhatsappConversationRepositoryPort } from "../../domain/ports/whatsapp-conversation-repository.port";
 import type { WhatsappConversationsTable } from "./whatsapp.schema";
 
@@ -15,6 +15,7 @@ export class KyselyWhatsappConversationRepository implements WhatsappConversatio
       .insertInto("whatsapp_conversations")
       .values({
         id: conversation.id,
+        channel: conversation.channel,
         phone: conversation.phone,
         customer_name: conversation.customerName,
         last_message_at: conversation.lastMessageAt,
@@ -29,8 +30,13 @@ export class KyselyWhatsappConversationRepository implements WhatsappConversatio
     return row ? this.toDomain(row) : null;
   }
 
-  async findByPhone(phone: string): Promise<WhatsappConversation | null> {
-    const row = await this.db.selectFrom("whatsapp_conversations").selectAll().where("phone", "=", phone).executeTakeFirst();
+  async findByChannelAndPhone(channel: ConversationChannel, phone: string): Promise<WhatsappConversation | null> {
+    const row = await this.db
+      .selectFrom("whatsapp_conversations")
+      .selectAll()
+      .where("channel", "=", channel)
+      .where("phone", "=", phone)
+      .executeTakeFirst();
     return row ? this.toDomain(row) : null;
   }
 
@@ -41,6 +47,7 @@ export class KyselyWhatsappConversationRepository implements WhatsappConversatio
 
   private toDomain(row: Selectable<WhatsappConversationsTable>): WhatsappConversation {
     return WhatsappConversation.reconstitute(row.id, {
+      channel: row.channel as ConversationChannel,
       phone: row.phone,
       customerName: row.customer_name,
       lastMessageAt: row.last_message_at,

@@ -3,6 +3,7 @@ import type { WhatsappPendingOrder } from "../whatsapp-pending-order.aggregate";
 export interface WhatsappPendingOrderRepositoryPort {
   save(order: WhatsappPendingOrder): Promise<void>;
   findById(id: string): Promise<WhatsappPendingOrder | null>;
+  findDraftByConversation(conversationId: string): Promise<WhatsappPendingOrder | null>;
   list(filter?: { status?: string }): Promise<WhatsappPendingOrder[]>;
 }
 

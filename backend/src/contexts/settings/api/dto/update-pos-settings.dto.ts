@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, Min } from "class-validator";
+import { IsBoolean, IsNumber, IsOptional, Min } from "class-validator";
 
 export class UpdatePosSettingsDto {
   @IsOptional() @IsNumber() @Min(0) shiftVarianceAckThresholdEgp?: number;
@@ -6,4 +6,5 @@ export class UpdatePosSettingsDto {
   @IsOptional() @IsNumber() @Min(0) driverHourlyRateEgp?: number;
   @IsOptional() @IsNumber() @Min(0) paymentAdjustmentHighThresholdEgp?: number;
   @IsOptional() @IsNumber() @Min(0) productionVarianceAlertPercent?: number;
+  @IsOptional() @IsBoolean() whatsappBotEnabled?: boolean;
 }

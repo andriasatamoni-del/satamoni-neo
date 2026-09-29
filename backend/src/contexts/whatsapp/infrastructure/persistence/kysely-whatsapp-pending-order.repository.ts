@@ -32,15 +32,23 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
         })
         .onConflict((oc) =>
           oc.column("id").doUpdateSet({
+            customer_name: order.customerName,
+            order_type: order.orderType,
+            branch_id: order.branchId,
+            address_details: order.addressDetails,
+            total: order.total,
             status: order.status,
             rejection_reason: order.rejectionReason,
             reviewed_by: order.reviewedBy,
             reviewed_at: order.reviewedAt,
             confirmed_order_id: order.confirmedOrderId,
+            updated_at: new Date(),
           })
         )
         .execute();
 
+      // المسودة بتتعدّل بالكامل كل مرة (البوت بيبعت قايمة الأصناف كاملة) - أبسط وأصح من diff سطر بسطر
+      await trx.deleteFrom("whatsapp_pending_order_lines").where("pending_order_id", "=", order.id).execute();
       for (const line of order.lines) {
         await trx
           .insertInto("whatsapp_pending_order_lines")
@@ -51,8 +59,8 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
             item_name: line.itemName,
             quantity: line.quantity,
             unit_price: line.unitPrice,
+            modifier_ids: JSON.stringify(line.modifierIds) as unknown as string[],
           })
-          .onConflict((oc) => oc.column("id").doNothing())
           .execute();
       }
     });
@@ -64,9 +72,22 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
     return this.toDomain(row, await this.loadLines(id));
   }
 
+  async findDraftByConversation(conversationId: string): Promise<WhatsappPendingOrder | null> {
+    const row = await this.db
+      .selectFrom("whatsapp_pending_orders")
+      .selectAll()
+      .where("conversation_id", "=", conversationId)
+      .where("status", "=", "DRAFT")
+      .executeTakeFirst();
+    if (!row) return null;
+    return this.toDomain(row, await this.loadLines(row.id));
+  }
+
+  // المسودات (اللي البوت لسه بيجمّعها) مش بتظهر لطاقم المراجعة إلا لو اتطلبت صراحة بالحالة
   async list(filter?: { status?: string }): Promise<WhatsappPendingOrder[]> {
     let query = this.db.selectFrom("whatsapp_pending_orders").selectAll();
     if (filter?.status) query = query.where("status", "=", filter.status);
+    else query = query.where("status", "<>", "DRAFT");
     const rows = await query.orderBy("created_at", "desc").execute();
     const orders: WhatsappPendingOrder[] = [];
     for (const row of rows) orders.push(this.toDomain(row, await this.loadLines(row.id)));
@@ -94,6 +115,7 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
         itemName: l.item_name,
         quantity: Number(l.quantity),
         unitPrice: Number(l.unit_price),
+        modifierIds: Array.isArray(l.modifier_ids) ? l.modifier_ids : [],
       })),
       total: Number(row.total),
       status: row.status as WhatsappPendingOrderStatus,

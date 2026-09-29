@@ -20,7 +20,10 @@ export interface RecordWhatsappMessageInput {
 
 export interface WhatsappMessagePort {
   record(input: RecordWhatsappMessageInput): Promise<WhatsappMessageRecord>;
+  existsByWaMessageId(waMessageId: string): Promise<boolean>;
   listByConversation(conversationId: string): Promise<WhatsappMessageRecord[]>;
+  // آخر limit رسالة بالترتيب الزمني (الأقدم الأول) - سياق المحادثة للبوت
+  listRecentByConversation(conversationId: string, limit: number): Promise<WhatsappMessageRecord[]>;
 }
 
 export const WHATSAPP_MESSAGE_PORT = Symbol("WHATSAPP_MESSAGE_PORT");

@@ -29,6 +29,21 @@ services:
       - key: FRONTEND_ORIGIN
         sync: false # حدّده يدوي برابط الفرونت إند الفعلي بعد ما ينتشر (راجع DEPLOYMENT.md) - من
         # غيره الـCORS بيرجع لـ localhost:5173 بس (مفيد وقت التطوير، مش كافي في production)
+      # بوت واتساب/ماسنجر/إنستجرام - كلهم اختياريين، راجع backend/docs/WHATSAPP-BOT.md
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_STAFF_NOTIFY_NUMBER
+        sync: false
 
   - type: web
     name: satamoni-neo-frontend

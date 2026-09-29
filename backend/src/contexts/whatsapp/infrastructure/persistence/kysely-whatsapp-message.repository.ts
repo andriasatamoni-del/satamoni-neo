@@ -34,6 +34,34 @@ export class KyselyWhatsappMessageRepository implements WhatsappMessagePort {
     };
   }
 
+  async existsByWaMessageId(waMessageId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("whatsapp_messages")
+      .select("id")
+      .where("wa_message_id", "=", waMessageId)
+      .executeTakeFirst();
+    return Boolean(row);
+  }
+
+  async listRecentByConversation(conversationId: string, limit: number): Promise<WhatsappMessageRecord[]> {
+    const rows = await this.db
+      .selectFrom("whatsapp_messages")
+      .selectAll()
+      .where("conversation_id", "=", conversationId)
+      .orderBy("created_at", "desc")
+      .limit(limit)
+      .execute();
+    return rows.reverse().map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      direction: row.direction as "in" | "out",
+      body: row.body,
+      waMessageId: row.wa_message_id,
+      sentBy: row.sent_by,
+      createdAt: row.created_at,
+    }));
+  }
+
   async listByConversation(conversationId: string): Promise<WhatsappMessageRecord[]> {
     const rows = await this.db
       .selectFrom("whatsapp_messages")

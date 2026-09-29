@@ -13,11 +13,12 @@ interface PosSettings {
   driverHourlyRateEgp: number;
   paymentAdjustmentHighThresholdEgp: number;
   productionVarianceAlertPercent: number;
+  whatsappBotEnabled: boolean;
   updatedBy: string | null;
   updatedAt: string;
 }
 
-const FIELDS: { key: keyof Omit<PosSettings, "updatedBy" | "updatedAt">; label: string; hint: string; suffix: string }[] = [
+const FIELDS: { key: keyof Omit<PosSettings, "updatedBy" | "updatedAt" | "whatsappBotEnabled">; label: string; hint: string; suffix: string }[] = [
   {
     key: "shiftVarianceAckThresholdEgp",
     label: "حد اعتماد فرق كاش الشيفت",
@@ -57,6 +58,7 @@ export function PosSettingsPage() {
 
   const settingsQuery = useQuery({ queryKey: ["pos-settings"], queryFn: () => apiRequest<PosSettings>("/pos-settings") });
   const [form, setForm] = useState<Record<string, string>>({});
+  const [botEnabled, setBotEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -65,6 +67,7 @@ export function PosSettingsPage() {
       setForm(
         Object.fromEntries(FIELDS.map((f) => [f.key, String(settingsQuery.data![f.key])]))
       );
+      setBotEnabled(settingsQuery.data.whatsappBotEnabled);
     }
   }, [settingsQuery.data]);
 
@@ -72,7 +75,7 @@ export function PosSettingsPage() {
     mutationFn: () =>
       apiRequest("/pos-settings", {
         method: "PATCH",
-        body: Object.fromEntries(FIELDS.map((f) => [f.key, Number(form[f.key])])),
+        body: { ...Object.fromEntries(FIELDS.map((f) => [f.key, Number(form[f.key])])), whatsappBotEnabled: botEnabled },
       }),
     onSuccess: () => {
       setError(null);
@@ -114,6 +117,26 @@ export function PosSettingsPage() {
               </div>
             </div>
           ))}
+
+          <div className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-5 sm:grid-cols-[1fr_160px] sm:items-start">
+            <Field label="بوت الرد الآلي (واتساب/ماسنجر/إنستجرام)">
+              <p className="text-xs text-slate-400">
+                بيرد على العملاء من المنيو الحقيقي، يجمّع الأوردر كمسودة ويبعته لشاشة واتساب للمراجعة، ويسجّل الشكاوى.
+                مش بيشتغل غير لو مفتاح Gemini (GEMINI_API_KEY) متضاف في السيرفر.
+              </p>
+            </Field>
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                disabled={!canManage}
+                checked={botEnabled}
+                onChange={(e) => setBotEnabled(e.target.checked)}
+                data-testid="bot-enabled-toggle"
+              />
+              {botEnabled ? "شغّال" : "مقفول"}
+            </label>
+          </div>
 
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
           {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">اتحفظ بنجاح</p>}

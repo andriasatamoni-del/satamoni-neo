@@ -8,6 +8,7 @@ import { RegisterComplaintFromConversationHandler } from "../application/command
 import { ListConversationsHandler } from "../application/queries/list-conversations.handler";
 import { GetConversationHandler } from "../application/queries/get-conversation.handler";
 import { ListPendingOrdersHandler } from "../application/queries/list-pending-orders.handler";
+import { WhatsappBotService } from "../application/bot/whatsapp-bot.service";
 import { SendReplyDto } from "./dto/send-reply.dto";
 import { RegisterPendingOrderDto } from "./dto/register-pending-order.dto";
 import { ConfirmPendingOrderDto } from "./dto/confirm-pending-order.dto";
@@ -34,8 +35,16 @@ export class WhatsappController {
     private readonly registerComplaintFromConversation: RegisterComplaintFromConversationHandler,
     private readonly listConversations: ListConversationsHandler,
     private readonly getConversation: GetConversationHandler,
-    private readonly listPendingOrders: ListPendingOrdersHandler
+    private readonly listPendingOrders: ListPendingOrdersHandler,
+    private readonly bot: WhatsappBotService
   ) {}
+
+  // حالة البوت للواجهة: مفعّل من الإعدادات؟ مفتاح Gemini متضاف؟ الإرسال لكل قناة متظبط؟
+  @Get("bot-status")
+  @RequirePermission("whatsapp.view")
+  async botStatus() {
+    return this.bot.status();
+  }
 
   @Get("conversations")
   @RequirePermission("whatsapp.view")
@@ -53,7 +62,8 @@ export class WhatsappController {
   @Post("conversations/:id/reply")
   @RequirePermission("whatsapp.reply")
   async reply(@Param("id") id: string, @Body() dto: SendReplyDto, @Req() req: Request & { user: AuthenticatedUser }) {
-    return toPublicMessage(await this.sendReply.execute({ conversationId: id, body: dto.body, sentBy: req.user.id }));
+    const { message, delivery } = await this.sendReply.execute({ conversationId: id, body: dto.body, sentBy: req.user.id });
+    return { ...toPublicMessage(message), delivery: delivery.sent ? "sent" : delivery.reason };
   }
 
   @Post("conversations/:id/pending-orders")
@@ -101,6 +111,7 @@ export class WhatsappController {
 function toPublicConversation(conversation: WhatsappConversation) {
   return {
     id: conversation.id,
+    channel: conversation.channel,
     phone: conversation.phone,
     customerName: conversation.customerName,
     lastMessageAt: conversation.lastMessageAt,
@@ -127,7 +138,9 @@ function toPublicPendingOrder(order: WhatsappPendingOrder) {
     orderType: order.orderType,
     branchId: order.branchId,
     addressDetails: order.addressDetails,
-    lines: order.lines.map((l) => ({ variantId: l.variantId, itemName: l.itemName, quantity: l.quantity, unitPrice: l.unitPrice })),
+    lines: order.lines.map((l) => ({
+      variantId: l.variantId, itemName: l.itemName, quantity: l.quantity, unitPrice: l.unitPrice, modifierIds: l.modifierIds,
+    })),
     total: order.total,
     status: order.status,
     rejectionReason: order.rejectionReason,

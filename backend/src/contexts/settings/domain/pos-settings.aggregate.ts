@@ -8,6 +8,9 @@ export interface PosSettingsProps {
   driverHourlyRateEgp: number;
   paymentAdjustmentHighThresholdEgp: number;
   productionVarianceAlertPercent: number;
+  // بوت الرد الآلي على واتساب/ماسنجر/إنستجرام - مقفول افتراضيًا (نفس pos_settings.whatsapp_bot_enabled
+  // في الريبو القديم). حتى لو مفتوح، مش بيرد غير لو GEMINI_API_KEY متضاف
+  whatsappBotEnabled: boolean;
   updatedBy: string | null;
   updatedAt: Date;
 }
@@ -18,6 +21,7 @@ export const DEFAULT_POS_SETTINGS: PosSettingsProps = {
   driverHourlyRateEgp: 33,
   paymentAdjustmentHighThresholdEgp: 500,
   productionVarianceAlertPercent: 10,
+  whatsappBotEnabled: false,
   updatedBy: null,
   updatedAt: new Date(0),
 };
@@ -43,6 +47,7 @@ export class PosSettings {
       this.props.paymentAdjustmentHighThresholdEgp = input.paymentAdjustmentHighThresholdEgp;
     }
     if (input.productionVarianceAlertPercent !== undefined) this.props.productionVarianceAlertPercent = input.productionVarianceAlertPercent;
+    if (input.whatsappBotEnabled !== undefined) this.props.whatsappBotEnabled = input.whatsappBotEnabled;
     this.props.updatedBy = updatedBy;
     this.props.updatedAt = new Date();
   }
@@ -52,6 +57,7 @@ export class PosSettings {
   get driverHourlyRateEgp(): number { return this.props.driverHourlyRateEgp; }
   get paymentAdjustmentHighThresholdEgp(): number { return this.props.paymentAdjustmentHighThresholdEgp; }
   get productionVarianceAlertPercent(): number { return this.props.productionVarianceAlertPercent; }
+  get whatsappBotEnabled(): boolean { return this.props.whatsappBotEnabled; }
   get updatedBy(): string | null { return this.props.updatedBy; }
   get updatedAt(): Date { return this.props.updatedAt; }
 }

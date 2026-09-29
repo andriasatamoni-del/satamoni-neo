@@ -31,3 +31,21 @@ export class VariantNotFoundForPendingOrderError extends DomainError {
     super("حجم الصنف ده مش موجود");
   }
 }
+
+export class WhatsappPendingOrderNotDraftError extends DomainError {
+  constructor() {
+    super("الطلب ده مش مسودة - اتبعت للمراجعة بالفعل");
+  }
+}
+
+export class IncompletePendingOrderDraftError extends DomainError {
+  constructor(public readonly missing: string[]) {
+    super(`المسودة ناقصة: ${missing.join("، ")}`);
+  }
+}
+
+export class InvalidWebhookSignatureError extends DomainError {
+  constructor() {
+    super("توقيع الـwebhook مش صحيح");
+  }
+}

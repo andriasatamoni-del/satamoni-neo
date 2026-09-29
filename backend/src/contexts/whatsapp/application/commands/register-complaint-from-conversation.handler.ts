@@ -26,7 +26,7 @@ export class RegisterComplaintFromConversationHandler {
     if (!conversation) throw new WhatsappConversationNotFoundError();
 
     return this.registerComplaint.execute({
-      channel: "whatsapp",
+      channel: conversation.channel,
       customerPhone: conversation.phone,
       category: command.category,
       description: command.description,

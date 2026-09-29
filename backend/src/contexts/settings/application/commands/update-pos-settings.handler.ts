@@ -8,6 +8,7 @@ export interface UpdatePosSettingsCommand {
   driverHourlyRateEgp?: number;
   paymentAdjustmentHighThresholdEgp?: number;
   productionVarianceAlertPercent?: number;
+  whatsappBotEnabled?: boolean;
   updatedBy: string | null;
 }
 

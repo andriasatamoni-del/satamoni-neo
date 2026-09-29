@@ -7,6 +7,7 @@ export interface PosSettingsTable {
   driver_hourly_rate_egp: number;
   payment_adjustment_high_threshold_egp: number;
   production_variance_alert_percent: number;
+  whatsapp_bot_enabled: Generated<boolean>;
   updated_by: string | null;
   updated_at: Generated<Date>;
 }

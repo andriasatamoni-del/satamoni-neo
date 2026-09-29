@@ -44,6 +44,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
         driver_hourly_rate_egp: settings.driverHourlyRateEgp,
         payment_adjustment_high_threshold_egp: settings.paymentAdjustmentHighThresholdEgp,
         production_variance_alert_percent: settings.productionVarianceAlertPercent,
+        whatsapp_bot_enabled: settings.whatsappBotEnabled,
         updated_by: settings.updatedBy,
       })
       .onConflict((oc) =>
@@ -53,6 +54,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
           driver_hourly_rate_egp: settings.driverHourlyRateEgp,
           payment_adjustment_high_threshold_egp: settings.paymentAdjustmentHighThresholdEgp,
           production_variance_alert_percent: settings.productionVarianceAlertPercent,
+          whatsapp_bot_enabled: settings.whatsappBotEnabled,
           updated_by: settings.updatedBy,
           updated_at: new Date(),
         })
@@ -67,6 +69,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
       driverHourlyRateEgp: Number(row.driver_hourly_rate_egp),
       paymentAdjustmentHighThresholdEgp: Number(row.payment_adjustment_high_threshold_egp),
       productionVarianceAlertPercent: Number(row.production_variance_alert_percent),
+      whatsappBotEnabled: Boolean(row.whatsapp_bot_enabled),
       updatedBy: row.updated_by,
       updatedAt: row.updated_at,
     });

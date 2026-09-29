@@ -4,6 +4,15 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { CatalogModule } from "../catalog/catalog.module";
 import { OrdersModule } from "../orders/orders.module";
 import { CrmModule } from "../crm/crm.module";
+import { SettingsModule } from "../settings/settings.module";
+import { AI_CHAT_CLIENT } from "./domain/ports/ai-chat-client.port";
+import { OUTBOUND_MESSENGER } from "./domain/ports/outbound-messenger.port";
+import { BOT_KNOWLEDGE_READER } from "./domain/ports/bot-knowledge-reader.port";
+import { GeminiChatClient } from "./infrastructure/ai/gemini-chat.client";
+import { MetaOutboundMessenger } from "./infrastructure/messaging/meta-outbound.messenger";
+import { KyselyBotKnowledgeReader } from "./infrastructure/persistence/kysely-bot-knowledge.reader";
+import { WhatsappBotTools } from "./application/bot/bot-tools";
+import { WhatsappBotService } from "./application/bot/whatsapp-bot.service";
 import { WHATSAPP_CONVERSATION_REPOSITORY } from "./domain/ports/whatsapp-conversation-repository.port";
 import { WHATSAPP_MESSAGE_PORT } from "./domain/ports/whatsapp-message.port";
 import { WHATSAPP_PENDING_ORDER_REPOSITORY } from "./domain/ports/whatsapp-pending-order-repository.port";
@@ -23,12 +32,17 @@ import { WhatsappWebhookController } from "./api/whatsapp-webhook.controller";
 import { WhatsappController } from "./api/whatsapp.controller";
 
 @Module({
-  imports: [IdentityAccessModule, CatalogModule, OrdersModule, CrmModule],
+  imports: [IdentityAccessModule, CatalogModule, OrdersModule, CrmModule, SettingsModule],
   controllers: [WhatsappWebhookController, WhatsappController],
   providers: [
     { provide: WHATSAPP_CONVERSATION_REPOSITORY, useClass: KyselyWhatsappConversationRepository },
     { provide: WHATSAPP_MESSAGE_PORT, useClass: KyselyWhatsappMessageRepository },
     { provide: WHATSAPP_PENDING_ORDER_REPOSITORY, useClass: KyselyWhatsappPendingOrderRepository },
+    { provide: AI_CHAT_CLIENT, useClass: GeminiChatClient },
+    { provide: OUTBOUND_MESSENGER, useClass: MetaOutboundMessenger },
+    { provide: BOT_KNOWLEDGE_READER, useClass: KyselyBotKnowledgeReader },
+    WhatsappBotTools,
+    WhatsappBotService,
     ReceiveWhatsappMessageHandler,
     SendWhatsappReplyHandler,
     RegisterPendingOrderHandler,
@@ -39,6 +53,7 @@ import { WhatsappController } from "./api/whatsapp.controller";
     GetConversationHandler,
     ListPendingOrdersHandler,
   ],
+  exports: [OUTBOUND_MESSENGER],
 })
 export class WhatsappModule implements OnModuleInit {
   constructor(private readonly permissions: PermissionRegistry) {}

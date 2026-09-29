@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { KYSELY } from "../../../src/shared/database/database.module";
+import { signMeta, whatsappPayload } from "./meta-webhook.helpers";
 
 describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -15,7 +16,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ rawBody: true });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
@@ -63,12 +64,19 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     await app.close();
   });
 
-  test("POST /whatsapp/webhook - من غير أي مصادقة، بيسجّل محادثة+رسالة واردة", async () => {
+  test("POST /whatsapp/webhook - payload حقيقي من Meta بتوقيع صحيح بيسجّل محادثة+رسالة واردة", async () => {
+    const body = whatsappPayload({ from: "+201000000001", name: "عميل-واتساب-جست", text: "عايز أطلب بيتزا", id: "wamid.intake-1" });
     const res = await request(app.getHttpServer())
       .post("/whatsapp/webhook")
-      .send({ phone: "+201000000001", customerName: "عميل-واتساب-جست", body: "عايز أطلب بيتزا" });
-    expect(res.status).toBe(201);
-    conversationId = res.body.conversationId;
+      .set("Content-Type", "application/json")
+      .set("X-Hub-Signature-256", signMeta(body))
+      .send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.received).toBe(1);
+
+    const db = app.get(KYSELY);
+    const row = await sql<{ id: string }>`SELECT id FROM whatsapp_conversations WHERE channel = 'whatsapp' AND phone = '+201000000001'`.execute(db);
+    conversationId = row.rows[0].id;
   });
 
   test("GET /whatsapp/conversations و /conversations/:id - بيرجّعوا المحادثة والرسالة", async () => {

@@ -2,6 +2,7 @@ import type { Generated } from "kysely";
 
 export interface WhatsappConversationsTable {
   id: string;
+  channel: Generated<string>;
   phone: string;
   customer_name: string | null;
   last_message_at: Date | null;
@@ -24,7 +25,7 @@ export interface WhatsappPendingOrdersTable {
   customer_phone: string;
   customer_name: string | null;
   order_type: string;
-  branch_id: string;
+  branch_id: string | null;
   address_details: string | null;
   total: number;
   status: string;
@@ -33,6 +34,7 @@ export interface WhatsappPendingOrdersTable {
   reviewed_at: Date | null;
   confirmed_order_id: string | null;
   created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface WhatsappPendingOrderLinesTable {
@@ -42,4 +44,6 @@ export interface WhatsappPendingOrderLinesTable {
   item_name: string;
   quantity: number;
   unit_price: number;
+  // jsonb: مصفوفة uuid - pg بيرجّعها parsed، وبنكتبها كـJSON.stringify
+  modifier_ids: Generated<string[]>;
 }

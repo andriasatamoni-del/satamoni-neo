@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { WhatsappConversation } from "../../domain/whatsapp-conversation.aggregate";
+import { WhatsappConversation, type ConversationChannel } from "../../domain/whatsapp-conversation.aggregate";
 import {
   WHATSAPP_CONVERSATION_REPOSITORY,
   type WhatsappConversationRepositoryPort,
@@ -7,16 +7,23 @@ import {
 import { WHATSAPP_MESSAGE_PORT, type WhatsappMessagePort } from "../../domain/ports/whatsapp-message.port";
 
 export interface ReceiveWhatsappMessageCommand {
+  channel?: ConversationChannel;
   phone: string;
   customerName?: string | null;
   body: string;
   waMessageId?: string | null;
 }
 
-// نقطة الدخول الوحيدة للرسائل الواردة - سواء جاية من webhook حقيقي لاحقًا (Meta Cloud API، بعد التحقق
-// من التوقيع X-Hub-Signature-256 بمقارنة مع WHATSAPP_APP_SECRET) أو من أي مصدر تجريبي دلوقتي. محادثة
-// واحدة بس لكل رقم (find-or-create) - نفس فلسفة whatsapp_conversations في الريبو القديم. مفيش رد آلي
-// هنا خالص (البوت بذكاء اصطناعي مؤجّل لحد ما ANTHROPIC_API_KEY يتوفر) - الرسالة بس بتتسجل لمراجعة بشرية
+export interface ReceiveWhatsappMessageResult {
+  conversation: WhatsappConversation;
+  isNewConversation: boolean;
+  // false لو نفس الرسالة (نفس waMessageId) وصلت قبل كده - Meta بتعيد الإرسال لو ماردّناش بسرعة
+  isNewMessage: boolean;
+}
+
+// نقطة الدخول الوحيدة للرسائل الواردة (webhook Meta بعد التحقق من التوقيع). محادثة واحدة بس لكل
+// (قناة، رقم) - نفس فلسفة whatsapp_conversations في الريبو القديم. الرد الآلي (لو البوت مفعّل) بيحصل
+// بعد كده في WhatsappBotService، مش هنا
 @Injectable()
 export class ReceiveWhatsappMessageHandler {
   constructor(
@@ -24,14 +31,20 @@ export class ReceiveWhatsappMessageHandler {
     @Inject(WHATSAPP_MESSAGE_PORT) private readonly messages: WhatsappMessagePort
   ) {}
 
-  async execute(command: ReceiveWhatsappMessageCommand): Promise<WhatsappConversation> {
-    let conversation = await this.conversations.findByPhone(command.phone);
+  async execute(command: ReceiveWhatsappMessageCommand): Promise<ReceiveWhatsappMessageResult> {
+    const channel = command.channel ?? "whatsapp";
+    let conversation = await this.conversations.findByChannelAndPhone(channel, command.phone);
+    const isNewConversation = !conversation;
     if (!conversation) {
-      conversation = WhatsappConversation.register({ phone: command.phone, customerName: command.customerName });
+      conversation = WhatsappConversation.register({ channel, phone: command.phone, customerName: command.customerName });
     }
+
+    if (command.waMessageId && (await this.messages.existsByWaMessageId(command.waMessageId))) {
+      return { conversation, isNewConversation: false, isNewMessage: false };
+    }
+
     conversation.touch(command.customerName);
     await this.conversations.save(conversation);
-
     await this.messages.record({
       conversationId: conversation.id,
       direction: "in",
@@ -39,6 +52,6 @@ export class ReceiveWhatsappMessageHandler {
       waMessageId: command.waMessageId,
     });
 
-    return conversation;
+    return { conversation, isNewConversation, isNewMessage: true };
   }
 }

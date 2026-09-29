@@ -9,7 +9,8 @@ import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
 
-interface Conversation { id: string; phone: string; customerName: string | null; lastMessageAt: string | null; createdAt: string; }
+interface Conversation { id: string; channel: "whatsapp" | "messenger" | "instagram"; phone: string; customerName: string | null; lastMessageAt: string | null; createdAt: string; }
+interface BotStatus { enabled: boolean; aiConfigured: boolean; whatsappSendConfigured: boolean; socialSendConfigured: boolean; }
 interface Message { id: string; direction: "in" | "out"; body: string; createdAt: string; }
 interface MenuItem { id: string; name: string; variants: { id: string; label: string; price: number }[]; }
 interface Branch { id: string; name: string; }
@@ -25,6 +26,7 @@ const TABS = [
   { key: "pending-orders", label: "الطلبات المعلّقة" },
 ];
 
+const CHANNEL_LABELS: Record<string, string> = { whatsapp: "واتساب", messenger: "ماسنجر", instagram: "إنستجرام" };
 const ORDER_TYPE_LABELS: Record<string, string> = { dinein: "صالة", takeaway: "تيك أواي", delivery: "توصيل" };
 const STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", CONFIRMED: "اتسجّل", REJECTED: "مرفوض" };
 const CATEGORY_LABELS: Record<string, string> = { late_order: "تأخير طلب", wrong_item: "صنف غلط", quality: "جودة", other: "تانى" };
@@ -47,13 +49,24 @@ export function WhatsappPage() {
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const pendingOrdersQuery = useQuery({ queryKey: ["whatsapp", "pending-orders"], queryFn: () => apiRequest<PendingOrder[]>("/whatsapp/pending-orders") });
+  const botStatusQuery = useQuery({ queryKey: ["whatsapp", "bot-status"], queryFn: () => apiRequest<BotStatus>("/whatsapp/bot-status") });
 
   const variants = (menuItemsQuery.data ?? []).flatMap((item) => item.variants.map((v) => ({ ...v, itemName: item.name })));
 
   const [replyBody, setReplyBody] = useState("");
+  const [replyNotice, setReplyNotice] = useState<string | null>(null);
   const sendReply = useMutation({
-    mutationFn: () => apiRequest(`/whatsapp/conversations/${openConversationId}/reply`, { method: "POST", body: { body: replyBody } }),
-    onSuccess: () => {
+    mutationFn: () =>
+      apiRequest<{ delivery: "sent" | "not_configured" | "failed" }>(`/whatsapp/conversations/${openConversationId}/reply`, {
+        method: "POST",
+        body: { body: replyBody },
+      }),
+    onSuccess: (res) => {
+      setReplyNotice(
+        res.delivery === "sent" ? null
+          : res.delivery === "not_configured" ? "الرد اتسجّل بس ماتبعتش للعميل - بيانات الإرسال للقناة دي مش متضافة في السيرفر"
+          : "الرد اتسجّل بس الإرسال للعميل فشل - جرّب تاني أو كلّمه تليفون"
+      );
       setReplyBody("");
       queryClient.invalidateQueries({ queryKey: ["whatsapp", "conversations", openConversationId] });
     },
@@ -125,7 +138,23 @@ export function WhatsappPage() {
 
   return (
     <div>
-      <PageHeader title="بوابة واتساب" description="مراجعة محادثات العملاء وتسجيل طلباتهم وشكاويهم يدويًا" />
+      <PageHeader title="بوابة واتساب" description="محادثات العملاء من واتساب وماسنجر وإنستجرام، والطلبات والشكاوى اللي جت منها" />
+
+      {botStatusQuery.data && (
+        <div
+          data-testid="bot-status"
+          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
+            botStatusQuery.data.enabled && botStatusQuery.data.aiConfigured ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"
+          }`}
+        >
+          {botStatusQuery.data.enabled && botStatusQuery.data.aiConfigured
+            ? "الرد الآلي شغّال - الطلبات اللي البوت بيجمّعها بتظهر في \"الطلبات المعلّقة\" بعد ما العميل يأكدها"
+            : botStatusQuery.data.enabled
+              ? "الرد الآلي مفعّل من الإعدادات بس مفتاح Gemini (GEMINI_API_KEY) مش متضاف في السيرفر - مفيش ردود آلية"
+              : "الرد الآلي مقفول - الردود يدوي بس (تقدر تشغّله من إعدادات النظام)"}
+          {!botStatusQuery.data.whatsappSendConfigured && " • إرسال واتساب مش متظبط لسه"}
+        </div>
+      )}
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
@@ -141,7 +170,7 @@ export function WhatsappPage() {
                       <TD>
                         <button type="button" className="text-start" onClick={() => setOpenConversationId(c.id)}>
                           <div className="font-semibold text-slate-900">{c.customerName ?? c.phone}</div>
-                          <div className="text-xs text-slate-400">{c.phone}</div>
+                          <div className="text-xs text-slate-400">{CHANNEL_LABELS[c.channel] ?? c.channel} • {c.phone}</div>
                         </button>
                       </TD>
                     </TR>
@@ -174,6 +203,7 @@ export function WhatsappPage() {
                       <Input value={replyBody} onChange={(e) => setReplyBody(e.target.value)} placeholder="اكتب رد..." className="flex-1" />
                       <Button type="submit" disabled={sendReply.isPending || !replyBody}>إرسال</Button>
                     </form>
+                    {replyNotice && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{replyNotice}</p>}
                   </CardBody>
                 </Card>
 

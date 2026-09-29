@@ -39,6 +39,7 @@ function toPublic(settings: PosSettings) {
     driverHourlyRateEgp: settings.driverHourlyRateEgp,
     paymentAdjustmentHighThresholdEgp: settings.paymentAdjustmentHighThresholdEgp,
     productionVarianceAlertPercent: settings.productionVarianceAlertPercent,
+    whatsappBotEnabled: settings.whatsappBotEnabled,
     updatedBy: settings.updatedBy,
     updatedAt: settings.updatedAt,
   };
