@@ -9,6 +9,8 @@
     "start:dev": "nest start --watch",
     "migrate": "ts-node src/migrations/run-migrations.ts",
     "migrate:down": "ts-node src/migrations/run-migrations.ts down",
+    "backup": "ts-node scripts/backup/backup.ts",
+    "restore-drill": "ts-node scripts/backup/restore-drill.ts",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "jest --runInBand",
     "test:integration": "jest --config jest.integration.config.js --runInBand",

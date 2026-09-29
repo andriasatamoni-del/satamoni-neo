@@ -28,6 +28,9 @@
    - `PGSSL` = `false` (Internal URL مش محتاج SSL - لو استخدمت External حدّدها `true`)
    - `JWT_SECRET` = قيمة عشوائية طويلة حقيقية (Render بيقدر يولّدها تلقائي لو ضغطت "Generate")
    - `JWT_EXPIRES_IN` = `12h`
+   - `FRONTEND_ORIGIN` = رابط الفرونت إند بتاع الخطوة 3 بالظبط (مثلًا `https://satamoni-neo-frontend.onrender.com`،
+     من غير `/` في الآخر). من غيره الـCORS بيسمح لـ`localhost:5173` بس وتسجيل الدخول من الرابط الحقيقي هيفشل.
+     لو في أكتر من رابط افصلهم بفاصلة.
 6. Deploy. لما يخلص، هتلاقي رابط زي `https://satamoni-neo-backend.onrender.com` - اختبره:
    `curl https://satamoni-neo-backend.onrender.com/health` المفروض يرجّع `{"status":"ok"}`.
 
@@ -45,7 +48,12 @@
    - Source: `/*`
    - Destination: `/index.html`
    - Action: **Rewrite** (مش Redirect)
-7. Deploy. الفرونت بيكلّم الباك إند مباشرة (CORS مفعّل بالفعل في `main.ts`).
+7. Deploy. الفرونت بيكلّم الباك إند مباشرة - اتأكد إن `FRONTEND_ORIGIN` في الباك إند (الخطوة 2) هو نفس رابط الفرونت ده.
+
+## 3.5 النسخ الاحتياطي
+
+قبل أي بيانات حقيقية: فعّل النسخ الاحتياطي في لوحة Render للقاعدة (خطة مدفوعة)، وضيف secret `DATABASE_URL`
+على GitHub عشان النسخة اليومية المستقلة تشتغل. التفاصيل في `backend/docs/BACKUP_AND_RECOVERY.md`.
 
 ## 4. الاستيراد النهائي (قبل التحويل الفعلي مباشرة)
 

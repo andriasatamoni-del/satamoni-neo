@@ -1,0 +1,88 @@
+name: Daily database backup + restore drill
+
+# OPS-1: نسخة احتياطية يومية لقاعدة الإنتاج + تمرين استرجاع حقيقي على نفس النسخة في كل مرة.
+# ليه GitHub Actions مش Render Cron: الـCron Job على Render ملوش disk دائم، فأي ملف نسخة بيضيع مع نهاية
+# التشغيل. هنا النسخة بتتحفظ كـartifact (30 يوم) ومستقلة تمامًا عن حساب Render.
+# ملف النسخة فيه كل بيانات النظام (عملاء، مرتبات، hashes كلمات السر) - أي حد عنده صلاحية قراءة على الريبو
+# يقدر ينزّله، فالريبو لازم يفضل private. راجع backend/docs/BACKUP_AND_RECOVERY.md
+on:
+  schedule:
+    - cron: "7 1 * * *" # 01:07 UTC = بعد نص الليل بتوقيت القاهرة (بعد قفل يوم العمل)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      # سيرفر Postgres مؤقت للتمرين بس - النسخة بتتسترجع فيه، مش في الإنتاج أبدًا
+      drill-db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: drill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Check DATABASE_URL secret
+        id: config
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::DATABASE_URL secret مش متضاف - النسخ الاحتياطي متخطّي. ضيفه من Settings -> Secrets and variables -> Actions"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.configured == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.configured == 'true'
+        with:
+          node-version: "22"
+
+      # pg_dump لازم يكون نفس نسخة السيرفر أو أحدث - الـclient 17 بيقدر يعمل dump لأي سيرفر 17 أو أقدم
+      - name: Install PostgreSQL 17 client
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - run: npm ci
+        if: steps.config.outputs.configured == 'true'
+
+      - name: Backup
+        if: steps.config.outputs.configured == 'true'
+        run: npx ts-node scripts/backup/backup.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSL: "true"
+          BACKUP_DIR: ${{ github.workspace }}/backups
+
+      - name: Restore drill
+        if: steps.config.outputs.configured == 'true'
+        run: npx ts-node scripts/backup/restore-drill.ts
+        env:
+          RESTORE_DRILL_DATABASE_URL: postgresql://postgres:drill@localhost:5432/postgres
+          BACKUP_DIR: ${{ github.workspace }}/backups
+
+      - name: Upload backup
+        if: steps.config.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: satamoni-neo-backup-${{ github.run_id }}
+          path: ${{ github.workspace }}/backups/*.dump
+          retention-days: 30
+          if-no-files-found: error
