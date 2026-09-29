@@ -76,7 +76,13 @@ interface Order {
   status: string;
   kitchenStatus: string;
   paymentMethodId: string | null;
+  source?: string;
+  customerNotes?: string | null;
+  addressDetails?: string | null;
 }
+
+// مصدر الطلب (STORE-1) - الكاشير لازم يعرف إن الطلب جه من الموقع (العميل مستني تأكيد/اتصال) أو غيره
+const SOURCE_LABELS: Record<string, string> = { website: "أونلاين", whatsapp: "واتساب", talabat: "طلبات" };
 
 interface CartLineModifier { modifierId: string; name: string; priceDelta: number; }
 interface CartLine {
@@ -647,8 +653,24 @@ export function OrdersPage() {
             <TBody>
               {orders.map((o) => (
                 <TR key={o.id}>
-                  <TD><Badge tone="neutral">{ORDER_TYPES.find((t) => t.value === o.orderType)?.label ?? o.orderType}</Badge></TD>
-                  <TD className="max-w-xs">{o.items.map((i) => `${orderLineLabel(i)} × ${i.quantity}`).join("، ")}</TD>
+                  <TD>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge tone="neutral">{ORDER_TYPES.find((t) => t.value === o.orderType)?.label ?? o.orderType}</Badge>
+                      {o.source && o.source !== "pos" && (
+                        <Badge tone="info" data-testid="order-source-badge">{SOURCE_LABELS[o.source] ?? o.source}</Badge>
+                      )}
+                    </div>
+                  </TD>
+                  <TD className="max-w-xs">
+                    {o.items.map((i) => `${orderLineLabel(i)} × ${i.quantity}`).join("، ")}
+                    {o.source === "website" && (o.customerName || o.customerPhone) && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {o.customerName} <span dir="ltr">{o.customerPhone}</span>
+                        {o.addressDetails && ` · ${o.addressDetails}`}
+                      </p>
+                    )}
+                    {o.customerNotes && <p className="mt-1 text-xs font-semibold text-amber-700">📝 {o.customerNotes}</p>}
+                  </TD>
                   <TD className="font-bold text-slate-900">{o.total}ج</TD>
                   <TD><StatusBadge status={STATUS_LABELS[o.status] ?? o.status} /></TD>
                   <TD>

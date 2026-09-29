@@ -42,6 +42,7 @@ function toPublic(settings: PosSettings) {
     whatsappBotEnabled: settings.whatsappBotEnabled,
     smsConfirmationsEnabled: settings.smsConfirmationsEnabled,
     smsRatingRequestsEnabled: settings.smsRatingRequestsEnabled,
+    onlineOrderingEnabled: settings.onlineOrderingEnabled,
     updatedBy: settings.updatedBy,
     updatedAt: settings.updatedAt,
   };

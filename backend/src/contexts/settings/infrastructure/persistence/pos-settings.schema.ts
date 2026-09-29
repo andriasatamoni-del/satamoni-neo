@@ -10,6 +10,7 @@ export interface PosSettingsTable {
   whatsapp_bot_enabled: Generated<boolean>;
   sms_confirmations_enabled: Generated<boolean>;
   sms_rating_requests_enabled: Generated<boolean>;
+  online_ordering_enabled: Generated<boolean>;
   updated_by: string | null;
   updated_at: Generated<Date>;
 }

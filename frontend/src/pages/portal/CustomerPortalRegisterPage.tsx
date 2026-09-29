@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSafeNext } from "./safeNext";
 import { customerApiRequest, CustomerApiError, setCustomerToken } from "../../shared/api/customerClient";
 import { Card, CardBody } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
@@ -14,6 +15,8 @@ interface CustomerAuthResponse {
 
 export function CustomerPortalRegisterPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const next = useSafeNext();
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +26,8 @@ export function CustomerPortalRegisterPage() {
       customerApiRequest<CustomerAuthResponse>("/customer-auth/register", { method: "POST", body: { phone, name, password } }),
     onSuccess: (data) => {
       setCustomerToken(data.token);
-      navigate("/portal/me");
+      queryClient.invalidateQueries({ queryKey: ["storefront"] });
+      navigate(next);
     },
   });
 
@@ -61,7 +65,7 @@ export function CustomerPortalRegisterPage() {
 
           <p className="mt-4 text-center text-sm text-slate-500">
             عندك حساب بالفعل؟{" "}
-            <Link to="/portal/login" className="font-semibold text-brand-600">
+            <Link to={`/portal/login?next=${encodeURIComponent(next)}`} className="font-semibold text-brand-600">
               سجّل دخول
             </Link>
           </p>

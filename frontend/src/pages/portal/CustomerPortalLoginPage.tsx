@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSafeNext } from "./safeNext";
 import { customerApiRequest, CustomerApiError, setCustomerToken } from "../../shared/api/customerClient";
 import { Card, CardBody } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
@@ -16,6 +17,8 @@ interface CustomerAuthResponse {
 // توكن العميل (سر مختلف تمامًا عن توكن الموظف - راجع CustomersModule) بيتخزن في customerClient
 export function CustomerPortalLoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const next = useSafeNext();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
 
@@ -23,7 +26,8 @@ export function CustomerPortalLoginPage() {
     mutationFn: () => customerApiRequest<CustomerAuthResponse>("/customer-auth/login", { method: "POST", body: { phone, password } }),
     onSuccess: (data) => {
       setCustomerToken(data.token);
-      navigate("/portal/me");
+      queryClient.invalidateQueries({ queryKey: ["storefront"] });
+      navigate(next);
     },
   });
 
@@ -58,7 +62,7 @@ export function CustomerPortalLoginPage() {
 
           <p className="mt-4 text-center text-sm text-slate-500">
             لسه معملتش حساب؟{" "}
-            <Link to="/portal/register" className="font-semibold text-brand-600">
+            <Link to={`/portal/register?next=${encodeURIComponent(next)}`} className="font-semibold text-brand-600">
               سجّل دلوقتي
             </Link>
           </p>

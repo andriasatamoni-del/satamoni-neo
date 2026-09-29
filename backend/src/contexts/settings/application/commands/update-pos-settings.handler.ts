@@ -11,6 +11,7 @@ export interface UpdatePosSettingsCommand {
   whatsappBotEnabled?: boolean;
   smsConfirmationsEnabled?: boolean;
   smsRatingRequestsEnabled?: boolean;
+  onlineOrderingEnabled?: boolean;
   updatedBy: string | null;
 }
 

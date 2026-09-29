@@ -30,7 +30,8 @@ describe("importOrdersFromLegacy", () => {
         customer_name TEXT, customer_phone TEXT, address_details TEXT,
         subtotal NUMERIC NOT NULL DEFAULT 0, discount NUMERIC NOT NULL DEFAULT 0, total NUMERIC NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'preparing', kitchen_status TEXT NOT NULL DEFAULT 'NEW',
-        created_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        source TEXT NOT NULL DEFAULT 'pos'
       )
     `);
     await legacyPool.query(`
@@ -114,6 +115,25 @@ describe("importOrdersFromLegacy", () => {
 
     const all = await orderRepo.list({ branchId });
     expect(all).toHaveLength(1);
+  });
+
+  test("مصدر الطلب: website/talabat بيتنقلوا زي ما هم، والكول سنتر بيبقى pos", async () => {
+    const ids: number[] = [];
+    for (const source of ["website", "talabat", "callcenter"]) {
+      const order = await legacyPool.query(
+        `INSERT INTO orders (branch_id, order_type, subtotal, total, status, source) VALUES (800, 'delivery', 90, 90, 'completed', $1) RETURNING id`,
+        [source]
+      );
+      await legacyPool.query(
+        `INSERT INTO order_items (order_id, item_id, variant_id, quantity, unit_price, line_total) VALUES ($1, 850, 851, 1, 90, 90)`,
+        [order.rows[0].id]
+      );
+      ids.push(order.rows[0].id);
+    }
+    await importOrdersFromLegacy(legacyPool, neoDb);
+    const sources = [];
+    for (const id of ids) sources.push((await orderRepo.findByLegacyOrderId(id))?.source);
+    expect(sources).toEqual(["website", "talabat", "pos"]);
   });
 
   test("طلب ببند كومبو بيتخطّى البند ده (الكومبوهات مش مدعومة لسه)", async () => {

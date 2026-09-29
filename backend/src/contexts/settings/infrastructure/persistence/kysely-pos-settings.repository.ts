@@ -47,6 +47,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
         whatsapp_bot_enabled: settings.whatsappBotEnabled,
         sms_confirmations_enabled: settings.smsConfirmationsEnabled,
         sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
+        online_ordering_enabled: settings.onlineOrderingEnabled,
         updated_by: settings.updatedBy,
       })
       .onConflict((oc) =>
@@ -59,6 +60,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
           whatsapp_bot_enabled: settings.whatsappBotEnabled,
           sms_confirmations_enabled: settings.smsConfirmationsEnabled,
           sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
+          online_ordering_enabled: settings.onlineOrderingEnabled,
           updated_by: settings.updatedBy,
           updated_at: new Date(),
         })
@@ -76,6 +78,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
       whatsappBotEnabled: Boolean(row.whatsapp_bot_enabled),
       smsConfirmationsEnabled: Boolean(row.sms_confirmations_enabled),
       smsRatingRequestsEnabled: Boolean(row.sms_rating_requests_enabled),
+      onlineOrderingEnabled: Boolean(row.online_ordering_enabled),
       updatedBy: row.updated_by,
       updatedAt: row.updated_at,
     });

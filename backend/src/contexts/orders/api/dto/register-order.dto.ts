@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from "class-validator";
 import { ORDER_TYPES } from "../../domain/order.aggregate";
 
 export class OrderItemInputDto {
@@ -40,4 +40,5 @@ export class RegisterOrderDto {
   @IsOptional() @IsUUID() paymentMethodId?: string;
   // من وضع الكاشير الأوفلاين - راجع تعليق Order.clientRequestId
   @IsOptional() @IsUUID() clientRequestId?: string;
+  @IsOptional() @IsString() @MaxLength(500) customerNotes?: string;
 }

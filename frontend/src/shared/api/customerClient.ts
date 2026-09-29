@@ -36,7 +36,7 @@ export async function customerApiRequest<T>(path: string, options: { method?: st
 
   if (!res.ok) {
     const payload = await res.json().catch(() => null);
-    const message = payload?.message ?? `فشل الطلب (${res.status})`;
+    const message = payload?.error ?? payload?.message ?? `فشل الطلب (${res.status})`;
     throw new CustomerApiError(Array.isArray(message) ? message.join(", ") : message, res.status);
   }
 

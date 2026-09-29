@@ -97,5 +97,8 @@ function toPublicOrder(order: Order) {
     kitchenReadyAt: order.kitchenReadyAt,
     createdAt: order.createdAt,
     paymentMethodId: order.paymentMethodId,
+    source: order.source,
+    customerNotes: order.customerNotes,
+    addressDetails: order.addressDetails,
   };
 }

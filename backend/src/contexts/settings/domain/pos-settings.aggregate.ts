@@ -15,6 +15,8 @@ export interface PosSettingsProps {
   // افتراضيًا، ومش بيبعتوا حاجة غير لو SMS_WEBHOOK_URL متضاف
   smsConfirmationsEnabled: boolean;
   smsRatingRequestsEnabled: boolean;
+  // موقع الطلب أونلاين (STORE-1) - مقفول افتراضيًا: الموقع بيعرض المنيو بس ويقول إن الطلب مقفول
+  onlineOrderingEnabled: boolean;
   updatedBy: string | null;
   updatedAt: Date;
 }
@@ -28,6 +30,7 @@ export const DEFAULT_POS_SETTINGS: PosSettingsProps = {
   whatsappBotEnabled: false,
   smsConfirmationsEnabled: false,
   smsRatingRequestsEnabled: false,
+  onlineOrderingEnabled: false,
   updatedBy: null,
   updatedAt: new Date(0),
 };
@@ -56,6 +59,7 @@ export class PosSettings {
     if (input.whatsappBotEnabled !== undefined) this.props.whatsappBotEnabled = input.whatsappBotEnabled;
     if (input.smsConfirmationsEnabled !== undefined) this.props.smsConfirmationsEnabled = input.smsConfirmationsEnabled;
     if (input.smsRatingRequestsEnabled !== undefined) this.props.smsRatingRequestsEnabled = input.smsRatingRequestsEnabled;
+    if (input.onlineOrderingEnabled !== undefined) this.props.onlineOrderingEnabled = input.onlineOrderingEnabled;
     this.props.updatedBy = updatedBy;
     this.props.updatedAt = new Date();
   }
@@ -68,6 +72,7 @@ export class PosSettings {
   get whatsappBotEnabled(): boolean { return this.props.whatsappBotEnabled; }
   get smsConfirmationsEnabled(): boolean { return this.props.smsConfirmationsEnabled; }
   get smsRatingRequestsEnabled(): boolean { return this.props.smsRatingRequestsEnabled; }
+  get onlineOrderingEnabled(): boolean { return this.props.onlineOrderingEnabled; }
   get updatedBy(): string | null { return this.props.updatedBy; }
   get updatedAt(): Date { return this.props.updatedAt; }
 }

@@ -33,6 +33,6 @@ import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
     AddCustomerAddressHandler,
     CustomerAuthGuard,
   ],
-  exports: [CUSTOMER_REPOSITORY],
+  exports: [CUSTOMER_REPOSITORY, CUSTOMER_TOKEN_SERVICE, CustomerAuthGuard],
 })
 export class CustomersModule {}

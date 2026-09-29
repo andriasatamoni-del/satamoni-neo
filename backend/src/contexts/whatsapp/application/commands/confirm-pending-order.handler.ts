@@ -38,6 +38,7 @@ export class ConfirmPendingOrderHandler {
       items: pendingOrder.lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, modifierIds: l.modifierIds })),
       createdBy: command.reviewedBy,
       paymentMethodId: command.paymentMethodId,
+      source: "whatsapp",
     });
 
     pendingOrder.confirm({ confirmedOrderId: order.id, reviewedBy: command.reviewedBy });

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Order, type OrderItemModifierLine } from "../../domain/order.aggregate";
+import { Order, type OrderItemModifierLine, type OrderSource } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import {
   VariantNotFoundForOrderError,
@@ -39,6 +39,8 @@ export interface RegisterOrderCommand {
   // من وضع الكاشير الأوفلاين (OFFLINE) - راجع تعليق Order.clientRequestId. لو موجود ولقينا طلب مسجّل
   // بيه بالفعل، بنرجّعه زي ما هو من غير ما نكرر استهلاك المخزون أو الحدث تاني.
   clientRequestId?: string | null;
+  source?: OrderSource;
+  customerNotes?: string | null;
 }
 
 // بيسجّل الطلب ويستهلك المخزون النظري (عن طريق الوصفة النشطة لكل حجم) في نفس الطلب - مرحلتين:

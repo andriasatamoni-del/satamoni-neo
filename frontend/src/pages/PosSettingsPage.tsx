@@ -16,11 +16,12 @@ interface PosSettings {
   whatsappBotEnabled: boolean;
   smsConfirmationsEnabled: boolean;
   smsRatingRequestsEnabled: boolean;
+  onlineOrderingEnabled: boolean;
   updatedBy: string | null;
   updatedAt: string;
 }
 
-type ToggleKey = "whatsappBotEnabled" | "smsConfirmationsEnabled" | "smsRatingRequestsEnabled";
+type ToggleKey = "whatsappBotEnabled" | "smsConfirmationsEnabled" | "smsRatingRequestsEnabled" | "onlineOrderingEnabled";
 
 interface OrderNotificationsLog {
   gatewayConfigured: boolean;
@@ -29,6 +30,11 @@ interface OrderNotificationsLog {
 }
 
 const TOGGLES: { key: ToggleKey; label: string; hint: string }[] = [
+  {
+    key: "onlineOrderingEnabled",
+    label: "موقع الطلب أونلاين",
+    hint: "العملاء يطلبوا بنفسهم من صفحة /order (توصيل/استلام/صالة، كاش عند الاستلام) - الطلب بيوصل للمطبخ والكاشير مباشرة بعلامة \"أونلاين\". وهو مقفول الموقع بيعرض المنيو بس.",
+  },
   {
     key: "whatsappBotEnabled",
     label: "بوت الرد الآلي (واتساب/ماسنجر/إنستجرام)",
@@ -93,6 +99,7 @@ export function PosSettingsPage() {
     whatsappBotEnabled: false,
     smsConfirmationsEnabled: false,
     smsRatingRequestsEnabled: false,
+    onlineOrderingEnabled: false,
   });
   const notificationsQuery = useQuery({
     queryKey: ["order-notifications"],
@@ -110,6 +117,7 @@ export function PosSettingsPage() {
         whatsappBotEnabled: settingsQuery.data.whatsappBotEnabled,
         smsConfirmationsEnabled: settingsQuery.data.smsConfirmationsEnabled,
         smsRatingRequestsEnabled: settingsQuery.data.smsRatingRequestsEnabled,
+        onlineOrderingEnabled: settingsQuery.data.onlineOrderingEnabled,
       });
     }
   }, [settingsQuery.data]);

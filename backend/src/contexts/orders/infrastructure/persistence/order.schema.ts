@@ -21,6 +21,8 @@ export interface OrdersTable {
   payment_method_id: string | null;
   rating_token: Generated<string>;
   client_request_id: string | null;
+  source: Generated<string>;
+  customer_notes: string | null;
 }
 
 export interface OrderItemsTable {

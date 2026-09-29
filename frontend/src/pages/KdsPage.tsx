@@ -12,7 +12,8 @@ import { EmptyState } from "../shared/ui/Table";
 interface Branch { id: string; name: string; }
 interface MenuItemVariant { id: string; label: string; price: number; }
 interface MenuItem { id: string; name: string; variants: MenuItemVariant[]; }
-interface OrderLine { menuItemId: string; variantId: string; quantity: number; }
+interface OrderLine { menuItemId: string | null; variantId: string | null; comboId?: string | null; quantity: number; modifiers?: { nameAtSale: string }[]; }
+interface Combo { id: string; name: string; }
 interface KdsOrder {
   id: string;
   orderType: string;
@@ -22,6 +23,8 @@ interface KdsOrder {
   kitchenAcceptedAt: string | null;
   kitchenReadyAt: string | null;
   createdAt: string;
+  source?: string;
+  customerNotes?: string | null;
 }
 
 const KITCHEN_STATUSES = ["NEW", "ACCEPTED", "PREPARING", "READY"] as const;
@@ -60,6 +63,7 @@ export function KdsPage() {
   }, []);
 
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
+  const combosQuery = useQuery({ queryKey: ["catalog", "combos"], queryFn: () => apiRequest<Combo[]>("/catalog/combos") });
   const boardQuery = useQuery({
     queryKey: ["kds-board", branchId],
     queryFn: () => apiRequest<KdsOrder[]>(`/orders/kitchen-board?branchId=${branchId}`),
@@ -73,12 +77,18 @@ export function KdsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["kds-board", branchId] }),
   });
 
+  // العروض بتتعرض باسم العرض، والإضافات (جبنة زيادة...) لازم تبان للمطبخ جنب الصنف
   const itemLabel = (line: OrderLine) => {
+    const extras = line.modifiers?.length ? ` + ${line.modifiers.map((m) => m.nameAtSale).join("، ")}` : "";
+    if (line.comboId) {
+      const combo = combosQuery.data?.find((c) => c.id === line.comboId);
+      return `${combo?.name ?? "عرض"} × ${line.quantity}`;
+    }
     for (const item of menuItemsQuery.data ?? []) {
       const v = item.variants.find((v) => v.id === line.variantId);
-      if (v) return `${item.name} (${v.label}) × ${line.quantity}`;
+      if (v) return `${item.name} (${v.label})${extras} × ${line.quantity}`;
     }
-    return `صنف × ${line.quantity}`;
+    return `صنف${extras} × ${line.quantity}`;
   };
 
   const orders = boardQuery.data ?? [];
@@ -119,10 +129,13 @@ export function KdsPage() {
                     <Card key={order.id} className="shadow-sm">
                       <CardBody className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Badge tone="neutral">
-                            {ORDER_TYPE_LABELS[order.orderType] ?? order.orderType}
-                            {order.tableNumber ? ` - طاولة ${order.tableNumber}` : ""}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1">
+                            <Badge tone="neutral">
+                              {ORDER_TYPE_LABELS[order.orderType] ?? order.orderType}
+                              {order.tableNumber ? ` - طاولة ${order.tableNumber}` : ""}
+                            </Badge>
+                            {order.source === "website" && <Badge tone="info">أونلاين</Badge>}
+                          </div>
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TONE_CLASSES[tone]}`}>
                             {Math.max(0, Math.floor((now - new Date(referenceIso).getTime()) / 60000))} د
                           </span>
@@ -130,6 +143,9 @@ export function KdsPage() {
                         <ul className="space-y-0.5 text-sm text-slate-700">
                           {order.items.map((line, i) => <li key={i}>{itemLabel(line)}</li>)}
                         </ul>
+                        {order.customerNotes && (
+                          <p className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">📝 {order.customerNotes}</p>
+                        )}
                         {status !== "READY" && (
                           <Button
                             size="sm"

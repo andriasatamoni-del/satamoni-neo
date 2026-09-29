@@ -16,6 +16,11 @@ export type OrderType = (typeof ORDER_TYPES)[number];
 export const ORDER_STATUSES = ["preparing", "out_for_delivery", "completed", "cancelled"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// مصدر الطلب (STORE-1) - نفس orders.source في الريبو القديم: الكاشير والمطبخ لازم يميّزوا طلب الموقع
+// (العميل طلبه بنفسه ومحدش من الفريق كلّمه) عن طلب الكاشير
+export const ORDER_SOURCES = ["pos", "website", "whatsapp", "talabat"] as const;
+export type OrderSource = (typeof ORDER_SOURCES)[number];
+
 export const KITCHEN_STATUSES = ["NEW", "ACCEPTED", "PREPARING", "READY"] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 
@@ -72,6 +77,9 @@ export interface OrderProps {
   // لو نفس الطلب اتبعت مرتين (مثلًا الشبكة رجعت في نفس لحظة إعادة المحاولة) نرجّع نفس الطلب المتسجّل
   // بدل ما نسجّله تاني - idempotency على مستوى الطلب مش على مستوى الـHTTP request بس.
   clientRequestId: string | null;
+  source: OrderSource;
+  // ملاحظة العميل على الطلب كله (بدون بصل، الدور التالت...) - بتظهر للمطبخ والكاشير
+  customerNotes: string | null;
 }
 
 // Order - نفس مفهوم orders+order_items في الريبو القديم، بس مبسّط للسلايس الأول (Phase 3): من غير
@@ -106,6 +114,8 @@ export class Order {
     legacyOrderId?: number | null;
     paymentMethodId?: string | null;
     clientRequestId?: string | null;
+    source?: OrderSource;
+    customerNotes?: string | null;
   }): Order {
     if (!ORDER_TYPES.includes(input.orderType as OrderType)) throw new UnknownOrderTypeError(input.orderType);
     if (input.items.length === 0) throw new EmptyOrderError();
@@ -148,6 +158,8 @@ export class Order {
       paymentMethodId: input.paymentMethodId ?? null,
       ratingToken: randomUUID(),
       clientRequestId: input.clientRequestId ?? null,
+      source: input.source ?? "pos",
+      customerNotes: input.customerNotes?.trim() || null,
     });
   }
 
@@ -199,4 +211,6 @@ export class Order {
   get paymentMethodId(): string | null { return this.props.paymentMethodId; }
   get ratingToken(): string { return this.props.ratingToken; }
   get clientRequestId(): string | null { return this.props.clientRequestId; }
+  get source(): OrderSource { return this.props.source; }
+  get customerNotes(): string | null { return this.props.customerNotes; }
 }

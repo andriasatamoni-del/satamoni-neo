@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
-import { Order, type OrderStatus, type KitchenStatus, type OrderType } from "../../domain/order.aggregate";
+import { Order, type OrderStatus, type KitchenStatus, type OrderType, type OrderSource } from "../../domain/order.aggregate";
 import type { OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import type { OrdersTable, OrderItemsTable, OrderItemModifiersTable } from "./order.schema";
 
@@ -35,6 +35,8 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           payment_method_id: order.paymentMethodId,
           rating_token: order.ratingToken,
           client_request_id: order.clientRequestId,
+          source: order.source,
+          customer_notes: order.customerNotes,
         })
         .onConflict((oc) =>
           oc.column("id").doUpdateSet({
@@ -159,6 +161,8 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
       paymentMethodId: row.payment_method_id,
       ratingToken: row.rating_token,
       clientRequestId: row.client_request_id,
+      source: row.source as OrderSource,
+      customerNotes: row.customer_notes,
     });
   }
 }

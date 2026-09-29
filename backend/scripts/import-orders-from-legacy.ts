@@ -15,13 +15,19 @@ import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/per
 import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
-import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES } from "../src/contexts/orders/domain/order.aggregate";
+import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES, type OrderSource } from "../src/contexts/orders/domain/order.aggregate";
+
+// orders.source القديم: pos/talabat/website/callcenter (+whatsapp). الكول سنتر موظف بيسجّل الطلب بنفسه
+// من شاشة الكاشير - في neo ده pos عادي
+function legacySource(raw: string | null): OrderSource {
+  return raw === "website" || raw === "talabat" || raw === "whatsapp" ? raw : "pos";
+}
 
 interface LegacyOrderRow {
   id: number; branch_id: number | null; order_type: string; table_number: string | null;
   customer_name: string | null; customer_phone: string | null; address_details: string | null;
   subtotal: string; discount: string; total: string; status: string; kitchen_status: string;
-  created_by: number | null; created_at: Date;
+  created_by: number | null; created_at: Date; source: string | null;
 }
 interface LegacyOrderItemRow {
   id: number; order_id: number; item_id: number | null; variant_id: number | null;
@@ -77,7 +83,7 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
   const result: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: orderRows } = await legacyPool.query<LegacyOrderRow>(
     `SELECT id, branch_id, order_type, table_number, customer_name, customer_phone, address_details,
-            subtotal, discount, total, status, kitchen_status, created_by, created_at
+            subtotal, discount, total, status, kitchen_status, created_by, created_at, source
      FROM orders ORDER BY id`
   );
 
@@ -148,6 +154,8 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       // صف قديم برضه، فمفيش حاجة نستوردها هنا (مفيش قيمة قديمة "حقيقية" أصلًا نحافظ عليها)
       ratingToken: randomUUID(),
       clientRequestId: null,
+      source: legacySource(row.source),
+      customerNotes: null,
     });
     await orderRepo.save(order);
     result.created++;

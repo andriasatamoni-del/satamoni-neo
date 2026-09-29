@@ -32,6 +32,9 @@ import { TalabatPage } from "./pages/TalabatPage";
 import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage";
 import { CustomerPortalRegisterPage } from "./pages/portal/CustomerPortalRegisterPage";
 import { CustomerPortalProfilePage } from "./pages/portal/CustomerPortalProfilePage";
+import { StorefrontPage } from "./pages/storefront/StorefrontPage";
+import { TrackOrderPage } from "./pages/storefront/TrackOrderPage";
+import { MyOrdersPage } from "./pages/storefront/MyOrdersPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -54,6 +57,9 @@ export function App() {
       <Route path="/portal/login" element={<CustomerPortalLoginPage />} />
       <Route path="/portal/register" element={<CustomerPortalRegisterPage />} />
       <Route path="/portal/me" element={<CustomerPortalProfilePage />} />
+      <Route path="/order" element={<StorefrontPage />} />
+      <Route path="/order/track/:orderId" element={<TrackOrderPage />} />
+      <Route path="/order/orders" element={<MyOrdersPage />} />
       <Route
         path="/"
         element={

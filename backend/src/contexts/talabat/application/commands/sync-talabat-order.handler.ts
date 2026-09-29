@@ -100,6 +100,7 @@ export class SyncTalabatOrderHandler {
         items: resolvedItems,
         paymentMethodId: paymentMethod.id,
         createdBy: systemUser?.id ?? null,
+        source: "talabat",
       });
       talabatOrder.markImported({ branchId: branch.id, posOrderId: order.id });
       await this.talabatOrders.save(talabatOrder);

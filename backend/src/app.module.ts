@@ -31,6 +31,7 @@ import { CustomersModule } from "./contexts/customers/customers.module";
 import { TalabatModule } from "./contexts/talabat/talabat.module";
 import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 import { NotificationsModule } from "./contexts/notifications/notifications.module";
+import { StorefrontModule } from "./contexts/storefront/storefront.module";
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { NotificationsModule } from "./contexts/notifications/notifications.modu
     TalabatModule,
     HomeTilesModule,
     NotificationsModule,
+    StorefrontModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

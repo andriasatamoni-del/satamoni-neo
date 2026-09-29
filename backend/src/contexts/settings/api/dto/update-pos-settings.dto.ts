@@ -9,4 +9,5 @@ export class UpdatePosSettingsDto {
   @IsOptional() @IsBoolean() whatsappBotEnabled?: boolean;
   @IsOptional() @IsBoolean() smsConfirmationsEnabled?: boolean;
   @IsOptional() @IsBoolean() smsRatingRequestsEnabled?: boolean;
+  @IsOptional() @IsBoolean() onlineOrderingEnabled?: boolean;
 }

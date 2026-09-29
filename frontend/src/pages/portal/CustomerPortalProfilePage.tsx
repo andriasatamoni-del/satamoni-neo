@@ -100,6 +100,14 @@ export function CustomerPortalProfilePage() {
             </button>
           </CardHeader>
           <CardBody className="space-y-1 text-sm text-slate-600">
+            <div className="mb-2 flex gap-2">
+              <a href="/order" className="flex-1 rounded-lg bg-brand-600 px-3 py-2 text-center text-sm font-bold text-white">
+                اطلب دلوقتي
+              </a>
+              <a href="/order/orders" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-700">
+                طلباتي
+              </a>
+            </div>
             <p>
               <span className="text-slate-400">التليفون:</span> <span dir="ltr">{customer.phone}</span>
             </p>
