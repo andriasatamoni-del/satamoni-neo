@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Inject, Post, Req, UnauthorizedException, UseGuards, UseFilters } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { LoginHandler } from "../application/commands/login.handler";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../domain/ports/user-repository.port";
@@ -16,6 +17,10 @@ export class AuthController {
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort
   ) {}
 
+  // حد أضيق بكتير من الافتراضي العام (راجع app.module.ts) - 5 محاولات كل دقيقة لكل IP، عشان تخمين
+  // كلمة السر بالتجربة والخطأ (brute-force) يتقفل بسرعة من غير ما يأثر على استخدام عادي. قابل للتعديل
+  // عبر THROTTLE_LOGIN_LIMIT - بيئة الاختبار (test/integration/setup.ts) بترفعه عشان اختبارات الـe2e
+  @Throttle({ default: { limit: Number(process.env.THROTTLE_LOGIN_LIMIT) || 5, ttl: 60_000 } })
   @Post("login")
   async login(@Body() dto: LoginDto) {
     const { token, user } = await this.loginHandler.execute(dto);

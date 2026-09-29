@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
 import { EventsModule } from "./shared/events/events.module";
@@ -31,6 +33,12 @@ import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 
 @Module({
   imports: [
+    // حماية عامة من brute-force/DoS بسيط على كل الـAPI - حد افتراضي سخي (100 طلب/دقيقة لكل IP)،
+    // وحد أضيق مخصوص على POST /auth/login (راجع @Throttle هناك) عشان محاولات تخمين كلمة السر تتقفل
+    // بعد عدد قليل من المحاولات الفاشلة. THROTTLE_LIMIT قابل للتعديل عبر بيئة التشغيل - بيئة الاختبار
+    // (test/integration/setup.ts) بترفعه عشان اختبارات الـe2e بتعمل عشرات طلبات متتالية على نفس IP
+    // في نفس الدقيقة كسيناريو اختبار طبيعي، مش هجوم فعلي
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT) || 100 }]),
     DatabaseModule,
     EventsModule,
     PermissionsModule,
@@ -61,5 +69,6 @@ import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
     HomeTilesModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

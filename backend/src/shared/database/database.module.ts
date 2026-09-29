@@ -21,7 +21,7 @@ export const KYSELY = Symbol("KYSELY");
           throw new Error("لازم تحدد DATABASE_URL في متغيرات البيئة");
         }
         const dialect = new PostgresDialect({
-          pool: new Pool({ connectionString, max: 10, ssl: pgSslOption() }),
+          pool: new Pool({ connectionString, max: 10, ssl: pgSslOption(), connectionTimeoutMillis: 10_000 }),
         });
         return new Kysely<Database>({ dialect });
       },
