@@ -40,6 +40,8 @@ function toPublic(settings: PosSettings) {
     paymentAdjustmentHighThresholdEgp: settings.paymentAdjustmentHighThresholdEgp,
     productionVarianceAlertPercent: settings.productionVarianceAlertPercent,
     whatsappBotEnabled: settings.whatsappBotEnabled,
+    smsConfirmationsEnabled: settings.smsConfirmationsEnabled,
+    smsRatingRequestsEnabled: settings.smsRatingRequestsEnabled,
     updatedBy: settings.updatedBy,
     updatedAt: settings.updatedAt,
   };

@@ -3,6 +3,7 @@
 // (راجع خطة إعادة البناء قسم 1) - لو أي context اتفصل لخدمة منفصلة لاحقًا، جدوله بس بتتشال من هنا.
 import type { UsersTable } from "../../contexts/identity-access/infrastructure/persistence/user.schema";
 import type { EventOutboxTable } from "../events/event-outbox.schema";
+import type { OrderNotificationsTable } from "../../contexts/notifications/infrastructure/persistence/order-notification.schema";
 import type { AuditLogsTable } from "../audit/audit-log.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
@@ -197,6 +198,7 @@ export interface Database {
   kitchen_stations: KitchenStationsTable;
   print_jobs: PrintJobsTable;
   pos_settings: PosSettingsTable;
+  order_notifications: OrderNotificationsTable;
   branch_days: BranchDaysTable;
   branch_stock_thresholds: BranchStockThresholdsTable;
   transfer_requests: TransferRequestsTable;

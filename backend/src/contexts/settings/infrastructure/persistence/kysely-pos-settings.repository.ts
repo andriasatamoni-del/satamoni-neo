@@ -45,6 +45,8 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
         payment_adjustment_high_threshold_egp: settings.paymentAdjustmentHighThresholdEgp,
         production_variance_alert_percent: settings.productionVarianceAlertPercent,
         whatsapp_bot_enabled: settings.whatsappBotEnabled,
+        sms_confirmations_enabled: settings.smsConfirmationsEnabled,
+        sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
         updated_by: settings.updatedBy,
       })
       .onConflict((oc) =>
@@ -55,6 +57,8 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
           payment_adjustment_high_threshold_egp: settings.paymentAdjustmentHighThresholdEgp,
           production_variance_alert_percent: settings.productionVarianceAlertPercent,
           whatsapp_bot_enabled: settings.whatsappBotEnabled,
+          sms_confirmations_enabled: settings.smsConfirmationsEnabled,
+          sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
           updated_by: settings.updatedBy,
           updated_at: new Date(),
         })
@@ -70,6 +74,8 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
       paymentAdjustmentHighThresholdEgp: Number(row.payment_adjustment_high_threshold_egp),
       productionVarianceAlertPercent: Number(row.production_variance_alert_percent),
       whatsappBotEnabled: Boolean(row.whatsapp_bot_enabled),
+      smsConfirmationsEnabled: Boolean(row.sms_confirmations_enabled),
+      smsRatingRequestsEnabled: Boolean(row.sms_rating_requests_enabled),
       updatedBy: row.updated_by,
       updatedAt: row.updated_at,
     });

@@ -7,4 +7,6 @@ export class UpdatePosSettingsDto {
   @IsOptional() @IsNumber() @Min(0) paymentAdjustmentHighThresholdEgp?: number;
   @IsOptional() @IsNumber() @Min(0) productionVarianceAlertPercent?: number;
   @IsOptional() @IsBoolean() whatsappBotEnabled?: boolean;
+  @IsOptional() @IsBoolean() smsConfirmationsEnabled?: boolean;
+  @IsOptional() @IsBoolean() smsRatingRequestsEnabled?: boolean;
 }

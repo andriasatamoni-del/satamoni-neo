@@ -11,6 +11,10 @@ export interface PosSettingsProps {
   // بوت الرد الآلي على واتساب/ماسنجر/إنستجرام - مقفول افتراضيًا (نفس pos_settings.whatsapp_bot_enabled
   // في الريبو القديم). حتى لو مفتوح، مش بيرد غير لو GEMINI_API_KEY متضاف
   whatsappBotEnabled: boolean;
+  // رسالة SMS للعميل: تأكيد الطلب وقت التسجيل / طلب تقييم بعد التسليم (دليفري وتيك أواي بس) - مقفولين
+  // افتراضيًا، ومش بيبعتوا حاجة غير لو SMS_WEBHOOK_URL متضاف
+  smsConfirmationsEnabled: boolean;
+  smsRatingRequestsEnabled: boolean;
   updatedBy: string | null;
   updatedAt: Date;
 }
@@ -22,6 +26,8 @@ export const DEFAULT_POS_SETTINGS: PosSettingsProps = {
   paymentAdjustmentHighThresholdEgp: 500,
   productionVarianceAlertPercent: 10,
   whatsappBotEnabled: false,
+  smsConfirmationsEnabled: false,
+  smsRatingRequestsEnabled: false,
   updatedBy: null,
   updatedAt: new Date(0),
 };
@@ -48,6 +54,8 @@ export class PosSettings {
     }
     if (input.productionVarianceAlertPercent !== undefined) this.props.productionVarianceAlertPercent = input.productionVarianceAlertPercent;
     if (input.whatsappBotEnabled !== undefined) this.props.whatsappBotEnabled = input.whatsappBotEnabled;
+    if (input.smsConfirmationsEnabled !== undefined) this.props.smsConfirmationsEnabled = input.smsConfirmationsEnabled;
+    if (input.smsRatingRequestsEnabled !== undefined) this.props.smsRatingRequestsEnabled = input.smsRatingRequestsEnabled;
     this.props.updatedBy = updatedBy;
     this.props.updatedAt = new Date();
   }
@@ -58,6 +66,8 @@ export class PosSettings {
   get paymentAdjustmentHighThresholdEgp(): number { return this.props.paymentAdjustmentHighThresholdEgp; }
   get productionVarianceAlertPercent(): number { return this.props.productionVarianceAlertPercent; }
   get whatsappBotEnabled(): boolean { return this.props.whatsappBotEnabled; }
+  get smsConfirmationsEnabled(): boolean { return this.props.smsConfirmationsEnabled; }
+  get smsRatingRequestsEnabled(): boolean { return this.props.smsRatingRequestsEnabled; }
   get updatedBy(): string | null { return this.props.updatedBy; }
   get updatedAt(): Date { return this.props.updatedAt; }
 }

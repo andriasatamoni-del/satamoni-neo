@@ -44,6 +44,13 @@ services:
         sync: false
       - key: WHATSAPP_STAFF_NOTIFY_NUMBER
         sync: false
+      # رسايل SMS للعميل (تأكيد + طلب تقييم) - اختياري، راجع backend/docs/WHATSAPP-BOT.md
+      - key: SMS_WEBHOOK_URL
+        sync: false
+      - key: SMS_WEBHOOK_AUTH_HEADER
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false # رابط الفرونت إند العام (لرابط التقييم) - لو فاضي بيستخدم أول FRONTEND_ORIGIN
 
   - type: web
     name: satamoni-neo-frontend

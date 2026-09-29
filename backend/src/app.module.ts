@@ -30,6 +30,7 @@ import { PurchasesModule } from "./contexts/purchases/purchases.module";
 import { CustomersModule } from "./contexts/customers/customers.module";
 import { TalabatModule } from "./contexts/talabat/talabat.module";
 import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
+import { NotificationsModule } from "./contexts/notifications/notifications.module";
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
     CustomersModule,
     TalabatModule,
     HomeTilesModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

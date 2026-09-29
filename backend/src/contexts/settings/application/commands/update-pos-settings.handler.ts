@@ -9,6 +9,8 @@ export interface UpdatePosSettingsCommand {
   paymentAdjustmentHighThresholdEgp?: number;
   productionVarianceAlertPercent?: number;
   whatsappBotEnabled?: boolean;
+  smsConfirmationsEnabled?: boolean;
+  smsRatingRequestsEnabled?: boolean;
   updatedBy: string | null;
 }
 
