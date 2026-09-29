@@ -42,6 +42,7 @@ import { CancelPurchaseReturnHandler } from "./application/commands/cancel-purch
 import { ListSuppliersHandler } from "./application/queries/list-suppliers.handler";
 import { ListPurchaseOrdersHandler } from "./application/queries/list-purchase-orders.handler";
 import { ListGoodsReceiptsHandler } from "./application/queries/list-goods-receipts.handler";
+import { GetPurchaseOrderReceiptProgressHandler } from "./application/queries/get-purchase-order-receipt-progress.handler";
 import { ListSupplierInvoicesHandler } from "./application/queries/list-supplier-invoices.handler";
 import { GetSupplierInvoiceHandler } from "./application/queries/get-supplier-invoice.handler";
 import { ListSupplierPaymentsHandler } from "./application/queries/list-supplier-payments.handler";
@@ -88,6 +89,7 @@ import { ProcurementController } from "./api/procurement.controller";
     ListSuppliersHandler,
     ListPurchaseOrdersHandler,
     ListGoodsReceiptsHandler,
+    GetPurchaseOrderReceiptProgressHandler,
     ListSupplierInvoicesHandler,
     GetSupplierInvoiceHandler,
     ListSupplierPaymentsHandler,

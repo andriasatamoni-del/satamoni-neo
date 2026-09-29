@@ -63,9 +63,10 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
     return this.toDomain(row, await this.loadLines(row.id));
   }
 
-  async list(filter?: { branchId?: string }): Promise<GoodsReceipt[]> {
+  async list(filter?: { branchId?: string; purchaseOrderId?: string }): Promise<GoodsReceipt[]> {
     let query = this.db.selectFrom("goods_receipts").selectAll();
     if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
+    if (filter?.purchaseOrderId) query = query.where("purchase_order_id", "=", filter.purchaseOrderId);
     const rows = await query.orderBy("created_at", "desc").execute();
     const receipts: GoodsReceipt[] = [];
     for (const row of rows) receipts.push(this.toDomain(row, await this.loadLines(row.id)));

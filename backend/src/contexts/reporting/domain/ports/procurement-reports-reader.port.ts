@@ -38,10 +38,8 @@ export interface OutstandingPurchaseOrderRow {
 // - purchase-price-history وpurchase-price-variance هنا بيتستنتجوا من سجل بنود أوامر الشراء الفعلية
 // (purchase_order_items) بدل كتالوج أسعار مُعلَنة منفصل. ده فعليًا أدق (بيقارن أسعار اتدفعت فعلًا) لكنه
 // معتمد على وجود PO سابق لنفس (مورد، صنف) - مفيش "سعر معلن حاليًا" لمورد لسه ماطلبش منه حاجة.
-// كمان: purchase_orders.status عمليًا بيفضل SENT حتى بعد تأكيد إذن الاستلام بتاعه (confirm-goods-
-// receipt.handler.ts معندوش أي استدعاء لـPurchaseOrder.markReceived() - bug حقيقي متتبّع منفصل)، فـ
-// outstanding-purchase-orders هنا بيحدد "لسه مستني" بوجود/عدم وجود إذن استلام CONFIRMED مرتبط بالـPO،
-// مش بحالة الـPO نفسها، عشان النتيجة تفضل صحيحة برغم الـbug.
+// outstanding-purchase-orders = أوامر حالتها SENT أو PARTIALLY_RECEIVED (نفس تعريف الريبو القديم:
+// APPROVED/PARTIALLY_RECEIVED) - حالة الأمر بتتحدّث تلقائيًا مع تأكيد كل إذن استلام مربوط بيه.
 export interface ProcurementReportsReaderPort {
   getPurchaseOrders(input: {
     branchId: string | null; supplierId?: string | null; status?: string | null; from: string; to: string;

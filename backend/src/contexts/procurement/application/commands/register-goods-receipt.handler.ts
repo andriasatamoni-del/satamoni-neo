@@ -4,7 +4,16 @@ import {
   GOODS_RECEIPT_REPOSITORY,
   type GoodsReceiptRepositoryPort,
 } from "../../domain/ports/goods-receipt-repository.port";
-import { DuplicateGoodsReceiptReferenceError } from "../../domain/errors";
+import {
+  DuplicateGoodsReceiptReferenceError,
+  PurchaseOrderNotFoundError,
+  PurchaseOrderNotReceivableError,
+} from "../../domain/errors";
+import {
+  PURCHASE_ORDER_REPOSITORY,
+  type PurchaseOrderRepositoryPort,
+} from "../../domain/ports/purchase-order-repository.port";
+import { RECEIVABLE_PURCHASE_ORDER_STATUSES } from "../../domain/purchase-order.aggregate";
 import { PurchaseDuplicateCheckService } from "../../../../shared/procurement/purchase-duplicate-check.service";
 
 export interface RegisterGoodsReceiptCommand {
@@ -25,10 +34,17 @@ export interface RegisterGoodsReceiptCommand {
 export class RegisterGoodsReceiptHandler {
   constructor(
     @Inject(GOODS_RECEIPT_REPOSITORY) private readonly receipts: GoodsReceiptRepositoryPort,
-    private readonly duplicateCheck: PurchaseDuplicateCheckService
+    private readonly duplicateCheck: PurchaseDuplicateCheckService,
+    @Inject(PURCHASE_ORDER_REPOSITORY) private readonly purchaseOrders: PurchaseOrderRepositoryPort
   ) {}
 
   async execute(command: RegisterGoodsReceiptCommand): Promise<GoodsReceipt> {
+    if (command.purchaseOrderId) {
+      const order = await this.purchaseOrders.findById(command.purchaseOrderId);
+      if (!order) throw new PurchaseOrderNotFoundError();
+      if (!RECEIVABLE_PURCHASE_ORDER_STATUSES.includes(order.status)) throw new PurchaseOrderNotReceivableError();
+    }
+
     if (command.supplierId && command.supplierDocumentNumber && !command.acknowledgeDuplicate) {
       const duplicates = await this.duplicateCheck.findDuplicates({
         supplierId: command.supplierId,

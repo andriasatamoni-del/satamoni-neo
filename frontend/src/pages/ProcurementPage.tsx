@@ -71,9 +71,16 @@ interface PurchaseOrder {
   id: string;
   supplierId: string;
   branchId: string;
-  status: "DRAFT" | "SENT" | "RECEIVED" | "CANCELLED";
+  status: "DRAFT" | "SENT" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
   lines: { inventoryItemId: string; quantity: number; unitPrice: number }[];
   createdAt: string;
+}
+interface ReceiptProgressLine {
+  inventoryItemId: string;
+  orderedQuantity: number;
+  receivedQuantity: number;
+  remainingQuantity: number;
+  unitPrice: number;
 }
 
 const TABS = [
@@ -85,9 +92,11 @@ const TABS = [
   { key: "purchase-returns", label: "مرتجعات المشتريات" },
 ];
 
-const PO_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", SENT: "اترسل للمورد", RECEIVED: "اتسلّم", CANCELLED: "ملغي" };
-const PO_STATUS_TONES: Record<string, "neutral" | "info" | "success" | "danger"> = {
-  DRAFT: "neutral", SENT: "info", RECEIVED: "success", CANCELLED: "danger",
+const PO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "مسودة", SENT: "اترسل للمورد", PARTIALLY_RECEIVED: "اتسلّم جزئيًا", RECEIVED: "اتسلّم بالكامل", CANCELLED: "ملغي",
+};
+const PO_STATUS_TONES: Record<string, "neutral" | "info" | "success" | "danger" | "warning"> = {
+  DRAFT: "neutral", SENT: "info", PARTIALLY_RECEIVED: "warning", RECEIVED: "success", CANCELLED: "danger",
 };
 
 const PR_STATUS_LABELS: Record<string, string> = {
@@ -391,6 +400,54 @@ export function ProcurementPage() {
   const cancelPurchaseOrder = useMutation({
     mutationFn: (id: string) => apiRequest(`/procurement/purchase-orders/${id}/cancel`, { method: "POST" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-orders"] }),
+  });
+
+  // استلام أمر شراء: الكميات المقترحة = المتبقي لكل صنف، وبعد التسجيل بيتأكد فورًا (ترحيل المخزون +
+  // تحديث حالة الأمر لـ"اتسلّم جزئيًا/بالكامل")
+  const [receivingOrderId, setReceivingOrderId] = useState<string | null>(null);
+  const [receivingQuantities, setReceivingQuantities] = useState<Record<string, string>>({});
+  const [receivingDocumentNumber, setReceivingDocumentNumber] = useState("");
+  const receiptProgressQuery = useQuery({
+    queryKey: ["procurement", "purchase-orders", receivingOrderId, "receipt-progress"],
+    queryFn: () => apiRequest<ReceiptProgressLine[]>(`/procurement/purchase-orders/${receivingOrderId}/receipt-progress`),
+    enabled: receivingOrderId !== null,
+  });
+  function startReceivingOrder(orderId: string) {
+    setReceivingOrderId(orderId);
+    setReceivingQuantities({});
+    setReceivingDocumentNumber("");
+    receiveOrder.reset();
+  }
+  const receiveOrder = useMutation({
+    mutationFn: async ({ order, acknowledgeDuplicate }: { order: PurchaseOrder; acknowledgeDuplicate: boolean }) => {
+      const progress = receiptProgressQuery.data ?? [];
+      const lines = progress
+        .map((p) => ({
+          inventoryItemId: p.inventoryItemId,
+          quantity: Number(receivingQuantities[p.inventoryItemId] ?? p.remainingQuantity),
+          unitCost: p.unitPrice,
+        }))
+        .filter((l) => l.quantity > 0);
+      if (lines.length === 0) throw new Error("حدد كمية مستلمة لصنف واحد على الأقل");
+      const receipt = await apiRequest<GoodsReceipt>("/procurement/goods-receipts", {
+        method: "POST",
+        body: {
+          purchaseOrderId: order.id,
+          supplierId: order.supplierId,
+          branchId: order.branchId,
+          supplierDocumentNumber: receivingDocumentNumber || undefined,
+          acknowledgeDuplicate,
+          lines,
+        },
+      });
+      await apiRequest(`/procurement/goods-receipts/${receipt.id}/confirm`, { method: "POST" });
+    },
+    onSuccess: () => {
+      setReceivingOrderId(null);
+      queryClient.invalidateQueries({ queryKey: ["procurement", "purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["procurement", "goods-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
   });
 
   function handleSupplierSubmit(e: FormEvent) {
@@ -909,8 +966,13 @@ export function ProcurementPage() {
                           <Button size="sm" variant="danger" onClick={() => cancelPurchaseOrder.mutate(o.id)} disabled={cancelPurchaseOrder.isPending}>إلغاء</Button>
                         </div>
                       )}
-                      {o.status === "SENT" && (
-                        <Button size="sm" variant="danger" onClick={() => cancelPurchaseOrder.mutate(o.id)} disabled={cancelPurchaseOrder.isPending}>إلغاء</Button>
+                      {(o.status === "SENT" || o.status === "PARTIALLY_RECEIVED") && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" onClick={() => startReceivingOrder(o.id)}>استلام</Button>
+                          {o.status === "SENT" && (
+                            <Button size="sm" variant="danger" onClick={() => cancelPurchaseOrder.mutate(o.id)} disabled={cancelPurchaseOrder.isPending}>إلغاء</Button>
+                          )}
+                        </div>
                       )}
                     </TD>
                   </TR>
@@ -918,6 +980,70 @@ export function ProcurementPage() {
               </TBody>
             </Table>
             {purchaseOrders.length === 0 && <EmptyState>مفيش أوامر شراء لسه - بتتعمل من تحويل طلب شراء معتمد</EmptyState>}
+            {receivingOrderId && (() => {
+              const order = purchaseOrders.find((o) => o.id === receivingOrderId);
+              if (!order) return null;
+              const progress = receiptProgressQuery.data ?? [];
+              return (
+                <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="receive-order-panel">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-bold text-slate-900">استلام أمر شراء - {supplierName(order.supplierId)} / {branchName(order.branchId)}</h3>
+                    <Button size="sm" variant="secondary" onClick={() => setReceivingOrderId(null)}>إغلاق</Button>
+                  </div>
+                  <Table>
+                    <THead>
+                      <TR><TH>الصنف</TH><TH>المطلوب</TH><TH>اتسلّم قبل كده</TH><TH>المتبقي</TH><TH>الكمية المستلمة دلوقتي</TH></TR>
+                    </THead>
+                    <TBody>
+                      {progress.map((p) => (
+                        <TR key={p.inventoryItemId}>
+                          <TD>{itemName(p.inventoryItemId)}</TD>
+                          <TD>{p.orderedQuantity}</TD>
+                          <TD>{p.receivedQuantity}</TD>
+                          <TD>{p.remainingQuantity}</TD>
+                          <TD>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={receivingQuantities[p.inventoryItemId] ?? String(p.remainingQuantity)}
+                              onChange={(e) => setReceivingQuantities({ ...receivingQuantities, [p.inventoryItemId]: e.target.value })}
+                            />
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="رقم فاتورة/إذن المورد (اختياري)">
+                      <Input value={receivingDocumentNumber} onChange={(e) => setReceivingDocumentNumber(e.target.value)} />
+                    </Field>
+                  </div>
+                  {receiveOrder.error && (
+                    <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                      {receiveOrder.error instanceof Error ? receiveOrder.error.message : "حصل خطأ"}
+                    </p>
+                  )}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => receiveOrder.mutate({ order, acknowledgeDuplicate: false })}
+                      disabled={receiveOrder.isPending || receiptProgressQuery.isLoading}
+                    >
+                      تسجيل وتأكيد الاستلام
+                    </Button>
+                    {receiveOrder.error instanceof ApiError && receiveOrder.error.status === 409 && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => receiveOrder.mutate({ order, acknowledgeDuplicate: true })}
+                        disabled={receiveOrder.isPending}
+                      >
+                        تسجيل برضه (مش تكرار)
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </CardBody>
         </Card>
       )}

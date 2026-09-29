@@ -227,18 +227,7 @@ export class KyselyProcurementReportsReader implements ProcurementReportsReaderP
         eb.fn.count("purchase_order_items.id").as("items_count"),
         eb.fn.coalesce(eb.fn.sum(sql<number>`purchase_order_items.quantity * purchase_order_items.unit_price`), sql<number>`0`).as("total_value"),
       ])
-      .where("purchase_orders.status", "=", "SENT")
-      .where((eb) =>
-        eb.not(
-          eb.exists(
-            eb
-              .selectFrom("goods_receipts")
-              .select("goods_receipts.id")
-              .whereRef("goods_receipts.purchase_order_id", "=", "purchase_orders.id")
-              .where("goods_receipts.status", "=", "CONFIRMED")
-          )
-        )
-      )
+      .where("purchase_orders.status", "in", ["SENT", "PARTIALLY_RECEIVED"])
       .groupBy(["purchase_orders.id", "suppliers.name", "branches.name"])
       .orderBy("purchase_orders.created_at", "asc");
     if (input.branchId) query = query.where("purchase_orders.branch_id", "=", input.branchId);

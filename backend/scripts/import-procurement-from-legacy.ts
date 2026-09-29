@@ -117,10 +117,10 @@ export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Kysel
     list.push(it);
     poItemsByOrder.set(it.purchase_order_id, list);
   }
-  // النظام الجديد عنده 4 حالات بس (DRAFT/SENT/RECEIVED/CANCELLED) مقابل 7 في الريبو القديم
+  // النظام الجديد عنده 5 حالات (DRAFT/SENT/PARTIALLY_RECEIVED/RECEIVED/CANCELLED) مقابل 7 في الريبو القديم
   // (DRAFT/SUBMITTED/APPROVED/PARTIALLY_RECEIVED/FULLY_RECEIVED/CLOSED/CANCELLED)
   const poStatusMap: Record<string, string> = {
-    DRAFT: "DRAFT", SUBMITTED: "SENT", APPROVED: "SENT", PARTIALLY_RECEIVED: "SENT",
+    DRAFT: "DRAFT", SUBMITTED: "SENT", APPROVED: "SENT", PARTIALLY_RECEIVED: "PARTIALLY_RECEIVED",
     FULLY_RECEIVED: "RECEIVED", CLOSED: "RECEIVED", CANCELLED: "CANCELLED",
   };
   for (const row of poRows) {

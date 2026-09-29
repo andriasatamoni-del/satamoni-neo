@@ -22,6 +22,7 @@ import { CancelPurchaseReturnHandler } from "../application/commands/cancel-purc
 import { ListSuppliersHandler } from "../application/queries/list-suppliers.handler";
 import { ListPurchaseOrdersHandler } from "../application/queries/list-purchase-orders.handler";
 import { ListGoodsReceiptsHandler } from "../application/queries/list-goods-receipts.handler";
+import { GetPurchaseOrderReceiptProgressHandler } from "../application/queries/get-purchase-order-receipt-progress.handler";
 import { ListSupplierInvoicesHandler } from "../application/queries/list-supplier-invoices.handler";
 import { GetSupplierInvoiceHandler } from "../application/queries/get-supplier-invoice.handler";
 import { ListSupplierPaymentsHandler } from "../application/queries/list-supplier-payments.handler";
@@ -87,7 +88,8 @@ export class ProcurementController {
     private readonly postPurchaseReturn: PostPurchaseReturnHandler,
     private readonly cancelPurchaseReturn: CancelPurchaseReturnHandler,
     private readonly listPurchaseReturns: ListPurchaseReturnsHandler,
-    private readonly getPurchaseReturn: GetPurchaseReturnHandler
+    private readonly getPurchaseReturn: GetPurchaseReturnHandler,
+    private readonly getPurchaseOrderReceiptProgress: GetPurchaseOrderReceiptProgressHandler
   ) {}
 
   @Get("suppliers")
@@ -118,6 +120,12 @@ export class ProcurementController {
   @RequirePermission("procurement.purchase_orders.manage")
   async sendPurchaseOrderRoute(@Param("id") id: string) {
     return toPublicPurchaseOrder(await this.sendPurchaseOrder.execute(id));
+  }
+
+  @Get("purchase-orders/:id/receipt-progress")
+  @RequirePermission("procurement.purchase_orders.view", "procurement.purchase_orders.manage", "procurement.goods_receipts.manage")
+  async purchaseOrderReceiptProgress(@Param("id") id: string) {
+    return this.getPurchaseOrderReceiptProgress.execute(id);
   }
 
   @Post("purchase-orders/:id/cancel")

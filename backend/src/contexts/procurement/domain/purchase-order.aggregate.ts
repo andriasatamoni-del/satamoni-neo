@@ -6,10 +6,13 @@ import {
   UnknownPurchaseOrderStatusError,
 } from "./errors";
 
-// نسخة مبسّطة من دورة حياة أمر الشراء في الريبو القديم - مؤجّل تتبّع "استلام جزئي" (PARTIALLY_RECEIVED)
-// لسلايس تاني، الأولوية إثبات النمط الأساسي (Supplier + PurchaseOrder + GoodsReceipt PO-less أو مربوطة)
-export const PURCHASE_ORDER_STATUSES = ["DRAFT", "SENT", "RECEIVED", "CANCELLED"] as const;
+// دورة حياة أمر الشراء: DRAFT -> SENT -> PARTIALLY_RECEIVED -> RECEIVED (أو CANCELLED قبل أي استلام).
+// حالة الاستلام بتتحسب من إجمالي الكميات المستلمة فعليًا في أذون الاستلام المؤكدة مقابل كميات البنود -
+// نفس منطق routes/goods-receipts.js في الريبو القديم (FULLY_RECEIVED/PARTIALLY_RECEIVED)
+export const PURCHASE_ORDER_STATUSES = ["DRAFT", "SENT", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"] as const;
 export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
+export const RECEIVABLE_PURCHASE_ORDER_STATUSES: readonly PurchaseOrderStatus[] = ["SENT", "PARTIALLY_RECEIVED"];
+const QUANTITY_EPSILON = 0.0000001;
 
 export interface PurchaseOrderLine {
   id: string;
@@ -69,8 +72,25 @@ export class PurchaseOrder {
     this.props.status = "RECEIVED";
   }
 
+  // receivedByItem: إجمالي الكمية المستلمة لكل صنف عبر كل أذون الاستلام المؤكدة المربوطة بالأمر ده
+  applyReceivedQuantities(receivedByItem: ReadonlyMap<string, number>): void {
+    if (!RECEIVABLE_PURCHASE_ORDER_STATUSES.includes(this.props.status)) return;
+    const orderedByItem = new Map<string, number>();
+    for (const line of this.props.lines) {
+      orderedByItem.set(line.inventoryItemId, (orderedByItem.get(line.inventoryItemId) ?? 0) + line.quantity);
+    }
+    const fullyReceived = [...orderedByItem].every(
+      ([itemId, ordered]) => (receivedByItem.get(itemId) ?? 0) >= ordered - QUANTITY_EPSILON
+    );
+    const anyReceived = [...orderedByItem.keys()].some((itemId) => (receivedByItem.get(itemId) ?? 0) > 0);
+    if (fullyReceived) this.props.status = "RECEIVED";
+    else if (anyReceived) this.props.status = "PARTIALLY_RECEIVED";
+  }
+
   cancel(): void {
-    if (this.props.status === "RECEIVED" || this.props.status === "CANCELLED") throw new PurchaseOrderNotCancellableError();
+    if (this.props.status === "RECEIVED" || this.props.status === "PARTIALLY_RECEIVED" || this.props.status === "CANCELLED") {
+      throw new PurchaseOrderNotCancellableError();
+    }
     this.props.status = "CANCELLED";
   }
 

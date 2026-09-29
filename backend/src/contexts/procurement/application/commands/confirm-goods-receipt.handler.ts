@@ -6,6 +6,10 @@ import {
 } from "../../domain/ports/goods-receipt-repository.port";
 import { GoodsReceiptNotFoundError } from "../../domain/errors";
 import {
+  PURCHASE_ORDER_REPOSITORY,
+  type PurchaseOrderRepositoryPort,
+} from "../../domain/ports/purchase-order-repository.port";
+import {
   STOCK_MOVEMENT_REPOSITORY,
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
@@ -40,6 +44,7 @@ export class ConfirmGoodsReceiptHandler {
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(INVENTORY_BATCH_REPOSITORY) private readonly batches: InventoryBatchRepositoryPort,
+    @Inject(PURCHASE_ORDER_REPOSITORY) private readonly purchaseOrders: PurchaseOrderRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -95,10 +100,29 @@ export class ConfirmGoodsReceiptHandler {
       }
     }
 
+    if (receipt.purchaseOrderId) await this.refreshPurchaseOrderStatus(receipt.purchaseOrderId);
+
     await this.eventBus.publish(
       new GoodsReceiptConfirmedEvent(receipt.id, receipt.branchId, receipt.supplierId, totalValue, command.confirmedBy ?? null)
     );
 
     return receipt;
+  }
+
+  // PROC-BUG-1: حالة أمر الشراء بتتحسب من إجمالي كل أذون الاستلام المؤكدة المربوطة بيه (مش الإذن ده بس)
+  // - عشان استلامين جزئيين متتاليين يوصّلوا الأمر لـRECEIVED صح
+  private async refreshPurchaseOrderStatus(purchaseOrderId: string): Promise<void> {
+    const order = await this.purchaseOrders.findById(purchaseOrderId);
+    if (!order) return;
+    const receivedByItem = new Map<string, number>();
+    const linkedReceipts = await this.receipts.list({ purchaseOrderId });
+    for (const linked of linkedReceipts) {
+      if (linked.status !== "CONFIRMED") continue;
+      for (const line of linked.lines) {
+        receivedByItem.set(line.inventoryItemId, (receivedByItem.get(line.inventoryItemId) ?? 0) + line.quantity);
+      }
+    }
+    order.applyReceivedQuantities(receivedByItem);
+    await this.purchaseOrders.save(order);
   }
 }
