@@ -135,7 +135,8 @@ export class Order {
       };
     });
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
-    const discount = input.discount ?? 0;
+    // الخصم مايعديش إجمالي الأصناف (مكافأة نقاط بـ50 جنيه على طلب بـ30 = الطلب ببلاش، مش بسالب)
+    const discount = Math.min(Math.max(input.discount ?? 0, 0), subtotal);
 
     return new Order(randomUUID(), {
       branchId: input.branchId,

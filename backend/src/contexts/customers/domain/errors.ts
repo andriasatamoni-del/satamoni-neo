@@ -43,3 +43,33 @@ export class CustomerAddressRequiredError extends DomainError {
     super("لازم تفاصيل العنوان");
   }
 }
+
+export class InvalidEmailError extends DomainError {
+  constructor() {
+    super("الإيميل غير صالح");
+  }
+}
+
+export class EmailAlreadyUsedError extends DomainError {
+  constructor() {
+    super("الإيميل ده مستخدم في حساب تاني");
+  }
+}
+
+export class SecondPhoneRequiredError extends DomainError {
+  constructor() {
+    super("لازم رقم تليفون تاني مختلف عن الأساسي");
+  }
+}
+
+export class CustomerAddressFieldRequiredError extends DomainError {
+  constructor(field: string) {
+    super(`لازم ${field} في العنوان`);
+  }
+}
+
+export class CustomerAddressNotFoundError extends DomainError {
+  constructor() {
+    super("العنوان ده مش موجود");
+  }
+}

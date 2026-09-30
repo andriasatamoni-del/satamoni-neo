@@ -21,6 +21,7 @@ export interface RecentOrder {
 
 const CART_KEY = "satamoni-neo:storefront-cart";
 const RECENT_KEY = "satamoni-neo:storefront-recent-orders";
+const BRANCH_KEY = "satamoni-neo:storefront-branch";
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -45,6 +46,10 @@ export const loadRecentOrders = () => read<RecentOrder[]>(RECENT_KEY, []);
 export function rememberOrder(order: RecentOrder): void {
   write(RECENT_KEY, [order, ...loadRecentOrders().filter((o) => o.id !== order.id)].slice(0, 10));
 }
+
+// آخر فرع طلب منه العميل - بيتختار تلقائيًا المرة الجاية
+export const loadLastBranch = () => read<string | null>(BRANCH_KEY, null);
+export const rememberBranch = (branchId: string) => write(BRANCH_KEY, branchId);
 
 // crypto.randomUUID مش متاح على http عادي (غير localhost) - fallback بنفس شكل UUID v4
 export function newRequestId(): string {

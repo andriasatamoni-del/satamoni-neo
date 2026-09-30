@@ -1,14 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Customer, normalizePhone } from "../../domain/customer.aggregate";
-import { CustomerAccountAlreadyExistsError } from "../../domain/errors";
+import { Customer, normalizeEmail, normalizePhone, type StructuredAddressInput } from "../../domain/customer.aggregate";
+import { CustomerAccountAlreadyExistsError, EmailAlreadyUsedError } from "../../domain/errors";
 import { CUSTOMER_REPOSITORY, type CustomerRepositoryPort } from "../../domain/ports/customer-repository.port";
 import { CUSTOMER_PASSWORD_HASHER, type CustomerPasswordHasherPort } from "../../domain/ports/customer-password-hasher.port";
 import { CUSTOMER_TOKEN_SERVICE, type CustomerTokenServicePort } from "../../domain/ports/customer-token.service.port";
 
 export interface RegisterCustomerCommand {
   phone: string;
+  phone2: string;
+  email: string;
   name: string;
   password: string;
+  address: StructuredAddressInput;
 }
 
 export interface RegisterCustomerResult {
@@ -16,9 +19,9 @@ export interface RegisterCustomerResult {
   customer: Customer;
 }
 
-// تسجيل حساب عميل جديد - لو الرقم ده موجود قبل كده من طلب ضيف سابق (مفيش عليه حساب لسه)، بيتحول لحساب
-// حقيقي وبياناته القديمة (نقاط الولاء، العنوان المحفوظ) بتفضل زي ما هي - نفس فلسفة الريبو القديم بالحرف
-// (راجع تعليق activateAccount بالـaggregate)
+// تسجيل حساب عميل جديد (STORE-2): الاسم + التليفونين + الإيميل + أول عنوان، كلهم إلزاميين. لو الرقم ده
+// موجود قبل كده كعميل ضيف (من غير حساب)، بيتحول لحساب حقيقي وبياناته القديمة (نقاط الولاء، عناوينه)
+// بتفضل زي ما هي - نفس فلسفة الريبو القديم (راجع تعليق activateAccount بالـaggregate)
 @Injectable()
 export class RegisterCustomerHandler {
   constructor(
@@ -30,17 +33,22 @@ export class RegisterCustomerHandler {
   async execute(command: RegisterCustomerCommand): Promise<RegisterCustomerResult> {
     Customer.validatePasswordPolicy(command.password);
     const phone = normalizePhone(command.phone);
-    const passwordHash = await this.hasher.hash(command.password);
 
     const existing = await this.customers.findByPhone(phone);
+    if (existing?.hasAccount) throw new CustomerAccountAlreadyExistsError();
+    const emailOwner = await this.customers.findByEmail(normalizeEmail(command.email));
+    if (emailOwner && emailOwner.id !== existing?.id) throw new EmailAlreadyUsedError();
+
+    const passwordHash = await this.hasher.hash(command.password);
+    const contact = { name: command.name, email: command.email, phone2: command.phone2, passwordHash };
     let customer: Customer;
     if (existing) {
-      if (existing.hasAccount) throw new CustomerAccountAlreadyExistsError();
-      existing.activateAccount({ name: command.name, passwordHash });
+      existing.activateAccount(contact);
       customer = existing;
     } else {
-      customer = Customer.register({ phone, name: command.name, passwordHash });
+      customer = Customer.register({ phone, ...contact });
     }
+    customer.addAddress({ ...command.address, isDefault: true });
 
     await this.customers.save(customer);
     const token = this.tokens.sign({ sub: customer.id });

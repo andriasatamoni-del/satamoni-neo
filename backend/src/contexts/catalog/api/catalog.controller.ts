@@ -292,6 +292,9 @@ function toPublicCombo(combo: Combo) {
     name: combo.name,
     price: combo.price,
     isActive: combo.isActive,
+    imageUrl: combo.imageUrl,
+    description: combo.description,
+    onlineOnly: combo.onlineOnly,
     items: combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
   };
 }

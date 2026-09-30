@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
+import { sql, type Kysely, type Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import { Customer } from "../../domain/customer.aggregate";
@@ -18,6 +18,7 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
           id: customer.id,
           phone: customer.phone,
           phone2: customer.phone2,
+          email: customer.email,
           name: customer.name,
           address_details: customer.addressDetails,
           distinguishing_mark: customer.distinguishingMark,
@@ -35,11 +36,13 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
         .onConflict((oc) =>
           oc.column("id").doUpdateSet({
             phone2: customer.phone2,
+            email: customer.email,
             name: customer.name,
             address_details: customer.addressDetails,
             distinguishing_mark: customer.distinguishingMark,
             notes: customer.notes,
-            loyalty_points: customer.loyaltyPoints,
+            // loyalty_points مش بيتكتب هنا: الرصيد بيتعدّل ذرّيًا من Loyalty context بس (UPDATE ... +/-) -
+            // حفظ الـaggregate بقيمة قديمة كان هيمسح نقاط اتضافت في نفس اللحظة
             password_hash: customer.passwordHash,
             is_blocked: customer.isBlocked,
             block_reason: customer.blockReason,
@@ -59,6 +62,11 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
             customer_id: customer.id,
             label: address.label,
             address_details: address.addressDetails,
+            area: address.area,
+            street: address.street,
+            building: address.building,
+            floor: address.floor,
+            apartment: address.apartment,
             distinguishing_mark: address.distinguishingMark,
             is_default: address.isDefault,
             created_at: address.createdAt,
@@ -78,6 +86,15 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
     return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
   }
 
+  async findByEmail(email: string): Promise<Customer | null> {
+    const row = await this.db
+      .selectFrom("customers")
+      .selectAll()
+      .where(sql`lower(email)`, "=", email.toLowerCase())
+      .executeTakeFirst();
+    return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
+  }
+
   async findByLegacyCustomerId(legacyId: number): Promise<Customer | null> {
     const row = await this.db.selectFrom("customers").selectAll().where("legacy_customer_id", "=", legacyId).executeTakeFirst();
     return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
@@ -91,6 +108,7 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
     return Customer.reconstitute(row.id, {
       phone: row.phone,
       phone2: row.phone2,
+      email: row.email,
       name: row.name,
       addressDetails: row.address_details,
       distinguishingMark: row.distinguishing_mark,
@@ -105,6 +123,11 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
         id: a.id,
         label: a.label,
         addressDetails: a.address_details,
+        area: a.area,
+        street: a.street,
+        building: a.building,
+        floor: a.floor,
+        apartment: a.apartment,
         distinguishingMark: a.distinguishing_mark,
         isDefault: a.is_default,
         createdAt: a.created_at,

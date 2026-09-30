@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, Min } from "class-validator";
+import { IsBoolean, IsNumber, IsOptional, Max, Min } from "class-validator";
 
 export class UpdatePosSettingsDto {
   @IsOptional() @IsNumber() @Min(0) shiftVarianceAckThresholdEgp?: number;
@@ -10,4 +10,5 @@ export class UpdatePosSettingsDto {
   @IsOptional() @IsBoolean() smsConfirmationsEnabled?: boolean;
   @IsOptional() @IsBoolean() smsRatingRequestsEnabled?: boolean;
   @IsOptional() @IsBoolean() onlineOrderingEnabled?: boolean;
+  @IsOptional() @IsNumber() @Min(0) @Max(10) loyaltyPointsPerEgp?: number;
 }

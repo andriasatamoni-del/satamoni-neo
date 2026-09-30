@@ -116,7 +116,7 @@ export function TrackOrderPage() {
           </ul>
           {order.discount > 0 && (
             <p className="mt-2 flex justify-between text-sm text-green-700">
-              <span>خصم</span>
+              <span>{order.customerNotes?.includes("مكافأة نقاط") ? "🎁 هدية/خصم نقاط الولاء" : "خصم"}</span>
               <span>-{money(order.discount)}</span>
             </p>
           )}

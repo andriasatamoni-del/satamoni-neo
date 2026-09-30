@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { customerApiRequest, CustomerApiError, setCustomerToken } from "../../shared/api/customerClient";
 import { Button } from "../../shared/ui/Button";
 import { Field, Input, Select, Textarea } from "../../shared/ui/Field";
 import type { CustomerProfile } from "./StorefrontShell";
-import type { StorefrontBranch, StorefrontMenu } from "./types";
+import type { LoyaltyReward, StorefrontBranch, StorefrontMenu } from "./types";
 import { money, ORDER_TYPE_LABELS } from "./types";
-import { newRequestId, rememberOrder, type CartLine } from "./storefrontStorage";
+import { loadLastBranch, newRequestId, rememberBranch, rememberOrder, type CartLine } from "./storefrontStorage";
 
 interface SavedAddress {
   id: string;
   label: string | null;
   addressDetails: string;
-  distinguishingMark: string | null;
   isDefault: boolean;
 }
 
@@ -31,6 +30,8 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   return 6371 * 2 * Math.asin(Math.sqrt(h));
 }
 
+// السلة + تأكيد الطلب. الحساب إلزامي (STORE-2): العميل المسجّل مابيكتبش أي بيانات - اسمه وتليفوناته
+// وعنوانه الافتراضي جاهزين، والطلب بضغطة واحدة (وممكن يختار مكافأة بنقاطه)
 export function CheckoutPanel({
   menu,
   cart,
@@ -46,112 +47,7 @@ export function CheckoutPanel({
   initialBranchId: string | null;
   initialTable: string | null;
 }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const branches = menu.branches;
-
-  const [branchId, setBranchId] = useState(
-    (initialBranchId && branches.some((b) => b.id === initialBranchId) ? initialBranchId : null) ?? (branches.length === 1 ? branches[0].id : "")
-  );
-  const branch: StorefrontBranch | undefined = branches.find((b) => b.id === branchId);
-  const [orderType, setOrderType] = useState(initialTable ? "dinein" : "delivery");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [phone2, setPhone2] = useState("");
-  const [address, setAddress] = useState("");
-  const [mark, setMark] = useState("");
-  const [saveAddress, setSaveAddress] = useState(true);
-  const [table, setTable] = useState(initialTable ?? "");
-  const [notes, setNotes] = useState("");
-  const [locating, setLocating] = useState<string | null>(null);
-  // نفس المعرّف لحد ما الطلب ينجح - لو داس مرتين أو النت فصل بعد الإرسال، السيرفر بيرجّع نفس الطلب
-  const requestId = useRef(newRequestId());
-
-  const prefilled = useRef(false);
-  useEffect(() => {
-    if (customer?.name && !prefilled.current) {
-      prefilled.current = true;
-      setName((current) => current || customer.name!);
-    }
-  }, [customer]);
-
-  const addressesQuery = useQuery({
-    queryKey: ["storefront", "addresses"],
-    queryFn: () => customerApiRequest<SavedAddress[]>("/customer-auth/me/addresses"),
-    enabled: Boolean(customer),
-  });
-  useEffect(() => {
-    const preferred = addressesQuery.data?.find((a) => a.isDefault) ?? addressesQuery.data?.[0];
-    if (preferred && !address) {
-      setAddress(preferred.addressDetails);
-      setMark(preferred.distinguishingMark ?? "");
-    }
-  }, [addressesQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const availableTypes = useMemo(
-    () => ["delivery", "takeaway", ...(branch?.supportsDineIn ? ["dinein"] : [])],
-    [branch]
-  );
-  useEffect(() => {
-    if (!availableTypes.includes(orderType)) setOrderType("delivery");
-  }, [availableTypes, orderType]);
-
   const total = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
-  const locatable = branches.filter((b) => b.lat !== null && b.lng !== null);
-
-  function findNearest() {
-    if (!navigator.geolocation) return setLocating("المتصفح مش بيدعم تحديد المكان");
-    setLocating("بنحدد مكانك...");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        const nearest = [...locatable].sort(
-          (a, b) => distanceKm(here, { lat: a.lat!, lng: a.lng! }) - distanceKm(here, { lat: b.lat!, lng: b.lng! })
-        )[0];
-        setBranchId(nearest.id);
-        setLocating(`أقرب فرع: ${nearest.name} (${distanceKm(here, { lat: nearest.lat!, lng: nearest.lng! }).toFixed(1)} كم)`);
-      },
-      () => setLocating("مقدرناش نحدد مكانك - اختار الفرع بنفسك")
-    );
-  }
-
-  const placeMutation = useMutation({
-    mutationFn: () =>
-      customerApiRequest<PlacedOrder>("/storefront/orders", {
-        method: "POST",
-        body: {
-          clientRequestId: requestId.current,
-          branchId,
-          orderType,
-          customerName: name,
-          customerPhone: customer ? undefined : phone,
-          customerPhone2: phone2 || undefined,
-          addressDetails: orderType === "delivery" ? address : undefined,
-          distinguishingMark: orderType === "delivery" ? mark || undefined : undefined,
-          tableNumber: orderType === "dinein" ? table : undefined,
-          notes: notes || undefined,
-          saveAddress: Boolean(customer) && saveAddress,
-          items: cart.map((l) =>
-            l.kind === "combo"
-              ? { comboId: l.refId, quantity: l.quantity }
-              : { variantId: l.refId, quantity: l.quantity, modifierIds: l.modifierIds }
-          ),
-        },
-      }),
-    onSuccess: (placed) => {
-      rememberOrder({ id: placed.orderId, token: placed.trackingToken, total: placed.total, createdAt: new Date().toISOString() });
-      requestId.current = newRequestId();
-      setCart([]);
-      queryClient.invalidateQueries({ queryKey: ["storefront", "addresses"] });
-      navigate(`/order/track/${placed.orderId}?token=${placed.trackingToken}`);
-    },
-    onError: (err) => {
-      if (err instanceof CustomerApiError && err.status === 401) {
-        setCustomerToken(null);
-        queryClient.invalidateQueries({ queryKey: ["storefront", "customer"] });
-      }
-    },
-  });
 
   function updateQuantity(key: string, delta: number) {
     setCart(
@@ -198,141 +94,272 @@ export function CheckoutPanel({
         </div>
       </section>
 
-      <form
-        className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          placeMutation.mutate();
-        }}
-      >
-        <h2 className="text-base font-bold text-slate-900">بيانات الطلب</h2>
+      {!customer ? (
+        <section className="space-y-3 rounded-xl border border-brand-200 bg-brand-50 p-4 text-center" data-testid="login-required">
+          <p className="font-bold text-slate-900">عشان تطلب، ادخل بحسابك</p>
+          <p className="text-sm text-slate-600">بتسجّل مرة واحدة ببياناتك وعنوانك، وبعد كده تطلب بضغطة{menu.loyalty.pointsPerEgp > 0 ? " وتجمع نقاط على كل طلب" : ""}.</p>
+          <div className="flex gap-2">
+            <Link to="/portal/register?next=/order" className="flex-1 rounded-lg bg-brand-600 px-3 py-2.5 font-bold text-white">
+              حساب جديد
+            </Link>
+            <Link to="/portal/login?next=/order" className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-semibold text-slate-700">
+              دخول
+            </Link>
+          </div>
+        </section>
+      ) : customer.missingProfileFields.length > 0 ? (
+        <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-center" data-testid="complete-profile-cta">
+          <p className="font-bold text-amber-900">كمّل بياناتك مرة واحدة الأول</p>
+          <Link to="/portal/me" className="inline-block rounded-lg bg-amber-500 px-4 py-2 font-bold text-white">
+            كمّل بياناتي
+          </Link>
+        </section>
+      ) : (
+        <OrderForm menu={menu} cart={cart} setCart={setCart} customer={customer} total={total} initialBranchId={initialBranchId} initialTable={initialTable} />
+      )}
+    </div>
+  );
+}
 
-        <Field label="الفرع">
-          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} required data-testid="branch-select">
-            <option value="">اختار الفرع</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {locatable.length > 1 && (
-          <button type="button" onClick={findNearest} className="text-xs font-semibold text-brand-600">
-            📍 اختار أقرب فرع ليا
+function OrderForm({
+  menu,
+  cart,
+  setCart,
+  customer,
+  total,
+  initialBranchId,
+  initialTable,
+}: {
+  menu: StorefrontMenu;
+  cart: CartLine[];
+  setCart: (lines: CartLine[]) => void;
+  customer: CustomerProfile;
+  total: number;
+  initialBranchId: string | null;
+  initialTable: string | null;
+}) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const branches = menu.branches;
+  const pickBranch = (id: string | null) => (id && branches.some((b) => b.id === id) ? id : null);
+
+  const [branchId, setBranchId] = useState(pickBranch(initialBranchId) ?? pickBranch(loadLastBranch()) ?? (branches.length === 1 ? branches[0].id : ""));
+  const branch: StorefrontBranch | undefined = branches.find((b) => b.id === branchId);
+  const [orderType, setOrderType] = useState(initialTable ? "dinein" : "delivery");
+  const [addressId, setAddressId] = useState("");
+  const [table, setTable] = useState(initialTable ?? "");
+  const [notes, setNotes] = useState("");
+  const [rewardId, setRewardId] = useState("");
+  const [locating, setLocating] = useState<string | null>(null);
+  // نفس المعرّف لحد ما الطلب ينجح - لو داس مرتين أو النت فصل بعد الإرسال، السيرفر بيرجّع نفس الطلب
+  const requestId = useRef(newRequestId());
+
+  const addressesQuery = useQuery({
+    queryKey: ["storefront", "addresses"],
+    queryFn: () => customerApiRequest<SavedAddress[]>("/customer-auth/me/addresses"),
+  });
+  const loyaltyQuery = useQuery({
+    queryKey: ["storefront", "loyalty"],
+    queryFn: () => customerApiRequest<{ balance: number; rewards: LoyaltyReward[] }>("/loyalty/me"),
+  });
+  useEffect(() => {
+    const addresses = addressesQuery.data ?? [];
+    if (!addresses.some((a) => a.id === addressId)) setAddressId((addresses.find((a) => a.isDefault) ?? addresses[0])?.id ?? "");
+  }, [addressesQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const availableTypes = useMemo(() => ["delivery", "takeaway", ...(branch?.supportsDineIn ? ["dinein"] : [])], [branch]);
+  useEffect(() => {
+    if (!availableTypes.includes(orderType)) setOrderType("delivery");
+  }, [availableTypes, orderType]);
+
+  const locatable = branches.filter((b) => b.lat !== null && b.lng !== null);
+  function findNearest() {
+    if (!navigator.geolocation) return setLocating("المتصفح مش بيدعم تحديد المكان");
+    setLocating("بنحدد مكانك...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const nearest = [...locatable].sort(
+          (a, b) => distanceKm(here, { lat: a.lat!, lng: a.lng! }) - distanceKm(here, { lat: b.lat!, lng: b.lng! })
+        )[0];
+        setBranchId(nearest.id);
+        setLocating(`أقرب فرع: ${nearest.name} (${distanceKm(here, { lat: nearest.lat!, lng: nearest.lng! }).toFixed(1)} كم)`);
+      },
+      () => setLocating("مقدرناش نحدد مكانك - اختار الفرع بنفسك")
+    );
+  }
+
+  const rewards = (loyaltyQuery.data?.rewards ?? []).filter((r) => r.affordable);
+  const reward = rewards.find((r) => r.id === rewardId);
+  // تقدير للعرض بس - السيرفر بيحسب الخصم الحقيقي. الهدية بتتضاف ببلاش، والخصم مايعديش الطلب
+  const discount = reward ? (reward.kind === "discount" ? Math.min(reward.value ?? 0, total) : 0) : 0;
+  const finalTotal = total - discount;
+
+  const placeMutation = useMutation({
+    mutationFn: () =>
+      customerApiRequest<PlacedOrder>("/storefront/orders", {
+        method: "POST",
+        body: {
+          clientRequestId: requestId.current,
+          branchId,
+          orderType,
+          addressId: orderType === "delivery" ? addressId : undefined,
+          tableNumber: orderType === "dinein" ? table : undefined,
+          notes: notes || undefined,
+          rewardId: rewardId || undefined,
+          items: cart.map((l) =>
+            l.kind === "combo" ? { comboId: l.refId, quantity: l.quantity } : { variantId: l.refId, quantity: l.quantity, modifierIds: l.modifierIds }
+          ),
+        },
+      }),
+    onSuccess: (placed) => {
+      rememberOrder({ id: placed.orderId, token: placed.trackingToken, total: placed.total, createdAt: new Date().toISOString() });
+      rememberBranch(branchId);
+      requestId.current = newRequestId();
+      setCart([]);
+      queryClient.invalidateQueries({ queryKey: ["storefront"] });
+      navigate(`/order/track/${placed.orderId}?token=${placed.trackingToken}`);
+    },
+    onError: (err) => {
+      if (err instanceof CustomerApiError && err.status === 401) {
+        setCustomerToken(null);
+        queryClient.invalidateQueries({ queryKey: ["storefront", "customer"] });
+      }
+    },
+  });
+
+  const addresses = addressesQuery.data ?? [];
+  const canSubmit =
+    menu.orderingEnabled && cart.length > 0 && !!branchId && (orderType !== "delivery" || !!addressId) && (orderType !== "dinein" || !!table.trim());
+
+  return (
+    <form
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        placeMutation.mutate();
+      }}
+    >
+      <p className="text-xs text-slate-500">
+        الطلب باسم <b className="text-slate-700">{customer.name}</b> · <span dir="ltr">{customer.phone}</span>
+      </p>
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="نوع الطلب">
+        {availableTypes.map((type) => (
+          <button
+            key={type}
+            type="button"
+            role="radio"
+            aria-checked={orderType === type}
+            onClick={() => setOrderType(type)}
+            className={`rounded-lg border px-2 py-2 text-sm font-semibold ${
+              orderType === type ? "border-brand-500 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600"
+            }`}
+          >
+            {ORDER_TYPE_LABELS[type]}
           </button>
-        )}
-        {locating && <p className="text-xs text-slate-500">{locating}</p>}
-        {branch && (branch.address || branch.hours) && (
-          <p className="text-xs text-slate-500">
-            {branch.address}
-            {branch.hours && ` · ${branch.hours}`}
-          </p>
-        )}
+        ))}
+      </div>
 
-        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="نوع الطلب">
-          {availableTypes.map((type) => (
-            <button
-              key={type}
-              type="button"
-              role="radio"
-              aria-checked={orderType === type}
-              onClick={() => setOrderType(type)}
-              className={`rounded-lg border px-2 py-2 text-xs font-semibold ${
-                orderType === type ? "border-brand-500 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600"
-              }`}
+      {orderType === "delivery" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-600">التوصيل على</span>
+            <Link to="/portal/me" className="text-xs font-semibold text-brand-600">
+              + عنوان تاني
+            </Link>
+          </div>
+          {addresses.map((a) => (
+            <label
+              key={a.id}
+              className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-sm ${a.id === addressId ? "border-brand-500 bg-brand-50" : "border-slate-200"}`}
+              data-testid="address-option"
             >
-              {ORDER_TYPE_LABELS[type]}
-            </button>
+              <input type="radio" name="address" className="mt-1" checked={a.id === addressId} onChange={() => setAddressId(a.id)} />
+              <span>
+                {a.label && <b className="block">{a.label}</b>}
+                <span className="text-slate-600">{a.addressDetails}</span>
+              </span>
+            </label>
           ))}
         </div>
+      )}
 
-        <Field label="الاسم">
-          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
+      <Field label="الفرع">
+        <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} required data-testid="branch-select">
+          <option value="">اختار الفرع</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {locatable.length > 1 && (
+        <button type="button" onClick={findNearest} className="text-xs font-semibold text-brand-600">
+          📍 اختار أقرب فرع ليا
+        </button>
+      )}
+      {locating && <p className="text-xs text-slate-500">{locating}</p>}
+
+      {orderType === "dinein" && (
+        <Field label="رقم الترابيزة">
+          <Input value={table} onChange={(e) => setTable(e.target.value)} required maxLength={10} />
         </Field>
-        {customer ? (
-          <p className="text-xs text-slate-500">
-            الطلب هيتسجّل على رقمك: <span dir="ltr">{customer.phone}</span>
-          </p>
-        ) : (
-          <Field label="رقم التليفون">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" inputMode="tel" placeholder="01012345678" required />
-          </Field>
-        )}
+      )}
 
-        {orderType === "delivery" && (
-          <>
-            {addressesQuery.data && addressesQuery.data.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {addressesQuery.data.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => {
-                      setAddress(a.addressDetails);
-                      setMark(a.distinguishingMark ?? "");
-                    }}
-                    className={`rounded-full border px-3 py-1 text-xs ${address === a.addressDetails ? "border-brand-500 bg-brand-50" : "border-slate-200"}`}
-                  >
-                    {a.label || a.addressDetails.slice(0, 24)}
-                  </button>
-                ))}
-              </div>
-            )}
-            <Field label="العنوان بالتفصيل">
-              <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} required maxLength={300} placeholder="المنطقة، الشارع، رقم العمارة، الدور، الشقة" />
-            </Field>
-            <Field label="علامة مميزة (اختياري)">
-              <Input value={mark} onChange={(e) => setMark(e.target.value)} maxLength={150} />
-            </Field>
-            <Field label="رقم تليفون تاني (اختياري)">
-              <Input value={phone2} onChange={(e) => setPhone2(e.target.value)} dir="ltr" inputMode="tel" />
-            </Field>
-            {customer && (
-              <label className="flex items-center gap-2 text-xs text-slate-600">
-                <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />
-                احفظ العنوان ده للمرة الجاية
-              </label>
-            )}
-          </>
-        )}
+      {rewards.length > 0 && (
+        <div className="space-y-2 rounded-lg bg-amber-50 p-3" data-testid="rewards-picker">
+          <p className="text-sm font-bold text-amber-900">⭐ استخدم نقاطك (رصيدك {loyaltyQuery.data?.balance})</p>
+          <div className="flex flex-wrap gap-2">
+            {rewards.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setRewardId(r.id === rewardId ? "" : r.id)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  r.id === rewardId ? "border-amber-500 bg-amber-400 text-amber-950" : "border-amber-300 bg-white text-amber-900"
+                }`}
+              >
+                {r.name} · {r.pointsCost} نقطة
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
-        {orderType === "dinein" && (
-          <Field label="رقم الترابيزة">
-            <Input value={table} onChange={(e) => setTable(e.target.value)} required maxLength={10} />
-          </Field>
-        )}
+      <Field label="ملاحظات للمطبخ (اختياري)">
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={500} placeholder="من غير بصل، زيادة صوص..." />
+      </Field>
 
-        <Field label="ملاحظات للمطبخ (اختياري)">
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={500} placeholder="من غير بصل، زيادة صوص..." />
-        </Field>
-
-        <fieldset className="space-y-2 text-sm">
-          <legend className="mb-1 text-xs font-semibold text-slate-600">طريقة الدفع</legend>
-          <label className="flex items-center gap-2 rounded-lg border border-brand-500 bg-brand-50 px-3 py-2">
-            <input type="radio" checked readOnly /> كاش عند الاستلام
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-slate-400">
-            <input type="radio" disabled /> دفع أونلاين (قريبًا)
-          </label>
-        </fieldset>
-
-        {!menu.orderingEnabled && <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-800">الطلب أونلاين مقفول حاليًا</p>}
-        {placeMutation.isError && (
-          <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700" data-testid="order-error">
-            {placeMutation.error instanceof CustomerApiError ? placeMutation.error.message : "حصل خطأ، جرّب تاني"}
+      <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
+        <p className="flex justify-between text-slate-500">
+          <span>الدفع</span>
+          <span>كاش عند الاستلام</span>
+        </p>
+        {reward && reward.kind !== "discount" && (
+          <p className="flex justify-between text-green-700">
+            <span>🎁 {reward.targetName ?? reward.name}</span>
+            <span>هدية</span>
           </p>
         )}
+        {discount > 0 && (
+          <p className="flex justify-between text-green-700">
+            <span>خصم النقاط</span>
+            <span>-{money(discount)}</span>
+          </p>
+        )}
+      </div>
 
-        <Button
-          type="submit"
-          className="w-full justify-center py-3 text-base"
-          disabled={!menu.orderingEnabled || cart.length === 0 || !branchId || placeMutation.isPending}
-          data-testid="place-order"
-        >
-          {placeMutation.isPending ? "بنبعت الطلب..." : `أكّد الطلب · ${money(total)}`}
-        </Button>
-      </form>
-    </div>
+      {!menu.orderingEnabled && <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-800">الطلب أونلاين مقفول حاليًا</p>}
+      {placeMutation.isError && (
+        <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700" data-testid="order-error">
+          {placeMutation.error instanceof CustomerApiError ? placeMutation.error.message : "حصل خطأ، جرّب تاني"}
+        </p>
+      )}
+
+      <Button type="submit" className="w-full justify-center py-3 text-base" disabled={!canSubmit || placeMutation.isPending} data-testid="place-order">
+        {placeMutation.isPending ? "بنبعت الطلب..." : `أكّد الطلب · ${money(finalTotal)}`}
+      </Button>
+    </form>
   );
 }

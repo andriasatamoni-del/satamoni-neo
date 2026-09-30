@@ -61,7 +61,7 @@
 
 | الخدمة | متغيرات الباك إند على Render | التفعيل | التفاصيل |
 |---|---|---|---|
-| موقع الطلب أونلاين (`/order`) | مفيش | إعدادات النظام ← موقع الطلب أونلاين | `backend/docs/STOREFRONT.md` |
+| موقع الطلب أونلاين (`/order`) + نقاط الولاء + صور المنيو | مفيش | إعدادات النظام ← موقع الطلب أونلاين، وشاشة نقاط الولاء | `backend/docs/STOREFRONT.md` |
 | بوت واتساب/ماسنجر/إنستجرام | `GEMINI_API_KEY`، `META_APP_SECRET`، `META_VERIFY_TOKEN`، `WHATSAPP_ACCESS_TOKEN`، `WHATSAPP_PHONE_NUMBER_ID`، `META_PAGE_ACCESS_TOKEN`، اختياري `WHATSAPP_STAFF_NOTIFY_NUMBER` | إعدادات النظام ← بوت الرد الآلي | `backend/docs/WHATSAPP-BOT.md` |
 | SMS تأكيد الطلب وطلب التقييم | `SMS_WEBHOOK_URL`، اختياري `SMS_WEBHOOK_AUTH_HEADER` و`PUBLIC_APP_URL` | إعدادات النظام ← رسايل SMS | `backend/docs/WHATSAPP-BOT.md` |
 | النسخ الاحتياطي اليومي | secret في GitHub اسمه `DATABASE_URL` (External URL) | تلقائي كل يوم | `backend/docs/BACKUP_AND_RECOVERY.md` |

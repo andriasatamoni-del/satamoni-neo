@@ -32,6 +32,8 @@ import { TalabatModule } from "./contexts/talabat/talabat.module";
 import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 import { NotificationsModule } from "./contexts/notifications/notifications.module";
 import { StorefrontModule } from "./contexts/storefront/storefront.module";
+import { LoyaltyModule } from "./contexts/loyalty/loyalty.module";
+import { MediaModule } from "./contexts/media/media.module";
 
 @Module({
   imports: [
@@ -70,6 +72,8 @@ import { StorefrontModule } from "./contexts/storefront/storefront.module";
     TalabatModule,
     HomeTilesModule,
     NotificationsModule,
+    LoyaltyModule,
+    MediaModule,
     StorefrontModule,
   ],
   controllers: [HealthController],

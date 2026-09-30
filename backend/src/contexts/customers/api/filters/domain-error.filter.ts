@@ -2,8 +2,10 @@ import { ArgumentsHost, Catch, ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
 import {
   CustomerAccountAlreadyExistsError,
+  CustomerAddressNotFoundError,
   CustomerNotFoundError,
   DomainError,
+  EmailAlreadyUsedError,
   InvalidCustomerCredentialsError,
 } from "../../domain/errors";
 
@@ -14,9 +16,9 @@ export class CustomersDomainErrorFilter implements ExceptionFilter {
     const status =
       exception instanceof InvalidCustomerCredentialsError
         ? 401
-        : exception instanceof CustomerNotFoundError
+        : exception instanceof CustomerNotFoundError || exception instanceof CustomerAddressNotFoundError
           ? 404
-          : exception instanceof CustomerAccountAlreadyExistsError
+          : exception instanceof CustomerAccountAlreadyExistsError || exception instanceof EmailAlreadyUsedError
             ? 409
             : 400;
     res.status(status).json({ error: exception.message });

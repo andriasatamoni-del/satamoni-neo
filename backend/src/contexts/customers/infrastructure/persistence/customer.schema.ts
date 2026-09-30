@@ -4,6 +4,7 @@ export interface CustomersTable {
   id: Generated<string>;
   phone: string;
   phone2: string | null;
+  email: string | null;
   name: string | null;
   address_details: string | null;
   distinguishing_mark: string | null;
@@ -24,6 +25,11 @@ export interface CustomerAddressesTable {
   customer_id: string;
   label: string | null;
   address_details: string;
+  area: string | null;
+  street: string | null;
+  building: string | null;
+  floor: string | null;
+  apartment: string | null;
   distinguishing_mark: string | null;
   is_default: boolean;
   created_at: Generated<Date>;

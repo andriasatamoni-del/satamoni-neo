@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/Button";
+import { resolveImageUrl } from "../../shared/api/images";
 import type { StorefrontItem } from "./types";
 import { money } from "./types";
 import type { CartLine } from "./storefrontStorage";
@@ -36,7 +37,7 @@ export function ItemDialog({
         className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {item.imageUrl && <img src={item.imageUrl} alt="" className="mb-3 h-40 w-full rounded-xl object-cover" />}
+        {item.imageUrl && <img src={resolveImageUrl(item.imageUrl)!} alt="" className="mb-3 h-48 w-full rounded-xl object-cover" />}
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{item.name}</h2>

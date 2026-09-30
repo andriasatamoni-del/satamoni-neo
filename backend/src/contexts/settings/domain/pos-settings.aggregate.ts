@@ -17,6 +17,8 @@ export interface PosSettingsProps {
   smsRatingRequestsEnabled: boolean;
   // موقع الطلب أونلاين (STORE-1) - مقفول افتراضيًا: الموقع بيعرض المنيو بس ويقول إن الطلب مقفول
   onlineOrderingEnabled: boolean;
+  // نقاط الولاء لكل جنيه من إجمالي الطلب (0.1 = نقطة لكل 10 جنيه). صفر = الكسب واقف
+  loyaltyPointsPerEgp: number;
   updatedBy: string | null;
   updatedAt: Date;
 }
@@ -31,6 +33,7 @@ export const DEFAULT_POS_SETTINGS: PosSettingsProps = {
   smsConfirmationsEnabled: false,
   smsRatingRequestsEnabled: false,
   onlineOrderingEnabled: false,
+  loyaltyPointsPerEgp: 0.1,
   updatedBy: null,
   updatedAt: new Date(0),
 };
@@ -59,6 +62,7 @@ export class PosSettings {
     if (input.whatsappBotEnabled !== undefined) this.props.whatsappBotEnabled = input.whatsappBotEnabled;
     if (input.smsConfirmationsEnabled !== undefined) this.props.smsConfirmationsEnabled = input.smsConfirmationsEnabled;
     if (input.smsRatingRequestsEnabled !== undefined) this.props.smsRatingRequestsEnabled = input.smsRatingRequestsEnabled;
+    if (input.loyaltyPointsPerEgp !== undefined) this.props.loyaltyPointsPerEgp = input.loyaltyPointsPerEgp;
     if (input.onlineOrderingEnabled !== undefined) this.props.onlineOrderingEnabled = input.onlineOrderingEnabled;
     this.props.updatedBy = updatedBy;
     this.props.updatedAt = new Date();
@@ -73,6 +77,7 @@ export class PosSettings {
   get smsConfirmationsEnabled(): boolean { return this.props.smsConfirmationsEnabled; }
   get smsRatingRequestsEnabled(): boolean { return this.props.smsRatingRequestsEnabled; }
   get onlineOrderingEnabled(): boolean { return this.props.onlineOrderingEnabled; }
+  get loyaltyPointsPerEgp(): number { return this.props.loyaltyPointsPerEgp; }
   get updatedBy(): string | null { return this.props.updatedBy; }
   get updatedAt(): Date { return this.props.updatedAt; }
 }

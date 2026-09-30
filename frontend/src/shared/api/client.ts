@@ -4,7 +4,7 @@ const TOKEN_STORAGE_KEY = "satamoni-neo:token";
 // الإنتاج: لو الفرونت والباك إند اتنشروا كـservices منفصلة (Render static site + web service مثلًا)،
 // VITE_API_BASE_URL بيتحدد وقت البناء برابط الباك إند الفعلي (راجع DEPLOYMENT.md) - الباك إند مفعّل
 // عليه CORS بالفعل (main.ts) فمفيش داعي لـrewrite/proxy في الإنتاج
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);

@@ -12,6 +12,7 @@ export interface UpdatePosSettingsCommand {
   smsConfirmationsEnabled?: boolean;
   smsRatingRequestsEnabled?: boolean;
   onlineOrderingEnabled?: boolean;
+  loyaltyPointsPerEgp?: number;
   updatedBy: string | null;
 }
 

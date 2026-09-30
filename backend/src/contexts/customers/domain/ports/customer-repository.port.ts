@@ -4,6 +4,7 @@ export interface CustomerRepositoryPort {
   save(customer: Customer): Promise<void>;
   findById(id: string): Promise<Customer | null>;
   findByPhone(phone: string): Promise<Customer | null>;
+  findByEmail(email: string): Promise<Customer | null>;
   findByLegacyCustomerId(legacyId: number): Promise<Customer | null>;
 }
 

@@ -19,6 +19,9 @@ export class KyselyComboRepository implements ComboRepositoryPort {
           name: combo.name,
           price: combo.price,
           is_active: combo.isActive,
+          image_url: combo.imageUrl,
+          description: combo.description,
+          online_only: combo.onlineOnly,
           legacy_combo_id: combo.legacyComboId,
           created_at: combo.createdAt,
         })
@@ -27,6 +30,9 @@ export class KyselyComboRepository implements ComboRepositoryPort {
             name: combo.name,
             price: combo.price,
             is_active: combo.isActive,
+            image_url: combo.imageUrl,
+            description: combo.description,
+            online_only: combo.onlineOnly,
           })
         )
         .execute();
@@ -70,6 +76,9 @@ export class KyselyComboRepository implements ComboRepositoryPort {
       name: row.name,
       price: Number(row.price),
       isActive: row.is_active,
+      imageUrl: row.image_url,
+      description: row.description,
+      onlineOnly: row.online_only,
       items: itemRows.map((i) => ({ id: i.id, variantId: i.variant_id, quantity: i.quantity })),
       legacyComboId: row.legacy_combo_id,
       createdAt: row.created_at,

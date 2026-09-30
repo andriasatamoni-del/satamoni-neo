@@ -8,6 +8,9 @@ export interface RegisterComboCommand {
   name: string;
   price: number;
   items: { variantId: string; quantity?: number }[];
+  imageUrl?: string;
+  description?: string;
+  onlineOnly?: boolean;
 }
 
 @Injectable()

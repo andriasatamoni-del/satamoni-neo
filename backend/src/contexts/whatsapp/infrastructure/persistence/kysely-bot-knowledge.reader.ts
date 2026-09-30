@@ -65,6 +65,7 @@ export class KyselyBotKnowledgeReader implements BotKnowledgeReaderPort {
       .innerJoin("menu_items as i", "i.id", "v.item_id")
       .select(["c.id", "c.name", "c.price", "i.name as item_name", "v.label", "ci.quantity"])
       .where("c.is_active", "=", true)
+      .where("c.online_only", "=", false)
       .orderBy("c.name")
       .execute();
     const byCombo = new Map<string, BotCombo>();

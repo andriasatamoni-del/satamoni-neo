@@ -50,7 +50,7 @@ interface MenuItem {
   modifiers: MenuItemModifier[];
 }
 interface ComboItem { variantId: string; quantity: number; }
-interface Combo { id: string; name: string; price: number; isActive: boolean; items: ComboItem[]; }
+interface Combo { id: string; name: string; price: number; isActive: boolean; onlineOnly?: boolean; items: ComboItem[]; }
 interface PaymentMethod { id: string; name: string; }
 interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
 interface OrderLine {
@@ -320,7 +320,8 @@ export function OrdersPage() {
   const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
   const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
   const orders = ordersQuery.data ?? [];
-  const combos = combosQuery.data ?? [];
+  // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه)
+  const combos = (combosQuery.data ?? []).filter((c) => !c.onlineOnly);
 
   return (
     <div>

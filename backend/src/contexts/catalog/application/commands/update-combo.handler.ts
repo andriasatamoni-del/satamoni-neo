@@ -8,6 +8,9 @@ export interface UpdateComboCommand {
   name?: string;
   price?: number;
   isActive?: boolean;
+  imageUrl?: string | null;
+  description?: string | null;
+  onlineOnly?: boolean;
 }
 
 @Injectable()

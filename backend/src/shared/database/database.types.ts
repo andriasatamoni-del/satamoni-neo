@@ -7,6 +7,8 @@ import type { OrderNotificationsTable } from "../../contexts/notifications/infra
 import type { AuditLogsTable } from "../audit/audit-log.schema";
 import type { CustomerFollowupsTable } from "../../contexts/crm/infrastructure/persistence/customer-followup.schema";
 import type { ComplaintsTable } from "../../contexts/crm/infrastructure/persistence/complaint.schema";
+import type { LoyaltyRewardsTable, LoyaltyTransactionsTable } from "../../contexts/loyalty/infrastructure/persistence/loyalty.schema";
+import type { MediaImagesTable } from "../../contexts/media/infrastructure/persistence/media.schema";
 import type { CustomersTable, CustomerAddressesTable } from "../../contexts/customers/infrastructure/persistence/customer.schema";
 import type {
   WhatsappConversationsTable,
@@ -181,6 +183,9 @@ export interface Database {
   departments: DepartmentsTable;
   positions: PositionsTable;
   customers: CustomersTable;
+  loyalty_rewards: LoyaltyRewardsTable;
+  loyalty_transactions: LoyaltyTransactionsTable;
+  media_images: MediaImagesTable;
   customer_addresses: CustomerAddressesTable;
   employees: EmployeesTable;
   payroll_runs: PayrollRunsTable;

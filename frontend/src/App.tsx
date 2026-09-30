@@ -33,6 +33,7 @@ import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage"
 import { CustomerPortalRegisterPage } from "./pages/portal/CustomerPortalRegisterPage";
 import { CustomerPortalProfilePage } from "./pages/portal/CustomerPortalProfilePage";
 import { StorefrontPage } from "./pages/storefront/StorefrontPage";
+import { LoyaltyPage } from "./pages/LoyaltyPage";
 import { TrackOrderPage } from "./pages/storefront/TrackOrderPage";
 import { MyOrdersPage } from "./pages/storefront/MyOrdersPage";
 
@@ -233,6 +234,14 @@ export function App() {
         element={
           <RequireAuth>
             <AuditLogPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/loyalty"
+        element={
+          <RequireAuth>
+            <LoyaltyPage />
           </RequireAuth>
         }
       />

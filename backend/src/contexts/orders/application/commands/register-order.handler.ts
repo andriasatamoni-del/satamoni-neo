@@ -80,7 +80,8 @@ export class RegisterOrderHandler {
     for (const item of command.items) {
       if (item.comboId) {
         const combo = await this.combos.findById(item.comboId);
-        if (!combo || !combo.isActive) throw new ComboNotFoundForOrderError();
+        // عرض حصري للموقع مايتسجّلش من الكاشير/البوت/طلبات (STORE-2)
+        if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
 
         resolvedItems.push({
           menuItemId: null,

@@ -1,19 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Customer, type CustomerAddress } from "../../domain/customer.aggregate";
+import { Customer, type CustomerAddress, type StructuredAddressInput } from "../../domain/customer.aggregate";
 import { CustomerNotFoundError } from "../../domain/errors";
 import { CUSTOMER_REPOSITORY, type CustomerRepositoryPort } from "../../domain/ports/customer-repository.port";
 
-export interface AddCustomerAddressCommand {
+export interface AddCustomerAddressCommand extends StructuredAddressInput {
   customerId: string;
-  label?: string | null;
-  addressDetails: string;
-  distinguishingMark?: string | null;
-  isDefault?: boolean;
 }
 
-// دفتر عناوين العميل - في الريبو القديم بيتراكم تلقائيًا مع كل طلب دليفري (routes/orders.js)، ده مؤجّل
-// هنا لحد ما مسار طلب عام يتضاف لـneo (راجع تعليق customer.aggregate.ts) - العميل لحد كده بيضيف عناوينه
-// يدوي من بوابته الذاتية
+// دفتر عناوين العميل - العميل بيضيف عناوينه من "حسابي" أو من صفحة الطلب، وبيختار منهم وقت الطلب
 @Injectable()
 export class AddCustomerAddressHandler {
   constructor(@Inject(CUSTOMER_REPOSITORY) private readonly customers: CustomerRepositoryPort) {}

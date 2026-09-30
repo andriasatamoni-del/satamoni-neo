@@ -7,6 +7,7 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
 
 interface MenuCategory {
   id: string;
@@ -28,6 +29,8 @@ interface MenuItem {
   id: string;
   categoryId: string | null;
   name: string;
+  description: string | null;
+  imageUrl: string | null;
   isBest: boolean;
   isActive: boolean;
   variants: MenuItemVariant[];
@@ -35,7 +38,17 @@ interface MenuItem {
 }
 
 interface ComboItem { variantId: string; quantity: number; }
-interface Combo { id: string; name: string; price: number; isActive: boolean; items: ComboItem[]; }
+interface Combo {
+  id: string;
+  name: string;
+  price: number;
+  isActive: boolean;
+  imageUrl: string | null;
+  description: string | null;
+  // عرض حصري لموقع الطلب - مابيظهرش في الكاشير
+  onlineOnly: boolean;
+  items: ComboItem[];
+}
 
 interface ComboItemRow { variantId: string; quantity: string; }
 
@@ -102,13 +115,10 @@ export function CatalogPage() {
   });
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingItemForm, setEditingItemForm] = useState({ name: "", categoryId: "" });
+  const [editingItemForm, setEditingItemForm] = useState({ name: "", categoryId: "", description: "" });
   const updateItem = useMutation({
-    mutationFn: (input: { id: string; name?: string; categoryId?: string | null; isActive?: boolean }) =>
-      apiRequest(`/catalog/items/${input.id}`, {
-        method: "PATCH",
-        body: { name: input.name, categoryId: input.categoryId, isActive: input.isActive },
-      }),
+    mutationFn: ({ id, ...body }: { id: string; name?: string; categoryId?: string | null; isActive?: boolean; description?: string | null; imageUrl?: string | null; isBest?: boolean }) =>
+      apiRequest(`/catalog/items/${id}`, { method: "PATCH", body }),
     onSuccess: () => {
       setEditingItemId(null);
       invalidateCatalog();
@@ -196,7 +206,7 @@ export function CatalogPage() {
     onError: (err) => setComboError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
   const updateCombo = useMutation({
-    mutationFn: ({ id, ...input }: { id: string; isActive?: boolean; price?: number }) =>
+    mutationFn: ({ id, ...input }: { id: string; isActive?: boolean; price?: number; imageUrl?: string | null; description?: string | null; onlineOnly?: boolean }) =>
       apiRequest(`/catalog/combos/${id}`, { method: "PATCH", body: input }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["catalog", "combos"] }),
   });
@@ -232,7 +242,7 @@ export function CatalogPage() {
   }
   function startEditItem(i: MenuItem) {
     setEditingItemId(i.id);
-    setEditingItemForm({ name: i.name, categoryId: i.categoryId ?? "" });
+    setEditingItemForm({ name: i.name, categoryId: i.categoryId ?? "", description: i.description ?? "" });
   }
 
   const categories = categoriesQuery.data ?? [];
@@ -335,12 +345,19 @@ export function CatalogPage() {
           <Table>
             <THead>
               <TR>
-                <TH>الاسم</TH><TH>القسم</TH><TH>الأحجام والأسعار</TH><TH>الحالة</TH><TH>إجراء</TH>
+                <TH>الصورة</TH><TH>الاسم</TH><TH>القسم</TH><TH>الأحجام والأسعار</TH><TH>الحالة</TH><TH>إجراء</TH>
               </TR>
             </THead>
             <TBody>
               {items.map((i) => (
                 <TR key={i.id}>
+                  <TD>
+                    <ImageUploadButton
+                      imageUrl={i.imageUrl}
+                      onUploaded={(url) => updateItem.mutate({ id: i.id, imageUrl: url })}
+                      testId={`item-image-${i.name}`}
+                    />
+                  </TD>
                   {editingItemId === i.id ? (
                     <>
                       <TD><Input value={editingItemForm.name} onChange={(e) => setEditingItemForm({ ...editingItemForm, name: e.target.value })} className="py-1" /></TD>
@@ -354,13 +371,25 @@ export function CatalogPage() {
                           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </Select>
                       </TD>
-                      <TD colSpan={2} className="text-xs text-slate-400">تقدر تعدّل الأسعار من غير ما تدخل هنا</TD>
+                      <TD colSpan={2}>
+                        <Input
+                          value={editingItemForm.description}
+                          onChange={(e) => setEditingItemForm({ ...editingItemForm, description: e.target.value })}
+                          placeholder="وصف يظهر للعميل على موقع الطلب"
+                          className="py-1"
+                        />
+                      </TD>
                       <TD>
                         <div className="flex gap-1.5">
                           <Button
                             size="sm"
                             onClick={() =>
-                              updateItem.mutate({ id: i.id, name: editingItemForm.name, categoryId: editingItemForm.categoryId || null })
+                              updateItem.mutate({
+                                id: i.id,
+                                name: editingItemForm.name,
+                                categoryId: editingItemForm.categoryId || null,
+                                description: editingItemForm.description.trim() || null,
+                              })
                             }
                             disabled={updateItem.isPending}
                           >
@@ -372,7 +401,10 @@ export function CatalogPage() {
                     </>
                   ) : (
                     <>
-                      <TD className={`font-semibold ${i.isActive ? "text-slate-900" : "text-slate-400 line-through"}`}>{i.name}</TD>
+                      <TD className={`font-semibold ${i.isActive ? "text-slate-900" : "text-slate-400 line-through"}`}>
+                        {i.name}
+                        {i.description && <p className="text-xs font-normal text-slate-400">{i.description}</p>}
+                      </TD>
                       <TD>{categoryName_(i.categoryId)}</TD>
                       <TD>
                         {i.variants.length === 0 ? (
@@ -478,16 +510,40 @@ export function CatalogPage() {
 
           <Table>
             <THead>
-              <TR><TH>الاسم</TH><TH>السعر</TH><TH>الأصناف</TH><TH>الحالة</TH><TH></TH></TR>
+              <TR><TH>الصورة</TH><TH>الاسم والوصف</TH><TH>السعر</TH><TH>الأصناف</TH><TH>الحالة</TH><TH></TH></TR>
             </THead>
             <TBody>
               {combos.map((c) => (
                 <TR key={c.id}>
-                  <TD className="font-semibold text-slate-900">{c.name}</TD>
+                  <TD>
+                    <ImageUploadButton imageUrl={c.imageUrl} onUploaded={(url) => updateCombo.mutate({ id: c.id, imageUrl: url })} testId={`combo-image-${c.name}`} />
+                  </TD>
+                  <TD className="font-semibold text-slate-900">
+                    {c.name} {c.onlineOnly && <Badge tone="brand">حصري أونلاين</Badge>}
+                    <Input
+                      key={c.description ?? ""}
+                      defaultValue={c.description ?? ""}
+                      placeholder="وصف العرض للموقع"
+                      className="mt-1 py-0.5 text-xs font-normal"
+                      onBlur={(e) => {
+                        const value = e.target.value.trim();
+                        if (value !== (c.description ?? "")) updateCombo.mutate({ id: c.id, description: value || null });
+                      }}
+                    />
+                  </TD>
                   <TD>{c.price}ج</TD>
                   <TD className="text-xs text-slate-500">{c.items.map((i) => `${variantDisplayName(i.variantId)} ×${i.quantity}`).join("، ")}</TD>
                   <TD>{c.isActive ? <Badge tone="success">نشط</Badge> : <Badge tone="neutral">معطّل</Badge>}</TD>
                   <TD>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateCombo.mutate({ id: c.id, onlineOnly: !c.onlineOnly })}
+                      disabled={updateCombo.isPending}
+                      data-testid={`combo-online-only-${c.name}`}
+                    >
+                      {c.onlineOnly ? "خليه للكل" : "خليه حصري أونلاين"}
+                    </Button>
                     <Button
                       size="sm"
                       variant={c.isActive ? "secondary" : "primary"}

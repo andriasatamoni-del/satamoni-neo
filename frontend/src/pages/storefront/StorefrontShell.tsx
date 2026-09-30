@@ -6,11 +6,14 @@ import { customerApiRequest, getCustomerToken } from "../../shared/api/customerC
 export interface CustomerProfile {
   id: string;
   phone: string;
+  phone2: string | null;
+  email: string | null;
   name: string | null;
   loyaltyPoints: number;
+  missingProfileFields: string[];
 }
 
-// العميل المسجّل (لو فيه توكن صالح) - توكن منتهي = ضيف عادي، مش خطأ
+// العميل المسجّل (لو فيه توكن صالح) - توكن منتهي = زائر عادي، مش خطأ
 export function useStorefrontCustomer() {
   const hasToken = Boolean(getCustomerToken());
   const query = useQuery({
@@ -18,12 +21,12 @@ export function useStorefrontCustomer() {
     queryFn: () => customerApiRequest<CustomerProfile>("/customer-auth/me"),
     enabled: hasToken,
     retry: false,
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
   return query.isSuccess ? query.data : null;
 }
 
-export function StorefrontShell({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+export function StorefrontShell({ children }: { children: ReactNode }) {
   const customer = useStorefrontCustomer();
   return (
     <div className="min-h-screen bg-slate-50 pb-24 lg:pb-8">
@@ -33,13 +36,17 @@ export function StorefrontShell({ children, actions }: { children: ReactNode; ac
             ساتاموني
           </Link>
           <nav className="flex items-center gap-2 text-sm">
-            {actions}
+            {customer && (
+              <Link to="/portal/me" className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800" data-testid="header-points">
+                ⭐ {customer.loyaltyPoints}
+              </Link>
+            )}
             <Link to="/order/orders" className="rounded-lg px-2.5 py-1.5 font-semibold text-slate-600 hover:bg-slate-100" data-testid="my-orders-link">
               طلباتي
             </Link>
             {customer ? (
               <Link to="/portal/me" className="rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-700" data-testid="customer-name">
-                {customer.name ?? customer.phone}
+                {customer.name?.split(" ")[0] ?? "حسابي"}
               </Link>
             ) : (
               <Link to="/portal/login?next=/order" className="rounded-lg border border-slate-300 px-2.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-50">
