@@ -55,6 +55,12 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      # the import-*-from-legacy specs build their fixture tables in an EMPTY database of their own (the legacy system's stand-in)
+      - name: Create the legacy-fixture database used by the import specs
+        env:
+          PGPASSWORD: test123
+        run: psql -h localhost -U postgres -c 'CREATE DATABASE satamoni_legacy_fixture_test'
+
       - name: Typecheck
         working-directory: backend
         run: npx tsc --noEmit -p tsconfig.json
