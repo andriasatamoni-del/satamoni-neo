@@ -12,6 +12,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { KitchenStation } from "../domain/kitchen-station.aggregate";
 
@@ -20,7 +21,7 @@ function toPublicStation(station: KitchenStation) {
 }
 
 @Controller("printing/kitchen-stations")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(PrintingDomainErrorFilter)
 export class KitchenStationsController {
   constructor(
@@ -33,6 +34,7 @@ export class KitchenStationsController {
     private readonly getMenuRouting: GetMenuRoutingHandler
   ) {}
 
+  @BranchScoped()
   @Get()
   @RequirePermission("print_routing.view", "print_routing.manage")
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -47,6 +49,7 @@ export class KitchenStationsController {
     return this.getMenuRouting.execute();
   }
 
+  @BranchScoped()
   @Post()
   @RequirePermission("print_routing.manage")
   async create(@Body() dto: RegisterKitchenStationDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -69,12 +72,16 @@ export class KitchenStationsController {
     return { itemId: item.id, stationId: item.stationId };
   }
 
+  @BranchScoped()
+  @BranchResource("kitchen_stations")
   @Patch(":id")
   @RequirePermission("print_routing.manage")
   async update(@Param("id") id: string, @Body() dto: UpdateKitchenStationDto) {
     return toPublicStation(await this.updateStation.execute({ stationId: id, ...dto }));
   }
 
+  @BranchScoped()
+  @BranchResource("kitchen_stations")
   @Delete(":id")
   @RequirePermission("print_routing.manage")
   async remove(@Param("id") id: string) {

@@ -28,6 +28,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { PermissionRegistry } from "../../../shared/permissions/permission-registry";
+import { BranchScopeGuard, BranchScoped, BranchResource, branchScopeOf, requireCompanyWide } from "../../../shared/authorization/branch-scope";
 import { PaymentControlDomainErrorFilter } from "./filters/domain-error.filter";
 import type { PaymentMethod } from "../domain/payment-method.aggregate";
 import type { Payment } from "../domain/payment.aggregate";
@@ -35,7 +36,7 @@ import type { PaymentAdjustmentRequest } from "../domain/payment-adjustment-requ
 import type { ReconciliationRecord } from "../domain/reconciliation-record.aggregate";
 
 @Controller("payment-control")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(PaymentControlDomainErrorFilter)
 export class PaymentControlController {
   constructor(
@@ -77,24 +78,39 @@ export class PaymentControlController {
     return toPublicPaymentMethod(await this.linkTalabatPaymentCode.execute({ paymentMethodId: id, talabatPaymentCode: dto.talabatPaymentCode ?? null }));
   }
 
+  @BranchScoped()
   @Get("payments")
   @RequirePermission("payment_control.view")
   async payments(@Query("branchId") branchId?: string, @Query("settlementChannel") settlementChannel?: string) {
     return (await this.listPayments.execute({ branchId, settlementChannel })).map(toPublicPayment);
   }
 
+  @BranchScoped()
   @Get("adjustment-requests")
   @RequirePermission("payment_control.view")
-  async adjustmentRequests(@Query("paymentId") paymentId?: string, @Query("status") status?: string) {
-    return (await this.listAdjustmentRequests.execute({ paymentId, status })).map(toPublicAdjustmentRequest);
+  async adjustmentRequests(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Query("paymentId") paymentId?: string,
+    @Query("status") status?: string
+  ) {
+    const requests = await this.listAdjustmentRequests.execute({ paymentId, status });
+    const scope = branchScopeOf(req.user);
+    if (scope.kind === "all") return requests.map(toPublicAdjustmentRequest);
+    // branch-bound: only requests whose payment belongs to the user's branch
+    const own = new Set((await this.listPayments.execute({ branchId: scope.kind === "branch" ? scope.branchId : "00000000-0000-0000-0000-000000000000" })).map((p) => p.id));
+    return requests.filter((r) => own.has(r.paymentId)).map(toPublicAdjustmentRequest);
   }
 
+  @BranchScoped()
+  @BranchResource("payments", { param: "paymentId", from: "body" })
   @Post("adjustment-requests")
   @RequirePermission("payment_control.adjustment.request")
   async createAdjustmentRequest(@Body() dto: RequestPaymentAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAdjustmentRequest(await this.requestAdjustment.execute({ ...dto, requestedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("payment_adjustment_requests", { through: { column: "payment_id", table: "payments" } })
   @Post("adjustment-requests/:id/approve")
   @RequirePermission("payment_control.adjustment.approve", "payment_control.adjustment.approve_high")
   async approve(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -111,12 +127,15 @@ export class PaymentControlController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("payment_adjustment_requests", { through: { column: "payment_id", table: "payments" } })
   @Post("adjustment-requests/:id/reject")
   @RequirePermission("payment_control.adjustment.approve", "payment_control.adjustment.approve_high")
   async reject(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAdjustmentRequest(await this.rejectAdjustment.execute({ requestId: id, decidedBy: req.user.id }));
   }
 
+  @BranchScoped()
   @Get("reconciliation-records")
   @RequirePermission("payment_control.view")
   async reconciliationRecords(
@@ -127,6 +146,7 @@ export class PaymentControlController {
     return (await this.listReconciliationRecords.execute({ branchId, source, matchStatus })).map(toPublicReconciliationRecord);
   }
 
+  @BranchScoped()
   @Post("reconciliation-records")
   @RequirePermission("payment_control.reconciliation.enter")
   async createReconciliationRecord(@Body() dto: RegisterReconciliationRecordDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -139,12 +159,16 @@ export class PaymentControlController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("reconciliation_records")
   @Patch("reconciliation-records/:id/match")
   @RequirePermission("payment_control.reconciliation.enter")
   async matchRecord(@Param("id") id: string, @Body() dto: MatchReconciliationRecordDto) {
     return toPublicReconciliationRecord(await this.matchReconciliationRecord.execute({ recordId: id, paymentId: dto.paymentId }));
   }
 
+  @BranchScoped()
+  @BranchResource("reconciliation_records")
   @Post("reconciliation-records/:id/ignore")
   @RequirePermission("payment_control.reconciliation.enter")
   async ignoreRecord(@Param("id") id: string) {
@@ -153,10 +177,12 @@ export class PaymentControlController {
 
   @Post("reconciliation-records/match-auto")
   @RequirePermission("payment_control.reconciliation.enter")
-  async matchAuto() {
+  async matchAuto(@Req() req: Request & { user: AuthenticatedUser }) {
+    requireCompanyWide(req.user); // auto-matching spans every branch's records
     return this.autoMatchReconciliationRecords.execute();
   }
 
+  @BranchScoped()
   @Post("reconciliation-records/import/commit")
   @RequirePermission("payment_control.reconciliation.enter")
   async commitImport(@Body() dto: CommitReconciliationImportDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -168,18 +194,22 @@ export class PaymentControlController {
     });
   }
 
+  @BranchScoped()
+  @BranchResource("reconciliation_records", { param: "batchId", idColumn: "import_batch_id" })
   @Delete("reconciliation-records/import-batches/:batchId")
   @RequirePermission("payment_control.reconciliation.enter")
   async cancelImportBatch(@Param("batchId") batchId: string) {
     return this.cancelReconciliationImportBatch.execute(batchId);
   }
 
+  @BranchScoped()
   @Get("exceptions")
   @RequirePermission("payment_control.view")
   async exceptions(@Query("branchId") branchId?: string) {
     return this.listExceptions.execute({ branchId });
   }
 
+  @BranchScoped()
   @Get("reports/daily-owner")
   @RequirePermission("payment_control.view")
   async dailyOwnerReport(@Query("date") date: string, @Query("branchId") branchId?: string) {

@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -14,7 +14,7 @@ export class WhatsappPendingOrderNotFoundError extends DomainError {
   }
 }
 
-export class WhatsappPendingOrderNotPendingError extends DomainError {
+export class WhatsappPendingOrderNotPendingError extends ConflictDomainError {
   constructor() {
     super("طلب الواتساب ده اتراجع بالفعل - مينفعش تتصرف فيه تاني");
   }
@@ -32,7 +32,7 @@ export class VariantNotFoundForPendingOrderError extends DomainError {
   }
 }
 
-export class WhatsappPendingOrderNotDraftError extends DomainError {
+export class WhatsappPendingOrderNotDraftError extends ConflictDomainError {
   constructor() {
     super("الطلب ده مش مسودة - اتبعت للمراجعة بالفعل");
   }

@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -14,7 +14,7 @@ export class PurchaseNotFoundError extends DomainError {
   }
 }
 
-export class PurchaseNotPendingError extends DomainError {
+export class PurchaseNotPendingError extends ConflictDomainError {
   constructor() {
     super("المشترى ده مش في حالة انتظار مراجعة");
   }

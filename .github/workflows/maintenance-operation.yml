@@ -1,0 +1,81 @@
+name: Approved maintenance operation
+
+# BL-14 (Phase 3.1): replaces the old "Run one-off backend script" workflow, which accepted a free-text
+# script path and interpolated it into a shell command while holding the production DATABASE_URL.
+#
+# Safety properties (enforced by backend/test/unit/security/workflow-security.spec.ts):
+#  * `operation` is a fixed `choice` list, never free text.
+#  * The choice is NEVER interpolated into a shell command; it is passed through an env var and mapped by a
+#    static `case` statement to a reviewed script. Unknown values fail closed.
+#  * Production secrets are only available to a job bound to the `production-maintenance` GitHub
+#    Environment, which MUST be configured with required reviewers (see docs/SECURITY_HARDENING.md).
+#  * Least-privilege token (contents: read), main branch only, one run at a time.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Approved operation (each maps to a reviewed script in backend/scripts)"
+        type: choice
+        required: true
+        options:
+          - import-branches
+          - import-users
+          - import-crm
+          - import-customers
+          - import-inventory
+          - import-catalog
+          - import-procurement
+          - import-orders
+          - import-drivers
+          - import-accounting
+          - import-payment-control
+          - import-hr-payroll
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maintenance-operation
+  cancel-in-progress: false
+
+jobs:
+  run-operation:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-maintenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Run approved operation
+        working-directory: backend
+        env:
+          OPERATION: ${{ inputs.operation }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LEGACY_DATABASE_URL: ${{ secrets.LEGACY_DATABASE_URL }}
+          PGSSL: "true"
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            import-branches)        SCRIPT="scripts/import-branches-from-legacy.ts" ;;
+            import-users)           SCRIPT="scripts/import-users-from-legacy.ts" ;;
+            import-crm)             SCRIPT="scripts/import-crm-from-legacy.ts" ;;
+            import-customers)       SCRIPT="scripts/import-customers-from-legacy.ts" ;;
+            import-inventory)       SCRIPT="scripts/import-inventory-from-legacy.ts" ;;
+            import-catalog)         SCRIPT="scripts/import-catalog-from-legacy.ts" ;;
+            import-procurement)     SCRIPT="scripts/import-procurement-from-legacy.ts" ;;
+            import-orders)          SCRIPT="scripts/import-orders-from-legacy.ts" ;;
+            import-drivers)         SCRIPT="scripts/import-drivers-from-legacy.ts" ;;
+            import-accounting)      SCRIPT="scripts/import-accounting-from-legacy.ts" ;;
+            import-payment-control) SCRIPT="scripts/import-payment-control-from-legacy.ts" ;;
+            import-hr-payroll)      SCRIPT="scripts/import-hr-payroll-from-legacy.ts" ;;
+            *) echo "::error::operation is not on the approved list"; exit 1 ;;
+          esac
+          npx ts-node "$SCRIPT"

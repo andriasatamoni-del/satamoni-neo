@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -8,7 +8,7 @@ export class BranchDayNotClosableError extends DomainError {
   }
 }
 
-export class BranchDayAlreadyClosedError extends DomainError {
+export class BranchDayAlreadyClosedError extends ConflictDomainError {
   constructor() {
     super("اليوم ده مقفول بالفعل");
   }

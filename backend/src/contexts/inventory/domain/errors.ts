@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -146,7 +146,7 @@ export class InsufficientBatchQuantityError extends DomainError {
   }
 }
 
-export class InventoryBatchNotActiveError extends DomainError {
+export class InventoryBatchNotActiveError extends ConflictDomainError {
   constructor() {
     super("الدفعة دي مش نشطة (خلصت أو انتهت صلاحيتها بالفعل)");
   }

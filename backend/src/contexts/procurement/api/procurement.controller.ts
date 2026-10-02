@@ -45,6 +45,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, requireCompanyWide } from "../../../shared/authorization/branch-scope";
 import { ProcurementDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Supplier } from "../domain/supplier.aggregate";
 import type { PurchaseOrder } from "../domain/purchase-order.aggregate";
@@ -55,7 +56,7 @@ import type { PurchaseRequest } from "../domain/purchase-request.aggregate";
 import type { PurchaseReturn } from "../domain/purchase-return.aggregate";
 
 @Controller("procurement")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(ProcurementDomainErrorFilter)
 export class ProcurementController {
   constructor(
@@ -104,42 +105,54 @@ export class ProcurementController {
     return toPublicSupplier(await this.registerSupplier.execute(dto));
   }
 
+  @BranchScoped()
+  @BranchFilteredList()
   @Get("purchase-orders")
   @RequirePermission("procurement.purchase_orders.view", "procurement.purchase_orders.manage")
   async purchaseOrders() {
     return (await this.listPurchaseOrders.execute()).map(toPublicPurchaseOrder);
   }
 
+  @BranchScoped()
   @Post("purchase-orders")
   @RequirePermission("procurement.purchase_orders.manage")
   async createPurchaseOrder(@Body() dto: RegisterPurchaseOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseOrder(await this.registerPurchaseOrder.execute({ ...dto, createdBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_orders")
   @Post("purchase-orders/:id/send")
   @RequirePermission("procurement.purchase_orders.manage")
   async sendPurchaseOrderRoute(@Param("id") id: string) {
     return toPublicPurchaseOrder(await this.sendPurchaseOrder.execute(id));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_orders")
   @Get("purchase-orders/:id/receipt-progress")
   @RequirePermission("procurement.purchase_orders.view", "procurement.purchase_orders.manage", "procurement.goods_receipts.manage")
   async purchaseOrderReceiptProgress(@Param("id") id: string) {
     return this.getPurchaseOrderReceiptProgress.execute(id);
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_orders")
   @Post("purchase-orders/:id/cancel")
   @RequirePermission("procurement.purchase_orders.manage")
   async cancelPurchaseOrderRoute(@Param("id") id: string) {
     return toPublicPurchaseOrder(await this.cancelPurchaseOrder.execute(id));
   }
 
+  @BranchScoped()
+  @BranchFilteredList()
   @Get("goods-receipts")
   @RequirePermission("procurement.goods_receipts.view", "procurement.goods_receipts.manage")
   async goodsReceipts(@Query("branchId") branchId?: string) {
     return (await this.listGoodsReceipts.execute(branchId ? { branchId } : undefined)).map(toPublicGoodsReceipt);
   }
 
+  @BranchScoped()
   @Post("goods-receipts")
   @RequirePermission("procurement.goods_receipts.manage")
   async createGoodsReceipt(@Body() dto: RegisterGoodsReceiptDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -156,6 +169,8 @@ export class ProcurementController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("goods_receipts")
   @Post("goods-receipts/:id/confirm")
   @RequirePermission("procurement.goods_receipts.manage")
   async confirm(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -164,12 +179,15 @@ export class ProcurementController {
     );
   }
 
+  @BranchScoped()
   @Get("supplier-invoices")
   @RequirePermission("purchasing.view")
   async supplierInvoices(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listSupplierInvoices.execute({ supplierId, branchId, status })).map(toPublicSupplierInvoice);
   }
 
+  @BranchScoped()
+  @BranchResource("supplier_invoices")
   @Get("supplier-invoices/:id")
   @RequirePermission("purchasing.view")
   async supplierInvoice(@Param("id") id: string) {
@@ -177,6 +195,7 @@ export class ProcurementController {
     return { invoice: toPublicSupplierInvoice(invoice), payments: payments.map(toPublicSupplierPayment) };
   }
 
+  @BranchScoped()
   @Post("supplier-invoices")
   @RequirePermission("purchasing.create")
   async createSupplierInvoice(@Body() dto: RegisterSupplierInvoiceDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -189,12 +208,16 @@ export class ProcurementController {
     return toPublicSupplierInvoice(invoice);
   }
 
+  @BranchScoped()
+  @BranchResource("supplier_invoices")
   @Post("supplier-invoices/:id/approve")
   @RequirePermission("purchasing.approve")
   async approveSupplierInvoiceRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicSupplierInvoice(await this.approveSupplierInvoice.execute({ supplierInvoiceId: id, approvedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("supplier_invoices")
   @Post("supplier-invoices/:id/cancel")
   @RequirePermission("purchasing.cancel")
   async cancelSupplierInvoiceRoute(@Param("id") id: string, @Body() dto: CancelSupplierInvoiceDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -203,12 +226,14 @@ export class ProcurementController {
     );
   }
 
+  @BranchScoped()
   @Get("supplier-payments")
   @RequirePermission("purchasing.view")
   async supplierPayments(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string) {
     return (await this.listSupplierPayments.execute({ supplierId, branchId })).map(toPublicSupplierPayment);
   }
 
+  @BranchScoped()
   @Post("supplier-payments")
   @RequirePermission("purchasing.create")
   async createSupplierPayment(@Body() dto: RegisterSupplierPaymentDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -222,22 +247,27 @@ export class ProcurementController {
 
   @Get("suppliers/:id/balance")
   @RequirePermission("purchasing.view")
-  async supplierBalance(@Param("id") id: string) {
+  async supplierBalance(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
+    requireCompanyWide(req.user); // a supplier's balance aggregates every branch's payables
     return { supplierId: id, balance: await this.getSupplierBalance.execute(id) };
   }
 
+  @BranchScoped()
   @Get("purchase-requests")
   @RequirePermission("purchasing.view")
   async purchaseRequests(@Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listPurchaseRequests.execute({ branchId, status })).map(toPublicPurchaseRequest);
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Get("purchase-requests/:id")
   @RequirePermission("purchasing.view")
   async purchaseRequest(@Param("id") id: string) {
     return toPublicPurchaseRequest(await this.getPurchaseRequest.execute(id));
   }
 
+  @BranchScoped()
   @Post("purchase-requests")
   @RequirePermission("purchasing.create")
   async createPurchaseRequest(@Body() dto: RegisterPurchaseRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -249,6 +279,8 @@ export class ProcurementController {
     return toPublicPurchaseRequest(request);
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/edit")
   @RequirePermission("purchasing.create")
   async editPurchaseRequestRoute(@Param("id") id: string, @Body() dto: EditPurchaseRequestDto) {
@@ -261,18 +293,24 @@ export class ProcurementController {
     return toPublicPurchaseRequest(request);
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/submit")
   @RequirePermission("purchasing.submit")
   async submitPurchaseRequestRoute(@Param("id") id: string) {
     return toPublicPurchaseRequest(await this.submitPurchaseRequest.execute(id));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/approve")
   @RequirePermission("purchasing.approve")
   async approvePurchaseRequestRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseRequest(await this.approvePurchaseRequest.execute({ purchaseRequestId: id, approvedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/reject")
   @RequirePermission("purchasing.approve")
   async rejectPurchaseRequestRoute(@Param("id") id: string, @Body() dto: RejectPurchaseRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -281,36 +319,46 @@ export class ProcurementController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/cancel")
   @RequirePermission("purchasing.cancel")
   async cancelPurchaseRequestRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseRequest(await this.cancelPurchaseRequest.execute({ purchaseRequestId: id, cancelledBy: req.user.id }));
   }
 
+  @BranchScoped()
   @Get("purchase-returns")
   @RequirePermission("purchasing.view")
   async purchaseReturns(@Query("branchId") branchId?: string, @Query("supplierId") supplierId?: string, @Query("status") status?: string) {
     return (await this.listPurchaseReturns.execute({ branchId, supplierId, status })).map(toPublicPurchaseReturn);
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_returns")
   @Get("purchase-returns/:id")
   @RequirePermission("purchasing.view")
   async purchaseReturn(@Param("id") id: string) {
     return toPublicPurchaseReturn(await this.getPurchaseReturn.execute(id));
   }
 
+  @BranchScoped()
   @Post("purchase-returns")
   @RequirePermission("purchasing.create")
   async createPurchaseReturn(@Body() dto: RegisterPurchaseReturnDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseReturn(await this.registerPurchaseReturn.execute({ ...dto, createdBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_returns")
   @Post("purchase-returns/:id/post")
   @RequirePermission("purchasing.create")
   async postPurchaseReturnRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseReturn(await this.postPurchaseReturn.execute({ purchaseReturnId: id, postedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchase_returns")
   @Post("purchase-returns/:id/cancel")
   @RequirePermission("purchasing.cancel")
   async cancelPurchaseReturnRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {

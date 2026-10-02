@@ -1,8 +1,3 @@
-import { IsBoolean, IsOptional, IsString } from "class-validator";
+import { AddressInputDto } from "./address-input.dto";
 
-export class AddCustomerAddressDto {
-  @IsOptional() @IsString() label?: string;
-  @IsString() addressDetails!: string;
-  @IsOptional() @IsString() distinguishingMark?: string;
-  @IsOptional() @IsBoolean() isDefault?: boolean;
-}
+export class AddCustomerAddressDto extends AddressInputDto {}

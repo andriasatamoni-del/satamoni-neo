@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
+import { sql, type Kysely, type RawBuilder } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import type {
@@ -13,8 +13,15 @@ import type {
   CatalogReport,
   RecipeReportRow,
 } from "../../domain/ports/sales-ops-reader.port";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
-function toDateStr(d: Date): string {
+// Cairo business day of a timestamptz column as plain text (no JS Date / server time zone involved)
+function cairoDay(column: RawBuilder<unknown>): RawBuilder<string> {
+  return sql<string>`to_char((${column} AT TIME ZONE 'Africa/Cairo'), 'YYYY-MM-DD')`;
+}
+
+function toDateStr(d: Date | string): string {
+  if (typeof d === "string") return d;
   return d.toISOString().slice(0, 10);
 }
 
@@ -23,7 +30,7 @@ export class KyselySalesOpsReader implements SalesOpsReaderPort {
   constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
 
   private rangeTs(from: string, to: string): { fromTs: Date; toTs: Date } {
-    return { fromTs: new Date(`${from}T00:00:00.000`), toTs: new Date(`${to}T23:59:59.999`) };
+    return { fromTs: businessDayStartUtc(from), toTs: businessDayEndUtc(to) };
   }
 
   async getDailySummary(input: { branchId: string | null; from: string; to: string }): Promise<DailyBranchSummaryRow[]> {
@@ -31,7 +38,7 @@ export class KyselySalesOpsReader implements SalesOpsReaderPort {
     let query = this.db
       .selectFrom("orders")
       .innerJoin("branches", "branches.id", "orders.branch_id")
-      .select([(eb) => eb.fn<Date>("date", [eb.ref("orders.created_at")]).as("business_date"), "orders.branch_id as branch_id", "branches.name as branch_name"])
+      .select([() => cairoDay(sql.ref("orders.created_at")).as("business_date"), "orders.branch_id as branch_id", "branches.name as branch_name"])
       .select((eb) => eb.fn.count("orders.id").as("orders_count"))
       .select((eb) => eb.fn.coalesce(eb.fn.sum("orders.total"), eb.lit(0)).as("revenue"))
       .where("orders.status", "<>", "cancelled")
@@ -90,7 +97,7 @@ export class KyselySalesOpsReader implements SalesOpsReaderPort {
 
     let dailyTrendQuery = this.db
       .selectFrom("orders")
-      .select((eb) => eb.fn<Date>("date", [eb.ref("created_at")]).as("date"))
+      .select(() => cairoDay(sql.ref("created_at")).as("date"))
       .select((eb) => eb.fn.coalesce(eb.fn.sum("total"), eb.lit(0)).as("revenue"))
       .select((eb) => eb.fn.count("id").as("orders_count"))
       .where("status", "<>", "cancelled")

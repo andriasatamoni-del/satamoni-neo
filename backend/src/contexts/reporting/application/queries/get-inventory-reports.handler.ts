@@ -1,10 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { INVENTORY_REPORTS_READER, type InventoryReportsReaderPort } from "../../domain/ports/inventory-reports-reader.port";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 const DEFAULT_RANGE_DAYS = 30;
 
 function resolveRange(query: { from?: string; to?: string }): { from: string; to: string } {
-  const toStr = query.to ?? new Date().toISOString().slice(0, 10);
+  const toStr = query.to ?? businessDateString();
   const fromStr = query.from ?? new Date(new Date(toStr).getTime() - (DEFAULT_RANGE_DAYS - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   return { from: fromStr, to: toStr };
 }

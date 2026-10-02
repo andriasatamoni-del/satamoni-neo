@@ -43,6 +43,7 @@ function toPublic(settings: PosSettings) {
     smsConfirmationsEnabled: settings.smsConfirmationsEnabled,
     smsRatingRequestsEnabled: settings.smsRatingRequestsEnabled,
     onlineOrderingEnabled: settings.onlineOrderingEnabled,
+    loyaltyPointsPerEgp: settings.loyaltyPointsPerEgp,
     updatedBy: settings.updatedBy,
     updatedAt: settings.updatedAt,
   };

@@ -11,6 +11,7 @@ export interface PosSettingsTable {
   sms_confirmations_enabled: Generated<boolean>;
   sms_rating_requests_enabled: Generated<boolean>;
   online_ordering_enabled: Generated<boolean>;
+  loyalty_points_per_egp: Generated<number>;
   updated_by: string | null;
   updated_at: Generated<Date>;
 }

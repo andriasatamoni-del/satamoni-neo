@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -32,7 +32,7 @@ export class ExpenseNotFoundError extends DomainError {
   }
 }
 
-export class ExpenseNotDraftError extends DomainError {
+export class ExpenseNotDraftError extends ConflictDomainError {
   constructor() {
     super("المصروف ده مش في حالة مسودة");
   }
@@ -50,7 +50,7 @@ export class ExpenseNotCancellableError extends DomainError {
   }
 }
 
-export class ExpenseAlreadyCancelledError extends DomainError {
+export class ExpenseAlreadyCancelledError extends ConflictDomainError {
   constructor() {
     super("المصروف ده ملغي بالفعل");
   }

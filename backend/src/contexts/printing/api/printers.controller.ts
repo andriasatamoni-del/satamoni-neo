@@ -11,6 +11,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Printer } from "../domain/printer.aggregate";
 
@@ -31,7 +32,7 @@ function toPublicPrinter(printer: Printer) {
 }
 
 @Controller("printing/printers")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(PrintingDomainErrorFilter)
 export class PrintersController {
   constructor(
@@ -42,6 +43,7 @@ export class PrintersController {
     private readonly listPrinters: ListPrintersHandler
   ) {}
 
+  @BranchScoped()
   @Get()
   @RequirePermission("printers.view", "printers.manage")
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -50,6 +52,7 @@ export class PrintersController {
     return (await this.listPrinters.execute(effectiveBranchId)).map(toPublicPrinter);
   }
 
+  @BranchScoped()
   @Post()
   @RequirePermission("printers.manage")
   async create(@Body() dto: RegisterPrinterDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -58,12 +61,16 @@ export class PrintersController {
     return toPublicPrinter(await this.registerPrinter.execute({ ...dto, branchId }));
   }
 
+  @BranchScoped()
+  @BranchResource("printers")
   @Patch(":id")
   @RequirePermission("printers.manage")
   async update(@Param("id") id: string, @Body() dto: UpdatePrinterDto) {
     return toPublicPrinter(await this.updatePrinter.execute({ printerId: id, ...dto }));
   }
 
+  @BranchScoped()
+  @BranchResource("printers")
   @Delete(":id")
   @RequirePermission("printers.manage")
   async remove(@Param("id") id: string) {
@@ -71,6 +78,8 @@ export class PrintersController {
     return { success: true };
   }
 
+  @BranchScoped()
+  @BranchResource("printers")
   @Post(":id/test-print")
   @RequirePermission("printers.manage")
   async testPrint(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {

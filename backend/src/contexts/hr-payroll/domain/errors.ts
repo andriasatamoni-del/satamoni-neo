@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { ConflictDomainError, DomainError } from "../../../shared/domain/domain-error";
 import type { TerminationBlocker } from "./termination-blocker";
 
 export { DomainError };
@@ -55,13 +55,13 @@ export class UnknownMonthError extends DomainError {
   }
 }
 
-export class PayrollRunNotDraftError extends DomainError {
+export class PayrollRunNotDraftError extends ConflictDomainError {
   constructor() {
     super("قائمة الرواتب دي مش DRAFT - غير قابلة للحذف أو الاعتماد بالحالة دي");
   }
 }
 
-export class PayrollRunNotApprovedError extends DomainError {
+export class PayrollRunNotApprovedError extends ConflictDomainError {
   constructor() {
     super("قائمة الرواتب دي مش APPROVED - مينفعش تتلغي بالحالة دي");
   }
@@ -91,13 +91,13 @@ export class LeaveRequestNotFoundError extends DomainError {
   }
 }
 
-export class LeaveRequestNotPendingError extends DomainError {
+export class LeaveRequestNotPendingError extends ConflictDomainError {
   constructor() {
     super("طلب الإجازة ده اتراجع بالفعل - مينفعش تعدّل حالته تاني");
   }
 }
 
-export class EmployeeAttendanceShiftAlreadyActiveError extends DomainError {
+export class EmployeeAttendanceShiftAlreadyActiveError extends ConflictDomainError {
   constructor() {
     super("فيه شيفت حضور شغال بالفعل للموظف ده - لازم يقفله الأول");
   }
@@ -109,7 +109,7 @@ export class EmployeeAttendanceShiftNotFoundError extends DomainError {
   }
 }
 
-export class EmployeeAttendanceShiftNotActiveError extends DomainError {
+export class EmployeeAttendanceShiftNotActiveError extends ConflictDomainError {
   constructor() {
     super("شيفت الحضور ده مقفول بالفعل");
   }
@@ -133,7 +133,7 @@ export class PayrollAdjustmentNotFoundError extends DomainError {
   }
 }
 
-export class PayrollAdjustmentAlreadyCancelledError extends DomainError {
+export class PayrollAdjustmentAlreadyCancelledError extends ConflictDomainError {
   constructor() {
     super("السجل ده ملغى بالفعل");
   }
@@ -196,5 +196,26 @@ export class PositionNotFoundError extends DomainError {
 export class DuplicatePositionCodeError extends DomainError {
   constructor() {
     super("كود المسمى الوظيفي ده مستخدم بالفعل");
+  }
+}
+
+// BL-10: payroll adjustments <-> payroll runs
+export class PayrollAdjustmentMismatchError extends ConflictDomainError {
+  constructor(employeeName: string, details: string) {
+    super(
+      `قيم السلف/الجزاءات/المكافآت لـ${employeeName} مختلفة عن التسويات المسجّلة للشهر ده (${details}) - اتركها فاضية عشان تتحسب تلقائي، أو أكّد التعديل بـ acknowledgeAdjustmentMismatch`
+    );
+  }
+}
+
+export class PayrollAdjustmentLinkedToRunError extends ConflictDomainError {
+  constructor() {
+    super("التسوية دي مرتبطة بقائمة رواتب - لازم تتلغى/تتحذف القائمة الأول عشان تقدر تلغي التسوية");
+  }
+}
+
+export class UnappliedPayrollAdjustmentsError extends ConflictDomainError {
+  constructor(count: number) {
+    super(`فيه ${count} تسوية (سلفة/جزاء/مكافأة) نشطة للشهر ده مش داخلة في القائمة - احذف المسودة وأنشئها من جديد قبل الاعتماد`);
   }
 }

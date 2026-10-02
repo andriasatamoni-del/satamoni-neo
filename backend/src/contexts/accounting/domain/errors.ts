@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -50,19 +50,19 @@ export class JournalEntryNotFoundError extends DomainError {
   }
 }
 
-export class JournalEntryNotPostedError extends DomainError {
+export class JournalEntryNotPostedError extends ConflictDomainError {
   constructor() {
     super("القيد ده لسه مش POSTED، مينفعش يتعكس");
   }
 }
 
-export class JournalEntryAlreadyReversedError extends DomainError {
+export class JournalEntryAlreadyReversedError extends ConflictDomainError {
   constructor() {
     super("القيد ده اتعكس بالفعل");
   }
 }
 
-export class JournalEntryNotDraftError extends DomainError {
+export class JournalEntryNotDraftError extends ConflictDomainError {
   constructor() {
     super("القيد ده لازم يكون DRAFT عشان تقدر ترحّله");
   }
@@ -74,13 +74,13 @@ export class AccountingPeriodClosedError extends DomainError {
   }
 }
 
-export class AccountingPeriodAlreadyClosedError extends DomainError {
+export class AccountingPeriodAlreadyClosedError extends ConflictDomainError {
   constructor(year: number, month: number) {
     super(`الشهر المحاسبي ${year}-${String(month).padStart(2, "0")} مقفول بالفعل`);
   }
 }
 
-export class FiscalYearAlreadyClosedError extends DomainError {
+export class FiscalYearAlreadyClosedError extends ConflictDomainError {
   constructor(year: number) {
     super(`سنة ${year} مقفولة بالفعل`);
   }
@@ -101,5 +101,14 @@ export class NoActivityToCloseError extends DomainError {
 export class RetainedEarningsAccountNotFoundError extends DomainError {
   constructor(code: string) {
     super(`حساب الأرباح المرحّلة (${code}) مش موجود في دليل الحسابات - محتاج يتسجّل الأول قبل إقفال أي سنة`);
+  }
+}
+
+// Phase 3.1 (BL-08): a financial operation was attempted while the chart of accounts lacks a required account. In strict
+// mode (default) the whole business command is rejected and rolled back - never "success with a silently skipped journal".
+export class AccountingNotConfiguredError extends DomainError {
+  readonly httpStatus = 503;
+  constructor(public readonly missingCodes: string[], public readonly flow: string) {
+    super(`دليل الحسابات غير مكتمل - الحسابات الناقصة (${missingCodes.join(", ")}) مطلوبة لعملية (${flow}). لازم المحاسب يضيفها قبل ما العملية دي تتسجّل`);
   }
 }

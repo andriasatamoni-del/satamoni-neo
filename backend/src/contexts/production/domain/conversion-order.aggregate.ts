@@ -128,6 +128,15 @@ export class ConversionOrder {
 
   // بيتنفّذ بعد ما الـhandler يسجّل حركة استهلاك حقيقية لكل مكوّن (movementId حقيقي بالفعل) - الأجريجيت
   // هنا بس بيحدّث سطوره وحالته، مايعرفش حاجة عن StockMovementRepositoryPort
+  // Pure state checks used by command handlers to reject BEFORE any side effect is written
+  assertStartable(): void {
+    if (this.props.status !== "APPROVED") throw new ConversionOrderNotApprovedError();
+  }
+
+  assertCancellable(): void {
+    if (this.props.status === "COMPLETED" || this.props.status === "CANCELLED") throw new ConversionOrderAlreadyFinalizedError();
+  }
+
   start(consumptions: { ingredientItemId: string; actualQuantity: number; unitCost: number | null; movementId: string }[]): void {
     if (this.props.status !== "APPROVED") throw new ConversionOrderNotApprovedError();
 

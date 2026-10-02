@@ -5,6 +5,7 @@ import {
   type FoodCostReport,
   type FoodCostByBranchReport,
 } from "../../domain/ports/food-cost-reader.port";
+import { businessDayEndUtc, businessDayStartUtc, businessRangeTs } from "../../../../shared/time/business-date";
 
 const DEFAULT_RANGE_DAYS = 30;
 
@@ -15,10 +16,7 @@ export interface GetFoodCostReportQuery {
 }
 
 function resolveRange(query: { from?: string; to?: string }): { fromTs: Date; toTs: Date } {
-  const toTs = query.to ? new Date(`${query.to}T23:59:59.999`) : new Date();
-  const fromTs = query.from
-    ? new Date(`${query.from}T00:00:00.000`)
-    : new Date(toTs.getTime() - (DEFAULT_RANGE_DAYS - 1) * 24 * 60 * 60 * 1000);
+  const { fromTs, toTs } = businessRangeTs(query.from, query.to, DEFAULT_RANGE_DAYS);
   return { fromTs, toTs };
 }
 

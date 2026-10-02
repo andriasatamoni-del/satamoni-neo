@@ -11,6 +11,7 @@ import { DuplicatePurchaseReferenceError } from "../../domain/errors";
 import { PurchaseConfirmedEvent } from "../../domain/events/purchase-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { PurchaseDuplicateCheckService } from "../../../../shared/procurement/purchase-duplicate-check.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface RegisterPurchaseCommand {
   branchId: string;
@@ -38,10 +39,17 @@ export class RegisterPurchaseHandler {
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(SUPPLIER_REPOSITORY) private readonly suppliers: SupplierRepositoryPort,
     private readonly duplicateCheck: PurchaseDuplicateCheckService,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: RegisterPurchaseCommand): Promise<Purchase> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: RegisterPurchaseCommand): Promise<Purchase> {
     if (command.supplierId && !(await this.suppliers.findById(command.supplierId))) throw new SupplierNotFoundError();
 
     if (command.supplierId && command.supplierDocumentNumber && !command.acknowledgeDuplicate) {

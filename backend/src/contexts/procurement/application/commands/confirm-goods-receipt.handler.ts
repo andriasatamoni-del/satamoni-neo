@@ -1,3 +1,4 @@
+import { auditDetail } from "../../../../shared/audit/audit-context";
 import { Inject, Injectable } from "@nestjs/common";
 import { GoodsReceipt } from "../../domain/goods-receipt.aggregate";
 import {
@@ -25,6 +26,9 @@ import { StockMovement } from "../../../inventory/domain/stock-movement.aggregat
 import { InventoryBatch } from "../../../inventory/domain/inventory-batch.aggregate";
 import { GoodsReceiptConfirmedEvent } from "../../domain/events/goods-receipt-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
+import { assertWithinOrderedQuantity, confirmedReceivedByItem } from "../../domain/receipt-quantity-guard";
+import { PurchaseOrderNotFoundError } from "../../domain/errors";
 
 export interface ConfirmGoodsReceiptCommand {
   goodsReceiptId: string;
@@ -45,18 +49,39 @@ export class ConfirmGoodsReceiptHandler {
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(INVENTORY_BATCH_REPOSITORY) private readonly batches: InventoryBatchRepositoryPort,
     @Inject(PURCHASE_ORDER_REPOSITORY) private readonly purchaseOrders: PurchaseOrderRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1 (BL-01): single transaction with a row lock on the receipt (concurrent confirms queue; the first wins, the
+  // rest see CONFIRMED and are rejected before any stock/journal write) and on the purchase order (serialises cumulative
+  // over-receipt checks between DIFFERENT receipts of the same PO). Stock, cost update, batches, PO status and the AP
+  // journal commit or roll back together.
   async execute(command: ConfirmGoodsReceiptCommand): Promise<GoodsReceipt> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: ConfirmGoodsReceiptCommand): Promise<GoodsReceipt> {
+    if (!(await this.tx.lockRow("goods_receipts", command.goodsReceiptId))) throw new GoodsReceiptNotFoundError();
     const receipt = await this.receipts.findById(command.goodsReceiptId);
     if (!receipt) throw new GoodsReceiptNotFoundError();
 
-    receipt.confirm();
+    auditDetail({ entityType: "goods_receipts", entityId: receipt.id, before: { status: receipt.status }, branchId: receipt.branchId });
+    receipt.confirm(); // rejects a receipt that is already CONFIRMED - before any side effect
+
+    if (receipt.purchaseOrderId) {
+      if (!(await this.tx.lockRow("purchase_orders", receipt.purchaseOrderId))) throw new PurchaseOrderNotFoundError();
+      const order = await this.purchaseOrders.findById(receipt.purchaseOrderId);
+      if (!order) throw new PurchaseOrderNotFoundError();
+      const linked = await this.receipts.list({ purchaseOrderId: order.id });
+      assertWithinOrderedQuantity(order, confirmedReceivedByItem(linked, receipt.id), receipt.lines);
+    }
+
     await this.receipts.save(receipt);
 
     let totalValue = 0;
-    for (const line of receipt.lines) {
+    const orderedLines = [...receipt.lines].sort((a, b) => (a.inventoryItemId < b.inventoryItemId ? -1 : a.inventoryItemId > b.inventoryItemId ? 1 : 0));
+    for (const line of orderedLines) {
       totalValue += line.quantity * line.unitCost;
       const movement = StockMovement.register({
         inventoryItemId: line.inventoryItemId,

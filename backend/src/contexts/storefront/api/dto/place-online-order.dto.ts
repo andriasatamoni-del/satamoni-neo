@@ -3,7 +3,6 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -23,19 +22,16 @@ export class OnlineOrderItemDto {
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsUUID(undefined, { each: true }) modifierIds?: string[];
 }
 
-// مفيش أي سعر هنا خالص - السيرفر بيحسب كل حاجة من المنيو الحقيقي
+// مفيش أي سعر ولا بيانات عميل هنا خالص - السيرفر بيحسب الأسعار من المنيو، والاسم والتليفونين والعنوان من
+// حساب العميل (العنوان بالـid من دفتر عناوينه)
 export class PlaceOnlineOrderDto {
   @IsUUID() clientRequestId!: string;
   @IsUUID() branchId!: string;
   @IsIn(ONLINE_ORDER_TYPES) orderType!: string;
-  @IsOptional() @IsString() @MaxLength(80) customerName?: string;
-  @IsOptional() @IsString() @MaxLength(20) customerPhone?: string;
-  @IsOptional() @IsString() @MaxLength(20) customerPhone2?: string;
-  @IsOptional() @IsString() @MaxLength(300) addressDetails?: string;
-  @IsOptional() @IsString() @MaxLength(150) distinguishingMark?: string;
+  @IsOptional() @IsUUID() addressId?: string;
   @IsOptional() @IsString() @MaxLength(10) tableNumber?: string;
   @IsOptional() @IsString() @MaxLength(500) notes?: string;
-  @IsOptional() @IsBoolean() saveAddress?: boolean;
+  @IsOptional() @IsUUID() rewardId?: string;
 
   @IsArray()
   @ArrayMinSize(1)

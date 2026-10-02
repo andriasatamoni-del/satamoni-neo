@@ -4,7 +4,8 @@ import * as path from "node:path";
 import { promises as fsp } from "node:fs";
 import { Client, Pool } from "pg";
 import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from "kysely";
-import { createBackup, applyRetention } from "../../../scripts/backup/backup";
+import { createBackup, applyRetention, verifyBackupFile, sha256File } from "../../../scripts/backup/backup";
+import { compareDatabases } from "../../../scripts/backup/compare-databases";
 import { runRestoreDrill } from "../../../scripts/backup/restore-drill";
 import { withDatabase } from "../../../scripts/backup/pg-env";
 
@@ -98,5 +99,60 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
       "satamoni-neo-20260901-030000.dump",
       "satamoni-neo-20260925-030000.dump",
     ]);
+  });
+
+  // ---- BL-13 (Phase 3.1) ----
+  test("backup writes a sha256 sidecar, verifyBackupFile passes, and a corrupted copy is rejected", async () => {
+    const d = path.join(dir, "integrity");
+    const file = await createBackup(sourceUrl, d);
+    expect(fs.existsSync(`${file}.sha256`)).toBe(true);
+    expect(fs.readFileSync(`${file}.sha256`, "utf8")).toContain(sha256File(file));
+    const ok = await verifyBackupFile(file);
+    expect(ok.entries).toBeGreaterThan(10);
+
+    const corrupted = path.join(d, "satamoni-neo-20200101-000000.dump");
+    const bytes = fs.readFileSync(file);
+    fs.writeFileSync(corrupted, bytes.subarray(0, Math.floor(bytes.length / 2))); // truncated archive
+    await expect(verifyBackupFile(corrupted)).rejects.toThrow();
+
+    const tampered = path.join(d, "satamoni-neo-20200102-000000.dump");
+    fs.writeFileSync(tampered, bytes);
+    fs.writeFileSync(`${tampered}.sha256`, `${"0".repeat(64)}  x\n`);
+    await expect(verifyBackupFile(tampered)).rejects.toThrow(/sha256/);
+  }, 120000);
+
+  test("restore drill compares the restored copy with the source on critical data (exact + tolerant modes)", async () => {
+    const d = path.join(dir, "compare");
+    const file = await createBackup(sourceUrl, d);
+    const exact = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl });
+    expect(exact.steps.filter((s) => !s.ok)).toEqual([]);
+    const cmpStep = exact.steps.find((s) => s.step.includes("مقارنة"));
+    expect(cmpStep?.ok).toBe(true);
+
+    // the live source grows after the snapshot: exact mode must FAIL, tolerant (live) mode must PASS
+    const src = new Client({ connectionString: sourceUrl });
+    await src.connect();
+    await src.query(`INSERT INTO branches (name) VALUES ('فرع-بعد-النسخة')`);
+    await src.end();
+    const exactAfter = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl });
+    expect(exactAfter.success).toBe(false);
+    expect(exactAfter.steps.find((s) => s.step.includes("مقارنة"))?.detail).toContain("branches");
+    const tolerant = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl, tolerateSourceGrowth: true });
+    expect(tolerant.success).toBe(true);
+
+    // direct comparator: restored data that has FEWER rows than the source is never tolerated in reverse
+    const rev = await compareDatabases(emptyUrl, sourceUrl, { tolerateSourceGrowth: true });
+    expect(rev.ok).toBe(false);
+  }, 240000);
+
+  test("retention deletes the sha256 sidecar together with an expired dump", () => {
+    const d = path.join(dir, "retention-sidecar");
+    fs.mkdirSync(d);
+    for (const f of ["satamoni-neo-20260901-030000.dump", "satamoni-neo-20260905-030000.dump"]) {
+      fs.writeFileSync(path.join(d, f), "x");
+      fs.writeFileSync(path.join(d, `${f}.sha256`), "x");
+    }
+    applyRetention(d, new Date("2026-09-29T12:00:00Z"), { dailyDays: 10, monthlyMonths: 12 });
+    expect(fs.readdirSync(d).sort()).toEqual(["satamoni-neo-20260901-030000.dump", "satamoni-neo-20260901-030000.dump.sha256"]);
   });
 });

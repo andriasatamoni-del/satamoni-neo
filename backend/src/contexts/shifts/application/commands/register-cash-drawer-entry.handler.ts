@@ -5,6 +5,7 @@ import { CASHIER_SHIFT_REPOSITORY, type CashierShiftRepositoryPort } from "../..
 import { CASH_DRAWER_ENTRY_REPOSITORY, type CashDrawerEntryRepositoryPort } from "../../domain/ports/cash-drawer-entry-repository.port";
 import { CashDrawerEntryRegisteredEvent } from "../../domain/events/cash-drawer-entry-registered.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface RegisterCashDrawerEntryCommand {
   shiftId: string;
@@ -20,10 +21,17 @@ export class RegisterCashDrawerEntryHandler {
   constructor(
     @Inject(CASHIER_SHIFT_REPOSITORY) private readonly shifts: CashierShiftRepositoryPort,
     @Inject(CASH_DRAWER_ENTRY_REPOSITORY) private readonly entries: CashDrawerEntryRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: RegisterCashDrawerEntryCommand): Promise<CashDrawerEntry> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: RegisterCashDrawerEntryCommand): Promise<CashDrawerEntry> {
     const shift = await this.shifts.findById(command.shiftId);
     if (!shift) throw new ShiftNotFoundError();
     if (shift.status !== "ACTIVE") throw new ShiftNotActiveError();

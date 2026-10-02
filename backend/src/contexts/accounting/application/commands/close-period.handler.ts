@@ -4,6 +4,7 @@ import {
   ACCOUNTING_PERIOD_REPOSITORY,
   type AccountingPeriodRepositoryPort,
 } from "../../domain/ports/accounting-period-repository.port";
+import { auditDetail } from "../../../../shared/audit/audit-context";
 
 export interface ClosePeriodCommand {
   year: number;
@@ -19,8 +20,10 @@ export class ClosePeriodHandler {
 
   async execute(command: ClosePeriodCommand): Promise<AccountingPeriod> {
     const period = (await this.periods.findByYearMonth(command.year, command.month)) ?? AccountingPeriod.openFor(command.year, command.month);
+    auditDetail({ entityType: "accounting_periods", before: { year: command.year, month: command.month, status: period.status } });
     period.close(command.closedBy);
     await this.periods.save(period);
+    auditDetail({ after: { year: command.year, month: command.month, status: period.status } });
     return period;
   }
 }

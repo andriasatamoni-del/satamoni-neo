@@ -7,6 +7,7 @@ import { INVENTORY_ITEM_REPOSITORY, type InventoryItemRepositoryPort } from "../
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { PurchaseConfirmedEvent } from "../../domain/events/purchase-confirmed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface ConfirmPurchaseCommand {
   purchaseId: string;
@@ -23,10 +24,18 @@ export class ConfirmPurchaseHandler {
     @Inject(PURCHASE_REPOSITORY) private readonly purchases: PurchaseRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: ConfirmPurchaseCommand): Promise<Purchase> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: ConfirmPurchaseCommand): Promise<Purchase> {
+    await this.tx.lockRow("purchases", command.purchaseId); // serialise concurrent identical commands; later ones see the new state and are rejected
     const purchase = await this.purchases.findById(command.purchaseId);
     if (!purchase) throw new PurchaseNotFoundError();
 

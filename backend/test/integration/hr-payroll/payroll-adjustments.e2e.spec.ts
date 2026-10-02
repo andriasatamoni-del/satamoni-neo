@@ -109,11 +109,11 @@ describe("HR & Payroll - سلف وجزاءات ومكافآت الموظفين (
     expect(audit.body.length).toBeGreaterThan(0);
   });
 
-  test("POST /hr/adjustments/:id/cancel لسجل ملغى بالفعل -> 400", async () => {
+  test("POST /hr/adjustments/:id/cancel لسجل ملغى بالفعل -> 409", async () => {
     const res = await request(app.getHttpServer())
       .post(`/hr/adjustments/${adjustmentId}/cancel`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ reason: "تاني" });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 });

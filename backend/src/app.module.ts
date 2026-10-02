@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { BranchListFilterInterceptor } from "./shared/authorization/branch-scope";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
@@ -32,6 +33,9 @@ import { TalabatModule } from "./contexts/talabat/talabat.module";
 import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 import { NotificationsModule } from "./contexts/notifications/notifications.module";
 import { StorefrontModule } from "./contexts/storefront/storefront.module";
+import { LoyaltyModule } from "./contexts/loyalty/loyalty.module";
+import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
+import { MediaModule } from "./contexts/media/media.module";
 
 @Module({
   imports: [
@@ -70,9 +74,15 @@ import { StorefrontModule } from "./contexts/storefront/storefront.module";
     TalabatModule,
     HomeTilesModule,
     NotificationsModule,
+    LoyaltyModule,
+    MediaModule,
     StorefrontModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: BranchListFilterInterceptor },
+  ],
 })
 export class AppModule {}

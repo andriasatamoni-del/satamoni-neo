@@ -11,7 +11,11 @@ export class OrderRegisteredEvent extends DomainEvent {
     public readonly branchId: string,
     public readonly total: number,
     public readonly createdBy: string | null,
-    public readonly paymentMethodId: string | null = null
+    public readonly paymentMethodId: string | null = null,
+    // BL-07: actual cost of the stock consumed by this order = sum of the CONSUMPTION movements' recorded total_cost (never a
+    // theoretical recipe cost). costIncomplete = at least one consumed ingredient had no unit cost on record.
+    public readonly costOfGoodsSold: number = 0,
+    public readonly costIncomplete: boolean = false
   ) {
     super();
   }

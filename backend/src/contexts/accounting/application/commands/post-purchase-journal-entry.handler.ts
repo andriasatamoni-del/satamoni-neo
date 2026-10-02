@@ -3,6 +3,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { PurchaseConfirmedEvent } from "../../../purchases/domain/events/purchase-confirmed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 const INVENTORY_ACCOUNT_CODE = "1400";
 const CASH_ACCOUNT_CODE = "1100";
@@ -17,18 +18,17 @@ export class PostPurchaseJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: PurchaseConfirmedEvent): Promise<void> {
     if (event.totalValue <= 0) return;
 
-    const inventoryAccount = await this.accounts.findByCode(INVENTORY_ACCOUNT_CODE);
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
-    if (!inventoryAccount || !cashAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد مشترى ${event.purchaseId} - دليل الحسابات لسه مش معدّ (${INVENTORY_ACCOUNT_CODE}/${CASH_ACCOUNT_CODE})`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([INVENTORY_ACCOUNT_CODE, CASH_ACCOUNT_CODE], "purchase", event.purchaseId);
+    if (!acc) return;
+    const inventoryAccount = acc[INVENTORY_ACCOUNT_CODE];
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
 
     const entry = JournalEntry.register({
       sourceType: "purchase",
@@ -41,6 +41,6 @@ export class PostPurchaseJournalEntryHandler {
       ],
       createdBy: event.confirmedBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

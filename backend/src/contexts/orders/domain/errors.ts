@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -32,13 +32,13 @@ export class UnknownKitchenStatusError extends DomainError {
   }
 }
 
-export class OrderAlreadyFinalizedError extends DomainError {
+export class OrderAlreadyFinalizedError extends ConflictDomainError {
   constructor() {
     super("الطلب ده اتقفل بالفعل (مكتمل أو ملغي)، مينفعش تتعدّل حالته");
   }
 }
 
-export class OrderCancelledError extends DomainError {
+export class OrderCancelledError extends ConflictDomainError {
   constructor() {
     super("الطلب ده اتلغى - مينفعش تتابع تحضيره في المطبخ");
   }

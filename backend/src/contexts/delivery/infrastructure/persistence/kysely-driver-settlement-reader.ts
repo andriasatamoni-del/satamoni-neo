@@ -10,6 +10,7 @@ import type {
   DriverSettlementReaderPort,
   PendingSettlementDriver,
 } from "../../domain/ports/driver-settlement-reader.port";
+import { businessDayStartUtc, businessDayEndUtc, businessDateString } from "../../../../shared/time/business-date";
 
 @Injectable()
 export class KyselyDriverSettlementReader implements DriverSettlementReaderPort {
@@ -75,9 +76,9 @@ export class KyselyDriverSettlementReader implements DriverSettlementReaderPort 
     const driver = await this.db.selectFrom("drivers").select(["id", "name"]).where("id", "=", driverId).executeTakeFirst();
     if (!driver) throw new DriverNotFoundError();
 
-    const businessDate = date || new Date().toISOString().slice(0, 10);
-    const dayStart = new Date(`${businessDate}T00:00:00.000Z`);
-    const dayEnd = new Date(`${businessDate}T23:59:59.999Z`);
+    const businessDate = date || businessDateString();
+    const dayStart = businessDayStartUtc(businessDate);
+    const dayEnd = businessDayEndUtc(businessDate);
 
     const rows = await this.db
       .selectFrom("delivery_assignments")

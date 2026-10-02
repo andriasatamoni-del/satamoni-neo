@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { ConflictDomainError, DomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -62,7 +62,7 @@ export class EmptyGoodsReceiptError extends DomainError {
   }
 }
 
-export class GoodsReceiptAlreadyConfirmedError extends DomainError {
+export class GoodsReceiptAlreadyConfirmedError extends ConflictDomainError {
   constructor() {
     super("إذن الاستلام ده اتأكد بالفعل، مينفعش يتعدّل أو يتأكد تاني");
   }
@@ -110,7 +110,7 @@ export class SupplierInvoiceNotApprovableError extends DomainError {
   }
 }
 
-export class SupplierInvoiceAlreadyCancelledError extends DomainError {
+export class SupplierInvoiceAlreadyCancelledError extends ConflictDomainError {
   constructor() {
     super("الفاتورة دي اتلغت بالفعل");
   }
@@ -245,5 +245,32 @@ export class PurchaseReturnNotCancellableError extends DomainError {
 export class DuplicateGoodsReceiptReferenceError extends DomainError {
   constructor() {
     super("فيه سند استلام بضاعة (GRN) أو مشترى نقدي مسجل بالفعل لنفس المورد ونفس رقم المستند في هذا الفرع - ممكن تكون نفس التوريدة اتسجلت مرتين");
+  }
+}
+
+// Phase 3.1: over-receipt guards (cumulative confirmed quantity may never exceed the ordered quantity)
+export class GoodsReceiptExceedsOrderedQuantityError extends ConflictDomainError {
+  constructor(itemId: string, ordered: number, alreadyReceived: number, requested: number) {
+    super(
+      `الكمية المستلمة تتجاوز كمية أمر الشراء للصنف ${itemId}: المطلوب ${ordered}، المستلم قبل كده ${alreadyReceived}، المطلوب استلامه دلوقتي ${requested}`
+    );
+  }
+}
+
+export class GoodsReceiptItemNotOnPurchaseOrderError extends DomainError {
+  constructor(itemId: string) {
+    super(`الصنف ${itemId} مش موجود في أمر الشراء المربوط بالاستلام`);
+  }
+}
+
+export class GoodsReceiptSupplierMismatchError extends DomainError {
+  constructor() {
+    super("المورد المحدد في الاستلام مختلف عن مورد أمر الشراء");
+  }
+}
+
+export class GoodsReceiptBranchMismatchError extends DomainError {
+  constructor() {
+    super("فرع الاستلام مختلف عن فرع أمر الشراء");
   }
 }

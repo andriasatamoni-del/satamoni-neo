@@ -18,6 +18,9 @@ export interface PaymentAdjustmentRequestProps {
   decidedBy: string | null;
   decidedAt: Date | null;
   legacyAdjustmentRequestId: number | null;
+  // Phase 3.1: the payment as it was immediately BEFORE this adjustment was approved (original evidence is never overwritten)
+  previousPaymentMethodId: string | null;
+  previousAmount: number | null;
 }
 
 // PaymentAdjustmentRequest - نفس مفهوم payment_adjustment_requests في الريبو القديم: الطريقة الوحيدة
@@ -53,6 +56,8 @@ export class PaymentAdjustmentRequest {
       decidedBy: null,
       decidedAt: null,
       legacyAdjustmentRequestId: input.legacyAdjustmentRequestId ?? null,
+      previousPaymentMethodId: null,
+      previousAmount: null,
     });
   }
 
@@ -60,8 +65,12 @@ export class PaymentAdjustmentRequest {
     return new PaymentAdjustmentRequest(id, props);
   }
 
-  approve(decidedBy: string | null): void {
+  approve(decidedBy: string | null, before?: { paymentMethodId: string; amount: number }): void {
     if (this.props.status !== "PENDING") throw new AdjustmentRequestAlreadyDecidedError();
+    if (before) {
+      this.props.previousPaymentMethodId = before.paymentMethodId;
+      this.props.previousAmount = before.amount;
+    }
     this.props.status = "APPROVED";
     this.props.decidedBy = decidedBy;
     this.props.decidedAt = new Date();
@@ -85,4 +94,6 @@ export class PaymentAdjustmentRequest {
   get decidedBy(): string | null { return this.props.decidedBy; }
   get decidedAt(): Date | null { return this.props.decidedAt; }
   get legacyAdjustmentRequestId(): number | null { return this.props.legacyAdjustmentRequestId; }
+  get previousPaymentMethodId(): string | null { return this.props.previousPaymentMethodId; }
+  get previousAmount(): number | null { return this.props.previousAmount; }
 }

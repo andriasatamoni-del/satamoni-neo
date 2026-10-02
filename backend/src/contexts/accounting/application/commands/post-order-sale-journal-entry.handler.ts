@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { OrderRegisteredEvent } from "../../../orders/domain/events/order-registered.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // كود حسابات "الكاش" و"مبيعات الطعام" - نفس أكواد دليل الحسابات الفعلي في الريبو القديم بالظبط
 // (1100/4100، راجع legacy accounts table)، مش أكواد افتراضية اختراعية - عشان القيد يترحّل فعليًا على
@@ -19,20 +20,20 @@ export class PostOrderSaleJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
-  async handle(event: OrderRegisteredEvent): Promise<void> {
+  async handle(event: OrderRegisteredEvent, opts?: { entryDate?: Date }): Promise<void> {
     if (event.total <= 0) return;
 
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
-    const salesAccount = await this.accounts.findByCode(SALES_REVENUE_ACCOUNT_CODE);
-    if (!cashAccount || !salesAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد بيع للطلب ${event.orderId} - دليل الحسابات لسه مش معدّ (${CASH_ACCOUNT_CODE}/${SALES_REVENUE_ACCOUNT_CODE})`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([CASH_ACCOUNT_CODE, SALES_REVENUE_ACCOUNT_CODE], "order_sale", event.orderId);
+    if (!acc) return;
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
+    const salesAccount = acc[SALES_REVENUE_ACCOUNT_CODE];
 
     const entry = JournalEntry.register({
+      entryDate: opts?.entryDate,
       sourceType: "order_sale",
       sourceId: event.orderId,
       branchId: event.branchId,
@@ -43,6 +44,6 @@ export class PostOrderSaleJournalEntryHandler {
       ],
       createdBy: event.createdBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

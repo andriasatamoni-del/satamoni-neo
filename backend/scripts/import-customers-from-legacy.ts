@@ -48,6 +48,7 @@ export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Kysely<
     try {
       const props = {
         phone2: row.phone2,
+        email: null,
         name: row.name,
         addressDetails: row.address_details,
         distinguishingMark: row.distinguishing_mark,
@@ -66,6 +67,11 @@ export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Kysely<
         id: randomUUID(),
         label: a.label,
         addressDetails: a.address_details,
+        area: null,
+        street: null,
+        building: null,
+        floor: null,
+        apartment: null,
         distinguishingMark: a.distinguishing_mark,
         isDefault: a.is_default,
         createdAt: a.created_at,
@@ -73,6 +79,8 @@ export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Kysely<
 
       const customer = Customer.reconstitute(existing?.id ?? randomUUID(), { phone: row.phone, addresses: legacyAddresses, ...props });
       await customerRepo.save(customer);
+      // الـrepository مابيكتبش الرصيد عند التحديث (بيتعدّل ذرّيًا من Loyalty بس) - الاستيراد هو المصدر هنا
+      await neoDb.updateTable("customers").set({ loyalty_points: row.loyalty_points }).where("id", "=", customer.id).execute();
       if (existing) customers.updated++;
       else customers.created++;
     } catch (err) {

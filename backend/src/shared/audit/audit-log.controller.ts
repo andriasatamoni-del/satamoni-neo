@@ -17,7 +17,8 @@ export class AuditLogController {
     @Query("entityId") entityId?: string,
     @Query("branchId") branchId?: string,
     @Query("action") action?: string,
-    @Query("limit") limit?: string
+    @Query("limit") limit?: string,
+    @Query("outcome") outcome?: string
   ) {
     return this.auditLog.list({
       actorUserId,
@@ -26,6 +27,7 @@ export class AuditLogController {
       branchId,
       action,
       limit: limit ? Number(limit) : undefined,
+      outcome,
     });
   }
 }

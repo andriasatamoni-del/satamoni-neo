@@ -48,6 +48,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
         sms_confirmations_enabled: settings.smsConfirmationsEnabled,
         sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
         online_ordering_enabled: settings.onlineOrderingEnabled,
+        loyalty_points_per_egp: settings.loyaltyPointsPerEgp,
         updated_by: settings.updatedBy,
       })
       .onConflict((oc) =>
@@ -61,6 +62,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
           sms_confirmations_enabled: settings.smsConfirmationsEnabled,
           sms_rating_requests_enabled: settings.smsRatingRequestsEnabled,
           online_ordering_enabled: settings.onlineOrderingEnabled,
+          loyalty_points_per_egp: settings.loyaltyPointsPerEgp,
           updated_by: settings.updatedBy,
           updated_at: new Date(),
         })
@@ -79,6 +81,7 @@ export class KyselyPosSettingsRepository implements PosSettingsRepositoryPort {
       smsConfirmationsEnabled: Boolean(row.sms_confirmations_enabled),
       smsRatingRequestsEnabled: Boolean(row.sms_rating_requests_enabled),
       onlineOrderingEnabled: Boolean(row.online_ordering_enabled),
+      loyaltyPointsPerEgp: Number(row.loyalty_points_per_egp ?? 0.1),
       updatedBy: row.updated_by,
       updatedAt: row.updated_at,
     });

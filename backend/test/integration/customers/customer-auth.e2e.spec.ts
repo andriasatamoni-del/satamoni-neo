@@ -12,6 +12,10 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   let app: INestApplication;
   const phone = "01099998888";
   const guestPhone = "01099997777";
+  const ADDRESS = { area: "المعادي", street: "شارع 9", building: "12", floor: "3", apartment: "5" };
+  const signup = (overrides: Record<string, unknown> = {}) => ({
+    phone, phone2: "01199998888", email: "customer-auth@jest.test", name: "عميل-جست", password: "123456", address: ADDRESS, ...overrides,
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -32,8 +36,9 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   test("POST /customer-auth/register بيسجّل حساب جديد وبيرجّع توكن", async () => {
     const res = await request(app.getHttpServer())
       .post("/customer-auth/register")
-      .send({ phone, name: "عميل-جست", password: "123456" });
+      .send(signup());
     expect(res.status).toBe(201);
+    expect(res.body.customer).toMatchObject({ email: "customer-auth@jest.test", phone2: "01199998888", missingProfileFields: [] });
     expect(res.body.token).toBeTruthy();
     expect(res.body.customer.phone).toBe(phone);
     expect(res.body.customer.name).toBe("عميل-جست");
@@ -43,15 +48,27 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   test("POST /customer-auth/register بنفس الرقم تاني -> 409", async () => {
     const res = await request(app.getHttpServer())
       .post("/customer-auth/register")
-      .send({ phone, name: "عميل تاني", password: "123456" });
+      .send(signup({ name: "عميل تاني", email: "other@jest.test" }));
     expect(res.status).toBe(409);
   });
 
   test("POST /customer-auth/register بكلمة سر قصيرة -> 400", async () => {
     const res = await request(app.getHttpServer())
       .post("/customer-auth/register")
-      .send({ phone: "01011112222", name: "عميل", password: "123" });
+      .send(signup({ phone: "01011112222", email: "short@jest.test", password: "123" }));
     expect(res.status).toBe(400);
+  });
+
+  test("POST /customer-auth/register: الرقم التاني والإيميل والعنوان إلزاميين، وإيميل مستخدم -> 409", async () => {
+    const server = app.getHttpServer();
+    const other = { phone: "01011113333" };
+    expect((await request(server).post("/customer-auth/register").send(signup({ ...other, phone2: undefined }))).status).toBe(400);
+    expect((await request(server).post("/customer-auth/register").send(signup({ ...other, email: "bad" }))).body.error).toBe("الإيميل غير صالح");
+    const noFloor = await request(server).post("/customer-auth/register").send(signup({ ...other, email: "x1@jest.test", address: { ...ADDRESS, floor: "" } }));
+    expect(noFloor.status).toBe(400);
+    expect(noFloor.body.error).toBe("لازم الدور في العنوان");
+    const dupEmail = await request(server).post("/customer-auth/register").send(signup({ ...other, email: "CUSTOMER-AUTH@jest.test" }));
+    expect(dupEmail.status).toBe(409);
   });
 
   test("POST /customer-auth/login ببيانات صحيحة بيرجّع توكن", async () => {
@@ -113,23 +130,47 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
 
     const res = await request(app.getHttpServer())
       .post("/customer-auth/register")
-      .send({ phone: guestPhone, name: "عميل حقيقي دلوقتي", password: "123456" });
+      .send(signup({ phone: guestPhone, email: "guest-upgrade@jest.test", name: "عميل حقيقي دلوقتي" }));
     expect(res.status).toBe(201);
     expect(res.body.customer.loyaltyPoints).toBe(30);
     expect(res.body.customer.name).toBe("عميل حقيقي دلوقتي");
   });
 
-  test("POST /customer-auth/me/addresses و GET بيسجّلوا ويرجّعوا دفتر العناوين", async () => {
+  test("دفتر العناوين: إضافة عنوان مقسّم، تغيير الافتراضي، حذف", async () => {
+    const auth = { Authorization: `Bearer ${token}` };
     const addRes = await request(app.getHttpServer())
       .post("/customer-auth/me/addresses")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ label: "البيت", addressDetails: "شارع 1، عمارة 2", isDefault: true });
+      .set(auth)
+      .send({ label: "الشغل", area: "مدينة نصر", street: "عباس العقاد", building: "7", floor: "2", apartment: "4" });
     expect(addRes.status).toBe(201);
-    expect(addRes.body.isDefault).toBe(true);
+    expect(addRes.body).toMatchObject({ isDefault: false, addressDetails: "مدينة نصر - عباس العقاد - عمارة 7 - الدور 2 - شقة 4" });
 
-    const listRes = await request(app.getHttpServer()).get("/customer-auth/me/addresses").set("Authorization", `Bearer ${token}`);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body).toHaveLength(1);
-    expect(listRes.body[0].addressDetails).toBe("شارع 1، عمارة 2");
+    let list = await request(app.getHttpServer()).get("/customer-auth/me/addresses").set(auth);
+    expect(list.body).toHaveLength(2);
+    expect(list.body.find((a: { isDefault: boolean }) => a.isDefault).area).toBe("المعادي");
+
+    const def = await request(app.getHttpServer()).post(`/customer-auth/me/addresses/${addRes.body.id}/default`).set(auth);
+    expect(def.status).toBe(200);
+    expect(def.body.find((a: { isDefault: boolean }) => a.isDefault).id).toBe(addRes.body.id);
+
+    const del = await request(app.getHttpServer()).delete(`/customer-auth/me/addresses/${addRes.body.id}`).set(auth);
+    expect(del.body).toHaveLength(1);
+    expect(del.body[0].isDefault).toBe(true);
+    list = await request(app.getHttpServer()).get("/customer-auth/me/addresses").set(auth);
+    expect(list.body).toHaveLength(1);
+  });
+
+  test("PATCH /customer-auth/me بيعدّل الاسم والإيميل والرقم التاني", async () => {
+    const res = await request(app.getHttpServer())
+      .patch("/customer-auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "اسم جديد", email: "new-mail@jest.test", phone2: "01233334444" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ name: "اسم جديد", email: "new-mail@jest.test", phone2: "01233334444" });
+    const dup = await request(app.getHttpServer())
+      .patch("/customer-auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ email: "guest-upgrade@jest.test" });
+    expect(dup.status).toBe(409);
   });
 });

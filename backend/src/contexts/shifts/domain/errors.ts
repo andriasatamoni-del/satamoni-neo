@@ -1,20 +1,20 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
-export class ShiftAlreadyActiveError extends DomainError {
+export class ShiftAlreadyActiveError extends ConflictDomainError {
   constructor() {
     super("عندك شيفت شغال بالفعل - لازم تقفله الأول");
   }
 }
 
-export class ShiftNotActiveError extends DomainError {
+export class ShiftNotActiveError extends ConflictDomainError {
   constructor() {
     super("الشيفت ده مش شغال");
   }
 }
 
-export class ShiftNotPendingReviewError extends DomainError {
+export class ShiftNotPendingReviewError extends ConflictDomainError {
   constructor() {
     super("الشيفت ده مش في حالة انتظار مراجعة");
   }

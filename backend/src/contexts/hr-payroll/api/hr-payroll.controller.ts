@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Delete, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterEmployeeHandler } from "../application/commands/register-employee.handler";
 import { UpdateEmployeeHandler } from "../application/commands/update-employee.handler";
@@ -48,6 +48,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { HrPayrollDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Employee } from "../domain/employee.aggregate";
 import type { Department } from "../domain/department.aggregate";
@@ -58,7 +59,7 @@ import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shif
 import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
 
 @Controller("hr")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(HrPayrollDomainErrorFilter)
 export class HrPayrollController {
   constructor(
@@ -93,21 +94,35 @@ export class HrPayrollController {
     private readonly listPayrollAdjustments: ListPayrollAdjustmentsHandler
   ) {}
 
+  @BranchScoped()
   @Get("employees")
   @RequirePermission("hr.employees.view", "hr.employees.manage")
-  async employees(@Query("status") status?: string) {
-    return (await this.listEmployees.execute({ status })).map(toPublicEmployee);
+  async employees(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
+    const scope = branchScopeOf(req.user);
+    const all = await this.listEmployees.execute({ status });
+    if (scope.kind === "all") return all.map((e) => toPublicEmployee(e));
+    // branch-bound: only the employees restricted to the caller's own branch, WITHOUT any salary data
+    const own = scope.kind === "branch" ? all.filter((e) => e.restrictedBranchId === scope.branchId) : [];
+    return own.map((e) => toPublicEmployee(e, true));
   }
 
+  @BranchScoped()
   @Post("employees")
   @RequirePermission("hr.employees.manage")
-  async createEmployee(@Body() dto: RegisterEmployeeDto) {
-    return toPublicEmployee(await this.registerEmployee.execute(dto));
+  async createEmployee(@Body() dto: RegisterEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    this.assertBranchBoundEmployeeRules(req.user, dto);
+    const scope = branchScopeOf(req.user);
+    // a branch-bound user can only create employees of its own branch
+    if (scope.kind === "branch") dto.restrictedBranchId = scope.branchId;
+    return toPublicEmployee(await this.registerEmployee.execute(dto), scope.kind !== "all");
   }
 
+  @BranchScoped()
+  @BranchResource("employees", { column: "restricted_branch_id" })
   @Patch("employees/:id")
   @RequirePermission("hr.employees.manage")
   async updateEmployeeRoute(@Param("id") id: string, @Body() dto: UpdateEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    this.assertBranchBoundEmployeeRules(req.user, dto);
     return toPublicEmployee(
       await this.updateEmployee.execute({
         employeeId: id,
@@ -118,6 +133,8 @@ export class HrPayrollController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("employees", { column: "restricted_branch_id" })
   @Patch("employees/:id/status")
   @RequirePermission("hr.employees.manage")
   async updateEmployeeStatus(@Param("id") id: string, @Body() dto: SetEmployeeStatusDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -130,11 +147,13 @@ export class HrPayrollController {
       acknowledgeBlockers: dto.acknowledgeBlockers,
       changedBy: req.user.id,
     });
-    return { ...toPublicEmployee(employee), terminationCascade: terminationCascade ?? undefined };
+    return { ...toPublicEmployee(employee, branchScopeOf(req.user).kind !== "all"), terminationCascade: terminationCascade ?? undefined };
   }
 
   // سجل التغييرات الجوهرية لموظف واحد (فرع/قسم/وظيفة/حالة) - نفس GET /api/hr/employees/:id/history
   // بالريبو القديم بالظبط
+  @BranchScoped()
+  @BranchResource("employees", { column: "restricted_branch_id" })
   @Get("employees/:id/history")
   @RequirePermission("hr.employees.view", "hr.employees.manage")
   async employeeHistoryRoute(@Param("id") id: string) {
@@ -179,30 +198,35 @@ export class HrPayrollController {
     return toPublicPosition(await this.updatePosition.execute({ positionId: id, ...dto }));
   }
 
+  @CompanyWideOnly()
   @Get("payroll-runs")
   @RequirePermission("hr.payroll.view", "hr.payroll.manage")
   async payrollRuns(@Query("status") status?: string) {
     return (await this.listPayrollRuns.execute({ status })).map(toPublicPayrollRun);
   }
 
+  @CompanyWideOnly()
   @Post("payroll-runs")
   @RequirePermission("hr.payroll.manage")
   async createPayrollRun(@Body() dto: RegisterPayrollRunDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.registerPayrollRun.execute({ ...dto, createdBy: req.user.id }));
   }
 
+  @CompanyWideOnly()
   @Post("payroll-runs/:id/approve")
   @RequirePermission("hr.payroll.approve")
   async approve(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.approvePayrollRun.execute({ payrollRunId: id, approvedBy: req.user.id }));
   }
 
+  @CompanyWideOnly()
   @Post("payroll-runs/:id/cancel")
   @RequirePermission("hr.payroll.approve")
   async cancel(@Param("id") id: string, @Body() dto: CancelPayrollRunDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.cancelPayrollRun.execute({ payrollRunId: id, cancelledBy: req.user.id, reason: dto.reason }));
   }
 
+  @CompanyWideOnly()
   @Delete("payroll-runs/:id")
   @RequirePermission("hr.payroll.manage")
   async deleteDraft(@Param("id") id: string) {
@@ -272,12 +296,22 @@ export class HrPayrollController {
   }
 
   // مراجعة طلبات الإجازة (جانب الإدارة) - hr.leave.review
+  @BranchScoped()
   @Get("leave-requests")
   @RequirePermission("hr.leave.review")
-  async leaveRequests(@Query("status") status?: string) {
-    return (await this.listLeaveRequests.execute({ status })).map(toPublicLeaveRequest);
+  async leaveRequests(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
+    const requests = await this.listLeaveRequests.execute({ status });
+    const scope = branchScopeOf(req.user);
+    if (scope.kind === "all") return requests.map(toPublicLeaveRequest);
+    // branch-bound: only requests of employees restricted to the caller's own branch
+    const own = new Set(
+      scope.kind === "branch" ? (await this.listEmployees.execute({})).filter((e) => e.restrictedBranchId === scope.branchId).map((e) => e.id) : []
+    );
+    return requests.filter((r) => own.has(r.employeeId)).map(toPublicLeaveRequest);
   }
 
+  @BranchScoped()
+  @BranchResource("employee_leave_requests", { through: { column: "employee_id", table: "employees", branchColumn: "restricted_branch_id" } })
   @Post("leave-requests/:id/review")
   @RequirePermission("hr.leave.review")
   async reviewLeave(@Param("id") id: string, @Body() dto: ReviewLeaveRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -292,12 +326,14 @@ export class HrPayrollController {
   }
 
   // سلف/جزاءات/مكافآت فردية - راجع تعليق payroll-adjustment.aggregate.ts
+  @CompanyWideOnly()
   @Get("adjustments")
   @RequirePermission("hr.payroll.view", "hr.payroll.adjustments.manage")
   async adjustments(@Query("employeeId") employeeId?: string, @Query("status") status?: string) {
     return (await this.listPayrollAdjustments.execute({ employeeId, status })).map(toPublicAdjustment);
   }
 
+  @CompanyWideOnly()
   @Post("adjustments")
   @RequirePermission("hr.payroll.adjustments.manage")
   async createAdjustment(@Body() dto: RegisterPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -313,6 +349,7 @@ export class HrPayrollController {
     );
   }
 
+  @CompanyWideOnly()
   @Post("adjustments/:id/cancel")
   @RequirePermission("hr.payroll.adjustments.manage")
   async cancelAdjustment(@Param("id") id: string, @Body() dto: CancelPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -320,9 +357,21 @@ export class HrPayrollController {
       await this.cancelPayrollAdjustment.execute({ adjustmentId: id, reason: dto.reason, cancelledBy: req.user.id })
     );
   }
+
+  // branch-bound HR users manage only employees of their own branch and can never see/change pay data or move staff between branches
+  private assertBranchBoundEmployeeRules(user: AuthenticatedUser, dto: { restrictedBranchId?: string; baseSalary?: number; hourlyRate?: number; wageType?: string }): void {
+    const scope = branchScopeOf(user);
+    if (scope.kind === "all") return;
+    if (scope.kind === "none" || (dto.restrictedBranchId !== undefined && dto.restrictedBranchId !== scope.branchId)) {
+      throw new ForbiddenException("معندكش صلاحية على موظفين فرع تاني");
+    }
+    if (dto.baseSalary !== undefined || dto.hourlyRate !== undefined || dto.wageType !== undefined) {
+      throw new ForbiddenException("تعديل الراتب/الأجر على مستوى الشركة بس");
+    }
+  }
 }
 
-function toPublicEmployee(employee: Employee) {
+function toPublicEmployee(employee: Employee, hideSalary = false) {
   return {
     id: employee.id,
     userId: employee.userId,
@@ -330,9 +379,9 @@ function toPublicEmployee(employee: Employee) {
     departmentId: employee.departmentId,
     positionId: employee.positionId,
     hireDate: employee.hireDate,
-    baseSalary: employee.baseSalary,
-    wageType: employee.wageType,
-    hourlyRate: employee.hourlyRate,
+    baseSalary: hideSalary ? null : employee.baseSalary,
+    wageType: hideSalary ? null : employee.wageType,
+    hourlyRate: hideSalary ? null : employee.hourlyRate,
     workingDaysPerMonth: employee.workingDaysPerMonth,
     shift: employee.shift,
     restrictedBranchId: employee.restrictedBranchId,
@@ -410,6 +459,7 @@ function toPublicAdjustment(adjustment: PayrollAdjustment) {
     cancelledBy: adjustment.cancelledBy,
     cancelledAt: adjustment.cancelledAt,
     cancellationReason: adjustment.cancellationReason,
+    payrollRunId: adjustment.payrollRunId,
   };
 }
 

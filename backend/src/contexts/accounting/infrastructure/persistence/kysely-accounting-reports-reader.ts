@@ -22,7 +22,8 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
       .selectFrom("journal_entry_lines")
       .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
       .select(["journal_entry_lines.account_id as account_id", "journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
-      .where("journal_entries.status", "=", "POSTED")
+      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
+      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
       .where("journal_entries.entry_date", "<=", asOf);
     if (branchId) query = query.where("journal_entries.branch_id", "=", branchId);
     const lines = await query.execute();
@@ -75,7 +76,8 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
       .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
       .select(["journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
       .where("journal_entry_lines.account_id", "=", accountId)
-      .where("journal_entries.status", "=", "POSTED")
+      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
+      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
       .where("journal_entries.entry_date", "<", from)
       .execute();
     const openingDebit = openingRows.reduce((s, r) => s + Number(r.debit), 0);
@@ -96,7 +98,8 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
         "journal_entry_lines.credit as credit",
       ])
       .where("journal_entry_lines.account_id", "=", accountId)
-      .where("journal_entries.status", "=", "POSTED")
+      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
+      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
       .where("journal_entries.entry_date", ">=", from)
       .where("journal_entries.entry_date", "<=", to)
       .orderBy("journal_entries.entry_date")
@@ -144,7 +147,8 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
         "journal_entry_lines.debit as debit",
         "journal_entry_lines.credit as credit",
       ])
-      .where("journal_entries.status", "=", "POSTED")
+      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
+      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
       .where("journal_entries.entry_date", ">=", from)
       .where("journal_entries.entry_date", "<=", to)
       .where("accounts.account_type", "in", ["REVENUE", "COGS", "EXPENSE"]);

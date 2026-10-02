@@ -139,6 +139,19 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
     return entries;
   }
 
+  async findBySource(sourceType: string, sourceId: string): Promise<JournalEntry[]> {
+    const rows = await this.db
+      .selectFrom("journal_entries")
+      .selectAll()
+      .where("source_type", "=", sourceType)
+      .where("source_id", "=", sourceId)
+      .orderBy("created_at", "asc")
+      .execute();
+    const entries: JournalEntry[] = [];
+    for (const row of rows) entries.push(this.toDomain(row, await this.loadLines(row.id)));
+    return entries;
+  }
+
   private loadLines(entryId: string): Promise<Selectable<JournalEntryLinesTable>[]> {
     return this.db.selectFrom("journal_entry_lines").selectAll().where("journal_entry_id", "=", entryId).execute();
   }

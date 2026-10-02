@@ -56,6 +56,7 @@ const NAV_ITEMS = [
   { to: "/printing", label: "الطباعة", icon: PrinterIcon },
   { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },
   { to: "/audit-log", label: "سجل التدقيق", icon: ListSearchIcon },
+  { to: "/loyalty", label: "نقاط الولاء", icon: CoinsIcon },
   { to: "/pos-settings", label: "إعدادات النظام", icon: GearIcon },
 ];
 

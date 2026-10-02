@@ -230,12 +230,18 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
     expect(acknowledgedGrn.status).toBe(201);
   });
 
-  test("كاشير: تسجيل مشترى بيتفرض PENDING وفرعه وتاريخ النهاردة بغض النظر عن اللي اتبعت، ومتجاهل المورد", async () => {
+  test("كاشير: تسجيل مشترى بيتفرض PENDING وتاريخ النهاردة بغض النظر عن اللي اتبعت، ومتجاهل المورد، وفرع تاني -> 403 (BL-11)", async () => {
+    const foreign = await request(app.getHttpServer())
+      .post("/purchases")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ branchId: "00000000-0000-0000-0000-000000000000", businessDate: "2020-01-01", amount: 40 });
+    expect(foreign.status).toBe(403);
+
     const res = await request(app.getHttpServer())
       .post("/purchases")
       .set("Authorization", `Bearer ${cashierToken}`)
       .send({
-        branchId: "00000000-0000-0000-0000-000000000000",
+        branchId,
         businessDate: "2020-01-01",
         amount: 40,
         supplierId,
@@ -282,7 +288,7 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
     const reconfirm = await request(app.getHttpServer())
       .post(`/purchases/${createRes.body.id}/confirm`)
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(reconfirm.status).toBe(400);
+    expect(reconfirm.status).toBe(409);
   });
 
   test("POST .../reject - أدمن بيرفض مشترى PENDING بسبب، وميتعملوش عليه confirm بعد كده", async () => {
@@ -302,19 +308,22 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
     const confirmAfterReject = await request(app.getHttpServer())
       .post(`/purchases/${createRes.body.id}/confirm`)
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(confirmAfterReject.status).toBe(400);
+    expect(confirmAfterReject.status).toBe(409);
   });
 
-  test("GET /purchases?branchId= بيرجّع سجل الفرع، وكاشير بيشوف فرعه بس بغض النظر عن branchId المبعوت", async () => {
+  test("GET /purchases?branchId= بيرجّع سجل الفرع، وكاشير بيشوف فرعه بس، وbranchId لفرع تاني -> 403 (BL-11)", async () => {
     const adminRes = await request(app.getHttpServer())
       .get(`/purchases?branchId=${branchId}`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(adminRes.status).toBe(200);
     expect(adminRes.body.length).toBeGreaterThan(0);
 
-    const cashierRes = await request(app.getHttpServer())
+    const foreign = await request(app.getHttpServer())
       .get("/purchases?branchId=00000000-0000-0000-0000-000000000000")
       .set("Authorization", `Bearer ${cashierToken}`);
+    expect(foreign.status).toBe(403);
+
+    const cashierRes = await request(app.getHttpServer()).get("/purchases").set("Authorization", `Bearer ${cashierToken}`);
     expect(cashierRes.status).toBe(200);
     expect(cashierRes.body.every((p: { branchId: string }) => p.branchId === branchId)).toBe(true);
   });

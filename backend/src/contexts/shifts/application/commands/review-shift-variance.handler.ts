@@ -4,6 +4,7 @@ import { ShiftNotFoundError } from "../../domain/errors";
 import { CASHIER_SHIFT_REPOSITORY, type CashierShiftRepositoryPort } from "../../domain/ports/cashier-shift-repository.port";
 import { ShiftClosedEvent } from "../../domain/events/shift-closed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface ReviewShiftVarianceCommand {
   shiftId: string;
@@ -16,10 +17,18 @@ export interface ReviewShiftVarianceCommand {
 export class ReviewShiftVarianceHandler {
   constructor(
     @Inject(CASHIER_SHIFT_REPOSITORY) private readonly shifts: CashierShiftRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: ReviewShiftVarianceCommand): Promise<CashierShift> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: ReviewShiftVarianceCommand): Promise<CashierShift> {
+    await this.tx.lockRow("cashier_shifts", command.shiftId); // serialise concurrent identical commands; later ones see the new state and are rejected
     const shift = await this.shifts.findById(command.shiftId);
     if (!shift) throw new ShiftNotFoundError();
 

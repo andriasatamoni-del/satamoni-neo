@@ -5,9 +5,10 @@ import {
   BRANCH_DAY_CHECKLIST_READER,
   type BranchDayChecklistReaderPort,
 } from "../../domain/ports/branch-day-checklist-reader.port";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 function todayBusinessDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDateString();
 }
 
 @Injectable()

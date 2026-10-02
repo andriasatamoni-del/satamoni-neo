@@ -38,6 +38,8 @@ export interface PaymentAdjustmentRequestsTable {
   decided_by: string | null;
   decided_at: Date | null;
   legacy_adjustment_request_id: number | null;
+  previous_payment_method_id: string | null;
+  previous_amount: number | null;
 }
 
 export interface PaymentReconciliationRecordsTable {

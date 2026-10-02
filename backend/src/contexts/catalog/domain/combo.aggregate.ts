@@ -11,6 +11,11 @@ export interface ComboProps {
   name: string;
   price: number;
   isActive: boolean;
+  // صورة ووصف للعرض على موقع الطلب (STORE-2)
+  imageUrl: string | null;
+  description: string | null;
+  // عرض حصري للموقع: مايظهرش في الكاشير ولا البوت، وبيتقبل في طلبات الموقع بس
+  onlineOnly: boolean;
   items: ComboItem[];
   legacyComboId: number | null;
   createdAt: Date;
@@ -38,6 +43,9 @@ export class Combo {
     name: string;
     price: number;
     items: { variantId: string; quantity?: number }[];
+    imageUrl?: string | null;
+    description?: string | null;
+    onlineOnly?: boolean;
     legacyComboId?: number | null;
   }): Combo {
     const name = input.name.trim();
@@ -47,6 +55,9 @@ export class Combo {
       name,
       price: input.price,
       isActive: true,
+      imageUrl: input.imageUrl?.trim() || null,
+      description: input.description?.trim() || null,
+      onlineOnly: !!input.onlineOnly,
       items: buildItems(input.items),
       legacyComboId: input.legacyComboId ?? null,
       createdAt: new Date(),
@@ -57,7 +68,14 @@ export class Combo {
     return new Combo(id, props);
   }
 
-  updateDetails(input: { name?: string; price?: number; isActive?: boolean }): void {
+  updateDetails(input: {
+    name?: string;
+    price?: number;
+    isActive?: boolean;
+    imageUrl?: string | null;
+    description?: string | null;
+    onlineOnly?: boolean;
+  }): void {
     if (input.name !== undefined) {
       const name = input.name.trim();
       if (!name) throw new ComboNameRequiredError();
@@ -65,6 +83,9 @@ export class Combo {
     }
     if (input.price !== undefined) this.props.price = input.price;
     if (input.isActive !== undefined) this.props.isActive = input.isActive;
+    if (input.imageUrl !== undefined) this.props.imageUrl = input.imageUrl?.trim() || null;
+    if (input.description !== undefined) this.props.description = input.description?.trim() || null;
+    if (input.onlineOnly !== undefined) this.props.onlineOnly = input.onlineOnly;
   }
 
   replaceItems(items: { variantId: string; quantity?: number }[]): void {
@@ -74,6 +95,9 @@ export class Combo {
   get name(): string { return this.props.name; }
   get price(): number { return this.props.price; }
   get isActive(): boolean { return this.props.isActive; }
+  get imageUrl(): string | null { return this.props.imageUrl; }
+  get description(): string | null { return this.props.description; }
+  get onlineOnly(): boolean { return this.props.onlineOnly; }
   get items(): readonly ComboItem[] { return this.props.items; }
   get legacyComboId(): number | null { return this.props.legacyComboId; }
   get createdAt(): Date { return this.props.createdAt; }

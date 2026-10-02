@@ -82,6 +82,17 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
     return row ? this.toDomain(row) : null;
   }
 
+  async listByReference(referenceType: string, referenceId: string): Promise<StockMovement[]> {
+    const rows = await this.db
+      .selectFrom("stock_movements")
+      .selectAll()
+      .where("reference_type", "=", referenceType)
+      .where("reference_id", "=", referenceId)
+      .orderBy("occurred_at", "asc")
+      .execute();
+    return rows.map((r) => this.toDomain(r));
+  }
+
   private toRow(movement: StockMovement) {
     return {
       id: movement.id,

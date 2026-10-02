@@ -10,6 +10,7 @@ import { UpsertProductMappingDto } from "./dto/upsert-product-mapping.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
+import { BranchScopeGuard, BranchScoped, CompanyWideOnly } from "../../../shared/authorization/branch-scope";
 import { TalabatDomainErrorFilter } from "./filters/domain-error.filter";
 import type { TalabatOrder } from "../domain/talabat-order.aggregate";
 import type { TalabatIntegrationError } from "../domain/talabat-integration-error.aggregate";
@@ -18,7 +19,7 @@ import type { TalabatProductMapping } from "../domain/talabat-product-mapping.ag
 // شاشات الإدارة - integration-errors (list/retry)، لوحة التحكم، إدارة الربط، تقرير Payment Control -
 // نفس مفهوم routes/talabat.js بالريبو القديم بالظبط (راجع docs/TALABAT-INTEGRATION.md قسم 10)
 @Controller("talabat")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(TalabatDomainErrorFilter)
 export class TalabatController {
   constructor(
@@ -31,42 +32,49 @@ export class TalabatController {
     private readonly getPaymentOverrides: GetTalabatPaymentOverridesHandler
   ) {}
 
+  @BranchScoped()
   @Get("dashboard-summary")
   @RequirePermission("talabat.view")
   async dashboardSummary(@Query("branchId") branchId?: string, @Query("date") date?: string) {
     return this.getDashboardSummary.execute({ branchId, date: date ? new Date(date) : undefined });
   }
 
+  @BranchScoped()
   @Get("orders")
   @RequirePermission("talabat.view")
   async orders(@Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listTalabatOrders.execute({ branchId, status })).map(toPublicTalabatOrder);
   }
 
+  @CompanyWideOnly()
   @Get("integration-errors")
   @RequirePermission("talabat.view")
   async integrationErrors(@Query("status") status?: string) {
     return (await this.listIntegrationErrors.execute({ status })).map(toPublicIntegrationError);
   }
 
+  @CompanyWideOnly()
   @Post("integration-errors/:id/retry")
   @RequirePermission("talabat.retry")
   async retryError(@Param("id") id: string) {
     return toPublicIntegrationError(await this.retryIntegrationError.execute({ integrationErrorId: id }));
   }
 
+  @BranchScoped()
   @Get("product-mapping")
   @RequirePermission("talabat.mapping_manage")
   async productMapping(@Query("branchId") branchId: string) {
     return (await this.listProductMappings.execute(branchId)).map(toPublicProductMapping);
   }
 
+  @BranchScoped()
   @Post("product-mapping")
   @RequirePermission("talabat.mapping_manage")
   async createProductMapping(@Body() dto: UpsertProductMappingDto) {
     return toPublicProductMapping(await this.upsertProductMapping.execute(dto));
   }
 
+  @CompanyWideOnly()
   @Get("reconciliation")
   @RequirePermission("talabat.reconciliation")
   async reconciliation() {
@@ -75,6 +83,7 @@ export class TalabatController {
     return { status: "TALABAT_API_NOT_CONFIGURED" as const, records: [] };
   }
 
+  @CompanyWideOnly()
   @Get("payment-control-report")
   @RequirePermission("talabat.reconciliation")
   async paymentControlReport() {

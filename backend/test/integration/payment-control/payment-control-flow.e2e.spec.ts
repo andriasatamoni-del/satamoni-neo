@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { KYSELY } from "../../../src/shared/database/database.module";
+import { createSecondUser } from "../helpers/second-user";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
 // طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
@@ -17,6 +18,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
   let visaMethodId: string;
   let talabatMethodId: string;
   let branchManagerToken: string;
+  let approverToken: string; // BL-05: an independent approver (the requester can never approve)
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -42,18 +44,18 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payment-control-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
+    const branchRepo = new KyselyBranchRepository(db);
+    const branch = Branch.register({ name: "فرع دفعات-e2e" });
+    await branchRepo.save(branch);
+    branchId = branch.id;
+
     const branchManager = User.register({
-      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager",
+      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager", branchId,
     });
     await userRepo.save(branchManager);
     branchManagerToken = (
       await request(app.getHttpServer()).post("/auth/login").send({ email: "bm-payment-control-e2e@jest.test", password: "12345678" })
     ).body.token;
-
-    const branchRepo = new KyselyBranchRepository(db);
-    const branch = Branch.register({ name: "فرع دفعات-e2e" });
-    await branchRepo.save(branch);
-    branchId = branch.id;
 
     const menuItemRepo = new KyselyMenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف دفعات-e2e" });
@@ -77,6 +79,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
       .post("/payment-control/payment-methods")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Talabat-دفعات-e2e", kind: "credit" });
+    approverToken = (await createSecondUser(app, "admin2-payment-control-e2e@jest.test", "admin")).token;
     talabatMethodId = talabatMethod.body.id;
     await request(app.getHttpServer())
       .patch(`/payment-control/payment-methods/${talabatMethodId}/talabat-code`)
@@ -96,7 +99,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     await sql`DELETE FROM menu_item_variants`.execute(db);
     await sql`DELETE FROM menu_items`.execute(db);
     await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-payment-control-e2e@jest.test', 'bm-payment-control-e2e@jest.test')`.execute(db);
+    await sql`DELETE FROM users WHERE email IN ('admin-payment-control-e2e@jest.test', 'bm-payment-control-e2e@jest.test', 'admin2-payment-control-e2e@jest.test')`.execute(db);
     await app.close();
   });
 
@@ -150,7 +153,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
 
     const approved = await request(app.getHttpServer())
       .post(`/payment-control/adjustment-requests/${adjustmentReq.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(approved.status).toBe(201);
     expect(approved.body.status).toBe("APPROVED");
 
@@ -188,7 +191,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     // الأدمن معاه talabat.payment_override (كل الصلاحيات المسجّلة) -> بينجح
     const approvedByAdmin = await request(app.getHttpServer())
       .post(`/payment-control/adjustment-requests/${adjustmentReq.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(approvedByAdmin.status).toBe(201);
     expect(approvedByAdmin.body.status).toBe("APPROVED");
   });

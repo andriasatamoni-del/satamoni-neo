@@ -30,6 +30,9 @@ export interface StorefrontCombo {
   id: string;
   name: string;
   price: number;
+  imageUrl: string | null;
+  description: string | null;
+  onlineOnly: boolean;
   items: { itemName: string; variantLabel: string; quantity: number }[];
 }
 

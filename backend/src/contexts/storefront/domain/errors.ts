@@ -33,3 +33,9 @@ export class OnlineOrderNotFoundError extends DomainError {
     super("الطلب مش موجود أو اللينك غلط");
   }
 }
+
+export class IncompleteCustomerProfileError extends DomainError {
+  constructor() {
+    super("كمّل بياناتك الأول (الإيميل والرقم التاني وعنوان التوصيل) من صفحة حسابي");
+  }
+}

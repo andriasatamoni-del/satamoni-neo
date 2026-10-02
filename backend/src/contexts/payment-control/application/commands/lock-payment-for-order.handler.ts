@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import { PaymentMethodNotFoundError } from "../../domain/errors";
 import { Payment } from "../../domain/payment.aggregate";
 import { PAYMENT_REPOSITORY, type PaymentRepositoryPort } from "../../domain/ports/payment-repository.port";
 import { PAYMENT_METHOD_REPOSITORY, type PaymentMethodRepositoryPort } from "../../domain/ports/payment-method-repository.port";
@@ -24,10 +25,9 @@ export class LockPaymentForOrderHandler {
     if (await this.payments.findByOrderId(event.orderId)) return; // idempotent لو الحدث اتنشر أكتر من مرة
 
     const method = await this.methods.findById(event.paymentMethodId);
-    if (!method) {
-      this.logger.warn(`تخطّي قفل دفعة للطلب ${event.orderId} - طريقة الدفع ${event.paymentMethodId} مش موجودة`);
-      return;
-    }
+    // BL-09: an unknown payment method is a validation error that rejects (and rolls back) the whole order - never "order saved
+    // without its payment"
+    if (!method) throw new PaymentMethodNotFoundError();
 
     const payment = Payment.lock({
       orderId: event.orderId,

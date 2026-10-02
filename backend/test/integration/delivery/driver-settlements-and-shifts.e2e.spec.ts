@@ -193,10 +193,10 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
       .post(`/delivery/settlements/${settlementId}/review`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ decision: "approve" });
-    expect(reviewAgain.status).toBe(400);
+    expect(reviewAgain.status).toBe(409);
   });
 
-  test("شيفت حضور السائق: دخول -> دخول تاني وهو لسه شغال (409/400) -> خروج بيحسب الأجر ويرحّل قيد مصروف", async () => {
+  test("شيفت حضور السائق: دخول -> دخول تاني وهو لسه شغال (409) -> خروج بيحسب الأجر ويرحّل قيد مصروف", async () => {
     const checkIn = await request(app.getHttpServer())
       .post("/delivery/attendance-shifts/check-in")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -209,7 +209,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
       .post("/delivery/attendance-shifts/check-in")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ driverId, branchId });
-    expect(checkInAgain.status).toBe(400);
+    expect(checkInAgain.status).toBe(409);
 
     // طلب بيتسلّم أثناء الشيفت نفسه - عشان البونص يتحسب (بونص = عدد الطلبات المُسلَّمة من checked_in_at
     // لحد دلوقتي، مش الطلبات القديمة من قبل الدخول)
@@ -266,7 +266,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     const userRepo = new KyselyUserRepository(db);
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-تسويات-سائقين-جست", email: "cashier-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تسويات-سائقين-جست", email: "cashier-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier", branchId, // Phase 3.1: cashier is branch-bound
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())

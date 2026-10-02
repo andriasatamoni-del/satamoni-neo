@@ -120,11 +120,11 @@ describe("Accounting - قيد يدوي DRAFT/Post (e2e ضد تطبيق حقيق�
     expect(ledger.body.lines[0].debit).toBe(200);
   });
 
-  test("POST .../post تاني على نفس القيد -> 400 (مش DRAFT بقى)", async () => {
+  test("POST .../post تاني على نفس القيد -> 409 (مش DRAFT بقى)", async () => {
     const res = await request(app.getHttpServer())
       .post(`/accounting/journal-entries/${draftEntryId}/post`)
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 
   test("POST .../post على قيد مش موجود -> 404", async () => {

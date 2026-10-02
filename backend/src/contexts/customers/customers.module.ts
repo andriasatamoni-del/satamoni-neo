@@ -9,6 +9,8 @@ import { JwtCustomerTokenService } from "./infrastructure/security/jwt-customer-
 import { RegisterCustomerHandler } from "./application/commands/register-customer.handler";
 import { LoginCustomerHandler } from "./application/commands/login-customer.handler";
 import { AddCustomerAddressHandler } from "./application/commands/add-customer-address.handler";
+import { UpdateCustomerProfileHandler } from "./application/commands/update-customer-profile.handler";
+import { ManageCustomerAddressHandler } from "./application/commands/manage-customer-address.handler";
 import { CustomerAuthController } from "./api/customer-auth.controller";
 import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
 
@@ -31,6 +33,8 @@ import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
     RegisterCustomerHandler,
     LoginCustomerHandler,
     AddCustomerAddressHandler,
+    UpdateCustomerProfileHandler,
+    ManageCustomerAddressHandler,
     CustomerAuthGuard,
   ],
   exports: [CUSTOMER_REPOSITORY, CUSTOMER_TOKEN_SERVICE, CustomerAuthGuard],

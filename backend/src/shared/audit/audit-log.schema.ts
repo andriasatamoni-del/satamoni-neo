@@ -9,4 +9,6 @@ export interface AuditLogsTable {
   branch_id: string | null;
   metadata: JSONColumnType<Record<string, unknown>> | null;
   created_at: Generated<Date>;
+  outcome: Generated<"SUCCESS" | "DENIED" | "FAILED">;
+  http_status: number | null;
 }

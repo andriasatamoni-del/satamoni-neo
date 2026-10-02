@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
+import { createSecondUser } from "../helpers/second-user";
 import { KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e حقيقي بيغطي تالت مسار event-driven في النظام: اعتماد قائمة رواتب (HR & Payroll) ->
@@ -13,6 +14,7 @@ import { KYSELY } from "../../../src/shared/database/database.module";
 describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
+  let approverToken: string; // BL-05: a payroll run can not be approved by the user who registered it
   let employeeId: string;
   let salariesExpenseAccountId: string;
   let salariesPayableAccountId: string;
@@ -38,6 +40,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payroll-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
+    approverToken = (await createSecondUser(app, "approver-payroll-e2e@jest.test")).token;
 
     const accountRepo = new KyselyAccountRepository(db);
     const expenseAccount = Account.register({ code: "6100", name: "الرواتب", accountType: "EXPENSE", isSystemAccount: true });
@@ -60,7 +63,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     await sql`DELETE FROM accounts WHERE id IN (${sql.join([salariesExpenseAccountId, salariesPayableAccountId])})`.execute(db);
     await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
     await sql`DELETE FROM employees WHERE id = ${employeeId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-payroll-e2e@jest.test'`.execute(db);
+    await sql`DELETE FROM users WHERE email IN ('admin-payroll-e2e@jest.test', 'approver-payroll-e2e@jest.test')`.execute(db);
     await app.close();
   });
 
@@ -74,7 +77,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
 
     const approved = await request(app.getHttpServer())
       .post(`/hr/payroll-runs/${run.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(approved.status).toBe(201);
     expect(approved.body.status).toBe("APPROVED");
 
@@ -95,7 +98,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
       .post("/hr/payroll-runs")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ year: 2032, month: 3, employees: [] });
-    await request(app.getHttpServer()).post(`/hr/payroll-runs/${first.body.id}/approve`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer()).post(`/hr/payroll-runs/${first.body.id}/approve`).set("Authorization", `Bearer ${approverToken}`);
 
     const duplicateWhileActive = await request(app.getHttpServer())
       .post("/hr/payroll-runs")

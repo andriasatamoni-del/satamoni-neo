@@ -5,10 +5,12 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { KYSELY } from "../../../src/shared/database/database.module";
+import { createSecondUser } from "../helpers/second-user";
 
 describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
+  let approverToken: string; // BL-05: second user approves the payroll run registered by the admin
   let branchId: string;
   let employeeId: string;
   let employeeToken: string;
@@ -35,6 +37,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     const admin = User.register({ name: "أدمن-ذاتي-جست", email: "admin-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-self-service@jest.test", password: "12345678" })).body.token;
+    approverToken = (await createSecondUser(app, "approver-self-service@jest.test")).token;
 
     const cashierUser = User.register({ name: "كاشير-ذاتي-جست", email: "cashier-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
     await userRepo.save(cashierUser);
@@ -73,7 +76,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
     await sql`DELETE FROM employees WHERE id IN (${employeeId}, ${otherEmployeeId})`.execute(db);
     await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-self-service@jest.test','cashier-self-service@jest.test','cashier-self-service-2@jest.test','cashier-unlinked-self-service@jest.test')`.execute(db);
+    await sql`DELETE FROM users WHERE email IN ('admin-self-service@jest.test','cashier-self-service@jest.test','cashier-self-service-2@jest.test','cashier-unlinked-self-service@jest.test','approver-self-service@jest.test')`.execute(db);
     await app.close();
   });
 
@@ -98,7 +101,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     const beforeApprove = await request(app.getHttpServer()).get("/hr/self/payslips").set("Authorization", `Bearer ${employeeToken}`);
     expect(beforeApprove.body).toHaveLength(0);
 
-    await request(app.getHttpServer()).post(`/hr/payroll-runs/${run.body.id}/approve`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer()).post(`/hr/payroll-runs/${run.body.id}/approve`).set("Authorization", `Bearer ${approverToken}`);
 
     const afterApprove = await request(app.getHttpServer()).get("/hr/self/payslips").set("Authorization", `Bearer ${employeeToken}`);
     expect(afterApprove.body).toHaveLength(1);
@@ -153,7 +156,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
       .post(`/hr/leave-requests/${create.body.id}/review`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ decision: "reject" });
-    expect(secondReview.status).toBe(400); // مش PENDING تاني
+    expect(secondReview.status).toBe(409); // مش PENDING تاني
   });
 
   test("حضور: تسجيل دخول -> مينفعش يدخل تاني وهو شغال -> خروج بيحسب ساعات العمل", async () => {
@@ -168,7 +171,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
       .post("/hr/self/attendance/check-in")
       .set("Authorization", `Bearer ${employeeToken}`)
       .send({ branchId });
-    expect(duplicateCheckIn.status).toBe(400);
+    expect(duplicateCheckIn.status).toBe(409);
 
     const checkOut = await request(app.getHttpServer())
       .post(`/hr/self/attendance/${checkIn.body.id}/check-out`)

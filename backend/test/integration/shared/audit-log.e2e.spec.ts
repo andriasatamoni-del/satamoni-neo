@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
+import { deleteAuditLogsForTest } from "../helpers/audit";
 import { KYSELY } from "../../../src/shared/database/database.module";
 
 describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حقيقي كامل)", () => {
@@ -40,13 +41,13 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
 
   afterAll(async () => {
     const db = app.get(KYSELY);
-    await sql`DELETE FROM audit_logs WHERE actor_user_id IN (${adminId}, ${sql.raw(
+    await deleteAuditLogsForTest(db, sql`actor_user_id IN (${adminId}, ${sql.raw(
       "(SELECT id FROM users WHERE email = 'cashier-audit@jest.test')"
-    )})`.execute(db);
-    await sql`DELETE FROM audit_logs WHERE entity_type = 'users' AND metadata->>'email' = 'not-found@jest.test'`.execute(db);
+    )})`);
+    await deleteAuditLogsForTest(db, sql`entity_type = 'users' AND metadata->>'email' = 'not-found@jest.test'`);
     if (branchId) await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
     if (branchId) await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    if (createdUserId) await sql`DELETE FROM audit_logs WHERE actor_user_id = ${createdUserId} OR entity_id = ${createdUserId}`.execute(db);
+    if (createdUserId) await deleteAuditLogsForTest(db, sql`actor_user_id = ${createdUserId} OR entity_id = ${createdUserId}`);
     if (createdUserId) await sql`DELETE FROM users WHERE id = ${createdUserId}`.execute(db);
     await sql`DELETE FROM users WHERE email IN ('admin-audit@jest.test','cashier-audit@jest.test')`.execute(db);
     await app.close();

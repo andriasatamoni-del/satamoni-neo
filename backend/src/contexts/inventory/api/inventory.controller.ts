@@ -37,6 +37,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { InventoryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { InventoryItem } from "../domain/inventory-item.aggregate";
 import type { StockMovement } from "../domain/stock-movement.aggregate";
@@ -46,7 +47,7 @@ import type { TransferRequest } from "../domain/transfer-request.aggregate";
 import type { InventoryBatch } from "../domain/inventory-batch.aggregate";
 
 @Controller("inventory")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(InventoryDomainErrorFilter)
 export class InventoryController {
   constructor(
@@ -87,6 +88,7 @@ export class InventoryController {
     return toPublicItem(item);
   }
 
+  @BranchScoped()
   @Post("movements")
   @RequirePermission("inventory.movements.record")
   async record(@Body() dto: RecordStockMovementDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -94,6 +96,7 @@ export class InventoryController {
     return { movement: toPublicMovement(movement), balanceAfter };
   }
 
+  @BranchScoped()
   @Get("balances")
   @RequirePermission("inventory.items.view", "inventory.movements.record")
   async balance(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
@@ -101,12 +104,14 @@ export class InventoryController {
     return { branchId, inventoryItemId, quantity };
   }
 
+  @BranchScoped()
   @Get("stock-thresholds")
   @RequirePermission("inventory.items.view", "inventory.items.manage")
   async stockThreshold(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
     return toPublicThreshold(await this.getStockThreshold.execute(branchId, inventoryItemId));
   }
 
+  @BranchScoped()
   @Patch("stock-thresholds")
   @RequirePermission("inventory.items.manage")
   async updateStockThresholdRoute(@Body() dto: UpdateStockThresholdDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -122,36 +127,43 @@ export class InventoryController {
     );
   }
 
+  @BranchScoped()
   @Get("low-stock")
   @RequirePermission("inventory.items.view", "inventory.items.manage")
   async lowStock(@Query("branchId") branchId?: string) {
     return this.listLowStock.execute(branchId);
   }
 
+  @BranchScoped()
   @Get("requisition-suggestion")
   @RequirePermission("inventory.items.view", "inventory.movements.record")
   async requisitionSuggestion(@Query() dto: GetRequisitionSuggestionDto) {
     return this.getRequisitionSuggestion.execute(dto);
   }
 
+  @BranchScoped()
   @Get("stocktakes/board")
   @RequirePermission("inventory.items.view")
   async stocktakeBoard(@Query("branchId") branchId: string) {
     return this.getStocktakeBoard.execute(branchId);
   }
 
+  @BranchScoped()
   @Get("stocktakes")
   @RequirePermission("inventory.items.view")
   async stocktakes(@Query("branchId") branchId?: string) {
     return (await this.listStocktakes.execute({ branchId })).map(toPublicStocktake);
   }
 
+  @BranchScoped()
+  @BranchResource("stocktakes")
   @Get("stocktakes/:id")
   @RequirePermission("inventory.items.view")
   async stocktake(@Param("id") id: string) {
     return toPublicStocktake(await this.getStocktake.execute(id));
   }
 
+  @BranchScoped()
   @Post("stocktakes")
   @RequirePermission("inventory.movements.record")
   async createStocktake(@Body() dto: RegisterStocktakeDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -160,19 +172,28 @@ export class InventoryController {
 
   // طلبات التحويل بين الفروع - نفس مفهوم kitchen_orders في الريبو القديم بس معمّم (راجع تعليق
   // transfer-request.aggregate.ts). صلاحية واحدة للعرض، وواحدة لكل فعل بيغيّر حالة الطلب
+  @BranchScoped()
   @Get("transfer-requests")
   @RequirePermission("inventory.items.view", "inventory.movements.record")
   async transferRequests(
+    @Req() req: Request & { user: AuthenticatedUser },
     @Query("fromBranchId") fromBranchId?: string,
     @Query("toBranchId") toBranchId?: string,
     @Query("status") status?: string
   ) {
-    return (await this.listTransferRequests.execute({ fromBranchId, toBranchId, status })).map(toPublicTransferRequest);
+    const rows = await this.listTransferRequests.execute({ fromBranchId, toBranchId, status });
+    const scope = branchScopeOf(req.user);
+    // a branch-bound user only sees transfers where its own branch is the sender or the receiver
+    const visible = scope.kind === "all" ? rows : scope.kind === "branch" ? rows.filter((t) => t.fromBranchId === scope.branchId || t.toBranchId === scope.branchId) : [];
+    return visible.map(toPublicTransferRequest);
   }
 
+  @BranchScoped()
   @Post("transfer-requests")
   @RequirePermission("inventory.movements.record")
   async createTransferRequest(@Body() dto: RegisterTransferRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    // a branch can only request stock FOR itself (the receiving branch is the caller's own branch)
+    assertBranchAccess(req.user, dto.toBranchId);
     return toPublicTransferRequest(
       await this.registerTransferRequest.execute({
         fromBranchId: dto.fromBranchId,
@@ -185,6 +206,8 @@ export class InventoryController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/approve")
   @RequirePermission("inventory.movements.record")
   async approveTransferRequestRoute(
@@ -197,6 +220,8 @@ export class InventoryController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/reject")
   @RequirePermission("inventory.movements.record")
   async rejectTransferRequestRoute(
@@ -207,6 +232,8 @@ export class InventoryController {
     return toPublicTransferRequest(await this.rejectTransferRequest.execute({ requestId: id, rejectedBy: req.user.id, reason: dto.reason }));
   }
 
+  @BranchScoped()
+  @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/dispatch")
   @RequirePermission("inventory.movements.record")
   async dispatchTransferRequestRoute(
@@ -219,6 +246,8 @@ export class InventoryController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("transfer_requests", { column: "to_branch_id" })
   @Post("transfer-requests/:id/receive")
   @RequirePermission("inventory.movements.record")
   async receiveTransferRequestRoute(
@@ -229,6 +258,8 @@ export class InventoryController {
     return toPublicTransferRequest(await this.receiveTransferRequest.execute({ requestId: id, receivedBy: req.user.id, quantities: dto.quantities }));
   }
 
+  @BranchScoped()
+  @BranchResource("transfer_requests", { column: "to_branch_id", alsoColumns: ["from_branch_id"] })
   @Post("transfer-requests/:id/cancel")
   @RequirePermission("inventory.movements.record")
   async cancelTransferRequestRoute(
@@ -241,12 +272,15 @@ export class InventoryController {
 
   // BATCH-1: دفعات/لوط - راجع تعليق inventory-batch.aggregate.ts لنطاق الميزة (استلام رسمي/إنتاج بس،
   // استهلاك يدوي، تتبّع مستوى واحد)
+  @BranchScoped()
   @Get("items/:id/batches")
   @RequirePermission("inventory.items.view", "inventory.items.manage")
   async batches(@Param("id") id: string, @Query("branchId") branchId: string) {
     return (await this.listInventoryBatches.execute({ inventoryItemId: id, branchId })).map(toPublicBatch);
   }
 
+  @BranchScoped()
+  @BranchResource("inventory_batches")
   @Post("batches/:id/write-off")
   @RequirePermission("inventory.batches.manage")
   async writeOffBatch(@Param("id") id: string, @Body() dto: WriteOffInventoryBatchDto) {

@@ -11,12 +11,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { CrmDomainErrorFilter } from "./filters/domain-error.filter";
 import { Complaint } from "../domain/complaint.aggregate";
 import { CustomerFollowup } from "../domain/customer-followup.aggregate";
 
 @Controller("crm")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(CrmDomainErrorFilter)
 export class CrmController {
   constructor(
@@ -27,6 +28,7 @@ export class CrmController {
     private readonly listFollowupQueue: ListFollowupQueueHandler
   ) {}
 
+  @BranchScoped()
   @Get("followup-queue")
   @RequirePermission("crm.followups.view")
   async followupQueue(@Query("branchId") branchId?: string) {
@@ -46,6 +48,7 @@ export class CrmController {
     }));
   }
 
+  @BranchScoped()
   @Post("followups")
   @RequirePermission("crm.followups.record")
   async recordFollowupCall(
@@ -67,6 +70,8 @@ export class CrmController {
     return { followup: toPublicFollowup(followup), complaint: complaint ? toPublicComplaint(complaint) : null };
   }
 
+  @BranchScoped()
+  @BranchFilteredList()
   @Get("complaints")
   @RequirePermission("crm.complaints.view")
   async listOpenComplaints(@Query("status") status?: string) {
@@ -74,6 +79,8 @@ export class CrmController {
     return complaints.map(toPublicComplaint);
   }
 
+  @BranchScoped()
+  @BranchResource("complaints")
   @Patch("complaints/:id")
   @RequirePermission("crm.complaints.manage")
   async updateStatus(
@@ -90,10 +97,14 @@ export class CrmController {
     return toPublicComplaint(complaint);
   }
 
+  @BranchScoped()
   @Get("customers/:phone/complaints/latest")
   @RequirePermission("crm.complaints.view")
-  async latestComplaintForCustomer(@Param("phone") phone: string) {
+  async latestComplaintForCustomer(@Param("phone") phone: string, @Req() req: Request & { user: AuthenticatedUser }) {
     const complaint = await this.getLatestComplaintByPhone.execute(phone);
+    const scope = branchScopeOf(req.user);
+    // a branch-bound user never sees another branch's complaint (unattributed complaints are company-level)
+    if (complaint && scope.kind !== "all" && complaint.branchId !== (scope.kind === "branch" ? scope.branchId : "")) return null;
     return complaint ? toPublicComplaint(complaint) : null;
   }
 }

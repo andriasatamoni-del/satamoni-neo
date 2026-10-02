@@ -99,12 +99,12 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
     assignmentId = res.body.id;
   });
 
-  test("POST /delivery/assignments لنفس الطلب تاني -> 400 (اتحوّل بالفعل)", async () => {
+  test("POST /delivery/assignments لنفس الطلب تاني -> 409 (اتحوّل بالفعل)", async () => {
     const res = await request(app.getHttpServer())
       .post("/delivery/assignments")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ orderId, driverId });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 
   test("PATCH /delivery/assignments/:id/status - رحلة كاملة لحد التسليم", async () => {
@@ -126,7 +126,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
       .patch(`/delivery/assignments/${assignmentId}/status`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ status: "FAILED" });
-    expect(rejected.status).toBe(400);
+    expect(rejected.status).toBe(409);
   });
 
   test("POST /delivery/assignments بطلب مش موجود -> 404", async () => {

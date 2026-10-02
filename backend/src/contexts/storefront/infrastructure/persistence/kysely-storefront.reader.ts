@@ -105,13 +105,22 @@ export class KyselyStorefrontReader implements StorefrontReaderPort {
       .innerJoin("combo_items as ci", "ci.combo_id", "c.id")
       .innerJoin("menu_item_variants as v", "v.id", "ci.variant_id")
       .innerJoin("menu_items as i", "i.id", "v.item_id")
-      .select(["c.id", "c.name", "c.price", "i.name as item_name", "v.label", "ci.quantity"])
+      .select(["c.id", "c.name", "c.price", "c.image_url", "c.description", "c.online_only", "i.name as item_name", "v.label", "ci.quantity"])
       .where("c.is_active", "=", true)
+      .orderBy("c.online_only", "desc")
       .orderBy("c.name")
       .execute();
     const byCombo = new Map<string, StorefrontCombo>();
     for (const r of rows) {
-      const combo = byCombo.get(r.id) ?? { id: r.id, name: r.name, price: Number(r.price), items: [] };
+      const combo = byCombo.get(r.id) ?? {
+        id: r.id,
+        name: r.name,
+        price: Number(r.price),
+        imageUrl: r.image_url,
+        description: r.description,
+        onlineOnly: r.online_only,
+        items: [],
+      };
       combo.items.push({ itemName: r.item_name, variantLabel: r.label, quantity: Number(r.quantity) });
       byCombo.set(r.id, combo);
     }

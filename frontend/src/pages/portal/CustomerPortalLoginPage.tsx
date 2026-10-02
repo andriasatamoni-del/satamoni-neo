@@ -18,7 +18,7 @@ interface CustomerAuthResponse {
 export function CustomerPortalLoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const next = useSafeNext();
+  const next = useSafeNext("/order");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
 

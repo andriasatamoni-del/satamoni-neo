@@ -93,6 +93,9 @@ export interface CombosTable {
   name: string;
   price: number;
   is_active: boolean;
+  image_url: string | null;
+  description: string | null;
+  online_only: Generated<boolean>;
   legacy_combo_id: number | null;
   created_at: Generated<Date>;
 }

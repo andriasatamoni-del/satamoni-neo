@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { STOREFRONT_READER, type StorefrontReaderPort } from "../../domain/ports/storefront-reader.port";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
+import { ListLoyaltyRewardsHandler } from "../../../loyalty/application/queries/list-loyalty-rewards.handler";
 
 // GET /storefront/menu - نفس /api/config/full بتاع public/order.html في الريبو القديم: المنيو + الفروع +
 // هل الطلب مفتوح. الدفع: كاش عند الاستلام بس (الدفع أونلاين كان "قريبًا" في القديم برضه)
@@ -8,15 +9,17 @@ import { GetPosSettingsHandler } from "../../../settings/application/queries/get
 export class GetStorefrontMenuHandler {
   constructor(
     @Inject(STOREFRONT_READER) private readonly reader: StorefrontReaderPort,
-    private readonly settings: GetPosSettingsHandler
+    private readonly settings: GetPosSettingsHandler,
+    private readonly rewards: ListLoyaltyRewardsHandler
   ) {}
 
   async execute() {
-    const [settings, branches, categories, combos] = await Promise.all([
+    const [settings, branches, categories, combos, rewards] = await Promise.all([
       this.settings.execute(),
       this.reader.branches(),
       this.reader.categories(),
       this.reader.combos(),
+      this.rewards.execute({ activeOnly: true }),
     ]);
     return {
       orderingEnabled: settings.onlineOrderingEnabled,
@@ -24,6 +27,8 @@ export class GetStorefrontMenuHandler {
       branches,
       categories,
       combos,
+      // الزائر بيشوف إزاي بيكسب نقاط وإيه المكافآت قبل ما يعمل حساب
+      loyalty: { pointsPerEgp: settings.loyaltyPointsPerEgp, rewards },
     };
   }
 }

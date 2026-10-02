@@ -13,11 +13,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
+import { businessDateString } from "../../../shared/time/business-date";
 import { PurchasesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Purchase } from "../domain/purchase.aggregate";
 
 @Controller("purchases")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(PurchasesDomainErrorFilter)
 export class PurchasesController {
   constructor(
@@ -29,6 +31,7 @@ export class PurchasesController {
     private readonly getPurchase: GetPurchaseHandler
   ) {}
 
+  @BranchScoped()
   @Get()
   @RequirePermission("purchases.view", "purchases.view_own_daily")
   async list(
@@ -46,6 +49,8 @@ export class PurchasesController {
     return purchases.map(toPublicPurchase);
   }
 
+  @BranchScoped()
+  @BranchResource("purchases")
   @Get(":id")
   @RequirePermission("purchases.view", "purchases.view_own_daily")
   async detail(@Param("id") id: string) {
@@ -55,12 +60,13 @@ export class PurchasesController {
   // تسجيل مشترى - الكاشير (دور cashier بس) مقفول بالكامل على فرعه/النهاردة، حالته دايمًا PENDING
   // (محتاج مراجعة عبر /confirm أو /reject) - نفس فلسفة "المرحلة 7K" بالريبو القديم بالحرف. أي دور
   // تاني بيتسجل CONFIRMED مباشرة (يترحّل فورًا لو فيه بنود)
+  @BranchScoped()
   @Post()
   @RequirePermission("purchases.create", "purchases.create_own_daily")
   async create(@Body() dto: RegisterPurchaseDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const isCashier = req.user.role === "cashier";
     const branchId = isCashier ? req.user.branchId ?? dto.branchId : dto.branchId;
-    const businessDate = isCashier ? new Date().toISOString().slice(0, 10) : dto.businessDate;
+    const businessDate = isCashier ? businessDateString() : dto.businessDate;
 
     return toPublicPurchase(
       await this.registerPurchase.execute({
@@ -79,18 +85,24 @@ export class PurchasesController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("purchases")
   @Patch(":id")
   @RequirePermission("purchases.create", "purchases.edit_own_daily")
   async edit(@Param("id") id: string, @Body() dto: EditPurchaseDto) {
     return toPublicPurchase(await this.editPurchase.execute({ purchaseId: id, ...dto }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchases")
   @Post(":id/confirm")
   @RequirePermission("purchases.review")
   async confirm(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchase(await this.confirmPurchase.execute({ purchaseId: id, reviewedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("purchases")
   @Post(":id/reject")
   @RequirePermission("purchases.review")
   async reject(@Param("id") id: string, @Body() dto: RejectPurchaseDto, @Req() req: Request & { user: AuthenticatedUser }) {

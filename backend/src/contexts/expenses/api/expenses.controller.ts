@@ -19,12 +19,14 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
+import { businessDateString } from "../../../shared/time/business-date";
 import { ExpensesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { ExpenseCategory } from "../domain/expense-category.aggregate";
 import type { Expense } from "../domain/expense.aggregate";
 
 @Controller("expenses")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(ExpensesDomainErrorFilter)
 export class ExpensesController {
   constructor(
@@ -58,6 +60,7 @@ export class ExpensesController {
     return toPublicCategory(await this.updateCategory.execute({ categoryId: id, ...dto }));
   }
 
+  @BranchScoped()
   @Get()
   @RequirePermission("expenses.view", "expenses.create_own_daily")
   async list(
@@ -76,6 +79,8 @@ export class ExpensesController {
     return expenses.map(toPublicExpense);
   }
 
+  @BranchScoped()
+  @BranchResource("expenses")
   @Get(":id")
   @RequirePermission("expenses.view", "expenses.create_own_daily")
   async detail(@Param("id") id: string) {
@@ -85,12 +90,13 @@ export class ExpensesController {
   // تسجيل مصروف - الكاشير (دور cashier بس) مقفول بالكامل على فرعه/النهاردة، حالته دايمًا SUBMITTED
   // (محتاج مراجعة عبر /review) - نفس فلسفة "المرحلة 7K" بالريبو القديم بالحرف. أي دور تاني بيقدر
   // يحدد status صراحة (DRAFT/SUBMITTED/POSTED)، الافتراضي POSTED (ترحيل فوري زي ما كان دايمًا)
+  @BranchScoped()
   @Post()
   @RequirePermission("expenses.create", "expenses.create_own_daily")
   async create(@Body() dto: RegisterExpenseDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const isCashier = req.user.role === "cashier";
     const branchId = isCashier ? req.user.branchId ?? dto.branchId : dto.branchId;
-    const businessDate = isCashier ? new Date().toISOString().slice(0, 10) : dto.businessDate;
+    const businessDate = isCashier ? businessDateString() : dto.businessDate;
     const requestedStatus = isCashier ? "SUBMITTED" : ((dto.status as "DRAFT" | "SUBMITTED" | "POSTED" | undefined) ?? "POSTED");
     const supplierId = isCashier ? undefined : dto.supplierId;
 
@@ -109,12 +115,16 @@ export class ExpensesController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("expenses")
   @Patch(":id")
   @RequirePermission("expenses.create", "expenses.create_own_daily")
   async edit(@Param("id") id: string, @Body() dto: EditExpenseDto) {
     return toPublicExpense(await this.editExpense.execute({ expenseId: id, ...dto }));
   }
 
+  @BranchScoped()
+  @BranchResource("expenses")
   @Post(":id/submit")
   @RequirePermission("expenses.create", "expenses.create_own_daily")
   async submit(@Param("id") id: string) {
@@ -122,12 +132,16 @@ export class ExpensesController {
   }
 
   // SUBMITTED -> POSTED مباشرة (اعتماد+ترحيل في خطوة واحدة) - نفس مسار /review بالريبو القديم
+  @BranchScoped()
+  @BranchResource("expenses")
   @Post(":id/review")
   @RequirePermission("expenses.review", "expenses.manage")
   async review(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicExpense(await this.reviewExpense.execute({ expenseId: id, reviewedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("expenses")
   @Post(":id/cancel")
   @RequirePermission("expenses.create", "expenses.create_own_daily")
   async cancel(@Param("id") id: string, @Body() dto: CancelExpenseDto, @Req() req: Request & { user: AuthenticatedUser }) {

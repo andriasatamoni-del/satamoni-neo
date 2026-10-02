@@ -7,6 +7,8 @@ import type { ActionCenterAlert, ActionCenterReaderPort, ActionCenterReport } fr
 import { ListExceptionsHandler } from "../../../payment-control/application/queries/list-exceptions.handler";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 import { FOOD_COST_READER, type FoodCostReaderPort } from "../../domain/ports/food-cost-reader.port";
+import { checkChartOfAccounts, findJournalGaps } from "../../../accounting/infrastructure/persistence/journal-coverage";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 const FOOD_COST_VARIANCE_ALERT_PERCENT = 15;
 const FOOD_COST_MIN_COST_EGP = 50;
@@ -32,6 +34,8 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
       itemsMissingCost,
       overdueSupplierInvoices,
       staleComplaints,
+      accountingNotConfigured,
+      missingJournals,
     ] = await Promise.all([
       this.findNegativeStockAlerts(input.branchId),
       this.findPaymentExceptionAlerts(input.branchId),
@@ -41,6 +45,8 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
       this.findItemsMissingCostAlerts(input.branchId),
       this.findOverdueSupplierInvoiceAlerts(input.branchId),
       this.findStaleComplaintAlerts(input.branchId),
+      this.findAccountingNotConfiguredAlerts(input.branchId),
+      this.findMissingJournalAlerts(input.branchId),
     ]);
 
     const { alerts, countsBySeverity } = assembleActionCenterAlerts([
@@ -52,9 +58,51 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
       itemsMissingCost,
       overdueSupplierInvoices,
       staleComplaints,
+      accountingNotConfigured,
+      missingJournals,
     ]);
 
-    return { from: input.fromTs.toISOString().slice(0, 10), to: input.toTs.toISOString().slice(0, 10), alerts, countsBySeverity };
+    return { from: businessDateString(input.fromTs), to: businessDateString(input.toTs), alerts, countsBySeverity };
+  }
+
+  // Phase 3.1 (BL-08): required chart-of-accounts mappings missing -> automatic postings are blocked (strict) or deferred
+  private async findAccountingNotConfiguredAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
+    if (branchId) return []; // company-level configuration issue
+    const missing = (await checkChartOfAccounts(this.db)).filter((a) => !a.present);
+    if (missing.length === 0) return [];
+    return [
+      {
+        type: "ACCOUNTING_NOT_CONFIGURED",
+        severity: "HIGH" as const,
+        branchId: null,
+        branchName: null,
+        description: `الشجرة المحاسبية ناقصة ${missing.length} حساب مطلوب للقيود التلقائية - القيود متوقفة/مؤجّلة لحد ما يتضافوا`,
+        detail: missing.map((m) => `${m.code} (${m.purpose})`).join("، "),
+      },
+    ];
+  }
+
+  // Phase 3.1 (BL-08): business transactions (sales, COGS, GRN payables, payroll, adjustments, unreversed cancellations) without their journal
+  private async findMissingJournalAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
+    const gaps = await findJournalGaps(this.db, { branchId, limit: 5000 });
+    if (gaps.length === 0) return [];
+    const byBranch = new Map<string | null, typeof gaps>();
+    for (const gap of gaps) byBranch.set(gap.branchId, [...(byBranch.get(gap.branchId) ?? []), gap]);
+    const names = new Map<string, string>(
+      (await this.db.selectFrom("branches").select(["id", "name"]).execute()).map((b) => [b.id, b.name] as [string, string])
+    );
+    return [...byBranch.entries()].map(([id, list]) => {
+      const kinds = new Map<string, number>();
+      for (const g of list) kinds.set(g.kind, (kinds.get(g.kind) ?? 0) + 1);
+      return {
+        type: "MISSING_JOURNALS",
+        severity: "HIGH" as const,
+        branchId: id,
+        branchName: id ? names.get(id) ?? null : null,
+        description: `${list.length} عملية من غير قيد محاسبي${id && names.get(id) ? ` في ${names.get(id)}` : ""}`,
+        detail: [...kinds.entries()].map(([k, n]) => `${k}: ${n}`).join("، "),
+      };
+    });
   }
 
   private async findNegativeStockAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {

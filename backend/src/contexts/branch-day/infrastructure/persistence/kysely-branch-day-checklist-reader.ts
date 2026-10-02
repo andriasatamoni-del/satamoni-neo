@@ -8,6 +8,7 @@ import type {
   BranchDayTodaySummary,
 } from "../../domain/ports/branch-day-checklist-reader.port";
 import { ListPendingSettlementDriversHandler } from "../../../delivery/application/queries/list-pending-settlement-drivers.handler";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 const OPEN_ORDER_STATUSES = ["preparing", "out_for_delivery"] as const;
 
@@ -84,8 +85,8 @@ export class KyselyBranchDayChecklistReader implements BranchDayChecklistReaderP
   }
 
   async getSummaryForDate(branchId: string, businessDate: string): Promise<BranchDayTodaySummary> {
-    const dayStart = new Date(`${businessDate}T00:00:00.000Z`);
-    const dayEnd = new Date(`${businessDate}T23:59:59.999Z`);
+    const dayStart = businessDayStartUtc(businessDate);
+    const dayEnd = businessDayEndUtc(businessDate);
     const rows = await this.db
       .selectFrom("orders")
       .select(["total"])
@@ -102,8 +103,8 @@ export class KyselyBranchDayChecklistReader implements BranchDayChecklistReaderP
   }
 
   async getCashVarianceTotalForDate(branchId: string, businessDate: string): Promise<number> {
-    const dayStart = new Date(`${businessDate}T00:00:00.000Z`);
-    const dayEnd = new Date(`${businessDate}T23:59:59.999Z`);
+    const dayStart = businessDayStartUtc(businessDate);
+    const dayEnd = businessDayEndUtc(businessDate);
     const rows = await this.db
       .selectFrom("cashier_shifts")
       .select(["cash_variance"])

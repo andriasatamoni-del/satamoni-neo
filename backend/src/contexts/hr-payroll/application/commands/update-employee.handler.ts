@@ -4,6 +4,7 @@ import { EMPLOYEE_REPOSITORY, type EmployeeRepositoryPort } from "../../domain/p
 import { DEPARTMENT_REPOSITORY, type DepartmentRepositoryPort } from "../../domain/ports/department-repository.port";
 import { POSITION_REPOSITORY, type PositionRepositoryPort } from "../../domain/ports/position-repository.port";
 import { EmployeeNotFoundError, DepartmentNotFoundError, PositionNotFoundError, BranchTransferRequiresAdminError } from "../../domain/errors";
+import { auditDetail } from "../../../../shared/audit/audit-context";
 import { EmployeeHistoryService } from "../services/employee-history.service";
 
 export interface UpdateEmployeeCommand {
@@ -50,6 +51,15 @@ export class UpdateEmployeeHandler {
     if (command.departmentId && !(await this.departments.findById(command.departmentId))) throw new DepartmentNotFoundError();
     if (command.positionId && !(await this.positions.findById(command.positionId))) throw new PositionNotFoundError();
 
+    // pay data is part of the audit evidence (who changed whose salary, from what to what)
+    const pay = () => ({
+      baseSalary: employee.baseSalary,
+      wageType: employee.wageType,
+      hourlyRate: employee.hourlyRate,
+      workingDaysPerMonth: employee.workingDaysPerMonth,
+      restrictedBranchId: employee.restrictedBranchId,
+    });
+    auditDetail({ entityType: "employees", entityId: employee.id, before: pay() });
     const before = {
       department_id: employee.departmentId,
       position_id: employee.positionId,
@@ -73,6 +83,7 @@ export class UpdateEmployeeHandler {
       notes: command.notes,
     });
     await this.employees.save(employee);
+    auditDetail({ after: pay() });
 
     await this.employeeHistory.recordChanges({
       employeeId: employee.id,

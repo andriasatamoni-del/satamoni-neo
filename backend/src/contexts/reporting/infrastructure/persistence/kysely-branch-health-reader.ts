@@ -4,6 +4,7 @@ import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import type { BranchHealthReaderPort, BranchHealthReport, BranchHealthRow } from "../../domain/ports/branch-health-reader.port";
 import { FOOD_COST_READER, type FoodCostReaderPort } from "../../domain/ports/food-cost-reader.port";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 @Injectable()
 export class KyselyBranchHealthReader implements BranchHealthReaderPort {
@@ -47,7 +48,7 @@ export class KyselyBranchHealthReader implements BranchHealthReaderPort {
       };
     });
 
-    return { from: input.fromTs.toISOString().slice(0, 10), to: input.toTs.toISOString().slice(0, 10), branches: rows };
+    return { from: businessDateString(input.fromTs), to: businessDateString(input.toTs), branches: rows };
   }
 
   private async revenueByBranch(input: { fromTs: Date; toTs: Date }): Promise<Map<string, { ordersCount: number; revenue: number }>> {
