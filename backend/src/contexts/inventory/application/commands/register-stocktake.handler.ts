@@ -12,6 +12,7 @@ import {
 } from "../../domain/ports/inventory-item-repository.port";
 import { StocktakeCommittedEvent } from "../../domain/events/stocktake-committed.event";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface RegisterStocktakeCommand {
   branchId: string;
@@ -28,10 +29,17 @@ export class RegisterStocktakeHandler {
     @Inject(STOCKTAKE_REPOSITORY) private readonly stocktakes: StocktakeRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: RegisterStocktakeCommand): Promise<Stocktake> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: RegisterStocktakeCommand): Promise<Stocktake> {
     const resolvedLines = [];
     for (const line of command.lines) {
       const systemQuantity = await this.movements.getBalance(command.branchId, line.inventoryItemId);

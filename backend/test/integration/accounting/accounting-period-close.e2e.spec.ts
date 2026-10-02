@@ -149,12 +149,12 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
     expect(list.body.some((c: { year: number }) => c.year === 2021)).toBe(true);
   });
 
-  test("POST /accounting/fiscal-year-closings لنفس السنة تاني -> 400 (مقفولة بالفعل)", async () => {
+  test("POST /accounting/fiscal-year-closings لنفس السنة تاني -> 409 (مقفولة بالفعل)", async () => {
     const res = await request(app.getHttpServer())
       .post("/accounting/fiscal-year-closings")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ year: 2021 });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(res.body.error).toContain("مقفولة بالفعل");
   });
 });

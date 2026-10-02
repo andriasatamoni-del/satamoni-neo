@@ -143,7 +143,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     expect(reject.body.confirmedOrderId).toBeNull();
   });
 
-  test("تأكيد طلب اتراجع بالفعل -> 400", async () => {
+  test("تأكيد طلب اتراجع بالفعل -> 409", async () => {
     const create = await request(app.getHttpServer())
       .post(`/whatsapp/conversations/${conversationId}/pending-orders`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -151,7 +151,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     await request(app.getHttpServer()).post(`/whatsapp/pending-orders/${create.body.id}/reject`).set("Authorization", `Bearer ${adminToken}`).send({});
 
     const secondAction = await request(app.getHttpServer()).post(`/whatsapp/pending-orders/${create.body.id}/confirm`).set("Authorization", `Bearer ${adminToken}`).send({});
-    expect(secondAction.status).toBe(400);
+    expect(secondAction.status).toBe(409);
   });
 
   test("POST /whatsapp/conversations/:id/complaints - بيحوّل المحادثة لشكوى حقيقية في CRM (channel=whatsapp)", async () => {

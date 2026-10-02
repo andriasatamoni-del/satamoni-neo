@@ -9,12 +9,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResources } from "../../../shared/authorization/branch-scope";
 import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { JournalEntry } from "../../accounting/domain/journal-entry.aggregate";
 import type { Treasury } from "../domain/treasury.aggregate";
 
 @Controller("treasuries")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(TreasuryDomainErrorFilter)
 export class TreasuriesController {
   constructor(
@@ -23,6 +24,7 @@ export class TreasuriesController {
     private readonly listTreasuries: ListTreasuriesHandler
   ) {}
 
+  @BranchScoped()
   @Get()
   @RequirePermission("treasuries.view")
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -35,6 +37,7 @@ export class TreasuriesController {
     return this.listTreasuries.execute(effectiveBranchId ? { branchId: effectiveBranchId } : undefined);
   }
 
+  @BranchScoped()
   @Post()
   @RequirePermission("treasuries.manage")
   async create(@Body() dto: RegisterTreasuryDto) {
@@ -42,6 +45,8 @@ export class TreasuriesController {
     return toPublicTreasury(treasury);
   }
 
+  @BranchScoped()
+  @BranchResources(["treasuries"], ["treasuries", { param: "toTreasuryId", from: "body" }])
   @Post(":id/transfer")
   @RequirePermission("treasuries.transfer")
   async transfer(@Param("id") id: string, @Body() dto: TransferBetweenTreasuriesDto, @Req() req: Request & { user: AuthenticatedUser }) {

@@ -189,14 +189,21 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     expect(res.status).toBe(400);
   });
 
-  test("كاشير: تسجيل مصروف بيتفرض SUBMITTED وفرعه بغض النظر عن اللي اتبعت", async () => {
-    const res = await request(app.getHttpServer())
+  test("كاشير: تسجيل مصروف بيتفرض SUBMITTED وتاريخ النهاردة بغض النظر عن اللي اتبعت، وفرع تاني -> 403 (BL-11)", async () => {
+    const foreign = await request(app.getHttpServer())
       .post("/expenses")
       .set("Authorization", `Bearer ${cashierToken}`)
       .send({ branchId: "00000000-0000-0000-0000-000000000000", businessDate: "2020-01-01", categoryId, amount: 30, status: "POSTED" });
+    expect(foreign.status).toBe(403);
+
+    const res = await request(app.getHttpServer())
+      .post("/expenses")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ branchId, businessDate: "2020-01-01", categoryId, amount: 30, status: "POSTED" });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("SUBMITTED"); // اتجاهل status المبعوت، وفُرض SUBMITTED
-    expect(res.body.branchId).toBe(branchId); // اتجاهل branchId المبعوت، وفُرض فرعه هو
+    expect(res.body.branchId).toBe(branchId);
+    expect(res.body.businessDate.slice(0, 10)).not.toBe("2020-01-01"); // اتجاهل التاريخ المبعوت
   });
 
   test("كاشير معندوش expenses.create -> 403 لو حاول يعتمد (review) مصروف", async () => {
@@ -236,11 +243,15 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     expect(res.body.length).toBeGreaterThan(0);
   });
 
-  test("GET /expenses كاشير - بيشوف فرعه بس بغض النظر عن branchId المبعوت", async () => {
-    const res = await request(app.getHttpServer())
+  test("GET /expenses كاشير - بيشوف فرعه بس، وbranchId لفرع تاني -> 403 (BL-11)", async () => {
+    const foreign = await request(app.getHttpServer())
       .get("/expenses?branchId=00000000-0000-0000-0000-000000000000")
       .set("Authorization", `Bearer ${cashierToken}`);
+    expect(foreign.status).toBe(403);
+
+    const res = await request(app.getHttpServer()).get("/expenses").set("Authorization", `Bearer ${cashierToken}`);
     expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
     expect(res.body.every((e: { branchId: string }) => e.branchId === branchId)).toBe(true);
   });
 });

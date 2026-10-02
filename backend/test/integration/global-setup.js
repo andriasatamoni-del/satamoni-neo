@@ -3,11 +3,13 @@
 require("dotenv").config();
 const { Client } = require("pg");
 const { execSync } = require("node:child_process");
+const { assertDisposableDatabase } = require("../safety/assert-disposable-db");
 
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_neo_test";
 
 module.exports = async () => {
+  assertDisposableDatabase(TEST_DATABASE_URL);
   const client = new Client({ connectionString: TEST_DATABASE_URL });
   await client.connect();
   await client.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");

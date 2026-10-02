@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { ShiftClosedEvent } from "../../../shifts/domain/events/shift-closed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس فلسفة post-order-sale-journal-entry.handler.ts - أكواد حقيقية من دليل الحسابات المستورد
 // (1100 الكاش، 6950 فروق كاش - نفس كود الريبو القديم بالظبط). فرق موجب (كاش فعلي أكتر من المتوقع)
@@ -19,18 +20,17 @@ export class PostShiftVarianceJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: ShiftClosedEvent): Promise<void> {
     if (event.cashVariance === 0) return;
 
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
-    const varianceAccount = await this.accounts.findByCode(VARIANCE_ACCOUNT_CODE);
-    if (!cashAccount || !varianceAccount) {
-      this.logger.warn(`تخطّي ترحيل فرق كاش الشيفت ${event.shiftId} - دليل الحسابات لسه مش معدّ`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([CASH_ACCOUNT_CODE, VARIANCE_ACCOUNT_CODE], "shift_variance", event.shiftId);
+    if (!acc) return;
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
+    const varianceAccount = acc[VARIANCE_ACCOUNT_CODE];
 
     const amount = Math.round(Math.abs(event.cashVariance) * 100) / 100;
     const surplus = event.cashVariance > 0;
@@ -50,6 +50,6 @@ export class PostShiftVarianceJournalEntryHandler {
           ],
       createdBy: event.closedBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

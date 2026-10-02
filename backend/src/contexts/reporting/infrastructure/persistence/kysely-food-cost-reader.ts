@@ -8,6 +8,7 @@ import type {
   FoodCostReport,
   FoodCostByBranchReport,
 } from "../../domain/ports/food-cost-reader.port";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 const RELEVANT_TYPES = ["CONSUMPTION", "PRODUCTION_OUT", "ADJUSTMENT", "STOCK_COUNT", "PRODUCTION_REVERSAL"];
 
@@ -57,8 +58,8 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
     }));
 
     return {
-      from: input.fromTs.toISOString().slice(0, 10),
-      to: input.toTs.toISOString().slice(0, 10),
+      from: businessDateString(input.fromTs),
+      to: businessDateString(input.toTs),
       totals: computeFoodCostBucket(allRows),
       byItem: byItemResult,
     };
@@ -99,8 +100,8 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
       .sort((a, b) => b.theoreticalCost - a.theoreticalCost);
 
     return {
-      from: input.fromTs.toISOString().slice(0, 10),
-      to: input.toTs.toISOString().slice(0, 10),
+      from: businessDateString(input.fromTs),
+      to: businessDateString(input.toTs),
       branches,
     };
   }

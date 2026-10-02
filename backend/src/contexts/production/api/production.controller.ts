@@ -17,11 +17,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess } from "../../../shared/authorization/branch-scope";
+import { businessDateString } from "../../../shared/time/business-date";
 import { ProductionDomainErrorFilter } from "./filters/domain-error.filter";
 import type { ConversionOrder } from "../domain/conversion-order.aggregate";
 
 @Controller("production")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(ProductionDomainErrorFilter)
 export class ProductionController {
   constructor(
@@ -38,45 +40,57 @@ export class ProductionController {
 
   // تخطيط تصنيع السنتر كيتشن - راجع تعليق get-production-plan.handler.ts. لازم fromDate/toDate بصيغة
   // YYYY-MM-DD؛ لو مش محددين، بيفترضوا يوم النهاردة بس (نفس افتراضي الريبو القديم)
+  @BranchScoped()
   @Get("planning/plan")
   @RequirePermission("production.view")
-  async plan(@Query("ckBranchId") ckBranchId: string, @Query("fromDate") fromDate?: string, @Query("toDate") toDate?: string) {
-    const from = fromDate ? new Date(fromDate) : new Date(new Date().toISOString().slice(0, 10));
+  async plan(@Query("ckBranchId") ckBranchId: string, @Req() req: Request & { user: AuthenticatedUser }, @Query("fromDate") fromDate?: string, @Query("toDate") toDate?: string) {
+    assertBranchAccess(req.user, ckBranchId);
+    const from = fromDate ? new Date(fromDate) : new Date(businessDateString());
     const to = toDate ? new Date(toDate) : from;
     const plan = await this.getProductionPlan.execute({ ckBranchId, fromDate: from, toDate: to });
     return { ckBranchId, fromDate: from.toISOString().slice(0, 10), toDate: to.toISOString().slice(0, 10), plan };
   }
 
+  @BranchScoped()
   @Get("planning/raw-materials")
   @RequirePermission("production.view")
-  async rawMaterials(@Query("ckBranchId") ckBranchId: string, @Query("inventoryItemId") inventoryItemId: string, @Query("quantity") quantity: string) {
+  async rawMaterials(@Query("ckBranchId") ckBranchId: string, @Query("inventoryItemId") inventoryItemId: string, @Query("quantity") quantity: string, @Req() req: Request & { user: AuthenticatedUser }) {
+    assertBranchAccess(req.user, ckBranchId);
     return this.getRawMaterialRequirement.execute({ ckBranchId, inventoryItemId, quantity: Number(quantity) });
   }
 
+  @BranchScoped()
   @Get()
   @RequirePermission("production.view")
   async list(@Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listConversionOrders.execute({ branchId, status })).map(toPublicConversionOrder);
   }
 
+  @BranchScoped()
+  @BranchResource("conversion_orders")
   @Get(":id")
   @RequirePermission("production.view")
   async detail(@Param("id") id: string) {
     return toPublicConversionOrder(await this.getConversionOrder.execute(id));
   }
 
+  @BranchScoped()
   @Post()
   @RequirePermission("production.create")
   async create(@Body() dto: RegisterConversionOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicConversionOrder(await this.registerConversionOrder.execute({ ...dto, createdBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("conversion_orders")
   @Post(":id/approve")
   @RequirePermission("production.approve")
   async approve(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicConversionOrder(await this.approveConversionOrder.execute({ conversionOrderId: id, approvedBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("conversion_orders")
   @Post(":id/start")
   @RequirePermission("production.create")
   async start(@Param("id") id: string, @Body() dto: StartConversionOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -90,6 +104,8 @@ export class ProductionController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("conversion_orders")
   @Post(":id/complete")
   @RequirePermission("production.complete")
   async complete(@Param("id") id: string, @Body() dto: CompleteConversionOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
@@ -104,6 +120,8 @@ export class ProductionController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("conversion_orders")
   @Post(":id/cancel")
   @RequirePermission("production.cancel")
   async cancel(@Param("id") id: string, @Body() dto: CancelConversionOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {

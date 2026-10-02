@@ -11,6 +11,8 @@ export interface StockMovementRepositoryPort {
   getBalance(branchId: string, inventoryItemId: string): Promise<number>;
   listMovements(filter?: { inventoryItemId?: string; branchId?: string }): Promise<StockMovement[]>;
   findByLegacyReferenceKey(key: string): Promise<StockMovement | null>;
+  // movements produced by one business transaction (e.g. referenceType "order" + order id)
+  listByReference(referenceType: string, referenceId: string): Promise<StockMovement[]>;
 }
 
 export const STOCK_MOVEMENT_REPOSITORY = Symbol("STOCK_MOVEMENT_REPOSITORY");

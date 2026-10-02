@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsInt, IsNumber, IsOptional, IsUUID, Max, Min, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsUUID, Max, Min, ValidateNested } from "class-validator";
 
 export class PayrollRunEmployeeInputDto {
   @IsUUID()
@@ -26,4 +26,6 @@ export class RegisterPayrollRunDto {
   @ValidateNested({ each: true })
   @Type(() => PayrollRunEmployeeInputDto)
   employees!: PayrollRunEmployeeInputDto[];
+
+  @IsOptional() @IsBoolean() acknowledgeAdjustmentMismatch?: boolean;
 }

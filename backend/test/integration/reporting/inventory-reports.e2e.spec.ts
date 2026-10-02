@@ -249,10 +249,14 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
     expect(res.status).toBe(403);
   });
 
-  test("مدير فرع (عنده reports.view) -> inventory-valuation بيتقفل على فرعه تلقائيًا", async () => {
-    const res = await request(app.getHttpServer())
+  test("مدير فرع (عنده reports.view) -> inventory-valuation: فرع تاني -> 403، وبدون branchId بيتقفل على فرعه (BL-11)", async () => {
+    const foreign = await request(app.getHttpServer())
       .get(`/reports/inventory-valuation?branchId=${branchBId}`) // بيحاول يشوف فرع تاني
       .set("Authorization", `Bearer ${branchManagerToken}`);
+    expect(foreign.status).toBe(403);
+    expect(foreign.body.items).toBeUndefined();
+
+    const res = await request(app.getHttpServer()).get("/reports/inventory-valuation").set("Authorization", `Bearer ${branchManagerToken}`);
     expect(res.status).toBe(200);
     expect(res.body.items.every((i: { branchId: string }) => i.branchId === branchAId)).toBe(true);
   });

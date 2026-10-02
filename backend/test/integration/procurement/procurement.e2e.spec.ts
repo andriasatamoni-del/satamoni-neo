@@ -157,7 +157,7 @@ describe("Procurement - /procurement (e2e ضد تطبيق حقيقي كامل)",
     expect(balanceAfter.body.quantity).toBe(25);
   });
 
-  test("تأكيد إذن استلام مؤكد بالفعل -> 400", async () => {
+  test("تأكيد إذن استلام مؤكد بالفعل -> 409", async () => {
     const created = await request(app.getHttpServer())
       .post("/procurement/goods-receipts")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -169,7 +169,7 @@ describe("Procurement - /procurement (e2e ضد تطبيق حقيقي كامل)",
     const res = await request(app.getHttpServer())
       .post(`/procurement/goods-receipts/${created.body.id}/confirm`)
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 
   test("POST /procurement/purchase-orders بمورد مش موجود -> 404", async () => {

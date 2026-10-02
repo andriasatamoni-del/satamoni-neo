@@ -100,6 +100,7 @@ export class PaymentControlModule implements OnModuleInit {
 
     // تاني مستهلك لـOrderRegisteredEvent (بعد Accounting) - قفل الدفعة فوره وقت تسجيل الطلب لو
     // paymentMethodId متحدد
-    this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) => this.lockPaymentForOrder.handle(event));
+    // critical: the payment is part of the order transaction (BL-09) - a failure rolls the whole order back
+    this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) => this.lockPaymentForOrder.handle(event), { critical: true });
   }
 }

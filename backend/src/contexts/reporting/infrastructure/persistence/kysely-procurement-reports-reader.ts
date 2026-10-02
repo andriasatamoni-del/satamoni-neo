@@ -11,9 +11,10 @@ import type {
   SupplierPerformanceReport,
   OutstandingPurchaseOrderRow,
 } from "../../domain/ports/procurement-reports-reader.port";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 function dayRange(from: string, to: string): { fromTs: Date; toTs: Date } {
-  return { fromTs: new Date(`${from}T00:00:00.000`), toTs: new Date(`${to}T23:59:59.999`) };
+  return { fromTs: businessDayStartUtc(from), toTs: businessDayEndUtc(to) };
 }
 
 @Injectable()

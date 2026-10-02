@@ -21,6 +21,8 @@ import {
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { OrderRegisteredEvent } from "../../domain/events/order-registered.event";
+import { TransactionService } from "../../../../shared/database/transaction-context";
+import { InsufficientStockError } from "../../../inventory/domain/errors";
 
 export interface RegisterOrderCommand {
   branchId: string;
@@ -57,11 +59,22 @@ export class RegisterOrderHandler {
     @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1 (BL-09): the whole registration - order row, ingredient consumption, payment lock, sale journal, COGS
+  // journal - is ONE database transaction. Any failure (insufficient stock, missing payment method, missing chart of
+  // accounts, DB error) rolls back everything, so no partial order/payment/movement/journal state can survive, and a
+  // client retry with the same clientRequestId starts clean. Concurrent retries with the same clientRequestId are
+  // serialised by an advisory lock, so exactly one of them creates the order and the others return it.
   async execute(command: RegisterOrderCommand): Promise<Order> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: RegisterOrderCommand): Promise<Order> {
     if (command.clientRequestId) {
+      await this.tx.advisoryLock(`order-client-request:${command.clientRequestId}`);
       const existing = await this.orders.findByClientRequestId(command.clientRequestId);
       if (existing) return existing;
     }
@@ -159,7 +172,11 @@ export class RegisterOrderHandler {
     const order = Order.register({ ...command, items: resolvedItems });
     await this.orders.save(order);
 
-    for (const [ingredientItemId, requiredQty] of requiredByIngredient) {
+    // fixed lock order (by ingredient id) so two concurrent orders touching the same ingredients can never deadlock
+    let costOfGoodsSold = 0;
+    let costIncomplete = false;
+    const sortedIngredients = [...requiredByIngredient.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const [ingredientItemId, requiredQty] of sortedIngredients) {
       const inventoryItem = await this.inventoryItems.findById(ingredientItemId);
       const allowNegative = inventoryItem?.negativeStockPolicy === "ALLOW_WITH_APPROVAL" && !!command.stockApproved;
       const movement = StockMovement.register({
@@ -172,13 +189,29 @@ export class RegisterOrderHandler {
         performedBy: command.createdBy,
         unitCost: inventoryItem?.unitCost ?? null,
       });
-      await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
+      if (movement.totalCost === null) costIncomplete = true;
+      else costOfGoodsSold += movement.totalCost;
+      try {
+        await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
+      } catch (err) {
+        // the pre-check above is advisory; the authoritative check runs under the row lock in recordMovement
+        if (err instanceof InsufficientStockError) throw new InsufficientStockForOrderError(inventoryItem?.name ?? ingredientItemId);
+        throw err;
+      }
     }
 
     // بعد ما الطلب اتسجّل ونجح خالص (بما فيه استهلاك المخزون) - مش قبل كده. فشل subscriber هنا
     // (زي ترحيل القيد المحاسبي) مبيرجّعش الطلب نفسه فاشل (راجع تعليق EventBusService.publish)
     await this.eventBus.publish(
-      new OrderRegisteredEvent(order.id, order.branchId, order.total, command.createdBy ?? null, order.paymentMethodId)
+      new OrderRegisteredEvent(
+        order.id,
+        order.branchId,
+        order.total,
+        command.createdBy ?? null,
+        order.paymentMethodId,
+        Math.round(costOfGoodsSold * 100) / 100,
+        costIncomplete
+      )
     );
 
     return order;

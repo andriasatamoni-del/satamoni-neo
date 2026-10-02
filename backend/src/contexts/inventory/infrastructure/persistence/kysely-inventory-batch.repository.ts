@@ -64,7 +64,7 @@ export class KyselyInventoryBatchRepository implements InventoryBatchRepositoryP
       .where("status", "=", "active")
       .where("remaining_quantity", ">", 0)
       .where("expiry_date", "is not", null)
-      .where("expiry_date", "<=", sql<Date>`(CURRENT_DATE + (${input.days} || ' days')::interval)`);
+      .where("expiry_date", "<=", sql<Date>`((now() AT TIME ZONE 'Africa/Cairo')::date + (${input.days} || ' days')::interval)`);
     if (input.branchId) query = query.where("branch_id", "=", input.branchId);
     const rows = await query.orderBy("expiry_date", "asc").execute();
     return rows.map((r) => this.toDomain(r));

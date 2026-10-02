@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -32,7 +32,7 @@ export class PaymentNotFoundError extends DomainError {
   }
 }
 
-export class PaymentAlreadyLockedForOrderError extends DomainError {
+export class PaymentAlreadyLockedForOrderError extends ConflictDomainError {
   constructor() {
     super("الطلب ده متسجّل له دفعة مقفولة بالفعل");
   }
@@ -44,7 +44,7 @@ export class AdjustmentRequestNotFoundError extends DomainError {
   }
 }
 
-export class AdjustmentRequestAlreadyDecidedError extends DomainError {
+export class AdjustmentRequestAlreadyDecidedError extends ConflictDomainError {
   constructor() {
     super("طلب التعديل ده اتقرر فيه بالفعل (معتمد أو مرفوض)");
   }
@@ -71,7 +71,7 @@ export class ReconciliationRecordNotFoundError extends DomainError {
   }
 }
 
-export class ReconciliationRecordAlreadyDecidedError extends DomainError {
+export class ReconciliationRecordAlreadyDecidedError extends ConflictDomainError {
   constructor() {
     super("سطر المطابقة ده اتطابق أو اتجاهل بالفعل");
   }

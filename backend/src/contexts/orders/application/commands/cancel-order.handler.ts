@@ -2,81 +2,83 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Order } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import { OrderNotFoundError } from "../../domain/errors";
-import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../../catalog/domain/ports/combo-repository.port";
-import { RECIPE_REPOSITORY, type RecipeRepositoryPort } from "../../../catalog/domain/ports/recipe-repository.port";
 import {
   STOCK_MOVEMENT_REPOSITORY,
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
-import {
-  INVENTORY_ITEM_REPOSITORY,
-  type InventoryItemRepositoryPort,
-} from "../../../inventory/domain/ports/inventory-item-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { OrderCancelledEvent } from "../../domain/events/order-cancelled.event";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface CancelOrderCommand {
   orderId: string;
   cancelledBy?: string | null;
 }
 
-// إلغاء طلب حقيقي - عكس كامل لاستهلاك المخزون (ADJUSTMENT موجب لكل مكوّن استُهلك وقت التسجيل، نفس
-// تجميع الاستهلاك في RegisterOrderHandler بالظبط بس بالعكس)، status='cancelled' (setStatus بيرفض لو
-// الطلب completed/cancelled بالفعل من غير أي تدخل هنا)، وبعدها نشر OrderCancelledEvent عشان Accounting
-// يعكس قيد البيع التلقائي - أبدًا DELETE، نفس فلسفة الريبو القديم بالظبط ("مسار الاسترجاع الوحيد").
+// إلغاء طلب حقيقي - عكس كامل لاستهلاك المخزون، status='cancelled'، وعكس القيود المحاسبية (بيع + تكلفة) عن طريق
+// OrderCancelledEvent - أبدًا DELETE، نفس فلسفة الريبو القديم بالظبط ("مسار الاسترجاع الوحيد").
+//
+// Phase 3.1:
+//  * BL-02 - one transaction + a row lock on the order. Concurrent cancels queue on the lock; the first one restores stock and
+//    posts the reversals, every later one sees status=cancelled and is rejected before any write.
+//  * BL-07 - stock is restored from the order's ACTUAL recorded consumption movements (same quantity AND same unit cost as
+//    when it was sold), not recomputed from today's recipe/cost. This keeps inventory valuation and the COGS reversal exact
+//    even if the recipe or item cost changed after the sale, and never "invents" stock for orders that consumed nothing.
 @Injectable()
 export class CancelOrderHandler {
   constructor(
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
-    @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort,
-    @Inject(RECIPE_REPOSITORY) private readonly recipes: RecipeRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
-    @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
-    private readonly eventBus: EventBusService
+    private readonly eventBus: EventBusService,
+    private readonly tx: TransactionService
   ) {}
 
   async execute(command: CancelOrderCommand): Promise<Order> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: CancelOrderCommand): Promise<Order> {
+    if (!(await this.tx.lockRow("orders", command.orderId))) throw new OrderNotFoundError();
     const order = await this.orders.findById(command.orderId);
     if (!order) throw new OrderNotFoundError();
-
-    const variantConsumptions: { variantId: string; quantity: number }[] = [];
-    for (const item of order.items) {
-      if (item.comboId) {
-        const combo = await this.combos.findById(item.comboId);
-        for (const component of combo?.items ?? []) {
-          variantConsumptions.push({ variantId: component.variantId, quantity: component.quantity * item.quantity });
-        }
-      } else if (item.variantId) {
-        variantConsumptions.push({ variantId: item.variantId, quantity: item.quantity });
-      }
-    }
-
-    const requiredByIngredient = new Map<string, number>();
-    for (const consumption of variantConsumptions) {
-      const recipe = await this.recipes.findByVariantId(consumption.variantId);
-      const activeVersion = recipe?.activeVersion;
-      if (!activeVersion) continue;
-      for (const ingredient of activeVersion.ingredients) {
-        const current = requiredByIngredient.get(ingredient.ingredientItemId) ?? 0;
-        requiredByIngredient.set(ingredient.ingredientItemId, current + ingredient.quantity * consumption.quantity);
-      }
-    }
-
+    // validate BEFORE any side effect: a completed/cancelled order is rejected here (setStatus throws)
     order.setStatus("cancelled");
+
+    const consumed = await this.movements.listByReference("order", order.id);
+    const alreadyRestored = await this.movements.listByReference("order_cancellation", order.id);
+
+    // outstanding = consumed - already restored, per ingredient (quantity and cost taken from the original movements)
+    const outstanding = new Map<string, { quantity: number; totalCost: number | null }>();
+    for (const m of consumed) {
+      if (m.movementType !== "CONSUMPTION") continue;
+      const cur = outstanding.get(m.inventoryItemId) ?? { quantity: 0, totalCost: 0 };
+      cur.quantity += -m.quantityDelta;
+      cur.totalCost = cur.totalCost === null || m.totalCost === null ? null : cur.totalCost + m.totalCost;
+      outstanding.set(m.inventoryItemId, cur);
+    }
+    for (const m of alreadyRestored) {
+      const cur = outstanding.get(m.inventoryItemId);
+      if (cur) {
+        cur.quantity -= m.quantityDelta;
+        if (cur.totalCost !== null && m.totalCost !== null) cur.totalCost -= m.totalCost;
+      }
+    }
+
     await this.orders.save(order);
 
-    for (const [ingredientItemId, requiredQty] of requiredByIngredient) {
-      const inventoryItem = await this.inventoryItems.findById(ingredientItemId);
+    const sorted = [...outstanding.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const [ingredientItemId, rest] of sorted) {
+      if (rest.quantity <= 0.0000001) continue;
       const movement = StockMovement.register({
         inventoryItemId: ingredientItemId,
         branchId: order.branchId,
         movementType: "ADJUSTMENT",
-        quantityDelta: requiredQty,
+        quantityDelta: rest.quantity,
         referenceType: "order_cancellation",
         referenceId: order.id,
         performedBy: command.cancelledBy,
-        unitCost: inventoryItem?.unitCost ?? null,
+        unitCost: rest.totalCost !== null ? rest.totalCost / rest.quantity : null,
       });
       await this.movements.recordMovement(movement, { allowNegativeBalance: true });
     }

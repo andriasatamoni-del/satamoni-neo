@@ -12,6 +12,7 @@ import type {
   InventoryComparisonRow,
   ExpiringBatchRow,
 } from "../../domain/ports/inventory-reports-reader.port";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 @Injectable()
 export class KyselyInventoryReportsReader implements InventoryReportsReaderPort {
@@ -76,7 +77,7 @@ export class KyselyInventoryReportsReader implements InventoryReportsReaderPort 
         .select("quantity_delta")
         .where("branch_id", "=", input.branchId)
         .where("inventory_item_id", "=", input.inventoryItemId)
-        .where("occurred_at", "<", new Date(`${input.from}T00:00:00.000`))
+        .where("occurred_at", "<", businessDayStartUtc(input.from))
         .execute();
       openingBalance = openingRows.reduce((s, r) => s + Number(r.quantity_delta), 0);
     }
@@ -88,8 +89,8 @@ export class KyselyInventoryReportsReader implements InventoryReportsReaderPort 
       .where("inventory_item_id", "=", input.inventoryItemId)
       .orderBy("occurred_at", "asc")
       .orderBy("id", "asc");
-    if (input.from) query = query.where("occurred_at", ">=", new Date(`${input.from}T00:00:00.000`));
-    if (input.to) query = query.where("occurred_at", "<=", new Date(`${input.to}T23:59:59.999`));
+    if (input.from) query = query.where("occurred_at", ">=", businessDayStartUtc(input.from));
+    if (input.to) query = query.where("occurred_at", "<=", businessDayEndUtc(input.to));
     const rows = await query.execute();
 
     let running = openingBalance;
@@ -112,8 +113,8 @@ export class KyselyInventoryReportsReader implements InventoryReportsReaderPort 
   }
 
   async getTransfers(input: { branchId: string | null; from: string; to: string }): Promise<TransferReportRow[]> {
-    const fromTs = new Date(`${input.from}T00:00:00.000`);
-    const toTs = new Date(`${input.to}T23:59:59.999`);
+    const fromTs = businessDayStartUtc(input.from);
+    const toTs = businessDayEndUtc(input.to);
 
     let query = this.db
       .selectFrom("transfer_requests")
@@ -255,7 +256,7 @@ export class KyselyInventoryReportsReader implements InventoryReportsReaderPort 
       .where("inventory_batches.status", "=", "active")
       .where("inventory_batches.remaining_quantity", ">", 0)
       .where("inventory_batches.expiry_date", "is not", null)
-      .where("inventory_batches.expiry_date", "<=", sql<Date>`(CURRENT_DATE + (${input.days} || ' days')::interval)`);
+      .where("inventory_batches.expiry_date", "<=", sql<Date>`((now() AT TIME ZONE 'Africa/Cairo')::date + (${input.days} || ' days')::interval)`);
     if (input.branchId) query = query.where("inventory_batches.branch_id", "=", input.branchId);
     const rows = await query.orderBy("inventory_batches.expiry_date", "asc").execute();
 

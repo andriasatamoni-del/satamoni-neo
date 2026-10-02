@@ -24,6 +24,8 @@ export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustme
           status: row.status,
           decided_by: row.decided_by,
           decided_at: row.decided_at,
+          previous_payment_method_id: row.previous_payment_method_id,
+          previous_amount: row.previous_amount,
         })
       )
       .execute();
@@ -65,6 +67,8 @@ export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustme
       decided_by: request.decidedBy,
       decided_at: request.decidedAt,
       legacy_adjustment_request_id: request.legacyAdjustmentRequestId,
+      previous_payment_method_id: request.previousPaymentMethodId,
+      previous_amount: request.previousAmount,
     };
   }
 
@@ -81,6 +85,8 @@ export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustme
       decidedBy: row.decided_by,
       decidedAt: row.decided_at,
       legacyAdjustmentRequestId: row.legacy_adjustment_request_id,
+      previousPaymentMethodId: row.previous_payment_method_id,
+      previousAmount: row.previous_amount !== null ? Number(row.previous_amount) : null,
     });
   }
 }

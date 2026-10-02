@@ -125,4 +125,5 @@ export interface PayrollAdjustmentsTable {
   cancelled_by: string | null;
   cancelled_at: Date | null;
   cancellation_reason: string | null;
+  payroll_run_id: string | null;
 }

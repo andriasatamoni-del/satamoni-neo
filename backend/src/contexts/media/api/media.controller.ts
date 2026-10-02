@@ -25,11 +25,18 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { UploadImageHandler } from "../application/upload-image.handler";
 import { GetImageHandler } from "../application/get-image.handler";
 import { ImageNotFoundError, MAX_IMAGE_BYTES } from "../domain/image-format";
+import { recordDenied } from "../../../shared/audit/audit-denial";
 
 @Catch(DomainError)
 class MediaDomainErrorFilter implements ExceptionFilter {
   catch(exception: DomainError, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
+    // Phase 3.1: errors that declare their own status (conflict 409 / forbidden 403)
+    if (exception.httpStatus) {
+      if (exception.httpStatus === 403) void recordDenied(host, 403, exception.name);
+      res.status(exception.httpStatus).json({ error: exception.message });
+      return;
+    }
     res.status(exception instanceof ImageNotFoundError ? 404 : 400).json({ error: exception.message });
   }
 }

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
+import { sql, type Kysely, type Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import { PayrollAdjustment, type AdjustmentStatus, type AdjustmentType } from "../../domain/payroll-adjustment.aggregate";
@@ -26,6 +26,7 @@ export class KyselyPayrollAdjustmentRepository implements PayrollAdjustmentRepos
         cancelled_by: adjustment.cancelledBy,
         cancelled_at: adjustment.cancelledAt,
         cancellation_reason: adjustment.cancellationReason,
+        payroll_run_id: adjustment.payrollRunId,
       })
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
@@ -53,6 +54,31 @@ export class KyselyPayrollAdjustmentRepository implements PayrollAdjustmentRepos
     return rows.map((r) => this.toDomain(r));
   }
 
+  async listUnlinkedActiveForMonth(year: number, month: number, employeeIds?: string[]): Promise<PayrollAdjustment[]> {
+    const first = `${year}-${String(month).padStart(2, "0")}-01`;
+    const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    let query = this.db
+      .selectFrom("payroll_adjustments")
+      .selectAll()
+      .where("status", "=", "ACTIVE")
+      .where("payroll_run_id", "is", null)
+      .where(sql<boolean>`entry_date >= ${first}::date AND entry_date < ${next}::date`);
+    if (employeeIds) {
+      if (employeeIds.length === 0) return [];
+      query = query.where("employee_id", "in", employeeIds);
+    }
+    return (await query.orderBy("entry_date").forUpdate().execute()).map((r) => this.toDomain(r));
+  }
+
+  async linkToRun(adjustmentIds: string[], payrollRunId: string): Promise<void> {
+    if (adjustmentIds.length === 0) return;
+    await this.db.updateTable("payroll_adjustments").set({ payroll_run_id: payrollRunId }).where("id", "in", adjustmentIds).execute();
+  }
+
+  async unlinkFromRun(payrollRunId: string): Promise<void> {
+    await this.db.updateTable("payroll_adjustments").set({ payroll_run_id: null }).where("payroll_run_id", "=", payrollRunId).execute();
+  }
+
   private toDomain(row: Selectable<PayrollAdjustmentsTable>): PayrollAdjustment {
     return PayrollAdjustment.reconstitute(row.id, {
       employeeId: row.employee_id,
@@ -66,6 +92,7 @@ export class KyselyPayrollAdjustmentRepository implements PayrollAdjustmentRepos
       cancelledBy: row.cancelled_by,
       cancelledAt: row.cancelled_at,
       cancellationReason: row.cancellation_reason,
+      payrollRunId: row.payroll_run_id,
     });
   }
 }

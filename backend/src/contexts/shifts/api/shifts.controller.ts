@@ -16,13 +16,14 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { ShiftsDomainErrorFilter } from "./filters/domain-error.filter";
 import type { CashierShift } from "../domain/cashier-shift.aggregate";
 
 type Req_ = Request & { user: AuthenticatedUser };
 
 @Controller("shifts")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(ShiftsDomainErrorFilter)
 export class ShiftsController {
   constructor(
@@ -35,6 +36,7 @@ export class ShiftsController {
     private readonly listCashDrawerEntries: ListCashDrawerEntriesHandler
   ) {}
 
+  @BranchScoped()
   @Post("open")
   @RequirePermission("shifts.open_own")
   async open(@Body() dto: OpenShiftDto, @Req() req: Req_) {
@@ -51,12 +53,16 @@ export class ShiftsController {
     return shift ? toPublicShift(shift) : null;
   }
 
+  @BranchScoped()
+  @BranchResource("cashier_shifts")
   @Get(":id/preview")
   @RequirePermission("shifts.view_own")
   async preview(@Param("id") id: string) {
     return this.previewShift.execute(id);
   }
 
+  @BranchScoped()
+  @BranchResource("cashier_shifts")
   @Post(":id/close")
   @RequirePermission("shifts.close_own")
   async close(@Param("id") id: string, @Body() dto: CloseShiftDto, @Req() req: Req_) {
@@ -65,6 +71,8 @@ export class ShiftsController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("cashier_shifts")
   @Post(":id/review")
   @RequirePermission("shifts.review")
   async review(@Param("id") id: string, @Body() dto: ReviewShiftVarianceDto, @Req() req: Req_) {
@@ -73,6 +81,7 @@ export class ShiftsController {
     );
   }
 
+  @BranchScoped()
   @Get()
   @RequirePermission("shifts.view_branch")
   async list(@Query("branchId") branchId: string | undefined, @Query("status") status: string | undefined, @Req() req: Req_) {
@@ -81,6 +90,8 @@ export class ShiftsController {
     return (await this.listShifts.execute({ branchId: effectiveBranchId, status })).map(toPublicShift);
   }
 
+  @BranchScoped()
+  @BranchResource("cashier_shifts")
   @Post(":id/cash-drawer-entries")
   @RequirePermission("shifts.record_cash_entry")
   async addCashDrawerEntry(@Param("id") id: string, @Body() dto: RegisterCashDrawerEntryDto, @Req() req: Req_) {
@@ -96,6 +107,8 @@ export class ShiftsController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("cashier_shifts")
   @Get(":id/cash-drawer-entries")
   @RequirePermission("shifts.view_own")
   async cashDrawerEntries(@Param("id") id: string) {

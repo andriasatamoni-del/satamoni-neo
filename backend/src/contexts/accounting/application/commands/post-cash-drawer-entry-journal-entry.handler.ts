@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { CashDrawerEntryRegisteredEvent } from "../../../shifts/domain/events/cash-drawer-entry-registered.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس فلسفة post-order-sale-journal-entry.handler.ts - كود حساب الكاش 1100 (زي أي قيد كاش تاني في
 // النظام)، والحساب المدين بيتغيّر حسب النوع: مصروف تشغيلي عام (6900) أو مشترى بيدخل المخزون (1400) -
@@ -20,19 +21,18 @@ export class PostCashDrawerEntryJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: CashDrawerEntryRegisteredEvent): Promise<void> {
     if (event.amount <= 0) return;
 
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
     const debitCode = event.entryType === "EXPENSE" ? EXPENSE_ACCOUNT_CODE : PURCHASE_INVENTORY_ACCOUNT_CODE;
-    const debitAccount = await this.accounts.findByCode(debitCode);
-    if (!cashAccount || !debitAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد ${event.entryType === "EXPENSE" ? "مصروف" : "مشترى"} درج ${event.entryId} - دليل الحسابات لسه مش معدّ (${CASH_ACCOUNT_CODE}/${debitCode})`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([CASH_ACCOUNT_CODE, debitCode], "cash_drawer_entry", event.entryId);
+    if (!acc) return;
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
+    const debitAccount = acc[debitCode];
 
     const entry = JournalEntry.register({
       sourceType: "cash_drawer_entry",
@@ -45,6 +45,6 @@ export class PostCashDrawerEntryJournalEntryHandler {
       ],
       createdBy: event.createdBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

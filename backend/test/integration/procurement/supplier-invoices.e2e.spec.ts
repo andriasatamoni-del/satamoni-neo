@@ -5,10 +5,12 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { KYSELY } from "../../../src/shared/database/database.module";
+import { createSecondUser } from "../helpers/second-user";
 
 describe("Procurement - فواتير وسدادات الموردين (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
+  let approverToken: string; // BL-05: invoice approver must differ from the user who registered it
   let branchId: string;
   let treasuryId: string;
   let inventoryItemId: string;
@@ -47,6 +49,8 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
       .post("/auth/login")
       .send({ email: "admin-supplier-invoices@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
+
+    approverToken = (await createSecondUser(app, "approver-supplier-invoices@jest.test", "accountant")).token;
 
     // POST /branches بينشر BranchRegisteredEvent -> Treasury بيعمل خزينة رئيسية تلقائيًا
     const branchRes = await request(app.getHttpServer())
@@ -92,7 +96,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
     await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
     await sql`DELETE FROM inventory_items WHERE id = ${inventoryItemId}`.execute(db);
     await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-supplier-invoices@jest.test'`.execute(db);
+    await sql`DELETE FROM users WHERE email IN ('admin-supplier-invoices@jest.test', 'approver-supplier-invoices@jest.test')`.execute(db);
     await app.close();
   });
 
@@ -142,7 +146,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
 
     const approved = await request(app.getHttpServer())
       .post(`/procurement/supplier-invoices/${invoice.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(approved.status).toBe(201);
     expect(approved.body.status).toBe("APPROVED");
 
@@ -177,7 +181,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
 
     const approved = await request(app.getHttpServer())
       .post(`/procurement/supplier-invoices/${invoice.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(approved.status).toBe(201);
     expect(approved.body.status).toBe("APPROVED");
 
@@ -189,7 +193,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
     // اعتماد تاني على نفس الفاتورة - idempotent، مفيش قيد تاني يترحّل
     const secondApprove = await request(app.getHttpServer())
       .post(`/procurement/supplier-invoices/${invoice.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
     expect(secondApprove.status).toBe(201);
     const balanceAfterSecondApprove = (
       await request(app.getHttpServer()).get(`/procurement/suppliers/${supplierId}/balance`).set("Authorization", `Bearer ${adminToken}`)
@@ -214,7 +218,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
       });
     await request(app.getHttpServer())
       .post(`/procurement/supplier-invoices/${invoice.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
 
     const treasuryBalanceBefore = (
       await request(app.getHttpServer()).get(`/treasuries?branchId=${branchId}`).set("Authorization", `Bearer ${adminToken}`)
@@ -268,7 +272,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
       });
     await request(app.getHttpServer())
       .post(`/procurement/supplier-invoices/${invoice.body.id}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${approverToken}`);
 
     const balanceBeforeCancel = (
       await request(app.getHttpServer()).get(`/procurement/suppliers/${supplierId}/balance`).set("Authorization", `Bearer ${adminToken}`)

@@ -176,12 +176,12 @@ describe("Inventory - دفعات/لوط (BATCH-1, e2e ضد تطبيق حقيقي
     expect(batches.body).toHaveLength(0); // بس النشطة بترجع
   });
 
-  test("POST /inventory/batches/:id/write-off لدفعة مش نشطة -> 400", async () => {
+  test("POST /inventory/batches/:id/write-off لدفعة مش نشطة -> 409 (تعارض حالة)", async () => {
     const res = await request(app.getHttpServer())
       .post(`/inventory/batches/${batchId}/write-off`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ quantity: 1 });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 
   test("POST /production/conversion-orders/:id/complete بـexpiryDate - بيعمل دفعة للناتج", async () => {

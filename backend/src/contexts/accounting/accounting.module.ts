@@ -29,6 +29,13 @@ import { PostStocktakeVarianceJournalEntryHandler } from "./application/commands
 import { PostConversionOrderJournalEntryHandler } from "./application/commands/post-conversion-order-journal-entry.handler";
 import { PostCashDrawerEntryJournalEntryHandler } from "./application/commands/post-cash-drawer-entry-journal-entry.handler";
 import { PostPurchaseJournalEntryHandler } from "./application/commands/post-purchase-journal-entry.handler";
+import { PostOrderCogsJournalEntryHandler } from "./application/commands/post-order-cogs-journal-entry.handler";
+import { PostPayrollReversalJournalEntryHandler } from "./application/commands/post-payroll-reversal-journal-entry.handler";
+import { PostPaymentAdjustmentJournalEntryHandler } from "./application/commands/post-payment-adjustment-journal-entry.handler";
+import type { PaymentAdjustmentApprovedEvent } from "../payment-control/domain/events/payment-adjustment-approved.event";
+import { AccountingRepairService } from "./application/services/accounting-repair.service";
+import { AccountingPostingService } from "./application/services/accounting-posting.service";
+import type { PayrollRunCancelledEvent } from "../hr-payroll/domain/events/payroll-run-cancelled.event";
 import { ListAccountsHandler } from "./application/queries/list-accounts.handler";
 import { ListJournalEntriesHandler } from "./application/queries/list-journal-entries.handler";
 import { GetTrialBalanceHandler } from "./application/queries/get-trial-balance.handler";
@@ -75,6 +82,11 @@ import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase
     PostConversionOrderJournalEntryHandler,
     PostCashDrawerEntryJournalEntryHandler,
     PostPurchaseJournalEntryHandler,
+    PostOrderCogsJournalEntryHandler,
+    PostPayrollReversalJournalEntryHandler,
+    PostPaymentAdjustmentJournalEntryHandler,
+    AccountingPostingService,
+    AccountingRepairService,
     ListAccountsHandler,
     ListJournalEntriesHandler,
     GetTrialBalanceHandler,
@@ -83,7 +95,7 @@ import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase
     ListPeriodsHandler,
     ListFiscalYearClosingsHandler,
   ],
-  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler, ReverseJournalEntryHandler],
+  exports: [ACCOUNT_REPOSITORY, JOURNAL_ENTRY_REPOSITORY, RegisterJournalEntryHandler, ReverseJournalEntryHandler, AccountingPostingService],
 })
 export class AccountingModule implements OnModuleInit {
   constructor(
@@ -99,7 +111,10 @@ export class AccountingModule implements OnModuleInit {
     private readonly postStocktakeVarianceJournalEntry: PostStocktakeVarianceJournalEntryHandler,
     private readonly postConversionOrderJournalEntry: PostConversionOrderJournalEntryHandler,
     private readonly postCashDrawerEntryJournalEntry: PostCashDrawerEntryJournalEntryHandler,
-    private readonly postPurchaseJournalEntry: PostPurchaseJournalEntryHandler
+    private readonly postPurchaseJournalEntry: PostPurchaseJournalEntryHandler,
+    private readonly postOrderCogsJournalEntry: PostOrderCogsJournalEntryHandler,
+    private readonly postPayrollReversalJournalEntry: PostPayrollReversalJournalEntryHandler,
+    private readonly postPaymentAdjustmentJournalEntry: PostPaymentAdjustmentJournalEntryHandler
   ) {}
 
   onModuleInit(): void {
@@ -113,6 +128,7 @@ export class AccountingModule implements OnModuleInit {
         { key: "accounting.post", label: "ترحيل قيد يدوي (مراجعة واعتماد)" },
         { key: "accounting.close_period", label: "قفل شهر محاسبي" },
         { key: "accounting.close_year", label: "قفل سنة مالية" },
+        { key: "accounting.repair", label: "إصلاح القيود الناقصة (إعادة ترحيل)" },
       ],
     });
     this.permissions.setRoleDefaults("accountant", [
@@ -121,6 +137,7 @@ export class AccountingModule implements OnModuleInit {
       "accounting.create",
       "accounting.post",
       "accounting.close_period",
+      "accounting.repair",
     ]);
     // قفل السنة المالية أدمن بس (نفس الريبو القديم بالحرف: requireRole("admin") قبل حتى requirePermission)
     // - أثر أعمق وأصعب في التراجع من قفل شهر واحد
@@ -128,54 +145,71 @@ export class AccountingModule implements OnModuleInit {
     // أول استخدام حقيقي لـEventBusService في النظام - Accounting بيشترك في حدث Orders من غير ما
     // Orders يعرف حاجة عن وجود Accounting أصلًا (نفس فايدة الفصل اللي الـbus اتصمم لأجلها من الأول)
     this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) =>
-      this.postOrderSaleJournalEntry.handle(event)
+      this.postOrderSaleJournalEntry.handle(event),
+      { critical: true }
     );
+    // BL-07: cost of goods sold (Dr 5100 / Cr 1400) from the actual consumption cost carried on the event
+    this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) => this.postOrderCogsJournalEntry.handle(event), { critical: true });
     // اتناشر مستهلك - إلغاء طلب (Talabat أو يدوي) بيعكس قيد البيع التلقائي بتاعه تلقائيًا، من غير ما
     // Orders context يعرف حاجة عن وجود Accounting (نفس فلسفة OrderRegistered بالظبط)
     this.eventBus.subscribe<OrderCancelledEvent>("OrderCancelled", (event) =>
-      this.postOrderCancellationJournalEntry.handle(event)
+      this.postOrderCancellationJournalEntry.handle(event),
+      { critical: true }
     );
     // تالت مستهلك حقيقي للـevent bus (بعد Accounting نفسه على OrderRegistered) - نفس الفلسفة
     // بالظبط، Accounting هنا بيشترك في حدث HR & Payroll من غير ما HrPayroll يعرف حاجة عن وجوده
     this.eventBus.subscribe<PayrollRunApprovedEvent>("PayrollRunApproved", (event) =>
-      this.postPayrollJournalEntry.handle(event)
+      this.postPayrollJournalEntry.handle(event),
+      { critical: true }
     );
+    // BL-06: correcting journal for an approved payment amount adjustment (same transaction as the approval)
+    this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (event) => this.postPaymentAdjustmentJournalEntry.handle(event), { critical: true });
+    // BL-10: cancelling an approved payroll run reverses its journal in the same transaction
+    this.eventBus.subscribe<PayrollRunCancelledEvent>("PayrollRunCancelled", (event) => this.postPayrollReversalJournalEntry.handle(event), { critical: true });
     // رابع مستهلك - فرق كاش شيفت مقفول (لو موجود) بيترحّل تلقائيًا، من غير ما Shifts context يعرف
     // حاجة عن Accounting
     this.eventBus.subscribe<ShiftClosedEvent>("ShiftClosed", (event) =>
-      this.postShiftVarianceJournalEntry.handle(event)
+      this.postShiftVarianceJournalEntry.handle(event),
+      { critical: true }
     );
     // خامس مستهلك - استلام بضاعة اتأكد (لو ليه مورد) بيرحّل قيد AP تلقائيًا، من غير ما Procurement
     // يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<GoodsReceiptConfirmedEvent>("GoodsReceiptConfirmed", (event) =>
-      this.postGoodsReceiptApJournalEntry.handle(event)
+      this.postGoodsReceiptApJournalEntry.handle(event),
+      { critical: true }
     );
     // سادس مستهلك - فرق تسليم تسوية سائق (لو موجود) بيترحّل تلقائيًا، من غير ما Delivery context
     // يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<DriverSettlementCreatedEvent>("DriverSettlementCreated", (event) =>
-      this.postDriverSettlementVarianceJournalEntry.handle(event)
+      this.postDriverSettlementVarianceJournalEntry.handle(event),
+      { critical: true }
     );
     // سابع مستهلك - أجر+بونص شيفت حضور سائق مقفول بيترحّل تلقائيًا كمصروف
     this.eventBus.subscribe<DriverAttendanceShiftClosedEvent>("DriverAttendanceShiftClosed", (event) =>
-      this.postDriverWageJournalEntry.handle(event)
+      this.postDriverWageJournalEntry.handle(event),
+      { critical: true }
     );
     // تامن مستهلك - فروق جرد فعلي (لو موجودة) بيترحّل قيد مستقل لكل سطر تلقائيًا
     this.eventBus.subscribe<StocktakeCommittedEvent>("StocktakeCommitted", (event) =>
-      this.postStocktakeVarianceJournalEntry.handle(event)
+      this.postStocktakeVarianceJournalEntry.handle(event),
+      { critical: true }
     );
     // تاسع مستهلك - إكمال أمر تحويل (تصنيع/تعبئة) بيترحّل قيد تحويل قيمة (خام→تام) + فرق إنتاج تلقائيًا
     this.eventBus.subscribe<ConversionOrderCompletedEvent>("ConversionOrderCompleted", (event) =>
-      this.postConversionOrderJournalEntry.handle(event)
+      this.postConversionOrderJournalEntry.handle(event),
+      { critical: true }
     );
     // عاشر مستهلك - مصروف/مشترى نقدي اتسجل من درج شيفت شغال بيترحّل تلقائيًا، من غير ما Shifts context
     // يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<CashDrawerEntryRegisteredEvent>("CashDrawerEntryRegistered", (event) =>
-      this.postCashDrawerEntryJournalEntry.handle(event)
+      this.postCashDrawerEntryJournalEntry.handle(event),
+      { critical: true }
     );
     // حداشر مستهلك - مشترى طارئ (PO-less) اتأكد وبيه بنود بترحّل مخزون بيترحّل قيد نقدي تلقائيًا، من
     // غير ما Purchases context يعرف حاجة عن وجود Accounting
     this.eventBus.subscribe<PurchaseConfirmedEvent>("PurchaseConfirmed", (event) =>
-      this.postPurchaseJournalEntry.handle(event)
+      this.postPurchaseJournalEntry.handle(event),
+      { critical: true }
     );
   }
 }

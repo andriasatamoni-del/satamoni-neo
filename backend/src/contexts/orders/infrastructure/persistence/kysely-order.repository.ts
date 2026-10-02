@@ -80,6 +80,10 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
     });
   }
 
+  async updatePaymentMethod(orderId: string, paymentMethodId: string): Promise<void> {
+    await this.db.updateTable("orders").set({ payment_method_id: paymentMethodId }).where("id", "=", orderId).execute();
+  }
+
   async findById(id: string): Promise<Order | null> {
     const row = await this.db.selectFrom("orders").selectAll().where("id", "=", id).executeTakeFirst();
     if (!row) return null;

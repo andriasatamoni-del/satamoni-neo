@@ -153,6 +153,6 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
       .post(`/shifts/${shiftId}/cash-drawer-entries`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ entryType: "EXPENSE", amount: 10, label: "أي حاجة" });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 });

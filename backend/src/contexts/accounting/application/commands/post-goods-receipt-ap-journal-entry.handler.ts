@@ -3,6 +3,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { GoodsReceiptConfirmedEvent } from "../../../procurement/domain/events/goods-receipt-confirmed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس أكواد المخزون/الحسابات الدائنة الفعلية في الريبو القديم بالظبط (1400/2100، راجع
 // routes/supplier-invoices.js وsupplier-payments.js)
@@ -17,20 +18,20 @@ export class PostGoodsReceiptApJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
-  async handle(event: GoodsReceiptConfirmedEvent): Promise<void> {
+  async handle(event: GoodsReceiptConfirmedEvent, opts?: { entryDate?: Date }): Promise<void> {
     if (!event.supplierId || event.totalValue <= 0) return;
 
-    const inventoryAccount = await this.accounts.findByCode(INVENTORY_ACCOUNT_CODE);
-    const apAccount = await this.accounts.findByCode(ACCOUNTS_PAYABLE_ACCOUNT_CODE);
-    if (!inventoryAccount || !apAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد AP لاستلام ${event.goodsReceiptId} - دليل الحسابات لسه مش معدّ (${INVENTORY_ACCOUNT_CODE}/${ACCOUNTS_PAYABLE_ACCOUNT_CODE})`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([INVENTORY_ACCOUNT_CODE, ACCOUNTS_PAYABLE_ACCOUNT_CODE], "goods_receipt", event.goodsReceiptId);
+    if (!acc) return;
+    const inventoryAccount = acc[INVENTORY_ACCOUNT_CODE];
+    const apAccount = acc[ACCOUNTS_PAYABLE_ACCOUNT_CODE];
 
     const entry = JournalEntry.register({
+      entryDate: opts?.entryDate,
       sourceType: "goods_receipt",
       sourceId: event.goodsReceiptId,
       branchId: event.branchId,
@@ -41,6 +42,6 @@ export class PostGoodsReceiptApJournalEntryHandler {
       ],
       createdBy: event.confirmedBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

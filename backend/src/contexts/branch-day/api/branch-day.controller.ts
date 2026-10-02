@@ -9,11 +9,13 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../identity-access/domain/ports/user-repository.port";
+import { BranchScopeGuard, BranchScoped } from "../../../shared/authorization/branch-scope";
 import { BranchDayDomainErrorFilter } from "./filters/domain-error.filter";
 import type { BranchDay } from "../domain/branch-day.aggregate";
 
 @Controller("branch-days")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
+@BranchScoped()
 @UseFilters(BranchDayDomainErrorFilter)
 export class BranchDayController {
   constructor(

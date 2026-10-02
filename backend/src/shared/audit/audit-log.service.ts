@@ -10,6 +10,9 @@ export interface AuditLogEntry {
   entityId?: string | null;
   branchId?: string | null;
   metadata?: Record<string, unknown> | null;
+  // Phase 3.1: SUCCESS (default) | DENIED (403/404 on a protected resource) | FAILED
+  outcome?: "SUCCESS" | "DENIED" | "FAILED";
+  httpStatus?: number | null;
 }
 
 export interface AuditLogRecord {
@@ -21,6 +24,8 @@ export interface AuditLogRecord {
   branchId: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: Date;
+  outcome: string;
+  httpStatus: number | null;
 }
 
 export interface AuditLogFilter {
@@ -30,6 +35,7 @@ export interface AuditLogFilter {
   branchId?: string;
   action?: string;
   limit?: number;
+  outcome?: string;
 }
 
 // AuditLogService - سجل تدقيق عام (fire-and-forget، مش أجريجيت دومين له قواعد عمل - مجرد حقائق ثابتة
@@ -49,6 +55,8 @@ export class AuditLogService {
         entity_id: entry.entityId ?? null,
         branch_id: entry.branchId ?? null,
         metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
+        outcome: entry.outcome ?? "SUCCESS",
+        http_status: entry.httpStatus ?? null,
       })
       .execute();
   }
@@ -60,6 +68,7 @@ export class AuditLogService {
     if (filter?.entityId) query = query.where("entity_id", "=", filter.entityId);
     if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
     if (filter?.action) query = query.where("action", "=", filter.action);
+    if (filter?.outcome) query = query.where("outcome", "=", filter.outcome as "SUCCESS" | "DENIED" | "FAILED");
 
     const limit = Math.min(Math.max(filter?.limit ?? 100, 1), 500);
     const rows = await query.orderBy("created_at", "desc").limit(limit).execute();
@@ -73,6 +82,8 @@ export class AuditLogService {
       branchId: r.branch_id,
       metadata: r.metadata,
       createdAt: r.created_at,
+      outcome: r.outcome,
+      httpStatus: r.http_status,
     }));
   }
 }

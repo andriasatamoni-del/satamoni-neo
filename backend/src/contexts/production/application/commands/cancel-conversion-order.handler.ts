@@ -7,6 +7,7 @@ import {
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface CancelConversionOrderCommand {
   conversionOrderId: string;
@@ -18,12 +19,19 @@ export interface CancelConversionOrderCommand {
 export class CancelConversionOrderHandler {
   constructor(
     @Inject(CONVERSION_ORDER_REPOSITORY) private readonly conversionOrders: ConversionOrderRepositoryPort,
-    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort
+    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    private readonly tx: TransactionService
   ) {}
 
   async execute(command: CancelConversionOrderCommand): Promise<ConversionOrder> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: CancelConversionOrderCommand): Promise<ConversionOrder> {
+    if (!(await this.tx.lockRow("conversion_orders", command.conversionOrderId))) throw new ConversionOrderNotFoundError();
     const order = await this.conversionOrders.findById(command.conversionOrderId);
     if (!order) throw new ConversionOrderNotFoundError();
+    order.assertCancellable();
 
     // لو كان قيد التنفيذ، المكوّنات كانت اتخصمت فعليًا وقت start() - لازم ترجع للمخزون قبل الإلغاء
     if (order.status === "IN_PROGRESS") {

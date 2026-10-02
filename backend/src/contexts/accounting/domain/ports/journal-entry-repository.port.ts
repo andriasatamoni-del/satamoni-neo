@@ -13,6 +13,8 @@ export interface JournalEntryRepositoryPort {
   postEntry(entryId: string, postedAt: Date, postedBy: string | null): Promise<void>;
   findById(id: string): Promise<JournalEntry | null>;
   list(filter?: { branchId?: string; sourceType?: string }): Promise<JournalEntry[]>;
+  // Phase 3.1: indexed lookup of the entries produced by one business transaction (idempotent posting / reversal)
+  findBySource(sourceType: string, sourceId: string): Promise<JournalEntry[]>;
 }
 
 export const JOURNAL_ENTRY_REPOSITORY = Symbol("JOURNAL_ENTRY_REPOSITORY");

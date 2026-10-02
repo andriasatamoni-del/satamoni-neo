@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { StocktakeCommittedEvent } from "../../../inventory/domain/events/stocktake-committed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس فلسفة post-goods-receipt-ap-journal-entry.handler.ts - أكواد حقيقية من دليل الحسابات (1400
 // المخزون). قيد مستقل لكل سطر (مش قيد مجمّع للجلسة كلها) - نفس الريبو القديم بالظبط، عشان كل سطر يحمل
@@ -17,22 +18,18 @@ export class PostStocktakeVarianceJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: StocktakeCommittedEvent): Promise<void> {
-    const inventoryAccount = await this.accounts.findByCode(INVENTORY_ACCOUNT_CODE);
-    if (!inventoryAccount) {
-      this.logger.warn(`تخطّي ترحيل فروق جرد ${event.stocktakeId} - دليل الحسابات لسه مش معدّ (${INVENTORY_ACCOUNT_CODE})`);
-      return;
-    }
+    const chargeCodes = [...new Set(event.lines.map((l) => l.chargeAccountCode))];
+    const acc = await this.posting.requireAccounts([INVENTORY_ACCOUNT_CODE, ...chargeCodes], "stock_count", event.stocktakeId);
+    if (!acc) return;
+    const inventoryAccount = acc[INVENTORY_ACCOUNT_CODE];
 
     for (const line of event.lines) {
-      const chargeAccount = await this.accounts.findByCode(line.chargeAccountCode);
-      if (!chargeAccount) {
-        this.logger.warn(`تخطّي ترحيل فرق سطر جرد (حركة ${line.inventoryMovementId}) - الحساب ${line.chargeAccountCode} لسه مش معدّ`);
-        continue;
-      }
+      const chargeAccount = acc[line.chargeAccountCode];
 
       const amount = Math.round(Math.abs(line.varianceValue) * 100) / 100;
       const isIncrease = line.varianceQuantity > 0;
@@ -52,7 +49,7 @@ export class PostStocktakeVarianceJournalEntryHandler {
             ],
         createdBy: event.createdBy,
       });
-      await this.entries.save(entry);
+      await this.posting.postOnce(entry);
     }
   }
 }

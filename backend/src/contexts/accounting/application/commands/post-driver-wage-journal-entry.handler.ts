@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { DriverAttendanceShiftClosedEvent } from "../../../delivery/domain/events/driver-attendance-shift-closed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // أجر + بونص السائق بيتدفع كاش على طول وقت قفل الشيفت (مش عن طريق pipeline مراجعة مصروفات منفصل زي
 // الريبو القديم expenses.status='SUBMITTED' - مفيش Expense context لسه في المشروع ده، تبسيط متعمّد).
@@ -18,18 +19,17 @@ export class PostDriverWageJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: DriverAttendanceShiftClosedEvent): Promise<void> {
     if (event.totalPay <= 0) return;
 
-    const expenseAccount = await this.accounts.findByCode(OTHER_OPERATING_EXPENSE_ACCOUNT_CODE);
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
-    if (!expenseAccount || !cashAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد أجر شيفت السائق ${event.shiftId} - دليل الحسابات لسه مش معدّ`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([OTHER_OPERATING_EXPENSE_ACCOUNT_CODE, CASH_ACCOUNT_CODE], "driver_attendance_shift", event.shiftId);
+    if (!acc) return;
+    const expenseAccount = acc[OTHER_OPERATING_EXPENSE_ACCOUNT_CODE];
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
 
     const entry = JournalEntry.register({
       sourceType: "driver_attendance_shift",
@@ -42,6 +42,6 @@ export class PostDriverWageJournalEntryHandler {
       ],
       createdBy: event.closedBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

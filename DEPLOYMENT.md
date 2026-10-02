@@ -31,6 +31,10 @@
    - `FRONTEND_ORIGIN` = رابط الفرونت إند بتاع الخطوة 3 بالظبط (مثلًا `https://satamoni-neo-frontend.onrender.com`،
      من غير `/` في الآخر). من غيره الـCORS بيسمح لـ`localhost:5173` بس وتسجيل الدخول من الرابط الحقيقي هيفشل.
      لو في أكتر من رابط افصلهم بفاصلة.
+   - `ACCOUNTING_ENFORCEMENT` = `strict` (الافتراضي لو مش محدد - **مطلوب في الإنتاج**، Phase 3.1): القيد المحاسبي التلقائي
+     جزء من نفس transaction العملية؛ لو الشجرة المحاسبية ناقصة العملية بتترفض (503) ومفيش حاجة بتتكتب. `deferred` للانتقال/الاستيراد بس
+     (القيد بيتأجّل ويظهر في `GET /accounting/reports/journal-coverage` وتنبيه Action Center، والإصلاح بـ`POST /accounting/repair/journals`).
+     التفاصيل الكاملة والـrunbook: `backend/docs/PHASE31_REMEDIATION.md`.
 6. Deploy. لما يخلص، هتلاقي رابط زي `https://satamoni-neo-backend.onrender.com` - اختبره:
    `curl https://satamoni-neo-backend.onrender.com/health` المفروض يرجّع `{"status":"ok"}`.
 
@@ -89,14 +93,15 @@ scripts/import-hr-payroll-from-legacy.ts
 
 **فين تشغّلهم؟** الباك إند على الخطة المجانية (Free) في Render مفيهوش SSH/Shell (زي ما اتأكد وقت
 النشر الحقيقي)، وبيئة تطوير Claude غالبًا محظور عليها اتصال TCP مباشر لقاعدة بيانات خارجية (HTTPS بس
-مسموح). أسهل طريقة موثوقة: **GitHub Actions** (الملف `.github/workflows/run-script.yml` جاهز بالفعل):
+مسموح). أسهل طريقة موثوقة: **GitHub Actions** (الملف `.github/workflows/maintenance-operation.yml`).
+> ⚠️ (Phase 3.1 / BL-14) الـworkflow القديم `run-script.yml` اتحذف: كان بيقبل مسار سكريبت حر وبيشغّله بأسرار الإنتاج.
+> الجديد بياخد **اختيار من قائمة ثابتة** بس، ومربوط بـEnvironment اسمه `production-maintenance` لازم يتضبط بمراجِع
+> إلزامي (راجع `backend/docs/SECURITY_HARDENING.md`). ملحوظة: مفيش سكريبت بيعمل حساب أدمن تجريبي بباسورد ثابت بعد دلوقتي.
 
-1. على ريبو `satamoni-neo` على GitHub: **Settings → Secrets and variables → Actions → New repository secret**.
-   ضيف `DATABASE_URL` (الـExternal Database URL بتاع `satamoni-neo-db`) و`LEGACY_DATABASE_URL` (رابط
-   قاعدة بيانات الريبو القديم الحقيقية).
-2. تبويب **Actions → Run one-off backend script → Run workflow**. حدد `script_path` (مثلًا
-   `scripts/import-branches-from-legacy.ts`) وشغّله. كرر لكل سكريبت بالترتيب اللي فوق، واحد بعد التاني
-   (استنى كل واحد يخلص قبل ما تشغّل اللي بعده).
+1. على GitHub: **Settings → Environments → production-maintenance** → أضف مراجِعًا إلزاميًا، وحط الـsecrets
+   `DATABASE_URL` (الـExternal Database URL) و`LEGACY_DATABASE_URL` جوّه الـEnvironment ده (مش على مستوى الريبو).
+2. تبويب **Actions → Approved maintenance operation → Run workflow**. اختار `operation` (مثلًا `import-branches`)
+   واستنى موافقة المراجِع. كرر لكل عملية بالترتيب اللي فوق، واحدة بعد التانية.
 3. البدائل: لو عندك Node.js على جهازك الشخصي، تقدر تشغّل نفس الأوامر محليًا (`export DATABASE_URL=...
    PGSSL=true && npx ts-node scripts/...`) لأن جهازك الشخصي مالوش نفس القيد. أو ترقية مؤقتة لخطة مدفوعة
    على Render بتديك Shell access.

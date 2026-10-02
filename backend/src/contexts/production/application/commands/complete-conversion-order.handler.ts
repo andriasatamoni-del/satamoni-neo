@@ -15,6 +15,7 @@ import { InventoryBatch } from "../../../inventory/domain/inventory-batch.aggreg
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { ConversionOrderCompletedEvent } from "../../domain/events/conversion-order-completed.event";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface CompleteConversionOrderCommand {
   conversionOrderId: string;
@@ -35,10 +36,19 @@ export class CompleteConversionOrderHandler {
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
     @Inject(INVENTORY_BATCH_REPOSITORY) private readonly batches: InventoryBatchRepositoryPort,
     private readonly eventBus: EventBusService,
-    private readonly getPosSettings: GetPosSettingsHandler
+    private readonly getPosSettings: GetPosSettingsHandler,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1 (BL-03): one transaction + row lock on the conversion order. The state machine is validated (order.complete)
+  // BEFORE any stock write, so a rejected completion (wrong state, bad quantity, missing variance reason) writes nothing,
+  // and concurrent completions queue on the lock so finished goods are received exactly once.
   async execute(command: CompleteConversionOrderCommand): Promise<ConversionOrder> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: CompleteConversionOrderCommand): Promise<ConversionOrder> {
+    if (!(await this.tx.lockRow("conversion_orders", command.conversionOrderId))) throw new ConversionOrderNotFoundError();
     const order = await this.conversionOrders.findById(command.conversionOrderId);
     if (!order) throw new ConversionOrderNotFoundError();
 
@@ -60,6 +70,16 @@ export class CompleteConversionOrderHandler {
       performedBy: command.completedBy,
       unitCost: standardUnitCost,
     });
+
+    const settings = await this.getPosSettings.execute();
+    order.complete({
+      actualOutputQuantity: command.actualOutputQuantity,
+      varianceReason: command.varianceReason,
+      outputUnitCost: standardUnitCost,
+      outputMovementId: movement.id,
+      completedBy: command.completedBy ?? null,
+      varianceAlertPercent: settings.productionVarianceAlertPercent,
+    });
     await this.movements.recordMovement(movement, { allowNegativeBalance: true });
 
     // BATCH-1: دفعة للناتج بس لو تاريخ صلاحية فعلي اتحدد
@@ -78,15 +98,6 @@ export class CompleteConversionOrderHandler {
       await this.batches.save(batch);
     }
 
-    const settings = await this.getPosSettings.execute();
-    order.complete({
-      actualOutputQuantity: command.actualOutputQuantity,
-      varianceReason: command.varianceReason,
-      outputUnitCost: standardUnitCost,
-      outputMovementId: movement.id,
-      completedBy: command.completedBy ?? null,
-      varianceAlertPercent: settings.productionVarianceAlertPercent,
-    });
     await this.conversionOrders.save(order);
 
     const finishedGoodsValue = standardUnitCost !== null ? round2(standardUnitCost * command.actualOutputQuantity) : 0;

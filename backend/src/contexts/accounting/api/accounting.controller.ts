@@ -13,6 +13,11 @@ import { GetGeneralLedgerHandler } from "../application/queries/get-general-ledg
 import { GetIncomeStatementHandler } from "../application/queries/get-income-statement.handler";
 import { ListPeriodsHandler } from "../application/queries/list-periods.handler";
 import { ListFiscalYearClosingsHandler } from "../application/queries/list-fiscal-year-closings.handler";
+import { AccountingRepairService } from "../application/services/accounting-repair.service";
+import { RepairJournalsDto } from "./dto/repair-journals.dto";
+import type { GapKind } from "../infrastructure/persistence/journal-coverage";
+import { BranchScopeGuard, BranchScoped, BranchResource, requireCompanyWide } from "../../../shared/authorization/branch-scope";
+import { businessDate, businessDateString } from "../../../shared/time/business-date";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { RegisterJournalEntryDto } from "./dto/register-journal-entry.dto";
 import { ReverseJournalEntryDto } from "./dto/reverse-journal-entry.dto";
@@ -28,7 +33,7 @@ import type { AccountingPeriod } from "../domain/accounting-period.aggregate";
 import type { FiscalYearClosing } from "../domain/fiscal-year-closing.aggregate";
 
 @Controller("accounting")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(AccountingDomainErrorFilter)
 export class AccountingController {
   constructor(
@@ -44,7 +49,8 @@ export class AccountingController {
     private readonly closePeriod: ClosePeriodHandler,
     private readonly closeFiscalYear: CloseFiscalYearHandler,
     private readonly listPeriods: ListPeriodsHandler,
-    private readonly listFiscalYearClosings: ListFiscalYearClosingsHandler
+    private readonly listFiscalYearClosings: ListFiscalYearClosingsHandler,
+    private readonly repairService: AccountingRepairService
   ) {}
 
   @Get("accounts")
@@ -60,6 +66,7 @@ export class AccountingController {
   }
 
   @Get("journal-entries")
+  @BranchScoped()
   @RequirePermission("accounting.view", "accounting.manage")
   async journalEntries(@Query("branchId") branchId?: string, @Query("sourceType") sourceType?: string) {
     return (await this.listJournalEntries.execute({ branchId, sourceType })).map(toPublicEntry);
@@ -68,6 +75,7 @@ export class AccountingController {
   // قيد يدوي جديد - دايمًا DRAFT (sourceType مفروض "manual" من السيرفر، مش من العميل)، محتاج
   // /post منفصل بصلاحية accounting.post - راجع تعليق RegisterJournalEntryDto وJournalEntry.post()
   @Post("journal-entries")
+  @BranchScoped()
   @RequirePermission("accounting.create")
   async createJournalEntry(@Body() dto: RegisterJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(
@@ -81,21 +89,26 @@ export class AccountingController {
   }
 
   @Post("journal-entries/:id/post")
+  @BranchScoped()
+  @BranchResource("journal_entries")
   @RequirePermission("accounting.post")
   async postJournalEntryRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(await this.postJournalEntry.execute({ entryId: id, postedBy: req.user.id }));
   }
 
   @Post("journal-entries/:id/reverse")
+  @BranchScoped()
+  @BranchResource("journal_entries")
   @RequirePermission("accounting.manage")
   async reverse(@Param("id") id: string, @Body() dto: ReverseJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(await this.reverseJournalEntry.execute({ entryId: id, reversedBy: req.user.id, reason: dto.reason }));
   }
 
   @Get("reports/trial-balance")
+  @BranchScoped()
   @RequirePermission("accounting.view", "accounting.manage")
   async trialBalance(@Query("asOf") asOf: string | undefined, @Query("branchId") branchId: string | undefined) {
-    return this.getTrialBalance.execute(asOf ? new Date(`${asOf}T23:59:59.999`) : new Date(), branchId ?? null);
+    return this.getTrialBalance.execute(asOf ? utcMidnight(asOf) : businessDate(), branchId ?? null);
   }
 
   @Get("reports/general-ledger")
@@ -103,13 +116,16 @@ export class AccountingController {
   async generalLedger(
     @Query("accountId") accountId: string,
     @Query("from") from: string | undefined,
-    @Query("to") to: string | undefined
+    @Query("to") to: string | undefined,
+    @Req() req: Request & { user: AuthenticatedUser }
   ) {
+    requireCompanyWide(req.user); // the ledger spans every branch
     const range = resolveReportRange(from, to, DEFAULT_GENERAL_LEDGER_RANGE_DAYS);
     return this.getGeneralLedger.execute(accountId, range.fromTs, range.toTs);
   }
 
   @Get("reports/income-statement")
+  @BranchScoped()
   @RequirePermission("accounting.view", "accounting.manage")
   async incomeStatement(
     @Query("from") from: string | undefined,
@@ -150,15 +166,62 @@ export class AccountingController {
   async closeYear(@Body() dto: CloseFiscalYearDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicFiscalYearClosing(await this.closeFiscalYear.execute({ year: dto.year, closedBy: req.user.id }));
   }
+
+  // ---- Phase 3.1 (BL-08): reliability of automatic postings ----
+
+  // Is the chart of accounts complete for the automatic postings? (and which enforcement mode is active)
+  @Get("readiness")
+  @RequirePermission("accounting.view", "accounting.manage")
+  async readiness() {
+    return this.repairService.readiness();
+  }
+
+  // Business transactions that should have a journal (or a reversal) but do not - the durable record of missing postings
+  @Get("reports/journal-coverage")
+  @BranchScoped()
+  @RequirePermission("accounting.view", "accounting.manage")
+  async journalCoverage(@Query("branchId") branchId?: string, @Query("kinds") kinds?: string, @Query("limit") limit?: string) {
+    return this.repairService.coverage({
+      branchId: branchId ?? null,
+      kinds: kinds ? (kinds.split(",") as GapKind[]) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  // Auto-posted journals whose entry_date differs from the Cairo business date of their transaction (reported, never rewritten)
+  @Get("reports/business-date-drift")
+  @RequirePermission("accounting.view", "accounting.manage")
+  async businessDateDrift(@Req() req: Request & { user: AuthenticatedUser }) {
+    requireCompanyWide(req.user);
+    return this.repairService.businessDateDrift();
+  }
+
+  // Safe, idempotent repost of missing journals (see AccountingRepairService). Audited per item.
+  @Post("repair/journals")
+  @RequirePermission("accounting.repair")
+  async repairJournals(@Body() dto: RepairJournalsDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    requireCompanyWide(req.user);
+    return this.repairService.repair({ kinds: dto.kinds as GapKind[] | undefined, sourceIds: dto.sourceIds, limit: dto.limit, actorUserId: req.user.id });
+  }
 }
 
 const DEFAULT_INCOME_STATEMENT_RANGE_DAYS = 30;
 const DEFAULT_GENERAL_LEDGER_RANGE_DAYS = 365;
 
+function utcMidnight(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00.000Z`);
+}
+
 function resolveReportRange(from: string | undefined, to: string | undefined, defaultDays: number) {
-  const toTs = to ? new Date(`${to}T23:59:59.999`) : new Date();
-  const fromTs = from ? new Date(`${from}T00:00:00.000`) : new Date(toTs.getTime() - (defaultDays - 1) * 24 * 60 * 60 * 1000);
-  return { fromTs, toTs };
+  // journal entry dates are DATE values (the Cairo business date): compare them with UTC-midnight dates, not with instants
+  const toStr = to ?? businessDateString();
+  let fromStr = from;
+  if (!fromStr) {
+    const d = utcMidnight(toStr);
+    d.setUTCDate(d.getUTCDate() - (defaultDays - 1));
+    fromStr = d.toISOString().slice(0, 10);
+  }
+  return { fromTs: utcMidnight(fromStr), toTs: utcMidnight(toStr) };
 }
 
 function toPublicAccount(account: Account) {

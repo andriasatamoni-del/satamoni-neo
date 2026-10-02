@@ -3,6 +3,7 @@ import { User } from "../../domain/user.aggregate";
 import { UnknownPermissionError, UserNotFoundError } from "../../domain/errors";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
+import { auditDetail } from "../../../../shared/audit/audit-context";
 import { PermissionRegistry } from "../../../../shared/permissions/permission-registry";
 
 export interface UpdateUserCommand {
@@ -25,6 +26,9 @@ export class UpdateUserHandler {
   async execute(command: UpdateUserCommand): Promise<User> {
     const user = await this.users.findById(command.userId);
     if (!user) throw new UserNotFoundError();
+    // audit evidence: role / branch / active / permission changes (never the password or its hash)
+    const snapshot = () => ({ role: user.role, branchId: user.branchId, isActive: user.isActive, permissionGrants: [...user.permissionGrants], permissionRevokes: [...user.permissionRevokes] });
+    auditDetail({ entityType: "users", entityId: user.id, before: snapshot() });
 
     // لو الدور بيتغيّر في نفس الطلب، الصلاحيات (لو مبعوتة) بتتحسب مقابل الدور الجديد - نفس منطق
     // الريبو القديم (المرحلة 8.58) اللي بيخلي الأدمن يغيّر الدور ويظبط الصلاحيات مرة واحدة
@@ -48,6 +52,7 @@ export class UpdateUserHandler {
     }
 
     await this.users.save(user);
+    auditDetail({ after: { ...snapshot(), passwordReset: command.password !== undefined } });
     return user;
   }
 }

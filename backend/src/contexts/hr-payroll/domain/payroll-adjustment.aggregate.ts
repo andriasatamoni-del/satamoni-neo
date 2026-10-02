@@ -3,6 +3,7 @@ import {
   AdjustmentAmountMustBePositiveError,
   CancellationReasonRequiredError,
   PayrollAdjustmentAlreadyCancelledError,
+  PayrollAdjustmentLinkedToRunError,
   UnknownAdjustmentTypeError,
 } from "./errors";
 
@@ -24,6 +25,7 @@ export interface PayrollAdjustmentProps {
   cancelledBy: string | null;
   cancelledAt: Date | null;
   cancellationReason: string | null;
+  payrollRunId: string | null;
 }
 
 // PayrollAdjustment - سلفة/جزاء/مكافأة فردية لموظف، نفس مفهوم payroll_adjustments في الريبو القديم
@@ -60,6 +62,7 @@ export class PayrollAdjustment {
       cancelledBy: null,
       cancelledAt: null,
       cancellationReason: null,
+      payrollRunId: null,
     });
   }
 
@@ -70,6 +73,8 @@ export class PayrollAdjustment {
   cancel(input: { reason: string; cancelledBy?: string | null }): void {
     if (this.props.status === "CANCELLED") throw new PayrollAdjustmentAlreadyCancelledError();
     if (!input.reason?.trim()) throw new CancellationReasonRequiredError();
+    // BL-10: an adjustment already consumed by a payroll run can not be cancelled behind that run's back
+    if (this.props.payrollRunId) throw new PayrollAdjustmentLinkedToRunError();
 
     this.props.status = "CANCELLED";
     this.props.cancelledBy = input.cancelledBy ?? null;
@@ -88,4 +93,5 @@ export class PayrollAdjustment {
   get cancelledBy(): string | null { return this.props.cancelledBy; }
   get cancelledAt(): Date | null { return this.props.cancelledAt; }
   get cancellationReason(): string | null { return this.props.cancellationReason; }
+  get payrollRunId(): string | null { return this.props.payrollRunId; }
 }

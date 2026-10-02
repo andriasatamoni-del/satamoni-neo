@@ -3,6 +3,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { ConversionOrderCompletedEvent } from "../../../production/domain/events/conversion-order-completed.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس فلسفة post-stocktake-variance-journal-entry.handler.ts - التصنيع بيحوّل قيمة داخل نفس حساب
 // المخزون المشترك 1400 (خام → تام): مدين المنتج التام/دائن المكونات المستهلكة، وأي فرق بينهم (فرق إنتاج/
@@ -21,15 +22,15 @@ export class PostConversionOrderJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: ConversionOrderCompletedEvent): Promise<void> {
-    const inventoryAccount = await this.accounts.findByCode(INVENTORY_ACCOUNT_CODE);
-    if (!inventoryAccount) {
-      this.logger.warn(`تخطّي ترحيل قيد تصنيع ${event.conversionOrderId} - دليل الحسابات لسه مش معدّ (${INVENTORY_ACCOUNT_CODE})`);
-      return;
-    }
+    const needsVariance = Math.abs(round2(event.finishedGoodsValue) - round2(event.rawMaterialValue)) > 0.0000001;
+    const acc = await this.posting.requireAccounts(needsVariance ? [INVENTORY_ACCOUNT_CODE, VARIANCE_ACCOUNT_CODE] : [INVENTORY_ACCOUNT_CODE], "conversion_order", event.conversionOrderId);
+    if (!acc) return;
+    const inventoryAccount = acc[INVENTORY_ACCOUNT_CODE];
 
     const finishedGoodsValue = round2(event.finishedGoodsValue);
     const rawMaterialValue = round2(event.rawMaterialValue);
@@ -40,11 +41,7 @@ export class PostConversionOrderJournalEntryHandler {
     if (rawMaterialValue > 0) lines.push({ accountId: inventoryAccount.id, debit: 0, credit: rawMaterialValue });
 
     if (Math.abs(varianceAmount) > 0.0000001) {
-      const varianceAccount = await this.accounts.findByCode(VARIANCE_ACCOUNT_CODE);
-      if (!varianceAccount) {
-        this.logger.warn(`تخطّي ترحيل قيد تصنيع ${event.conversionOrderId} - حساب فرق الإنتاج لسه مش معدّ (${VARIANCE_ACCOUNT_CODE})`);
-        return;
-      }
+      const varianceAccount = acc[VARIANCE_ACCOUNT_CODE];
       if (varianceAmount > 0) lines.push({ accountId: varianceAccount.id, debit: 0, credit: varianceAmount });
       else lines.push({ accountId: varianceAccount.id, debit: -varianceAmount, credit: 0 });
     }
@@ -59,6 +56,6 @@ export class PostConversionOrderJournalEntryHandler {
       lines,
       createdBy: event.createdBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

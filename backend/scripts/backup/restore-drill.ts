@@ -7,7 +7,8 @@ import { promises as fsp } from "node:fs";
 import { Client, Pool } from "pg";
 import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from "kysely";
 import { parseBackupFiles } from "./retention";
-import { backupDirFromEnv } from "./backup";
+import { backupDirFromEnv, verifyBackupFile } from "./backup";
+import { compareDatabases } from "./compare-databases";
 import { pgEnvFromUrl, withDatabase } from "./pg-env";
 
 const execFileAsync = promisify(execFile);
@@ -33,6 +34,9 @@ export async function runRestoreDrill(input: {
   backupFile?: string;
   keep?: boolean;
   log?: (s: DrillStep) => void;
+  // optional: compare the restored copy with this source on critical business data (BL-13)
+  compareSourceUrl?: string;
+  tolerateSourceGrowth?: boolean;
 }): Promise<DrillReport> {
   const steps: DrillStep[] = [];
   const record = (step: string, ok: boolean, detail?: string) => {
@@ -51,6 +55,13 @@ export async function runRestoreDrill(input: {
   }
   if (!fs.existsSync(backupFile)) throw new Error(`ملف النسخة مش موجود: ${backupFile}`);
   record("تحديد النسخة الاحتياطية", true, path.basename(backupFile));
+  try {
+    const v = await verifyBackupFile(backupFile);
+    record("سلامة الملف (sha256 + فهرس pg_restore)", true, `${v.entries} عنصر، sha256=${v.sha256.slice(0, 16)}…`);
+  } catch (err) {
+    record("سلامة الملف (sha256 + فهرس pg_restore)", false, err instanceof Error ? err.message : String(err));
+    return { success: false, steps, backupFile, scratchDatabase: "" };
+  }
 
   const scratchDatabase = `satamoni_neo_restore_drill_${Date.now()}`;
   const admin = new Client({ connectionString: withDatabase(input.serverUrl, "postgres"), connectionTimeoutMillis: 10_000 });
@@ -114,8 +125,19 @@ export async function runRestoreDrill(input: {
       await scratch.end();
     }
 
+    // BL-13: compare with the live/source database BEFORE migrating the restored copy (migrating changes it)
+    let compareOk = true;
+    if (input.compareSourceUrl) {
+      const cmp = await compareDatabases(input.compareSourceUrl, scratchUrl, { tolerateSourceGrowth: input.tolerateSourceGrowth });
+      compareOk = record(
+        "مقارنة النسخة المسترجعة بالأصل (جداول، عدّادات، أرصدة، أدوار، migrations)",
+        cmp.ok,
+        cmp.ok ? `${cmp.rows.length} مقياس متطابق` : cmp.rows.filter((r) => !r.ok).map((r) => `${r.metric}: source=${r.source} restored=${r.restored}`).join(" | ")
+      );
+    }
+
     const migrationsOk = await migrateRestoredCopy(scratchUrl, record);
-    success = schemaOk && dataOk && accountingOk && migrationsOk;
+    success = schemaOk && dataOk && accountingOk && migrationsOk && compareOk;
   } finally {
     if (!input.keep) {
       await admin.query(`DROP DATABASE IF EXISTS "${scratchDatabase}" WITH (FORCE)`);
@@ -165,6 +187,8 @@ async function main() {
     serverUrl,
     backupFile: backupArg ? backupArg.slice("--backup=".length) : undefined,
     keep: args.includes("--keep"),
+    compareSourceUrl: process.env.RESTORE_DRILL_COMPARE_SOURCE_URL || undefined,
+    tolerateSourceGrowth: process.env.RESTORE_DRILL_SOURCE_IS_LIVE === "true",
     log: (s) => console.log(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? ` - ${s.detail}` : ""}`),
   });
   console.log(`\n=== النتيجة النهائية: ${report.success ? "نجاح ✓" : "فشل ✗"} ===`);

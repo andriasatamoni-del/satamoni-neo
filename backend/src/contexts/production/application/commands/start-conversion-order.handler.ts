@@ -11,6 +11,7 @@ import {
   type StockMovementRepositoryPort,
 } from "../../../inventory/domain/ports/stock-movement-repository.port";
 import { StockMovement } from "../../../inventory/domain/stock-movement.aggregate";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface StartConversionOrderCommand {
   conversionOrderId: string;
@@ -26,17 +27,27 @@ export class StartConversionOrderHandler {
   constructor(
     @Inject(CONVERSION_ORDER_REPOSITORY) private readonly conversionOrders: ConversionOrderRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
-    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort
+    @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1 (BL-03): one transaction + row lock; the state is validated before any ingredient is consumed, so concurrent
+  // starts consume the ingredients exactly once and a rejected start writes nothing.
   async execute(command: StartConversionOrderCommand): Promise<ConversionOrder> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: StartConversionOrderCommand): Promise<ConversionOrder> {
+    if (!(await this.tx.lockRow("conversion_orders", command.conversionOrderId))) throw new ConversionOrderNotFoundError();
     const order = await this.conversionOrders.findById(command.conversionOrderId);
     if (!order) throw new ConversionOrderNotFoundError();
+    order.assertStartable();
 
     const overrideByItem = new Map((command.actualConsumption ?? []).map((a) => [a.ingredientItemId, a.actualQuantity]));
     const consumptions: { ingredientItemId: string; actualQuantity: number; unitCost: number | null; movementId: string }[] = [];
 
-    for (const line of order.inputLines) {
+    const inputLines = [...order.inputLines].sort((a, b) => (a.ingredientItemId < b.ingredientItemId ? -1 : a.ingredientItemId > b.ingredientItemId ? 1 : 0));
+    for (const line of inputLines) {
       const actualQuantity = overrideByItem.get(line.ingredientItemId) ?? line.plannedQuantity;
       const inventoryItem = await this.inventoryItems.findById(line.ingredientItemId);
       const allowNegative = inventoryItem?.negativeStockPolicy === "ALLOW_WITH_APPROVAL" && !!command.stockApproved;

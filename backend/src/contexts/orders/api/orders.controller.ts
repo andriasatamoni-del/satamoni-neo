@@ -13,11 +13,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { OrdersDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Order } from "../domain/order.aggregate";
 
 @Controller("orders")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
+@BranchScoped()
 @UseFilters(OrdersDomainErrorFilter)
 export class OrdersController {
   constructor(
@@ -50,12 +52,14 @@ export class OrdersController {
   }
 
   @Patch(":id/status")
+  @BranchResource("orders")
   @RequirePermission("orders.manage")
   async updateStatus(@Param("id") id: string, @Body() dto: UpdateOrderStatusDto) {
     return toPublicOrder(await this.updateOrderStatus.execute({ orderId: id, ...dto }));
   }
 
   @Patch(":id/kitchen-status")
+  @BranchResource("orders")
   @RequirePermission("kitchen.advance")
   async updateKitchenStatus(@Param("id") id: string, @Body() dto: AdvanceKitchenStatusDto) {
     return toPublicOrder(await this.advanceKitchenStatus.execute({ orderId: id, kitchenStatus: dto.kitchenStatus }));
@@ -65,6 +69,7 @@ export class OrdersController {
   // الاسترجاع اللي Talabat cancellation بيستخدمه (CancelTalabatOrderHandler)، متاح هنا كمان لأي إلغاء
   // يدوي من الكاشير/مدير الفرع (نفس مفهوم "void order" بالريبو القديم)
   @Patch(":id/cancel")
+  @BranchResource("orders")
   @RequirePermission("orders.manage")
   async cancel(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicOrder(await this.cancelOrder.execute({ orderId: id, cancelledBy: req.user.id }));

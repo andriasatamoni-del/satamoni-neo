@@ -4,6 +4,7 @@ import {
   TALABAT_INTEGRATION_ERROR_REPOSITORY,
   type TalabatIntegrationErrorRepositoryPort,
 } from "../../domain/ports/talabat-integration-error-repository.port";
+import { businessDateString, businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 export interface TalabatDashboardSummary {
   // النظام مصمَّم بالكامل (webhook/مزامنة/إلغاء/مطابقة/لوحة) بس الاتصال الفعلي بـTalabat نفسه لسه
@@ -23,8 +24,9 @@ export class GetTalabatDashboardSummaryHandler {
 
   async execute(input: { branchId?: string; date?: Date }): Promise<TalabatDashboardSummary> {
     const day = input.date ?? new Date();
-    const from = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-    const to = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999);
+    const dayStr = businessDateString(day);
+    const from = businessDayStartUtc(dayStr);
+    const to = businessDayEndUtc(dayStr);
 
     const todayOrders = await this.talabatOrders.list({ branchId: input.branchId, from, to });
     const openErrors = await this.integrationErrors.list({ status: "OPEN" });

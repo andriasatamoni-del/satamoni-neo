@@ -12,6 +12,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { PrintJob } from "../domain/print-job.aggregate";
 
@@ -27,7 +28,7 @@ function toPublicJob(job: PrintJob) {
 // الـAPI اللي وكيل الطباعة المحلي بيتعامل معاه بس (نفس فلسفة الريبو القديم: مفيش وصول مباشر لقاعدة
 // البيانات من الوكيل خالص، كل حاجة عن طريق الـHTTP API ده بحساب مستخدم حقيقي عادي)
 @Controller("printing/print-jobs")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
 @UseFilters(PrintingDomainErrorFilter)
 export class PrintJobsController {
   constructor(
@@ -40,6 +41,7 @@ export class PrintJobsController {
     private readonly listPrintJobs: ListPrintJobsHandler
   ) {}
 
+  @BranchScoped()
   @Get()
   @RequirePermission("print_jobs.view", "print_jobs.manage_queue")
   async list(
@@ -56,36 +58,48 @@ export class PrintJobsController {
     );
   }
 
+  @BranchScoped()
+  @BranchResource("print_jobs")
   @Post(":id/claim")
   @RequirePermission("print_jobs.manage_queue")
   async claim(@Param("id") id: string) {
     return toPublicJob(await this.claimPrintJob.execute({ printJobId: id }));
   }
 
+  @BranchScoped()
+  @BranchResource("print_jobs")
   @Post(":id/printed")
   @RequirePermission("print_jobs.manage_queue")
   async printed(@Param("id") id: string) {
     return toPublicJob(await this.markPrinted.execute({ printJobId: id }));
   }
 
+  @BranchScoped()
+  @BranchResource("print_jobs")
   @Post(":id/failed")
   @RequirePermission("print_jobs.manage_queue")
   async failed(@Param("id") id: string, @Body() dto: MarkPrintJobFailedDto) {
     return toPublicJob(await this.markFailed.execute({ printJobId: id, error: dto.error }));
   }
 
+  @BranchScoped()
+  @BranchResource("print_jobs")
   @Post(":id/retry")
   @RequirePermission("print_jobs.manage_queue")
   async retry(@Param("id") id: string) {
     return toPublicJob(await this.retryPrintJob.execute({ printJobId: id }));
   }
 
+  @BranchScoped()
+  @BranchResource("orders", { param: "orderId" })
   @Post("delivery-handover/:orderId")
   @RequirePermission("orders.manage")
   async deliveryHandover(@Param("orderId") orderId: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicJob(await this.queueDeliveryHandover.execute({ orderId, createdBy: req.user.id }));
   }
 
+  @BranchScoped()
+  @BranchResource("orders", { param: "orderId" })
   @Post("dine-in-bill/:orderId")
   @RequirePermission("orders.view", "orders.create")
   async dineInBill(@Param("orderId") orderId: string, @Req() req: Request & { user: AuthenticatedUser }) {

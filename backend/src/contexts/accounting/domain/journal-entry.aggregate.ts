@@ -7,6 +7,7 @@ import {
   JournalEntryNotPostedError,
   UnbalancedJournalEntryError,
 } from "./errors";
+import { businessDate } from "../../../shared/time/business-date";
 
 export const JOURNAL_ENTRY_STATUSES = ["DRAFT", "POSTED", "REVERSED"] as const;
 export type JournalEntryStatus = (typeof JOURNAL_ENTRY_STATUSES)[number];
@@ -89,7 +90,8 @@ export class JournalEntry {
     const now = new Date();
     return new JournalEntry(randomUUID(), {
       entryNumber: null,
-      entryDate: input.entryDate ?? now,
+      // BL-12: the accounting date is the Cairo business date of the transaction, never the UTC date
+      entryDate: input.entryDate ?? businessDate(now),
       description: input.description ?? null,
       sourceType: input.sourceType,
       sourceId: input.sourceId ?? null,
@@ -145,7 +147,7 @@ export class JournalEntry {
 
     return new JournalEntry(randomUUID(), {
       entryNumber: null,
-      entryDate: now,
+      entryDate: businessDate(now),
       description: `عكس القيد ${this.props.entryNumber ?? this.id}${input.reason ? ` - ${input.reason}` : ""}`,
       sourceType: "reversal",
       sourceId: this.id,

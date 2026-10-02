@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -74,7 +74,7 @@ export class PrintJobNotFoundError extends DomainError {
   }
 }
 
-export class PrintJobNotPendingError extends DomainError {
+export class PrintJobNotPendingError extends ConflictDomainError {
   constructor() {
     super("أمر الطباعة ده مش PENDING (اتحجز أو اتطبع بالفعل)");
   }

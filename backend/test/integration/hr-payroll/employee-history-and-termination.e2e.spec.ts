@@ -209,7 +209,7 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
 
     await request(app.getHttpServer())
       .post(`/hr/payroll-runs/${payrollRunId}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Authorization", `Bearer ${accountantToken}`) // BL-05: the registering admin can not approve his own run
       .send({});
 
     const res = await request(app.getHttpServer())

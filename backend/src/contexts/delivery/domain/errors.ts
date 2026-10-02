@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -26,7 +26,7 @@ export class UnknownDispatchStatusError extends DomainError {
   }
 }
 
-export class DeliveryAssignmentAlreadyFinalizedError extends DomainError {
+export class DeliveryAssignmentAlreadyFinalizedError extends ConflictDomainError {
   constructor() {
     super("طلب التوصيل ده اتقفل بالفعل (اتسلّم/فشل/اترجّع)، مينفعش تتعدّل حالته");
   }
@@ -38,13 +38,13 @@ export class DeliveryAssignmentNotFoundError extends DomainError {
   }
 }
 
-export class OrderAlreadyAssignedError extends DomainError {
+export class OrderAlreadyAssignedError extends ConflictDomainError {
   constructor() {
     super("الطلب ده اتحول لسائق بالفعل");
   }
 }
 
-export class DeliveryAssignmentAlreadySettledError extends DomainError {
+export class DeliveryAssignmentAlreadySettledError extends ConflictDomainError {
   constructor() {
     super("طلب التوصيل ده اتحسب في تسوية سابقة بالفعل");
   }
@@ -62,7 +62,7 @@ export class DriverSettlementNotFoundError extends DomainError {
   }
 }
 
-export class DriverSettlementNotPendingReviewError extends DomainError {
+export class DriverSettlementNotPendingReviewError extends ConflictDomainError {
   constructor() {
     super("تسوية السائق دي مش محتاجة مراجعة فرق");
   }
@@ -74,13 +74,13 @@ export class InvalidHandoverAmountError extends DomainError {
   }
 }
 
-export class DriverAttendanceShiftAlreadyActiveError extends DomainError {
+export class DriverAttendanceShiftAlreadyActiveError extends ConflictDomainError {
   constructor() {
     super("السائق ده لسه في شيفت حضور شغال - لازم يقفله الأول");
   }
 }
 
-export class DriverAttendanceShiftNotActiveError extends DomainError {
+export class DriverAttendanceShiftNotActiveError extends ConflictDomainError {
   constructor() {
     super("شيفت الحضور ده مش شغال (اتقفل بالفعل)");
   }

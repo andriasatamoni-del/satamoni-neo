@@ -9,6 +9,7 @@ import {
   type ReconciliationRecordRepositoryPort,
 } from "../../domain/ports/reconciliation-record-repository.port";
 import { ListExceptionsHandler } from "./list-exceptions.handler";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 export interface DailyOwnerReportQuery {
   date: string; // YYYY-MM-DD
@@ -40,8 +41,8 @@ export class GetDailyOwnerReportHandler {
   ) {}
 
   async execute(query: DailyOwnerReportQuery): Promise<DailyOwnerReport> {
-    const dayStart = new Date(`${query.date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${query.date}T23:59:59.999Z`);
+    const dayStart = businessDayStartUtc(query.date);
+    const dayEnd = businessDayEndUtc(query.date);
 
     const dayPayments = await this.payments.list({ branchId: query.branchId, fromDate: dayStart, toDate: dayEnd });
 

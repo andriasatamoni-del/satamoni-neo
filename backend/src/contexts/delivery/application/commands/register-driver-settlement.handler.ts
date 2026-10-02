@@ -19,6 +19,7 @@ import { DriverSettlementCreatedEvent } from "../../domain/events/driver-settlem
 import { EventBusService } from "../../../../shared/events/event-bus.service";
 import { DRIVER_ORDER_BONUS_EGP } from "../../domain/driver-bonus-policy";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
+import { TransactionService } from "../../../../shared/database/transaction-context";
 
 export interface RegisterDriverSettlementCommand {
   driverId: string;
@@ -40,10 +41,17 @@ export class RegisterDriverSettlementHandler {
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     @Inject(PAYMENT_METHOD_REPOSITORY) private readonly paymentMethods: PaymentMethodRepositoryPort,
     private readonly eventBus: EventBusService,
-    private readonly getPosSettings: GetPosSettingsHandler
+    private readonly getPosSettings: GetPosSettingsHandler,
+    private readonly tx: TransactionService
   ) {}
 
+  // Phase 3.1: one transaction per business command - the state change, its side effects and the critical event
+  // subscribers (accounting posting) commit or roll back together.
   async execute(command: RegisterDriverSettlementCommand): Promise<DriverSettlement> {
+    return this.tx.run(() => this.executeInTransaction(command));
+  }
+
+  private async executeInTransaction(command: RegisterDriverSettlementCommand): Promise<DriverSettlement> {
     if (!(await this.drivers.findById(command.driverId))) throw new DriverNotFoundError();
 
     const driverAssignments = (await this.assignments.list({ driverId: command.driverId })).filter(

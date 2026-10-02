@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import type { DashboardSummary, DashboardSummaryReaderPort } from "../../domain/ports/dashboard-summary-reader.port";
+import { businessDateString } from "../../../../shared/time/business-date";
 
 @Injectable()
 export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort {
@@ -25,7 +26,7 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
 
     const dailyMap = new Map<string, number>();
     for (const o of activeOrders) {
-      const date = o.created_at.toISOString().slice(0, 10);
+      const date = businessDateString(o.created_at);
       dailyMap.set(date, (dailyMap.get(date) ?? 0) + Number(o.total));
     }
     const dailyTrend = [...dailyMap.entries()]
@@ -100,8 +101,8 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
       .sort((a, b) => b.amount - a.amount);
 
     return {
-      from: input.fromTs.toISOString().slice(0, 10),
-      to: input.toTs.toISOString().slice(0, 10),
+      from: businessDateString(input.fromTs),
+      to: businessDateString(input.toTs),
       revenue,
       orderCount,
       cancelledCount,

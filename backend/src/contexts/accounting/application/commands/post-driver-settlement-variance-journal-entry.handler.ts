@@ -4,6 +4,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { DriverSettlementCreatedEvent } from "../../../delivery/domain/events/driver-settlement-created.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // نفس فلسفة post-shift-variance-journal-entry.handler.ts بالحرف - أكواد حقيقية من دليل الحسابات
 // (1100 الكاش، 6950 فروق كاش، نفس الكود المستخدم لفروق شيفت الكاشير). فرق موجب (السائق سلّم أكتر من
@@ -17,18 +18,17 @@ export class PostDriverSettlementVarianceJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
   async handle(event: DriverSettlementCreatedEvent): Promise<void> {
     if (event.handoverVariance === 0) return;
 
-    const cashAccount = await this.accounts.findByCode(CASH_ACCOUNT_CODE);
-    const varianceAccount = await this.accounts.findByCode(VARIANCE_ACCOUNT_CODE);
-    if (!cashAccount || !varianceAccount) {
-      this.logger.warn(`تخطّي ترحيل فرق تسوية السائق ${event.settlementId} - دليل الحسابات لسه مش معدّ`);
-      return;
-    }
+    const acc = await this.posting.requireAccounts([CASH_ACCOUNT_CODE, VARIANCE_ACCOUNT_CODE], "driver_settlement", event.settlementId);
+    if (!acc) return;
+    const cashAccount = acc[CASH_ACCOUNT_CODE];
+    const varianceAccount = acc[VARIANCE_ACCOUNT_CODE];
 
     const amount = Math.round(Math.abs(event.handoverVariance) * 100) / 100;
     const surplus = event.handoverVariance > 0;
@@ -48,6 +48,6 @@ export class PostDriverSettlementVarianceJournalEntryHandler {
           ],
       createdBy: event.settledBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

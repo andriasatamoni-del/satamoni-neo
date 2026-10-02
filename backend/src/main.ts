@@ -1,4 +1,7 @@
 import "dotenv/config";
+// Dates read from Postgres `date` columns are materialised as JS Dates at local midnight; business logic assumes the process runs in
+// UTC (Render default). Pin it so a different host TZ can not shift business dates.
+process.env.TZ = process.env.TZ || "UTC";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";

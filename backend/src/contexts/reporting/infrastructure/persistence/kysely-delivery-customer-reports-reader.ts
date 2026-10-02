@@ -11,11 +11,12 @@ import type {
   ExpensesReport,
   PurchasesReport,
 } from "../../domain/ports/delivery-customer-reports-reader.port";
+import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
 const DOW_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
 function dayRange(from: string, to: string): { fromTs: Date; toTs: Date } {
-  return { fromTs: new Date(`${from}T00:00:00.000`), toTs: new Date(`${to}T23:59:59.999`) };
+  return { fromTs: businessDayStartUtc(from), toTs: businessDayEndUtc(to) };
 }
 
 @Injectable()
@@ -111,7 +112,7 @@ export class KyselyDeliveryCustomerReportsReader implements DeliveryCustomerRepo
     let byHourQuery = this.db
       .selectFrom("orders")
       .select((eb) => [
-        sql<number>`EXTRACT(HOUR FROM orders.created_at)::int`.as("hour"),
+        sql<number>`EXTRACT(HOUR FROM (orders.created_at AT TIME ZONE 'Africa/Cairo'))::int`.as("hour"),
         eb.fn.countAll().as("orders_count"),
         eb.fn.sum<number>("orders.total").as("revenue"),
       ])
@@ -123,7 +124,7 @@ export class KyselyDeliveryCustomerReportsReader implements DeliveryCustomerRepo
     let byDowQuery = this.db
       .selectFrom("orders")
       .select((eb) => [
-        sql<number>`EXTRACT(DOW FROM orders.created_at)::int`.as("dow"),
+        sql<number>`EXTRACT(DOW FROM (orders.created_at AT TIME ZONE 'Africa/Cairo'))::int`.as("dow"),
         eb.fn.countAll().as("orders_count"),
         eb.fn.sum<number>("orders.total").as("revenue"),
       ])

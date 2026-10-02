@@ -11,10 +11,12 @@ import { GetDeliveryCustomerReportsHandler } from "../application/queries/get-de
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
+import { BranchScopeGuard, BranchScoped, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 
 @Controller("reports")
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
+@BranchScoped()
 export class ReportsController {
   constructor(
     private readonly getDashboardSummary: GetDashboardSummaryHandler,
@@ -37,7 +39,7 @@ export class ReportsController {
   ) {
     // نفس نطاق الريبو القديم بالظبط: مدير الفرع مقفول على فرعه، أدمن ومحاسب يقدروا يشوفوا أي فرع
     // (أو كل الفروع سوا لو معندهمش فلتر) - راجع docs بحث الـReports
-    const effectiveBranchId = req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
+    const effectiveBranchId = this.effectiveBranchId(req, branchId);
     return this.getDashboardSummary.execute({ branchId: effectiveBranchId, from, to });
   }
 
@@ -50,11 +52,12 @@ export class ReportsController {
     @Query("to") to: string | undefined,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
-    const effectiveBranchId = req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
+    const effectiveBranchId = this.effectiveBranchId(req, branchId);
     return this.getFoodCostReport.execute({ branchId: effectiveBranchId, from, to });
   }
 
   // نفس تقرير تكلفة الطعام لكن مجمّع على مستوى كل فرع - أساس بطاقة صحة الفروع (Branch Health) لاحقًا
+  @CompanyWideOnly()
   @Get("food-cost/by-branch")
   @RequirePermission("reports.view")
   async foodCostByBranch(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
@@ -72,12 +75,13 @@ export class ReportsController {
     @Query("to") to: string | undefined,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
-    const effectiveBranchId = req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
+    const effectiveBranchId = this.effectiveBranchId(req, branchId);
     return this.getActionCenter.execute({ branchId: effectiveBranchId, from, to });
   }
 
   // بطاقة صحة الفروع - مقارنة كل الفروع في مكان واحد (إيراد/تكلفة طعام%/فرق كاش/مخزون سالب/شكاوى)،
   // أدمن/محاسب بس (نفس نطاق الريبو القديم - المقارنة الشاملة بين الفروع مش حاجة مدير فرع واحد يحتاجها)
+  @CompanyWideOnly()
   @Get("branch-health")
   @RequirePermission("reports.branch_health")
   async branchHealth(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
@@ -85,7 +89,9 @@ export class ReportsController {
   }
 
   private effectiveBranchId(req: Request & { user: AuthenticatedUser }, branchId: string | undefined): string | null {
-    return req.user.role === "branch_manager" ? req.user.branchId : (branchId ?? null);
+    // server-side scope: a branch-bound user is always pinned to its own branch (a foreign branchId is rejected by BranchScopeGuard)
+    const scope = branchScopeOf(req.user);
+    return scope.kind === "branch" ? scope.branchId : (branchId ?? null);
   }
 
   // ملخّص يومي لكل فرع - عدد الطلبات والإيراد لكل يوم في المدى
@@ -173,6 +179,7 @@ export class ReportsController {
   }
 
   // كل الوصفات (مكوّناتها وتكلفتها) - لمراجعة جودة البيانات (وصفة ناقصة/مكوّن من غير تكلفة)
+  @CompanyWideOnly()
   @Get("recipes")
   @RequirePermission("reports.view")
   async recipes() {
@@ -221,6 +228,7 @@ export class ReportsController {
   }
 
   // مقارنة رصيد صنف (أو كل الأصناف) بين كل الفروع جنب بعض - أدمن/محاسب بس، زي بطاقة صحة الفروع بالظبط
+  @CompanyWideOnly()
   @Get("inventory-comparison")
   @RequirePermission("reports.branch_health")
   async inventoryComparison(@Query("inventoryItemId") inventoryItemId: string | undefined) {
@@ -270,6 +278,7 @@ export class ReportsController {
 
   // تاريخ سعر صنف عبر كل أوامر الشراء (عند مورد معيّن أو كل الموردين) - مستنتج من بنود الأوامر الفعلية
   // مش من كتالوج أسعار منفصل (راجع تعليق procurement-reports-reader.port.ts)
+  @CompanyWideOnly()
   @Get("purchase-price-history")
   @RequirePermission("purchasing.view")
   async purchasePriceHistory(@Query("inventoryItemId") inventoryItemId: string, @Query("supplierId") supplierId: string | undefined) {
@@ -289,6 +298,7 @@ export class ReportsController {
   }
 
   // أداء مورد معيّن في المدى - معدّل التنفيذ، ومتوسط مدة التسليم (بالأيام) لحد تأكيد إذن الاستلام
+  @CompanyWideOnly()
   @Get("supplier-performance")
   @RequirePermission("purchasing.view")
   async supplierPerformance(

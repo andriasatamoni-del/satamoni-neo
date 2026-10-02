@@ -132,12 +132,18 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     expect(res.body.revenue).toBeGreaterThanOrEqual(200);
   });
 
-  test("مدير الفرع مقفول على فرعه حتى لو بعت branchId مختلف", async () => {
-    const res = await request(app.getHttpServer())
+  test("مدير الفرع مقفول على فرعه: branchId لفرع تاني -> 403 (Phase 3.1 / BL-11)، وبدون branchId بيتثبّت على فرعه", async () => {
+    const foreign = await request(app.getHttpServer())
       .get(`/reports/dashboard?branchId=00000000-0000-0000-0000-000000000000&from=${today}&to=${today}`)
       .set("Authorization", `Bearer ${branchManagerToken}`);
-    expect(res.status).toBe(200);
-    expect(res.body.revenue).toBe(200); // نفس نتيجة فرعه هو، مش صفر
+    expect(foreign.status).toBe(403);
+    expect(foreign.body.revenue).toBeUndefined();
+
+    const own = await request(app.getHttpServer())
+      .get(`/reports/dashboard?from=${today}&to=${today}`)
+      .set("Authorization", `Bearer ${branchManagerToken}`);
+    expect(own.status).toBe(200);
+    expect(own.body.revenue).toBe(200); // نفس نتيجة فرعه هو، مش صفر
   });
 
   test("كاشير معندوش reports.view -> 403", async () => {

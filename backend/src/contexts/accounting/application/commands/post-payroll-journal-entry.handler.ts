@@ -3,6 +3,7 @@ import { JOURNAL_ENTRY_REPOSITORY, type JournalEntryRepositoryPort } from "../..
 import { ACCOUNT_REPOSITORY, type AccountRepositoryPort } from "../../domain/ports/account-repository.port";
 import { JournalEntry } from "../../domain/journal-entry.aggregate";
 import type { PayrollRunApprovedEvent } from "../../../hr-payroll/domain/events/payroll-run-approved.event";
+import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // كود حسابات "الرواتب" (مصروف) و"رواتب مستحقة" (التزام) - نفس أكواد دليل الحسابات الفعلي في الريبو
 // القديم بالظبط (6100/2400)، نفس فلسفة post-order-sale-journal-entry.handler.ts بالحرف
@@ -15,22 +16,20 @@ export class PostPayrollJournalEntryHandler {
 
   constructor(
     @Inject(JOURNAL_ENTRY_REPOSITORY) private readonly entries: JournalEntryRepositoryPort,
-    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort
+    @Inject(ACCOUNT_REPOSITORY) private readonly accounts: AccountRepositoryPort,
+    private readonly posting: AccountingPostingService
   ) {}
 
-  async handle(event: PayrollRunApprovedEvent): Promise<void> {
+  async handle(event: PayrollRunApprovedEvent, opts?: { entryDate?: Date }): Promise<void> {
     if (event.totalNetPay <= 0) return;
 
-    const expenseAccount = await this.accounts.findByCode(SALARIES_EXPENSE_ACCOUNT_CODE);
-    const payableAccount = await this.accounts.findByCode(SALARIES_PAYABLE_ACCOUNT_CODE);
-    if (!expenseAccount || !payableAccount) {
-      this.logger.warn(
-        `تخطّي ترحيل قيد رواتب لقائمة ${event.payrollRunId} - دليل الحسابات لسه مش معدّ (${SALARIES_EXPENSE_ACCOUNT_CODE}/${SALARIES_PAYABLE_ACCOUNT_CODE})`
-      );
-      return;
-    }
+    const acc = await this.posting.requireAccounts([SALARIES_EXPENSE_ACCOUNT_CODE, SALARIES_PAYABLE_ACCOUNT_CODE], "payroll_run", event.payrollRunId);
+    if (!acc) return;
+    const expenseAccount = acc[SALARIES_EXPENSE_ACCOUNT_CODE];
+    const payableAccount = acc[SALARIES_PAYABLE_ACCOUNT_CODE];
 
     const entry = JournalEntry.register({
+      entryDate: opts?.entryDate,
       sourceType: "payroll_run",
       sourceId: event.payrollRunId,
       description: `قيد رواتب تلقائي لشهر ${event.month}/${event.year}`,
@@ -40,6 +39,6 @@ export class PostPayrollJournalEntryHandler {
       ],
       createdBy: event.approvedBy,
     });
-    await this.entries.save(entry);
+    await this.posting.postOnce(entry);
   }
 }

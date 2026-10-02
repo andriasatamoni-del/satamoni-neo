@@ -51,6 +51,7 @@ function page(title: string, bodyHtml: string, paperWidthMm = 80): string {
   .center { text-align: center; }
   .meta { font-size: 10px; margin-bottom: 1mm; word-wrap: break-word; }
   .sep { border-top: 1px dashed #000; margin: 2mm 0; }
+  .vat-note { text-align: center; font-size: 0.85em; padding-top: 1mm; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   td, th { padding: 1mm 0; font-size: 12px; text-align: right; vertical-align: top; word-wrap: break-word; }
   td.qty, th.qty { width: 16mm; white-space: nowrap; }
@@ -86,17 +87,21 @@ function itemsTable(items: PrintItemLine[], { withPrices }: { withPrices: boolea
   return `<table><tbody>${rows}</tbody></table>`;
 }
 
-function totalsTable(order: PrintOrderSummary): string {
+// Accepted Phase 3 decision: menu prices are VAT-inclusive (no order-level VAT posting) - customer-facing documents only SAY so.
+export const VAT_INCLUSIVE_NOTE = "الأسعار شاملة ضريبة القيمة المضافة";
+
+function totalsTable(order: PrintOrderSummary, opts: { vatNote?: boolean } = {}): string {
   return `<div class="sep"></div><table class="totals"><tbody>
     <tr><td>الإجمالي الفرعي</td><td class="val price">${money(order.subtotal)}</td></tr>
     ${order.discount ? `<tr><td>الخصم</td><td class="val price">-${money(order.discount)}</td></tr>` : ""}
     <tr class="grand"><td>الإجمالي</td><td class="val price">${money(order.total)}</td></tr>
+    ${opts.vatNote ? `<tr><td colspan="2" class="vat-note">${VAT_INCLUSIVE_NOTE}</td></tr>` : ""}
     ${order.paymentMethodLabel ? `<tr><td>طريقة الدفع</td><td class="val">${esc(order.paymentMethodLabel)}</td></tr>` : ""}
   </tbody></table>`;
 }
 
 export function buildCustomerReceipt(input: { order: PrintOrderSummary; items: PrintItemLine[]; paperWidthMm?: number }): string {
-  const body = `<h1>إيصال العميل</h1>${header(input.order)}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order)}`;
+  const body = `<h1>إيصال العميل</h1>${header(input.order)}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order, { vatNote: true })}`;
   return page("إيصال العميل", body, input.paperWidthMm);
 }
 
@@ -132,14 +137,14 @@ export function buildDeliveryFinalReceipt(input: {
 }): string {
   const body = `<h1>إيصال تسليم دليفري</h1>${header(input.order, [
     input.order.customerName ? `<div class="meta">${esc(input.order.customerName)} - ${esc(input.order.customerPhone)}</div>` : "",
-  ])}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order)}`;
+  ])}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order, { vatNote: true })}`;
   return page("إيصال تسليم دليفري", body, input.paperWidthMm);
 }
 
 export function buildDineInBill(input: { order: PrintOrderSummary; items: PrintItemLine[]; paperWidthMm?: number }): string {
   const body = `<h1>فاتورة</h1>${header(input.order, [
     input.order.tableNumber ? `<div class="meta bold center">طاولة ${esc(input.order.tableNumber)}</div>` : "",
-  ])}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order)}`;
+  ])}${itemsTable(input.items, { withPrices: true })}${totalsTable(input.order, { vatNote: true })}`;
   return page("فاتورة", body, input.paperWidthMm);
 }
 

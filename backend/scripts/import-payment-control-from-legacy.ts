@@ -160,6 +160,8 @@ export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Ky
       decidedBy: await resolveUserId(row.decided_by),
       decidedAt: row.decided_at,
       legacyAdjustmentRequestId: row.id,
+      previousPaymentMethodId: existing?.previousPaymentMethodId ?? null,
+      previousAmount: existing?.previousAmount ?? null,
     });
     await adjustmentRepo.save(request);
     if (existing) adjustmentRequests.updated++;

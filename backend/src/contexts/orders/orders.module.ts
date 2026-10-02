@@ -16,6 +16,9 @@ import { SubmitOrderRatingHandler } from "./application/commands/submit-order-ra
 import { ListOrdersHandler } from "./application/queries/list-orders.handler";
 import { ListKdsBoardHandler } from "./application/queries/list-kds-board.handler";
 import { GetPublicOrderRatingHandler } from "./application/queries/get-public-order-rating.handler";
+import { SyncOrderPaymentMethodHandler } from "./application/commands/sync-order-payment-method.handler";
+import { EventBusService } from "../../shared/events/event-bus.service";
+import type { PaymentAdjustmentApprovedEvent } from "../payment-control/domain/events/payment-adjustment-approved.event";
 import { OrdersController } from "./api/orders.controller";
 import { OrderRatingsController } from "./api/order-ratings.controller";
 
@@ -30,6 +33,7 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
     UpdateOrderStatusHandler,
     AdvanceKitchenStatusHandler,
     SubmitOrderRatingHandler,
+    SyncOrderPaymentMethodHandler,
     ListOrdersHandler,
     ListKdsBoardHandler,
     GetPublicOrderRatingHandler,
@@ -37,9 +41,15 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
   exports: [ORDER_REPOSITORY, RegisterOrderHandler, CancelOrderHandler],
 })
 export class OrdersModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
+  constructor(
+    private readonly permissions: PermissionRegistry,
+    private readonly eventBus: EventBusService,
+    private readonly syncOrderPaymentMethod: SyncOrderPaymentMethodHandler
+  ) {}
 
   onModuleInit(): void {
+    // BL-06: critical - runs inside the payment-adjustment transaction
+    this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (e) => this.syncOrderPaymentMethod.handle(e), { critical: true });
     this.permissions.registerGroup({
       group: "orders",
       groupLabel: "الطلبات والبيع",

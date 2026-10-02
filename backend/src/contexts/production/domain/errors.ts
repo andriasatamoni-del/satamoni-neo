@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { DomainError, ConflictDomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -8,25 +8,25 @@ export class ConversionOrderNotFoundError extends DomainError {
   }
 }
 
-export class ConversionOrderNotDraftError extends DomainError {
+export class ConversionOrderNotDraftError extends ConflictDomainError {
   constructor() {
     super("أمر التحويل ده مش مسودة - غير قابل للاعتماد بالحالة دي");
   }
 }
 
-export class ConversionOrderNotApprovedError extends DomainError {
+export class ConversionOrderNotApprovedError extends ConflictDomainError {
   constructor() {
     super("أمر التحويل ده مش معتمد - مينفعش يبدأ بالحالة دي");
   }
 }
 
-export class ConversionOrderNotInProgressError extends DomainError {
+export class ConversionOrderNotInProgressError extends ConflictDomainError {
   constructor() {
     super("أمر التحويل ده مش قيد التنفيذ - مينفعش يُكمَّل بالحالة دي");
   }
 }
 
-export class ConversionOrderAlreadyFinalizedError extends DomainError {
+export class ConversionOrderAlreadyFinalizedError extends ConflictDomainError {
   constructor() {
     super("أمر التحويل ده اكتمل أو اتلغى بالفعل");
   }

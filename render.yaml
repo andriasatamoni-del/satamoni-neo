@@ -26,6 +26,8 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: "12h"
+      - key: ACCOUNTING_ENFORCEMENT
+        value: "strict" # Phase 3.1: القيد المحاسبي جزء من نفس transaction العملية (راجع backend/docs/PHASE31_REMEDIATION.md)
       - key: FRONTEND_ORIGIN
         sync: false # حدّده يدوي برابط الفرونت إند الفعلي بعد ما ينتشر (راجع DEPLOYMENT.md) - من
         # غيره الـCORS بيرجع لـ localhost:5173 بس (مفيد وقت التطوير، مش كافي في production)
