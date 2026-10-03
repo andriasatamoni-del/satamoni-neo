@@ -23,6 +23,10 @@ name: Daily database backup + restore drill
 #    checksum BEFORE decrypting (docs/BACKUP_AND_RECOVERY.md). Plaintext dumps are never uploaded.
 #  * `environment: production-backup` only NAMES an environment. Required reviewers and the "main only" deployment
 #    branch rule are GitHub settings that this file cannot enforce - see docs/BACKUP_AND_RECOVERY.md.
+#  * A failed (or cancelled) run opens ONE GitHub issue, "ALERT: scheduled database backup failed" (further failures add a
+#    comment to it); the next successful run comments and closes it. Only the separate `report` job can write issues
+#    (`issues: write`); it has no secrets, no environment, no checkout and no repository-write scope. The issue contains only
+#    the run link - never log content. Owner setup: Issues enabled and the repository watched - docs/BACKUP_AND_RECOVERY.md.
 on:
   schedule:
     - cron: "7 1 * * *" # 01:07 UTC = after Cairo midnight (after business-day close)
@@ -167,3 +171,54 @@ jobs:
             ${{ github.workspace }}/backups/*.dump.gpg.sha256
           retention-days: 30
           if-no-files-found: error
+
+  # Failure alert. Separate job on purpose: the backup job keeps `contents: read` only, while this one gets `issues: write`
+  # and nothing else. It never sees a production secret (no `secrets.*`, no environment) and never checks code out.
+  report:
+    needs: backup
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RESULT: ${{ needs.backup.result }}
+      EVENT: ${{ github.event_name }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open, update or close the backup alert issue
+        run: |
+          set -euo pipefail
+          TITLE="ALERT: scheduled database backup failed"
+          open=$(gh issue list --repo "$REPO" --state open --limit 100 --json number,title --jq '[.[] | select(.title == "ALERT: scheduled database backup failed")][0].number // empty')
+          case "$RESULT" in
+            success)
+              if [ -n "$open" ]; then
+                gh issue comment "$open" --repo "$REPO" --body "A backup run succeeded: $RUN_URL. Closing this alert. Confirm the encrypted artifact (and its .sha256) exists on that run."
+                gh issue close "$open" --repo "$REPO"
+              fi
+              ;;
+            failure|cancelled)
+              body="The database backup workflow ended with result '$RESULT' (trigger: $EVENT).
+
+          Run: $RUN_URL
+
+          Until a run succeeds there is NO new backup. Open the run, read the failed step, fix it, then run the workflow manually from main.
+          Likely causes: BACKUP_ENCRYPTION_KEY or DATABASE_URL missing from the production-backup environment, the database unreachable, a Postgres version newer than the pg_dump 17 client, or the restore drill failing.
+          Do not paste logs, URLs or secrets into this issue."
+              if [ -n "$open" ]; then
+                gh issue comment "$open" --repo "$REPO" --body "Another failed run (result '$RESULT', trigger: $EVENT): $RUN_URL"
+              else
+                gh issue create --repo "$REPO" --title "$TITLE" --body "$body"
+              fi
+              ;;
+            skipped)
+              echo "Backup job was skipped: nothing to report."
+              ;;
+            *)
+              echo "::error::unexpected backup result"
+              exit 1
+              ;;
+          esac
