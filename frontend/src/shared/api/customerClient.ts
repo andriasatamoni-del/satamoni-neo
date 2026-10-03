@@ -1,3 +1,5 @@
+import { friendlyErrorMessage } from "./errors";
+
 const CUSTOMER_TOKEN_STORAGE_KEY = "satamoni-neo:customer-token";
 
 // عميل API منفصل تمامًا عن shared/api/client.ts (بوابة الموظفين) - توكن العميل بسر مختلف تمامًا
@@ -36,8 +38,8 @@ export async function customerApiRequest<T>(path: string, options: { method?: st
 
   if (!res.ok) {
     const payload = await res.json().catch(() => null);
-    const message = payload?.error ?? payload?.message ?? `فشل الطلب (${res.status})`;
-    throw new CustomerApiError(Array.isArray(message) ? message.join(", ") : message, res.status);
+    const raw = payload?.error ?? payload?.message;
+    throw new CustomerApiError(friendlyErrorMessage(res.status, Array.isArray(raw) ? raw.join(", ") : raw), res.status);
   }
 
   if (res.status === 204) return undefined as T;

@@ -1,3 +1,5 @@
+import { apiErrorKind, friendlyErrorMessage, type ApiErrorKind } from "./errors";
+
 const TOKEN_STORAGE_KEY = "satamoni-neo:token";
 
 // محليًا: فاضي عمدًا - "/api/..." بترجع لـproxy فايت (vite.config.ts) اللي بيوجّهها للباك إند.
@@ -24,6 +26,11 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+
+  // 403 (صلاحية/نطاق فرع/فصل مهام) | 409 (تعارض حالة) | 503 (الخدمة/دليل الحسابات مش جاهز) - للصفحات اللي عايزة تتصرف حسب النوع
+  get kind(): ApiErrorKind {
+    return apiErrorKind(this.status);
+  }
 }
 
 export async function apiRequest<T>(
@@ -44,8 +51,8 @@ export async function apiRequest<T>(
     const payload = await res.json().catch(() => null);
     // فلاتر أخطاء الدومين في كل context بترجّع {error: ...} (راجع أي domain-error.filter.ts) - {message}
     // بس من NestJS ValidationPipe الافتراضي (array أحيانًا)
-    const message = payload?.error ?? payload?.message ?? `فشل الطلب (${res.status})`;
-    throw new ApiError(Array.isArray(message) ? message.join(", ") : message, res.status, payload);
+    const raw = payload?.error ?? payload?.message;
+    throw new ApiError(friendlyErrorMessage(res.status, Array.isArray(raw) ? raw.join(", ") : raw), res.status, payload);
   }
 
   if (res.status === 204) return undefined as T;

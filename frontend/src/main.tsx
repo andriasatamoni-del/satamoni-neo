@@ -5,8 +5,23 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./shared/auth/AuthContext";
 import { App } from "./App";
+import { ApiError } from "./shared/api/client";
 
-const queryClient = new QueryClient();
+// 403/409 والـ4xx عمومًا قرار نهائي من السيرفر - إعادة المحاولة التلقائية بتأخّر ظهور الرسالة ~7 ثواني من غير فايدة.
+// 503 (خدمة/دليل حسابات مش جاهز) ممكن يتحل لوحده فنحاول مرة واحدة بس. باقي الأخطاء (شبكة/5xx) على الافتراضي (3 مرات)
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        if (error instanceof ApiError) {
+          if (error.status === 503) return failureCount < 1;
+          if (error.status >= 400 && error.status < 500) return false;
+        }
+        return failureCount < 3;
+      },
+    },
+  },
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

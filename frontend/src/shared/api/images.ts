@@ -1,4 +1,5 @@
 import { API_BASE_URL, ApiError, getToken } from "./client";
+import { friendlyErrorMessage } from "./errors";
 
 // الصور المرفوعة بتتخزن كمسار نسبي للـAPI (/media/images/<id>) - الفرونت إند بيضيف عنوان الباك إند
 // قدامه. أي لينك كامل (https://...) بيتعرض زي ما هو
@@ -36,6 +37,6 @@ export async function uploadImage(file: File): Promise<{ id: string; url: string
     body,
   });
   const payload = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(payload?.error ?? payload?.message ?? "فشل رفع الصورة", res.status, payload);
+  if (!res.ok) throw new ApiError(friendlyErrorMessage(res.status, payload?.error ?? payload?.message) || "فشل رفع الصورة", res.status, payload);
   return payload;
 }
