@@ -56,7 +56,7 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
    * *Required reviewers*: at least one person other than the person who triggers the run.
    * *Deployment branches*: `main` only.
    * Add the secrets `DATABASE_URL` and `LEGACY_DATABASE_URL` **to this environment** and delete the repository-level copies.
-2. **Environment** `production-backup` with the secrets `DATABASE_URL` (a read-only database role is strongly recommended),
+2. **Environment** `production-backup` (same protections as above: required reviewer with *Prevent self-review*, deployment branches `main` only; the workflow additionally runs only from `main`, but that is a second layer, not a substitute) with the secrets `DATABASE_URL` (a read-only database role is strongly recommended),
    `BACKUP_ENCRYPTION_KEY` (≥ 32 random characters, stored also in your password manager — without it backups are unreadable)
    and, optionally, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION`,
    `BACKUP_S3_ENDPOINT` for independent storage.

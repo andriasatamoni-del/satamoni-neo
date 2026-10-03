@@ -15,6 +15,14 @@ name: Daily database backup + restore drill
 #    configured, the encrypted dump is also copied to independent S3-compatible storage and the daily /
 #    monthly / yearly retention plan is applied there (see docs/BACKUP_AND_RECOVERY.md).
 #  * Runs against a protected environment so the production secret needs reviewer-governed access.
+#  * The job runs ONLY from `main` (job-level `if`, evaluated before the environment, the secrets or any service
+#    container are touched). A manual run from any other branch is skipped: it never reaches a step that uses a
+#    secret or connects to a database. Scheduled runs always execute on the default branch. NOTE: a skipped run
+#    shows up green in the Actions tab - "skipped" is not "backed up". Check for the encrypted artifact.
+#  * Each encrypted dump is published together with its SHA-256 (`*.dump.gpg` + `*.dump.gpg.sha256`); verify the
+#    checksum BEFORE decrypting (docs/BACKUP_AND_RECOVERY.md). Plaintext dumps are never uploaded.
+#  * `environment: production-backup` only NAMES an environment. Required reviewers and the "main only" deployment
+#    branch rule are GitHub settings that this file cannot enforce - see docs/BACKUP_AND_RECOVERY.md.
 on:
   schedule:
     - cron: "7 1 * * *" # 01:07 UTC = after Cairo midnight (after business-day close)
@@ -29,8 +37,13 @@ concurrency:
 
 jobs:
   backup:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # least privilege: checkout needs contents:read; artifact upload uses the runtime token (no extra scope).
+    # Stated at job level too so a future workflow-level change cannot widen this job silently.
+    permissions:
+      contents: read
     environment: production-backup
     services:
       # throw-away server for the restore drill only - never production
@@ -94,20 +107,36 @@ jobs:
           RESTORE_DRILL_SOURCE_SSL: "true"
         run: npx ts-node scripts/backup/restore-drill.ts
 
-      - name: Encrypt dump (AES-256) and prove the key decrypts it
+      - name: Encrypt dump (AES-256), prove the key decrypts it, and record the SHA-256 of the ENCRYPTED file
         working-directory: backend
         env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
           set -euo pipefail
-          for f in "$BACKUP_DIR"/*.dump; do
+          shopt -s nullglob
+          dumps=("$BACKUP_DIR"/*.dump)
+          [ "${#dumps[@]}" -gt 0 ] || { echo "::error::no dump found to encrypt"; exit 1; }
+          for f in "${dumps[@]}"; do
             printf '%s' "$BACKUP_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
             printf '%s' "$BACKUP_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --decrypt "$f.gpg" | sha256sum | cut -d' ' -f1 > "$f.dec.sha256"
             sha256sum "$f" | cut -d' ' -f1 > "$f.src.sha256"
             cmp "$f.dec.sha256" "$f.src.sha256"
-            rm -f "$f" "$f.dec.sha256" "$f.src.sha256"   # plaintext never leaves this job
+            # checksum of the encrypted artifact itself (sha256sum format, relative name) - what a downloader verifies before decrypting
+            (cd "$BACKUP_DIR" && sha256sum "$(basename "$f").gpg" > "$(basename "$f").gpg.sha256" && sha256sum --check --strict "$(basename "$f").gpg.sha256")
+            rm -f "$f" "$f.sha256" "$f.dec.sha256" "$f.src.sha256"   # plaintext (and its checksum) never leaves this job
           done
           ls -l "$BACKUP_DIR"
+
+      - name: Verify the encrypted files against their checksums and make sure no plaintext is left (no secrets used)
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          encrypted=("$BACKUP_DIR"/*.dump.gpg)
+          [ "${#encrypted[@]}" -gt 0 ] || { echo "::error::no encrypted backup produced"; exit 1; }
+          npx ts-node scripts/backup/verify-encrypted-backup.ts "${encrypted[@]}"
+          leftover=$(find "$BACKUP_DIR" -type f ! -name '*.dump.gpg' ! -name '*.dump.gpg.sha256' | wc -l)
+          [ "$leftover" -eq 0 ] || { echo "::error::unexpected non-encrypted file left in the backup directory"; exit 1; }
 
       - name: Copy to independent S3-compatible storage + apply tiered retention (only when configured)
         working-directory: backend
@@ -124,15 +153,17 @@ jobs:
             exit 0
           fi
           ep=""; if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then ep="--endpoint-url $BACKUP_S3_ENDPOINT"; fi
-          aws s3 cp $ep "$BACKUP_DIR"/ "s3://$BACKUP_S3_BUCKET/satamoni-neo/" --recursive --exclude "*" --include "*.dump.gpg"
+          aws s3 cp $ep "$BACKUP_DIR"/ "s3://$BACKUP_S3_BUCKET/satamoni-neo/" --recursive --exclude "*" --include "*.dump.gpg" --include "*.dump.gpg.sha256"
           aws s3 ls $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/" | awk '{print $4}' | grep '\.dump\.gpg$' > "$RUNNER_TEMP/remote-names.txt"
           npx ts-node scripts/backup/retention-plan.ts --names-file "$RUNNER_TEMP/remote-names.txt" --suffix .gpg --print-delete > "$RUNNER_TEMP/to-delete.txt"
-          while read -r name; do [ -n "$name" ] && aws s3 rm $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/$name"; done < "$RUNNER_TEMP/to-delete.txt"
+          while read -r name; do [ -n "$name" ] && aws s3 rm $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/$name" && aws s3 rm $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/$name.sha256"; done < "$RUNNER_TEMP/to-delete.txt"
 
-      - name: Upload encrypted backup artifact
+      - name: Upload encrypted backup artifact (encrypted dump + its SHA-256 only)
         uses: actions/upload-artifact@v4
         with:
           name: satamoni-neo-backup-encrypted-${{ github.run_id }}
-          path: ${{ github.workspace }}/backups/*.dump.gpg
+          path: |
+            ${{ github.workspace }}/backups/*.dump.gpg
+            ${{ github.workspace }}/backups/*.dump.gpg.sha256
           retention-days: 30
           if-no-files-found: error

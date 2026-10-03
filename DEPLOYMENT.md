@@ -56,8 +56,16 @@
 
 ## 3.5 النسخ الاحتياطي
 
-قبل أي بيانات حقيقية: فعّل النسخ الاحتياطي في لوحة Render للقاعدة (خطة مدفوعة)، وضيف secret `DATABASE_URL`
-على GitHub عشان النسخة اليومية المستقلة تشتغل. التفاصيل في `backend/docs/BACKUP_AND_RECOVERY.md`.
+قبل أي بيانات حقيقية:
+
+1. فعّل النسخ الاحتياطي في لوحة Render للقاعدة (خطة مدفوعة - خطة Free ملهاش نسخ احتياطي وبتنتهي).
+2. جهّز النسخة اليومية المستقلة (GitHub Actions، `.github/workflows/db-backup.yml`). **محتاجة سرّين في الـEnvironment `production-backup`** (مش في الريبو):
+   * `DATABASE_URL`: الـ**External** Database URL بتاع قاعدة الإنتاج.
+   * `BACKUP_ENCRYPTION_KEY` (**إلزامي**، 32 حرف على الأقل): من غيره الـworkflow بيفشل ومبيعملش نسخة. خزّنه في password manager - من غيره النسخ مش قابلة للاسترجاع.
+3. اضبط الـEnvironment `production-backup` يدويًا (مراجِع إلزامي + `main` بس + الأسرار جواه): الكود مش بيفرض ده. التفاصيل: `backend/docs/BACKUP_AND_RECOVERY.md`.
+
+> **الحالة لحد دلوقتي**: النسخة اليومية **فشلت في كل التشغيلات المجدولة** (30/9 → 3/10) ومفيش نسخة إنتاج مشفّرة اتعملت ولا تمرين استرجاع اتجرّب.
+> متعتبرش إن فيه نسخ احتياطية لحد ما تشغّل الـworkflow يدويًا من `main` وتشوفه بيخضر وبيطلع artifact، وتجرّب تسترجعه (راجع `BACKUP_AND_RECOVERY.md`).
 
 ## 3.6 الخدمات الاختيارية (كلها مقفولة لحد ما تفعّلها)
 
@@ -68,7 +76,7 @@
 | موقع الطلب أونلاين (`/order`) + نقاط الولاء + صور المنيو | مفيش | إعدادات النظام ← موقع الطلب أونلاين، وشاشة نقاط الولاء | `backend/docs/STOREFRONT.md` |
 | بوت واتساب/ماسنجر/إنستجرام | `GEMINI_API_KEY`، `META_APP_SECRET`، `META_VERIFY_TOKEN`، `WHATSAPP_ACCESS_TOKEN`، `WHATSAPP_PHONE_NUMBER_ID`، `META_PAGE_ACCESS_TOKEN`، اختياري `WHATSAPP_STAFF_NOTIFY_NUMBER` | إعدادات النظام ← بوت الرد الآلي | `backend/docs/WHATSAPP-BOT.md` |
 | SMS تأكيد الطلب وطلب التقييم | `SMS_WEBHOOK_URL`، اختياري `SMS_WEBHOOK_AUTH_HEADER` و`PUBLIC_APP_URL` | إعدادات النظام ← رسايل SMS | `backend/docs/WHATSAPP-BOT.md` |
-| النسخ الاحتياطي اليومي | secret في GitHub اسمه `DATABASE_URL` (External URL) | تلقائي كل يوم | `backend/docs/BACKUP_AND_RECOVERY.md` |
+| النسخ الاحتياطي اليومي | secrets في الـEnvironment `production-backup`: `DATABASE_URL` (External URL) و`BACKUP_ENCRYPTION_KEY` (إلزامي) | تلقائي كل يوم بعد ما تضبط الأسرار وإعدادات الـEnvironment (مش شغّال لحد دلوقتي) | `backend/docs/BACKUP_AND_RECOVERY.md` |
 
 ## 4. الاستيراد النهائي (قبل التحويل الفعلي مباشرة)
 

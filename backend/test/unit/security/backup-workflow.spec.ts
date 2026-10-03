@@ -42,7 +42,9 @@ describe("db-backup workflow (BL-13)", () => {
     expect(i("Restore drill")).toBeLessThan(i("Encrypt"));
     expect(i("Encrypt")).toBeLessThan(i("Upload encrypted"));
     const upload = steps[i("Upload encrypted")];
-    expect(upload.with.path).toMatch(/\*\.dump\.gpg$/);
+    // encrypted dump + its checksum only: never a plain `*.dump`, never a bare wildcard
+    const uploadPaths: string[] = String(upload.with.path).split("\n").map((l) => l.trim()).filter(Boolean);
+    expect(uploadPaths.map((p) => p.replace(/^.*\/backups\//, "")).sort()).toEqual(["*.dump.gpg", "*.dump.gpg.sha256"]);
     expect(upload.with["if-no-files-found"]).toBe("error");
     expect(upload.with["retention-days"]).toBeLessThanOrEqual(90);
   });
@@ -70,5 +72,84 @@ describe("db-backup workflow (BL-13)", () => {
     const s3 = steps.find((s) => String(s.name).includes("S3"));
     expect(s3.run).toContain("::warning::");
     expect(s3.run).toContain("retention-plan.ts");
+  });
+
+  // ---- Backup & Restore Security Remediation ----
+  // Minimal evaluator for the ONLY expression shape allowed in the job-level `if` (github.ref == '<literal>').
+  // Anything else throws, so a future, more permissive expression cannot slip past this test unnoticed.
+  const evalRefCondition = (expr: string, ref: string): boolean => {
+    const m = /^\s*(?:\$\{\{\s*)?github\.ref\s*==\s*'([^']+)'(?:\s*\}\})?\s*$/.exec(expr);
+    if (!m) throw new Error(`unsupported job condition: ${expr}`);
+    return ref === m[1];
+  };
+  const usesSecretsOrDatabase = (step: any) => /secrets\.|DATABASE_URL|pg_dump|backup\.ts|restore-drill\.ts|BACKUP_ENCRYPTION_KEY|aws s3/.test(JSON.stringify(step));
+
+  test("the backup job only runs from main: the condition is exactly `github.ref == 'refs/heads/main'`", () => {
+    expect(job.if).toBe("github.ref == 'refs/heads/main'");
+    expect(evalRefCondition(job.if, "refs/heads/main")).toBe(true);
+  });
+
+  test.each([
+    "refs/heads/feature/exfiltrate-secrets",
+    "refs/heads/fix/backup-restore-security",
+    "refs/heads/main-evil",
+    "refs/heads/MAIN",
+    "refs/heads/release/main",
+    "refs/tags/main",
+    "refs/pull/12/merge",
+    "refs/heads/",
+    "",
+  ])("a run from %p is skipped: it reaches no step that uses a secret or connects to the database", (ref) => {
+    const reachable = evalRefCondition(job.if, ref) ? steps : [];
+    expect(reachable.filter(usesSecretsOrDatabase)).toEqual([]);
+    expect(reachable).toHaveLength(0);
+    // the same gate also covers the service container and the protected environment (they belong to the skipped job)
+    expect(Object.keys(doc.jobs)).toEqual(["backup"]);
+  });
+
+  test("a run from main still reaches every step (scheduled and manual runs keep working)", () => {
+    const reachable = evalRefCondition(job.if, "refs/heads/main") ? steps : [];
+    expect(reachable).toHaveLength(steps.length);
+    expect(reachable.some(usesSecretsOrDatabase)).toBe(true);
+    expect(Object.keys(doc.on).sort()).toEqual(["schedule", "workflow_dispatch"]);
+  });
+
+  test("no trigger other than schedule/manual, no dispatch inputs, no workflow-level secrets, no step-level escape hatches", () => {
+    // pull_request / push / pull_request_target / workflow_run could run attacker-controlled workflow files next to the secrets
+    expect(doc.on.workflow_dispatch === null || doc.on.workflow_dispatch === undefined || Object.keys(doc.on.workflow_dispatch ?? {}).length === 0).toBe(true);
+    expect(JSON.stringify({ env: doc.env, defaults: doc.defaults })).not.toMatch(/secrets\./);
+    for (const step of steps) {
+      expect(step["continue-on-error"]).toBeUndefined();
+      expect(step.if).toBeUndefined();
+    }
+  });
+
+  test("least-privilege GITHUB_TOKEN: contents:read at workflow AND job level, checkout does not persist the token", () => {
+    expect(doc.permissions).toEqual({ contents: "read" });
+    expect(job.permissions).toEqual({ contents: "read" });
+    const checkout = steps.find((s) => String(s.uses ?? "").startsWith("actions/checkout"));
+    expect(checkout.with["persist-credentials"]).toBe(false);
+  });
+
+  test("the encrypted file is checksummed after encryption, verified, and plaintext + its checksum are removed", () => {
+    const enc = steps.find((s) => String(s.name).startsWith("Encrypt"));
+    expect(enc.run).toContain('sha256sum "$(basename "$f").gpg" > "$(basename "$f").gpg.sha256"');
+    expect(enc.run).toContain("sha256sum --check --strict");
+    expect(enc.run).toContain('rm -f "$f" "$f.sha256"');
+    const names = steps.map((s) => String(s.name ?? s.uses ?? ""));
+    const verify = names.findIndex((n) => n.startsWith("Verify the encrypted files"));
+    expect(verify).toBeGreaterThan(names.findIndex((n) => n.startsWith("Encrypt")));
+    expect(verify).toBeLessThan(names.findIndex((n) => n.includes("S3")));
+    expect(verify).toBeLessThan(names.findIndex((n) => n.startsWith("Upload encrypted")));
+    const v = steps[verify];
+    expect(v.run).toContain("verify-encrypted-backup.ts");
+    expect(v.run).toContain("-name '*.dump.gpg.sha256'"); // anything else left in the directory (plaintext) fails the job
+    expect(JSON.stringify(v)).not.toMatch(/secrets\./); // checksum verification needs no secret
+  });
+
+  test("S3 copy and retention move/delete the checksum together with the encrypted dump", () => {
+    const s3 = steps.find((s) => String(s.name).includes("S3"));
+    expect(s3.run).toContain('--include "*.dump.gpg" --include "*.dump.gpg.sha256"');
+    expect(s3.run).toContain('$name.sha256"');
   });
 });

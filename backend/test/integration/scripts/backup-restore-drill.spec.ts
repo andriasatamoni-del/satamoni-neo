@@ -124,7 +124,7 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
   test("restore drill compares the restored copy with the source on critical data (exact + tolerant modes)", async () => {
     const d = path.join(dir, "compare");
     const file = await createBackup(sourceUrl, d);
-    const exact = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl });
+    const exact = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl, allowSameServerAsSourceForTests: true });
     expect(exact.steps.filter((s) => !s.ok)).toEqual([]);
     const cmpStep = exact.steps.find((s) => s.step.includes("مقارنة"));
     expect(cmpStep?.ok).toBe(true);
@@ -134,10 +134,10 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
     await src.connect();
     await src.query(`INSERT INTO branches (name) VALUES ('فرع-بعد-النسخة')`);
     await src.end();
-    const exactAfter = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl });
+    const exactAfter = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl, allowSameServerAsSourceForTests: true });
     expect(exactAfter.success).toBe(false);
     expect(exactAfter.steps.find((s) => s.step.includes("مقارنة"))?.detail).toContain("branches");
-    const tolerant = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl, tolerateSourceGrowth: true });
+    const tolerant = await runRestoreDrill({ serverUrl, backupFile: file, compareSourceUrl: sourceUrl, tolerateSourceGrowth: true, allowSameServerAsSourceForTests: true });
     expect(tolerant.success).toBe(true);
 
     // direct comparator: restored data that has FEWER rows than the source is never tolerated in reverse
