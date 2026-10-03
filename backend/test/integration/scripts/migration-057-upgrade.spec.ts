@@ -26,10 +26,17 @@ describe("migration 057 (Phase 3.1) - forward-only safe upgrade", () => {
 
   beforeAll(async () => {
     admin = new Client({ connectionString: withDatabase(serverUrl, "postgres") });
+    admin.on("error", () => undefined);
     await admin.connect();
     await admin.query(`CREATE DATABASE "${dbName}"`);
+    // DROP DATABASE ... WITH (FORCE) in afterAll terminates any connection still open; an idle pooled client then emits
+    // "terminating connection due to administrator command" (57P01) as an UNHANDLED error and fails the whole suite
+    // (seen on CI). Every pool therefore gets an error handler: the termination is expected there.
     pool = new Pool({ connectionString: url, max: 2 });
-    kysely = new Kysely<unknown>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: url, max: 1 }) }) });
+    pool.on("error", () => undefined);
+    const migratorPool = new Pool({ connectionString: url, max: 1 });
+    migratorPool.on("error", () => undefined);
+    kysely = new Kysely<unknown>({ dialect: new PostgresDialect({ pool: migratorPool }) });
     migrator = new Migrator({ db: kysely, provider });
     const { error } = await migrator.migrateTo("056_customer_accounts_loyalty_media");
     if (error) throw error;
