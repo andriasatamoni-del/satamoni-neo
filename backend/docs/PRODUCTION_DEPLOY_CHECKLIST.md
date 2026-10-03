@@ -29,8 +29,8 @@ It does **not** change any code, schema, migration or Render configuration; it o
 ### Security
 
 - [ ] The repository is **private**.
-- [ ] Two GitHub environments exist: `production-maintenance` and `production-backup`, each with a **required reviewer**.
-- [ ] Secrets live **inside the environments**, not at repository level: `DATABASE_URL`, `LEGACY_DATABASE_URL` (maintenance), and `BACKUP_ENCRYPTION_KEY` (at least 32 characters).
+- [ ] Two GitHub environments exist: `production-maintenance` and `production-backup`, each with a **required reviewer** (and *Prevent self-review*), and **deployment branches limited to `main`**. An `environment:` line in a workflow does not prove this: GitHub creates a missing environment with no rules. Check both in **Settings → Environments** yourself.
+- [ ] Secrets live **inside the environments**, not at repository level (delete any repository-level copy): `DATABASE_URL` and `LEGACY_DATABASE_URL` in `production-maintenance`; `DATABASE_URL` and **`BACKUP_ENCRYPTION_KEY`** (required, at least 32 characters, also stored in a password manager) in `production-backup`.
 - [ ] The new `JWT_SECRET` is randomly generated and was never used before.
 - [ ] Any old database password has been changed (treat the old one as compromised).
 - [ ] The account `admin-test@satamoni.local` does not exist, or is disabled, in production. (`backend/scripts/audit-test-account.ts` can check this; it only reads.)
@@ -51,8 +51,11 @@ It does **not** change any code, schema, migration or Render configuration; it o
 
 ### Backup
 
-- [ ] The backup workflow has been run manually once (**Actions → Daily database backup + restore drill → Run workflow**), it succeeded, and an encrypted `.dump.gpg` artifact was produced.
-- [ ] A **restore** from that backup has been tested on a throw-away database. (The workflow itself had never run on GitHub before this checklist.)
+- [ ] **No production backup has been proven to exist yet.** The scheduled backup workflow failed on every run from 30 Sep to 3 Oct 2026 (first on the old workflow, then because `BACKUP_ENCRYPTION_KEY` is not configured). It also does not alert anyone when it fails.
+- [ ] The backup workflow has been run manually **from `main`** once (**Actions → Daily database backup + restore drill → Run workflow**). The workflow only runs from `main`; from any other branch it is skipped, and a skipped run looks green. Every step succeeded, including "Restore drill" and "Verify the encrypted files", and an artifact with `*.dump.gpg` **and** `*.dump.gpg.sha256` was produced.
+- [ ] The artifact was downloaded, its checksum verified **before** decrypting, and it was decrypted (`npm run verify-encrypted-backup`, see `BACKUP_AND_RECOVERY.md`).
+- [ ] A **restore** from that backup was done on a throw-away local PostgreSQL (never on production), and `backend/scripts/backup/verify-restore.sql` passed: 0 unbalanced entries, stock equals movements, row counts consistent with production.
+- [ ] Failed backup runs will be noticed (GitHub Actions failure notifications on, and someone checks that the artifact appeared after each run).
 
 ### Accounting
 
@@ -186,5 +189,5 @@ Use an admin token (`$TOKEN`) and your backend URL (`$API`).
 
 - [ ] Watch errors and user complaints daily.
 - [ ] Every day, review `journal-coverage` and look in `audit_logs` for unexpected `DENIED` rows.
-- [ ] Confirm the daily backup ran successfully each day.
+- [ ] Confirm the daily backup ran successfully each day: the run is green **and** the encrypted artifact (with its `.sha256`) exists. A skipped run is not a backup.
 - [ ] Once you are confident, switch the old system to read-only instead of stopping it abruptly.

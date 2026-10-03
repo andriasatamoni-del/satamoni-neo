@@ -3,9 +3,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createHash } from "node:crypto";
 import { backupFilename, filesToDelete, type RetentionPolicy } from "./retention";
 import { pgEnvFromUrl } from "./pg-env";
+import { backupDirFromEnv, sha256File, verifyBackupFile, verifyDumpReadable } from "./backup-verify";
+
+// الدوال دي اتنقلت لـbackup-verify.ts (من غير dotenv) - بنعيد تصديرها هنا عشان أي مستورد قديم يفضل شغال
+export { backupDirFromEnv, sha256File, verifyBackupFile, verifyDumpReadable };
 
 const execFileAsync = promisify(execFile);
 const MIN_VALID_BACKUP_BYTES = 1024;
@@ -37,35 +40,6 @@ export async function createBackup(databaseUrl: string, dir: string, now = new D
   return fullPath;
 }
 
-export function sha256File(file: string): string {
-  return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-}
-
-// pg_restore --list reads the whole TOC; a dump that is truncated or not custom-format makes it exit non-zero.
-export async function verifyDumpReadable(file: string): Promise<{ entries: number }> {
-  let stdout: string;
-  try {
-    ({ stdout } = await execFileAsync("pg_restore", ["--list", file], { maxBuffer: 64 * 1024 * 1024 }));
-  } catch (err) {
-    throw new Error(`النسخة مش قابلة للقراءة بـpg_restore --list: ${err instanceof Error ? err.message : err}`);
-  }
-  const entries = stdout.split("\n").filter((l) => l && !l.startsWith(";")).length;
-  if (entries < 10) throw new Error(`النسخة فاضية تقريبًا (${entries} عنصر في الفهرس)`);
-  return { entries };
-}
-
-// Verifies a backup file against its sha256 sidecar (detects bit-rot / tampering after the backup was made)
-export async function verifyBackupFile(file: string): Promise<{ sha256: string; entries: number }> {
-  const sidecar = `${file}.sha256`;
-  const actual = sha256File(file);
-  if (fs.existsSync(sidecar)) {
-    const expected = fs.readFileSync(sidecar, "utf8").trim().split(/\s+/)[0];
-    if (expected !== actual) throw new Error(`sha256 مش مطابق للنسخة ${path.basename(file)} - النسخة اتغيّرت/اتلفت`);
-  }
-  const { entries } = await verifyDumpReadable(file);
-  return { sha256: actual, entries };
-}
-
 export function applyRetention(dir: string, now = new Date(), policy?: RetentionPolicy): string[] {
   if (!fs.existsSync(dir)) return [];
   const deleted = filesToDelete(fs.readdirSync(dir), now, policy);
@@ -75,10 +49,6 @@ export function applyRetention(dir: string, now = new Date(), policy?: Retention
     if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
   }
   return deleted;
-}
-
-export function backupDirFromEnv(): string {
-  return process.env.BACKUP_DIR || path.join(process.cwd(), "backups");
 }
 
 export function retentionFromEnv(): RetentionPolicy {

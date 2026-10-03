@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
@@ -7,9 +6,10 @@ import { promises as fsp } from "node:fs";
 import { Client, Pool } from "pg";
 import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from "kysely";
 import { parseBackupFiles } from "./retention";
-import { backupDirFromEnv, verifyBackupFile } from "./backup";
+import { backupDirFromEnv, verifyBackupFile } from "./backup-verify";
 import { compareDatabases } from "./compare-databases";
 import { pgEnvFromUrl, withDatabase } from "./pg-env";
+import { assertDifferentCluster, assertLocalRestoreTarget, assertNotSameServer, resolveRestoreDrillConfig, type SourceRef } from "./restore-target-guard";
 
 const execFileAsync = promisify(execFile);
 const MIGRATIONS_DIR = path.join(__dirname, "..", "..", "src", "migrations", "files");
@@ -37,7 +37,25 @@ export async function runRestoreDrill(input: {
   // optional: compare the restored copy with this source on critical business data (BL-13)
   compareSourceUrl?: string;
   tolerateSourceGrowth?: boolean;
+  // قواعد تانية (إنتاج/legacy...) الوجهة ممنوع تبقى على سيرفرها - بتتضاف لـcompareSourceUrl في فحص "نفس السيرفر"
+  forbiddenServerUrls?: SourceRef[];
+  // للاختبارات بس (مفيش CLI ولا متغير بيئة بيوصل له): اختبارات التكامل بتقارن بقاعدة مصدر مؤقتة على نفس سيرفر الاختبار
+  allowSameServerAsSourceForTests?: boolean;
 }): Promise<DrillReport> {
+  // أول حاجة، قبل أي ملف أو اتصال: الوجهة لازم تكون سيرفر محلي، ومش نفس سيرفر أي مصدر
+  assertLocalRestoreTarget(input.serverUrl);
+  const sources: SourceRef[] = [
+    ...(input.compareSourceUrl ? [{ label: "RESTORE_DRILL_COMPARE_SOURCE_URL", url: input.compareSourceUrl }] : []),
+    ...(input.forbiddenServerUrls ?? []),
+  ];
+  if (!input.allowSameServerAsSourceForTests) {
+    assertNotSameServer(assertLocalRestoreTarget(input.serverUrl), sources);
+    await assertDifferentCluster(withDatabase(input.serverUrl, "postgres"), sources, {
+      sourceSsl: process.env.RESTORE_DRILL_SOURCE_SSL === "true",
+      warn: (message) => input.log?.({ step: "تحذير", ok: true, detail: message }),
+    });
+  }
+
   const steps: DrillStep[] = [];
   const record = (step: string, ok: boolean, detail?: string) => {
     const s = { step, ok, detail };
@@ -179,8 +197,9 @@ async function migrateRestoredCopy(scratchUrl: string, record: (step: string, ok
 
 async function main() {
   const args = process.argv.slice(2);
-  const serverUrl = process.env.RESTORE_DRILL_DATABASE_URL || process.env.DATABASE_URL;
-  if (!serverUrl) throw new Error("لازم تحدد RESTORE_DRILL_DATABASE_URL (أو DATABASE_URL) - سيرفر Postgres تقدر تعمل عليه قاعدة مؤقتة");
+  // مفيش رجوع لـDATABASE_URL ولا تحميل لـ.env: الوجهة لازم تتحدد صراحة في بيئة العملية وتكون سيرفر محلي (restore-target-guard.ts)
+  const config = resolveRestoreDrillConfig(process.env);
+  const serverUrl = config.targetUrl;
   const backupArg = args.find((a) => a.startsWith("--backup="));
 
   const report = await runRestoreDrill({
@@ -188,6 +207,7 @@ async function main() {
     backupFile: backupArg ? backupArg.slice("--backup=".length) : undefined,
     keep: args.includes("--keep"),
     compareSourceUrl: process.env.RESTORE_DRILL_COMPARE_SOURCE_URL || undefined,
+    forbiddenServerUrls: config.sources.filter((s) => s.label !== "RESTORE_DRILL_COMPARE_SOURCE_URL"),
     tolerateSourceGrowth: process.env.RESTORE_DRILL_SOURCE_IS_LIVE === "true",
     log: (s) => console.log(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? ` - ${s.detail}` : ""}`),
   });

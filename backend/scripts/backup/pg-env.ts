@@ -10,6 +10,11 @@ export function pgEnvFromUrl(databaseUrl: string): NodeJS.ProcessEnv {
     PGPASSWORD: decodeURIComponent(url.password),
     PGDATABASE: decodeURIComponent(url.pathname.replace(/^\//, "")),
   };
+  // libpq: PGHOSTADDR بيتخطّى الـDNS لـPGHOST وبيوصّل لعنوان تاني، وPGSERVICE/PGSERVICEFILE بيجيبوا إعدادات اتصال من ملف -
+  // أي واحد منهم موجود في بيئة المستخدم كان ممكن يحوّل pg_dump/pg_restore لسيرفر غير اللي في الرابط. بنشيلهم صراحة
+  delete env.PGHOSTADDR;
+  delete env.PGSERVICE;
+  delete env.PGSERVICEFILE;
   const sslmode = url.searchParams.get("sslmode");
   if (sslmode) env.PGSSLMODE = sslmode;
   else if (process.env.PGSSL === "true") env.PGSSLMODE = "require";
