@@ -12,7 +12,7 @@ Never force-push, never use `--no-verify`, and stop at the first failure.
 
 ## 1–5. Inspect, classify, stash, branch, commit
 
-Read `C:\Users\Peter\.claude\skills\ship-pr\SKILL.md` and follow its steps 1–5 exactly:
+Read `.claude/skills/ship-pr/SKILL.md` (relative to the repo root) and follow its steps 1–5 exactly:
 - inspect the working tree;
 - classify each changed file as related or unrelated, and ask about ambiguous ones;
 - stash the unrelated files and record the stash SHA;
