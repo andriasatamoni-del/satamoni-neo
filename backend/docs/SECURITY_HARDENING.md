@@ -60,6 +60,7 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
    `BACKUP_ENCRYPTION_KEY` (≥ 32 random characters, stored also in your password manager — without it backups are unreadable)
    and, optionally, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION`,
    `BACKUP_S3_ENDPOINT` for independent storage.
+   The backup workflow also has a separate `report` job with `issues: write` only (no secrets, no environment, no checkout) that opens an alert issue when a run fails.
 3. **Settings → Actions → General**: set *Workflow permissions* to "Read repository contents" and require approval for
    workflows from outside collaborators.
 4. Enable **branch protection** on `main` (pull request + review required) so workflow files cannot be changed without review.
