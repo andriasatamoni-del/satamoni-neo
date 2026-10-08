@@ -1,11 +1,11 @@
 import { Module, OnModuleInit } from "@nestjs/common";
 import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
-import { MENU_CATEGORY_REPOSITORY } from "./domain/ports/menu-category-repository.port";
+import { CATALOG_LAYOUT_REPOSITORY, MENU_CATEGORY_REPOSITORY } from "./domain/ports/menu-category-repository.port";
 import { MENU_ITEM_REPOSITORY } from "./domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY } from "./domain/ports/recipe-repository.port";
 import { COMBO_REPOSITORY } from "./domain/ports/combo-repository.port";
-import { KyselyMenuCategoryRepository } from "./infrastructure/persistence/kysely-menu-category.repository";
+import { KyselyCatalogLayoutRepository, KyselyMenuCategoryRepository } from "./infrastructure/persistence/kysely-menu-category.repository";
 import { KyselyMenuItemRepository } from "./infrastructure/persistence/kysely-menu-item.repository";
 import { KyselyRecipeRepository } from "./infrastructure/persistence/kysely-recipe.repository";
 import { KyselyComboRepository } from "./infrastructure/persistence/kysely-combo.repository";
@@ -25,6 +25,9 @@ import { ActivateRecipeVersionHandler } from "./application/commands/activate-re
 import { RegisterComboHandler } from "./application/commands/register-combo.handler";
 import { UpdateComboHandler } from "./application/commands/update-combo.handler";
 import { ReplaceComboItemsHandler } from "./application/commands/replace-combo-items.handler";
+import { ArchiveMenuCategoryHandler, RestoreMenuCategoryHandler } from "./application/commands/archive-menu-category.handler";
+import { ReorderMenuCategoriesHandler } from "./application/commands/reorder-menu-categories.handler";
+import { GetCatalogLayoutHandler } from "./application/queries/get-catalog-layout.handler";
 import { ListMenuCategoriesHandler } from "./application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "./application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "./application/queries/get-recipe-by-variant.handler";
@@ -38,6 +41,7 @@ import { CatalogController } from "./api/catalog.controller";
   controllers: [CatalogController],
   providers: [
     { provide: MENU_CATEGORY_REPOSITORY, useClass: KyselyMenuCategoryRepository },
+    { provide: CATALOG_LAYOUT_REPOSITORY, useClass: KyselyCatalogLayoutRepository },
     { provide: MENU_ITEM_REPOSITORY, useClass: KyselyMenuItemRepository },
     { provide: RECIPE_REPOSITORY, useClass: KyselyRecipeRepository },
     { provide: COMBO_REPOSITORY, useClass: KyselyComboRepository },
@@ -45,6 +49,10 @@ import { CatalogController } from "./api/catalog.controller";
     RegisterMenuItemHandler,
     AddVariantHandler,
     UpdateMenuCategoryHandler,
+    ArchiveMenuCategoryHandler,
+    RestoreMenuCategoryHandler,
+    ReorderMenuCategoriesHandler,
+    GetCatalogLayoutHandler,
     UpdateMenuItemHandler,
     UpdateVariantHandler,
     AddModifierHandler,

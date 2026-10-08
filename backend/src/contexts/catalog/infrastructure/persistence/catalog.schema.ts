@@ -8,6 +8,12 @@ export interface MenuCategoriesTable {
   is_active: boolean;
   legacy_category_id: number | null;
   station_id: string | null;
+  archived_at: Date | null;
+}
+
+export interface CatalogLayoutTable {
+  key: string;
+  value: number;
 }
 
 export interface MenuItemsTable {

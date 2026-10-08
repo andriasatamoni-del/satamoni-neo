@@ -16,7 +16,13 @@ export class RegisterMenuCategoryHandler {
   constructor(@Inject(MENU_CATEGORY_REPOSITORY) private readonly categories: MenuCategoryRepositoryPort) {}
 
   async execute(command: RegisterMenuCategoryCommand): Promise<MenuCategory> {
-    const category = MenuCategory.register(command);
+    // القسم الجديد بيتحط في الآخر (مش الأول): الترتيب بقى قابل للتحكم، فمنفاجئش حد بقسم جديد ظاهر قبل الكل
+    let displayOrder = command.displayOrder;
+    if (displayOrder === undefined) {
+      const existing = await this.categories.list({ archived: false });
+      displayOrder = existing.reduce((max, c) => Math.max(max, c.displayOrder), -1) + 1;
+    }
+    const category = MenuCategory.register({ ...command, displayOrder });
     await this.categories.save(category);
     return category;
   }
