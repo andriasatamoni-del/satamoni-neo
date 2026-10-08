@@ -5,6 +5,7 @@
 // tolerateSourceGrowth  -> for a LIVE source that kept receiving writes after the dump snapshot: append-only
 //                          counts may be greater in the source, never smaller, and migrations/roles must match.
 import { Client } from "pg";
+import { hostOfConnectionString, sourceTlsOption } from "./pg-tls";
 
 export interface Metric { name: string; sql: string; appendOnly?: boolean; mustMatchAlways?: boolean }
 
@@ -46,7 +47,7 @@ export async function compareDatabases(
   opts: { tolerateSourceGrowth?: boolean } = {}
 ): Promise<{ ok: boolean; rows: ComparisonRow[] }> {
   // only the SOURCE (managed, remote) database needs TLS; the restored copy is a local throw-away server
-  const src = new Client({ connectionString: sourceUrl, ssl: process.env.RESTORE_DRILL_SOURCE_SSL === "true" ? { rejectUnauthorized: false } : undefined });
+  const src = new Client({ connectionString: sourceUrl, ssl: process.env.RESTORE_DRILL_SOURCE_SSL === "true" ? sourceTlsOption(process.env, hostOfConnectionString(sourceUrl)) : undefined });
   const dst = new Client({ connectionString: restoredUrl });
   await src.connect();
   await dst.connect();

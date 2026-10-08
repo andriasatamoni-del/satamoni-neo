@@ -55,6 +55,7 @@ It does **not** change any code, schema, migration or Render configuration; it o
 - [ ] The backup workflow has been run manually **from `main`** once (**Actions → Daily database backup + restore drill → Run workflow**). The workflow only runs from `main`; from any other branch it is skipped, and a skipped run looks green. Every step succeeded, including "Restore drill" and "Verify the encrypted files", and an artifact with `*.dump.gpg` **and** `*.dump.gpg.sha256` was produced.
 - [ ] The artifact was downloaded, its checksum verified **before** decrypting, and it was decrypted (`npm run verify-encrypted-backup`, see `BACKUP_AND_RECOVERY.md`).
 - [ ] A **restore** from that backup was done on a throw-away local PostgreSQL (never on production), and `backend/scripts/backup/verify-restore.sql` passed: 0 unbalanced entries, stock equals movements, row counts consistent with production.
+- [ ] The backup connection verifies the database certificate: the run did **not** need `BACKUP_DB_TLS_MODE=insecure-skip-verify` (if it did, the CA is pinned in `BACKUP_DB_SSL_CA` and the variable is removed).
 - [ ] Failed backup runs will be noticed: **Issues are enabled** and the repository is **watched** so the `ALERT: scheduled database backup failed` issue reaches you, GitHub Actions failure notifications are on, and someone still checks that the artifact appeared (the alert cannot fire if the schedule itself stops).
 
 ### Accounting

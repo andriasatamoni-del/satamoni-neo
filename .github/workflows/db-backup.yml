@@ -21,6 +21,10 @@ name: Daily database backup + restore drill
 #    shows up green in the Actions tab - "skipped" is not "backed up". Check for the encrypted artifact.
 #  * Each encrypted dump is published together with its SHA-256 (`*.dump.gpg` + `*.dump.gpg.sha256`); verify the
 #    checksum BEFORE decrypting (docs/BACKUP_AND_RECOVERY.md). Plaintext dumps are never uploaded.
+#  * The connection to the source database verifies the server certificate (chain + host name): pg_dump uses verify-full, the
+#    comparison and server-identity check use rejectUnauthorized:true. A provider certificate that is not publicly trusted needs
+#    the CA in the environment secret BACKUP_DB_SSL_CA (pinned). `vars.BACKUP_DB_TLS_MODE=insecure-skip-verify` is a loud,
+#    explicit opt-out (never the default). See docs/BACKUP_AND_RECOVERY.md.
 #  * `environment: production-backup` only NAMES an environment. Required reviewers and the "main only" deployment
 #    branch rule are GitHub settings that this file cannot enforce - see docs/BACKUP_AND_RECOVERY.md.
 #  * A failed (or cancelled) run opens ONE GitHub issue, "ALERT: scheduled database backup failed" (further failures add a
@@ -66,9 +70,15 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_DB_TLS_MODE: ${{ vars.BACKUP_DB_TLS_MODE }}
         run: |
           set -eu
           missing=0
+          case "${BACKUP_DB_TLS_MODE:-verify}" in
+            verify) ;;
+            insecure-skip-verify) echo "::warning::BACKUP_DB_TLS_MODE=insecure-skip-verify - the source database certificate is NOT verified (man-in-the-middle possible). Pin the CA in BACKUP_DB_SSL_CA and remove this variable." ;;
+            *) echo "::error::BACKUP_DB_TLS_MODE must be 'verify' (default) or 'insecure-skip-verify'"; missing=1 ;;
+          esac
           if [ -z "${DATABASE_URL:-}" ]; then echo "::error::secret DATABASE_URL is not configured - backup cannot run"; missing=1; fi
           if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "::error::secret BACKUP_ENCRYPTION_KEY is not configured - refusing to upload an unencrypted dump"; missing=1; fi
           if [ "${#BACKUP_ENCRYPTION_KEY}" -lt 32 ]; then echo "::error::BACKUP_ENCRYPTION_KEY must be at least 32 characters"; missing=1; fi
@@ -94,11 +104,32 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      # The source database certificate is VERIFIED (chain + host name) by pg_dump, the comparison and the server-identity check.
+      # By default it must chain to a CA the runner trusts. If the provider's certificate is not publicly trusted, store the CA
+      # certificate (PEM, certificate only) in the environment secret BACKUP_DB_SSL_CA: it is then the only CA accepted (pinning).
+      - name: Prepare TLS trust for the source database (optional pinned CA)
+        env:
+          DB_CA: ${{ secrets.BACKUP_DB_SSL_CA }}
+        run: |
+          set -eu
+          if [ -n "${DB_CA:-}" ]; then
+            umask 077
+            printf '%s\n' "$DB_CA" > "$RUNNER_TEMP/db-ca.pem"
+            if grep -q 'PRIVATE KEY' "$RUNNER_TEMP/db-ca.pem"; then echo "::error::BACKUP_DB_SSL_CA contains a private key - give the CERTIFICATE only"; exit 1; fi
+            grep -q 'BEGIN CERTIFICATE' "$RUNNER_TEMP/db-ca.pem" || { echo "::error::BACKUP_DB_SSL_CA is not a PEM certificate"; exit 1; }
+            echo "PGSSLROOTCERT=$RUNNER_TEMP/db-ca.pem" >> "$GITHUB_ENV"
+            echo "RESTORE_DRILL_SOURCE_SSL_CA=$RUNNER_TEMP/db-ca.pem" >> "$GITHUB_ENV"
+            echo "Using the pinned CA from BACKUP_DB_SSL_CA."
+          else
+            echo "BACKUP_DB_SSL_CA not set: the database certificate must chain to a CA trusted by the runner."
+          fi
+
       - name: Backup (pg_dump -Fc) + integrity verification
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSL: "true"
+          BACKUP_DB_TLS_MODE: ${{ vars.BACKUP_DB_TLS_MODE }}
         run: npx ts-node scripts/backup/backup.ts
 
       - name: Restore drill (into throw-away Postgres service)
@@ -109,6 +140,7 @@ jobs:
           RESTORE_DRILL_COMPARE_SOURCE_URL: ${{ secrets.DATABASE_URL }}
           RESTORE_DRILL_SOURCE_IS_LIVE: "true"
           RESTORE_DRILL_SOURCE_SSL: "true"
+          BACKUP_DB_TLS_MODE: ${{ vars.BACKUP_DB_TLS_MODE }}
         run: npx ts-node scripts/backup/restore-drill.ts
 
       - name: Encrypt dump (AES-256), prove the key decrypts it, and record the SHA-256 of the ENCRYPTED file

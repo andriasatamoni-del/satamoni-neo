@@ -1,4 +1,5 @@
 import { Client } from "pg";
+import { hostOfConnectionString, sourceTlsOption } from "./pg-tls";
 
 // حواجز أمان لتمرين الاسترجاع (restore-drill). التمرين بيعمل CREATE DATABASE + pg_restore + migrateToLatest + DROP DATABASE،
 // فلازم يتأكد قبل أي اتصال إن الوجهة سيرفر محلي مؤقت، وإنها مش نفس سيرفر أي قاعدة "مصدر" (إنتاج/ستيجينج/legacy).
@@ -107,7 +108,7 @@ export async function clusterFingerprint(connectionString: string, opts: { ssl?:
   const client = new Client({
     connectionString,
     connectionTimeoutMillis: 10_000,
-    ssl: opts.ssl ? { rejectUnauthorized: false } : undefined,
+    ssl: opts.ssl ? sourceTlsOption(process.env, hostOfConnectionString(connectionString)) : undefined,
   });
   client.on("error", () => undefined);
   await client.connect();
