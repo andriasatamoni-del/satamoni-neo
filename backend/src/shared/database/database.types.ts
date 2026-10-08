@@ -30,6 +30,7 @@ import type {
 } from "../../contexts/production/infrastructure/persistence/conversion-order.schema";
 import type {
   MenuCategoriesTable,
+  CatalogLayoutTable,
   MenuItemsTable,
   MenuItemVariantsTable,
   MenuItemModifiersTable,
@@ -141,6 +142,7 @@ export interface Database {
   conversion_order_input_lines: ConversionOrderInputLinesTable;
   stocktake_lines: StocktakeLinesTable;
   menu_categories: MenuCategoriesTable;
+  catalog_layout: CatalogLayoutTable;
   menu_items: MenuItemsTable;
   menu_item_variants: MenuItemVariantsTable;
   menu_item_modifiers: MenuItemModifiersTable;

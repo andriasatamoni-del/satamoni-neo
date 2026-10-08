@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { ConflictDomainError, DomainError } from "../../../shared/domain/domain-error";
 
 export { DomainError };
 
@@ -11,6 +11,24 @@ export class MenuCategoryNameRequiredError extends DomainError {
 export class MenuCategoryNotFoundError extends DomainError {
   constructor() {
     super("القسم ده مش موجود");
+  }
+}
+
+export class MenuCategoryArchivedError extends ConflictDomainError {
+  constructor() {
+    super("القسم ده مؤرشف - استرجعه الأول من الإعدادات");
+  }
+}
+
+export class MenuCategoryNotArchivedError extends ConflictDomainError {
+  constructor() {
+    super("القسم ده مش مؤرشف");
+  }
+}
+
+export class InvalidCategoryOrderError extends DomainError {
+  constructor(reason: string) {
+    super(`ترتيب الأقسام غير صالح: ${reason}`);
   }
 }
 

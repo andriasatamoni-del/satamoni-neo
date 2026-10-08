@@ -16,6 +16,9 @@ import { ActivateRecipeVersionHandler } from "../application/commands/activate-r
 import { RegisterComboHandler } from "../application/commands/register-combo.handler";
 import { UpdateComboHandler } from "../application/commands/update-combo.handler";
 import { ReplaceComboItemsHandler } from "../application/commands/replace-combo-items.handler";
+import { ArchiveMenuCategoryHandler, RestoreMenuCategoryHandler } from "../application/commands/archive-menu-category.handler";
+import { ReorderMenuCategoriesHandler } from "../application/commands/reorder-menu-categories.handler";
+import { GetCatalogLayoutHandler } from "../application/queries/get-catalog-layout.handler";
 import { ListMenuCategoriesHandler } from "../application/queries/list-menu-categories.handler";
 import { ListMenuItemsHandler } from "../application/queries/list-menu-items.handler";
 import { GetRecipeByVariantHandler } from "../application/queries/get-recipe-by-variant.handler";
@@ -25,6 +28,7 @@ import { MenuPriceHistoryService } from "../application/services/menu-price-hist
 import { RegisterMenuCategoryDto } from "./dto/register-menu-category.dto";
 import { RegisterMenuItemDto } from "./dto/register-menu-item.dto";
 import { AddVariantDto } from "./dto/add-variant.dto";
+import { ReorderMenuCategoriesDto } from "./dto/reorder-menu-categories.dto";
 import { UpdateMenuCategoryDto } from "./dto/update-menu-category.dto";
 import { UpdateMenuItemDto } from "./dto/update-menu-item.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
@@ -65,6 +69,10 @@ export class CatalogController {
     private readonly createRecipeVersion: CreateRecipeVersionHandler,
     private readonly activateRecipeVersion: ActivateRecipeVersionHandler,
     private readonly listCategories: ListMenuCategoriesHandler,
+    private readonly archiveCategory: ArchiveMenuCategoryHandler,
+    private readonly restoreCategory: RestoreMenuCategoryHandler,
+    private readonly reorderCategories: ReorderMenuCategoriesHandler,
+    private readonly getLayout: GetCatalogLayoutHandler,
     private readonly listItems: ListMenuItemsHandler,
     private readonly getRecipeByVariant: GetRecipeByVariantHandler,
     private readonly listRecipes: ListRecipesHandler,
@@ -81,10 +89,38 @@ export class CatalogController {
     return (await this.listRecipes.execute({ recipeType })).map(toPublicRecipe);
   }
 
+  // ?archived=true بيرجّع الأقسام المؤرشفة بس (قائمة الاسترجاع في الإعدادات)؛ الافتراضي غير المؤرشفة
   @Get("categories")
   @RequirePermission("catalog.items.view", "catalog.items.manage")
-  async categories() {
-    return (await this.listCategories.execute()).map(toPublicCategory);
+  async categories(@Query("archived") archived?: string) {
+    return (await this.listCategories.execute({ archived: archived === "true" })).map(toPublicCategory);
+  }
+
+  // مكان تبويب "العروض" وسط الأقسام
+  @Get("layout")
+  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  async layout() {
+    return this.getLayout.execute();
+  }
+
+  // ترتيب الأقسام (ومعاهم "combos") بالترتيب المطلوب
+  @Put("categories/order")
+  @RequirePermission("catalog.items.manage")
+  async reorder(@Body() dto: ReorderMenuCategoriesDto) {
+    const result = await this.reorderCategories.execute({ order: dto.order });
+    return { categories: result.categories.map(toPublicCategory), combosPosition: result.combosPosition };
+  }
+
+  @Post("categories/:id/archive")
+  @RequirePermission("catalog.items.manage")
+  async archive(@Param("id") id: string) {
+    return toPublicCategory(await this.archiveCategory.execute({ categoryId: id }));
+  }
+
+  @Post("categories/:id/restore")
+  @RequirePermission("catalog.items.manage")
+  async restore(@Param("id") id: string) {
+    return toPublicCategory(await this.restoreCategory.execute({ categoryId: id }));
   }
 
   @Post("categories")
@@ -263,6 +299,7 @@ function toPublicCategory(category: MenuCategory) {
     displayOrder: category.displayOrder,
     menuGroup: category.menuGroup,
     isActive: category.isActive,
+    isArchived: category.isArchived,
   };
 }
 
