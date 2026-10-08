@@ -62,6 +62,7 @@
 2. جهّز النسخة اليومية المستقلة (GitHub Actions، `.github/workflows/db-backup.yml`). **محتاجة سرّين في الـEnvironment `production-backup`** (مش في الريبو):
    * `DATABASE_URL`: الـ**External** Database URL بتاع قاعدة الإنتاج.
    * `BACKUP_ENCRYPTION_KEY` (**إلزامي**، 32 حرف على الأقل): من غيره الـworkflow بيفشل ومبيعملش نسخة. خزّنه في password manager - من غيره النسخ مش قابلة للاسترجاع.
+   (اختياري) `BACKUP_DB_SSL_CA`: شهادة الـCA لو شهادة قاعدة البيانات مش من CA عام - الـworkflow بيتحقق من شهادة القاعدة.
 3. اضبط الـEnvironment `production-backup` يدويًا (مراجِع إلزامي + `main` بس + الأسرار جواه): الكود مش بيفرض ده. التفاصيل: `backend/docs/BACKUP_AND_RECOVERY.md`.
 
 > **الحالة لحد دلوقتي**: النسخة اليومية **فشلت في كل التشغيلات المجدولة** (30/9 → 3/10) ومفيش نسخة إنتاج مشفّرة اتعملت ولا تمرين استرجاع اتجرّب.

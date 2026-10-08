@@ -266,4 +266,89 @@ describe("db-backup workflow (BL-13)", () => {
       expect(jq([])).toBe("");
     });
   });
+
+  // ---- Source database TLS verification ----
+  describe("source database TLS verification", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { spawnSync } = require("node:child_process");
+    const os = require("node:os");
+    const stepNamed = (frag: string) => steps.find((st) => String(st.name ?? "").startsWith(frag));
+
+    test("no step weakens verification: PGSSL stays on, nothing sets PGSSLMODE / rejectUnauthorized, the opt-out is a repository VARIABLE (never a secret)", () => {
+      const text = JSON.stringify(steps);
+      expect(text).not.toMatch(/PGSSLMODE|rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|sslmode=(require|disable|allow|prefer)/i);
+      for (const name of ["Backup (pg_dump", "Restore drill"]) {
+        expect(stepNamed(name).env.BACKUP_DB_TLS_MODE).toBe("${{ vars.BACKUP_DB_TLS_MODE }}");
+      }
+      expect(stepNamed("Backup (pg_dump").env.PGSSL).toBe("true");
+      expect(stepNamed("Restore drill").env.RESTORE_DRILL_SOURCE_SSL).toBe("true");
+    });
+
+    test("the trust-preparation step runs before the backup and the drill, and only wires non-secret PATHS into later steps", () => {
+      const names = steps.map((st) => String(st.name ?? st.uses ?? ""));
+      const prep = names.findIndex((n) => n.startsWith("Prepare TLS trust"));
+      expect(prep).toBeGreaterThan(-1);
+      expect(prep).toBeLessThan(names.findIndex((n) => n.startsWith("Backup (pg_dump")));
+      expect(prep).toBeLessThan(names.findIndex((n) => n.startsWith("Restore drill")));
+      expect(steps[prep].env).toEqual({ DB_CA: "${{ secrets.BACKUP_DB_SSL_CA }}" });
+      expect(steps[prep].run).toContain("umask 077");
+      expect(steps[prep].run).not.toMatch(/echo[^\n]*\$\{?DB_CA/); // the certificate text is never echoed
+    });
+
+    describe("scripts (real bash)", () => {
+      let dir: string;
+      beforeAll(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), "tls-step-"));
+      });
+      afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+      const bash = (script: string, env: Record<string, string>) => {
+        const ghEnv = path.join(dir, "github_env");
+        fs.rmSync(ghEnv, { force: true });
+        fs.writeFileSync(ghEnv, "");
+        const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH, RUNNER_TEMP: dir, GITHUB_ENV: ghEnv, ...env }, encoding: "utf8" });
+        return { status: r.status, out: `${r.stdout}${r.stderr}`, ghEnv: fs.readFileSync(ghEnv, "utf8") };
+      };
+      const prepRun = () => stepNamed("Prepare TLS trust").run as string;
+      const CERT = "-----BEGIN CERTIFICATE-----\nMIIBfakeNOTSECRET\n-----END CERTIFICATE-----";
+
+      test("no pinned CA -> nothing is exported, the run continues with system trust", () => {
+        const r = bash(prepRun(), { DB_CA: "" });
+        expect(r.status).toBe(0);
+        expect(r.ghEnv).toBe("");
+      });
+
+      test("a PEM certificate -> written with 0600 and exported as PGSSLROOTCERT / RESTORE_DRILL_SOURCE_SSL_CA", () => {
+        const r = bash(prepRun(), { DB_CA: CERT });
+        expect(r.status).toBe(0);
+        expect(r.ghEnv).toContain(`PGSSLROOTCERT=${dir}/db-ca.pem`);
+        expect(r.ghEnv).toContain(`RESTORE_DRILL_SOURCE_SSL_CA=${dir}/db-ca.pem`);
+        expect(fs.statSync(path.join(dir, "db-ca.pem")).mode & 0o777).toBe(0o600);
+        expect(r.out).not.toContain("MIIBfake");
+      });
+
+      test("a private key or a non-certificate in the secret fails the job without echoing it", () => {
+        const key = bash(prepRun(), { DB_CA: "-----BEGIN PRIVATE KEY-----\nTOPSECRETKEY\n-----END PRIVATE KEY-----" });
+        expect(key.status).toBe(1);
+        expect(key.out).toContain("private key");
+        expect(key.out).not.toContain("TOPSECRETKEY");
+        const junk = bash(prepRun(), { DB_CA: "just some text" });
+        expect(junk.status).toBe(1);
+        expect(junk.out).toContain("not a PEM certificate");
+      });
+
+      test("validation step: default and `verify` pass, the explicit opt-out warns loudly, anything else fails", () => {
+        const run = stepNamed("Validate required configuration").run as string;
+        const base = { DATABASE_URL: "postgresql://x", BACKUP_ENCRYPTION_KEY: "k".repeat(40) };
+        expect(bash(run, { ...base, BACKUP_DB_TLS_MODE: "" }).status).toBe(0);
+        expect(bash(run, { ...base, BACKUP_DB_TLS_MODE: "verify" }).status).toBe(0);
+        const insecure = bash(run, { ...base, BACKUP_DB_TLS_MODE: "insecure-skip-verify" });
+        expect(insecure.status).toBe(0);
+        expect(insecure.out).toContain("::warning::");
+        for (const bad of ["true", "require", "off"]) {
+          const r = bash(run, { ...base, BACKUP_DB_TLS_MODE: bad });
+          expect({ bad, status: r.status }).toEqual({ bad, status: 1 });
+        }
+      });
+    });
+  });
 });
