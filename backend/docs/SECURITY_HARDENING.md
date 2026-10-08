@@ -69,8 +69,13 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
 
 Every `uses:` in `.github/workflows` references a full commit SHA with a `# v4` comment, not a movable tag. A tag can be re-pointed after
 review, which would run different code next to the production secrets. `test/unit/security/workflow-security.spec.ts` fails if an
-action is unpinned or if two workflows use different SHAs for the same action. Updating is a manual, reviewed change (or enable
-Dependabot for the `github-actions` ecosystem).
+action is unpinned or if two workflows use different SHAs for the same action.
+
+Pinned SHAs do not update themselves, so `.github/dependabot.yml` has Dependabot propose the bumps: one grouped pull request per
+week (Monday, Cairo time) for the `github-actions` ecosystem. It rewrites the SHA and the `# v4` comment; CI runs as usual and a
+person reviews and merges (nothing auto-merges, and a test fails if a workflow ever merges Dependabot PRs). Review such a PR like any
+other dependency change: read the release notes of the action and check that the new SHA belongs to an official release of
+`actions/*`. Alerts and security updates for known-vulnerable actions are a repository setting (Settings -> Code security), not this file.
 
 ## 5. Residual risk
 
