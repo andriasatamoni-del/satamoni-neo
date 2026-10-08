@@ -109,7 +109,7 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       continue;
     }
 
-    const lines: { id: string; menuItemId: string; variantId: string; comboId: null; quantity: number; unitPrice: number; lineTotal: number; modifiers: [] }[] = [];
+    const lines: { id: string; menuItemId: string; variantId: string; comboId: null; quantity: number; unitPrice: number; lineTotal: number; modifiers: []; components: [] }[] = [];
     for (const item of itemsByOrder.get(row.id) ?? []) {
       if (item.combo_id != null || item.item_id == null || item.variant_id == null) continue; // كومبو - مش مدعوم لسه
       const menuItem = await menuItemRepo.findByLegacyMenuItemId(item.item_id);
@@ -117,7 +117,7 @@ export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Dat
       if (!menuItem || !variantId) continue;
       lines.push({
         id: randomUUID(), menuItemId: menuItem.id, variantId, comboId: null, quantity: item.quantity,
-        unitPrice: Number(item.unit_price), lineTotal: Number(item.line_total), modifiers: [],
+        unitPrice: Number(item.unit_price), lineTotal: Number(item.line_total), modifiers: [], components: [],
       });
     }
     if (lines.length === 0) {

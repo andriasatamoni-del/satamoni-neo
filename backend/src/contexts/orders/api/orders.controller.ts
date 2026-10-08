@@ -91,6 +91,8 @@ function toPublicOrder(order: Order) {
       quantity: i.quantity,
       unitPrice: i.unitPrice,
       lineTotal: i.lineTotal,
+      // محتويات العرض وقت البيع (لقطة) - فاضية للأصناف العادية؛ للعروض القديمة الواجهة بتكمّلها من العرض نفسه
+      components: i.components,
       modifiers: i.modifiers.map((m) => ({ modifierId: m.modifierId, nameAtSale: m.nameAtSale, priceAtSale: m.priceAtSale })),
     })),
     subtotal: order.subtotal,

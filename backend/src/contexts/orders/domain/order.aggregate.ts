@@ -30,6 +30,15 @@ export interface OrderItemModifierLine {
   priceAtSale: number;
 }
 
+// محتوى سطر العرض وقت البيع (لقطة: اسم الصنف والحجم زي ما كانوا). quantity = لكل عرض واحد (اضرب في كمية السطر)
+export interface OrderItemComponent {
+  menuItemId: string | null;
+  variantId: string;
+  itemName: string;
+  variantLabel: string | null;
+  quantity: number;
+}
+
 export interface OrderItemLine {
   id: string;
   // إما (menuItemId+variantId) لصنف عادي أو comboId لعرض - مش الاتنين ومش من غيرهم خالص (نفس تصميم
@@ -44,6 +53,8 @@ export interface OrderItemLine {
   unitPrice: number;
   lineTotal: number;
   modifiers: OrderItemModifierLine[];
+  // للعروض بس: محتويات العرض وقت البيع. [] للأصناف العادية والعروض القديمة (قبل migration 059)
+  components: OrderItemComponent[];
 }
 
 export interface OrderProps {
@@ -108,6 +119,7 @@ export class Order {
       quantity: number;
       unitPrice: number;
       modifiers?: OrderItemModifierLine[];
+      components?: OrderItemComponent[];
     }[];
     discount?: number;
     createdBy?: string | null;
@@ -132,6 +144,7 @@ export class Order {
         unitPrice: i.unitPrice,
         lineTotal: i.quantity * i.unitPrice,
         modifiers: i.modifiers ?? [],
+        components: isCombo ? i.components ?? [] : [],
       };
     });
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
