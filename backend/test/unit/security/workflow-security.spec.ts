@@ -112,15 +112,30 @@ describe("workflow security (BL-14)", () => {
     for (const [action, shas] of seen) expect({ action, count: shas.size }).toEqual({ action, count: 1 });
   });
 
-  test("the pinned SHAs are the ones GitHub actually resolved for @v4 on the runs of 3 and 8 Oct 2026", () => {
-    const known: Record<string, string> = {
-      "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
-      "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
-      "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
-    };
-    const used: Record<string, string> = {};
-    for (const { doc } of workflows) for (const step of allSteps(doc)) if (step.uses) used[step.uses.split("@")[0]] = step.uses.split("@")[1];
-    expect(used).toEqual(known);
+  // The SHAs themselves are NOT frozen in a test: Dependabot (.github/dependabot.yml) proposes the bumps as reviewed PRs, and a test
+  // that hard-coded them would turn every such PR red. The two tests above keep the invariant that matters: pinned + consistent.
+
+  test("Dependabot keeps the pinned actions current: github-actions ecosystem, weekly, grouped, limited, never auto-merging", () => {
+    const file = path.join(repoRoot, ".github/dependabot.yml");
+    expect(fs.existsSync(file)).toBe(true);
+    const cfg = yaml.load(fs.readFileSync(file, "utf8"));
+    expect(cfg.version).toBe(2);
+    expect(cfg.updates).toHaveLength(1);
+    const u = cfg.updates[0];
+    expect(u["package-ecosystem"]).toBe("github-actions");
+    expect(u.directory).toBe("/"); // for github-actions "/" covers .github/workflows
+    expect(u.schedule).toMatchObject({ interval: "weekly", timezone: "Africa/Cairo" });
+    expect(u["open-pull-requests-limit"]).toBeGreaterThan(0);
+    expect(u["open-pull-requests-limit"]).toBeLessThanOrEqual(5);
+    expect(u.groups["github-actions"].patterns).toEqual(["*"]);
+    // nothing that would merge or approve on its own, and no token/secret reference
+    expect(JSON.stringify(cfg)).not.toMatch(/auto-?merge|approve|secrets\.|token|registries|ignore/i);
+  });
+
+  test("the repository has no workflow that merges, approves or auto-enables merge for Dependabot pull requests", () => {
+    for (const { file, raw } of workflows) {
+      expect({ file, hit: /dependabot|enable-auto-merge|gh pr merge|auto-merge|pulls\/\d+\/merge/i.test(raw) }).toEqual({ file, hit: false });
+    }
   });
 });
 
