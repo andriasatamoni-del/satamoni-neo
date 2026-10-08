@@ -65,6 +65,13 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
    workflows from outside collaborators.
 4. Enable **branch protection** on `main` (pull request + review required) so workflow files cannot be changed without review.
 
+## 4b. Actions are pinned to commit SHAs
+
+Every `uses:` in `.github/workflows` references a full commit SHA with a `# v4` comment, not a movable tag. A tag can be re-pointed after
+review, which would run different code next to the production secrets. `test/unit/security/workflow-security.spec.ts` fails if an
+action is unpinned or if two workflows use different SHAs for the same action. Updating is a manual, reviewed change (or enable
+Dependabot for the `github-actions` ecosystem).
+
 ## 5. Residual risk
 
 * Until the owner actions in §2–§4 are done, the production secrets are still reachable by anyone who can run workflows on the

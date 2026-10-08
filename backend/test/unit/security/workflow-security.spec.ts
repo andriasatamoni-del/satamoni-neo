@@ -96,6 +96,32 @@ describe("workflow security (BL-14)", () => {
       }
     }
   });
+
+  // Supply chain: a tag like @v4 can be moved to different code after review. Pinning to the full commit SHA makes the
+  // code that runs next to the production secrets exactly the code that was reviewed (the "# v4" comment records the tag).
+  test("every action is pinned to a full 40-character commit SHA, and the same action always uses the same SHA", () => {
+    const seen = new Map<string, Set<string>>();
+    for (const { file, doc } of workflows) {
+      for (const step of allSteps(doc)) {
+        if (!step.uses) continue;
+        const m = /^([\w.-]+\/[\w.-]+)@([0-9a-f]{40})$/.exec(step.uses);
+        expect({ file, uses: step.uses, pinned: !!m }).toEqual({ file, uses: step.uses, pinned: true });
+        seen.set(m![1], (seen.get(m![1]) ?? new Set()).add(m![2]));
+      }
+    }
+    for (const [action, shas] of seen) expect({ action, count: shas.size }).toEqual({ action, count: 1 });
+  });
+
+  test("the pinned SHAs are the ones GitHub actually resolved for @v4 on the runs of 3 and 8 Oct 2026", () => {
+    const known: Record<string, string> = {
+      "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
+      "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+    };
+    const used: Record<string, string> = {};
+    for (const { doc } of workflows) for (const step of allSteps(doc)) if (step.uses) used[step.uses.split("@")[0]] = step.uses.split("@")[1];
+    expect(used).toEqual(known);
+  });
 });
 
 describe("committed credentials and privileged test-account paths (BL-14)", () => {
