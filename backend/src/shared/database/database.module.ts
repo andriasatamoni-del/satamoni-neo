@@ -20,7 +20,7 @@ export { KYSELY };
       useFactory: (): Kysely<Database> => {
         const connectionString = process.env.DATABASE_URL;
         if (!connectionString) {
-          throw new Error("لازم تحدد DATABASE_URL في متغيرات البيئة");
+          throw new Error("DATABASE_URL is not set. Add it to the environment (see backend/.env.example)");
         }
         const dialect = new PostgresDialect({
           // BL-12: sessions stay in UTC (so JS Date parameters compare predictably with `date` columns); every place that needs the

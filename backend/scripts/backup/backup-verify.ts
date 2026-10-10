@@ -18,10 +18,10 @@ export async function verifyDumpReadable(file: string): Promise<{ entries: numbe
   try {
     ({ stdout } = await execFileAsync("pg_restore", ["--list", file], { maxBuffer: 64 * 1024 * 1024 }));
   } catch (err) {
-    throw new Error(`النسخة مش قابلة للقراءة بـpg_restore --list: ${err instanceof Error ? err.message : err}`);
+    throw new Error(`Backup is not readable by pg_restore --list: ${err instanceof Error ? err.message : err}`);
   }
   const entries = stdout.split("\n").filter((l) => l && !l.startsWith(";")).length;
-  if (entries < 10) throw new Error(`النسخة فاضية تقريبًا (${entries} عنصر في الفهرس)`);
+  if (entries < 10) throw new Error(`Backup is almost empty (${entries} entries in the table of contents)`);
   return { entries };
 }
 
@@ -31,7 +31,7 @@ export async function verifyBackupFile(file: string): Promise<{ sha256: string; 
   const actual = sha256File(file);
   if (fs.existsSync(sidecar)) {
     const expected = fs.readFileSync(sidecar, "utf8").trim().split(/\s+/)[0];
-    if (expected !== actual) throw new Error(`sha256 مش مطابق للنسخة ${path.basename(file)} - النسخة اتغيّرت/اتلفت`);
+    if (expected !== actual) throw new Error(`sha256 mismatch for backup ${path.basename(file)}: the file was modified or corrupted`);
   }
   const { entries } = await verifyDumpReadable(file);
   return { sha256: actual, entries };

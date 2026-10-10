@@ -15,7 +15,11 @@ Code comments and docs are mostly in Egyptian Arabic. Newer Phase 3.1 code is co
 
 pnpm is the package manager. Its version is pinned in the root `package.json` (`packageManager`), so `corepack enable` picks it up. Run `pnpm install` once at the repo root. It installs both packages, using the single root `pnpm-lock.yaml`. Don't use npm, and don't add a `package-lock.json`. Run the commands below from inside `backend/` or `frontend/`. CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile --filter <package>` with Node 22.
 
-From the root: `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `pnpm test:unit`.
+From the root: `pnpm dev` starts the local Postgres (Docker), applies migrations, then runs backend + frontend + a frontend typecheck together, with a status/log dashboard at http://localhost:4300 (`scripts/dev.mjs`; `DEV_DASHBOARD_PORT` to change; `DEV_SKIP_DOCKER=1` to use your own Postgres). It creates `backend/.env` from `.env.example` if missing.
+
+Local database: `docker-compose.yml` runs `postgres:17` on `127.0.0.1:5432` (user `postgres`, password `test123`) with the `satamoni_neo` dev database plus `satamoni_neo_test` and `satamoni_legacy_fixture_test` for the integration tests (`docker/postgres/init/`). Data persists in the `pgdata` volume. `pnpm db:up`, `pnpm db:down`, `pnpm db:reset` (wipes the volume and re-migrates). Stopping `pnpm dev` leaves the container running.
+
+Also `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `pnpm test:unit`.
 
 ### Backend
 ```bash

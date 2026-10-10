@@ -23,14 +23,14 @@ async function waitForDatabase(connectionString: string): Promise<void> {
     try {
       await probe.query("SELECT 1");
       await probe.end();
-      console.log(`✅ الاتصال بقاعدة البيانات نجح (محاولة ${attempt}/${CONNECT_RETRY_ATTEMPTS})`);
+      console.log(`✅ Connected to the database (attempt ${attempt}/${CONNECT_RETRY_ATTEMPTS})`);
       return;
     } catch (err) {
       await probe.end().catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`⏳ فشلت محاولة الاتصال بقاعدة البيانات ${attempt}/${CONNECT_RETRY_ATTEMPTS}: ${message}`);
+      console.error(`⏳ Database connection attempt ${attempt}/${CONNECT_RETRY_ATTEMPTS} failed: ${message}`);
       if (attempt === CONNECT_RETRY_ATTEMPTS) {
-        throw new Error(`مقدرناش نتصل بقاعدة البيانات بعد ${CONNECT_RETRY_ATTEMPTS} محاولات: ${message}`);
+        throw new Error(`Could not connect to the database after ${CONNECT_RETRY_ATTEMPTS} attempts: ${message}`);
       }
       await sleep(CONNECT_RETRY_DELAY_MS);
     }
@@ -40,9 +40,9 @@ async function waitForDatabase(connectionString: string): Promise<void> {
 async function main() {
   const direction = process.argv[2] === "down" ? "down" : "up";
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("لازم تحدد DATABASE_URL");
+  if (!connectionString) throw new Error("DATABASE_URL is not set");
 
-  console.log("بيتصل بقاعدة البيانات...");
+  console.log("Connecting to the database...");
   await waitForDatabase(connectionString);
 
   const db = new Kysely<unknown>({
@@ -51,7 +51,7 @@ async function main() {
     }),
   });
 
-  console.log("بيشغّل الـmigrations...");
+  console.log("Running migrations...");
   const migrator = new Migrator({
     db,
     provider: new FileMigrationProvider({
@@ -65,11 +65,11 @@ async function main() {
 
   results?.forEach((r) => {
     if (r.status === "Success") console.log(`✅ ${r.migrationName} (${r.direction})`);
-    else if (r.status === "Error") console.error(`❌ ${r.migrationName} فشلت`);
+    else if (r.status === "Error") console.error(`❌ ${r.migrationName} failed`);
   });
 
   if (error) {
-    console.error("فشل تشغيل الـmigrations:", error);
+    console.error("Migrations failed:", error);
     process.exit(1);
   }
 
@@ -77,6 +77,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("فشل تشغيل السكريبت:", err instanceof Error ? err.message : err);
+  console.error("Migration script failed:", err instanceof Error ? err.message : err);
   process.exit(1);
 });
