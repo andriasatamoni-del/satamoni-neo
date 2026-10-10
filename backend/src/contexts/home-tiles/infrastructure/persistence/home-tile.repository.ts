@@ -1,39 +1,37 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { HomeTile } from "../../domain/home-tile.aggregate";
 import type { HomeTileRepositoryPort } from "../../domain/ports/home-tile-repository.port";
-import type { HomeTilesTable } from "./home-tile.schema";
+import { homeTiles } from "./home-tiles.tables";
 
 @Injectable()
-export class KyselyHomeTileRepository implements HomeTileRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class HomeTileRepository implements HomeTileRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(tile: HomeTile): Promise<void> {
     await this.db
-      .updateTable("home_tiles")
+      .update(homeTiles)
       .set({
         title: tile.title,
         description: tile.description,
         display_order: tile.displayOrder,
         updated_at: tile.updatedAt,
       })
-      .where("id", "=", tile.id)
-      .execute();
+      .where(eq(homeTiles.id, tile.id));
   }
 
   async findById(id: string): Promise<HomeTile | null> {
-    const row = await this.db.selectFrom("home_tiles").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(homeTiles).where(eq(homeTiles.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(): Promise<HomeTile[]> {
-    const rows = await this.db.selectFrom("home_tiles").selectAll().orderBy("display_order").orderBy("id").execute();
+    const rows = await this.db.select().from(homeTiles).orderBy(asc(homeTiles.display_order), asc(homeTiles.id));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<HomeTilesTable>): HomeTile {
+  private toDomain(row: typeof homeTiles.$inferSelect): HomeTile {
     return HomeTile.reconstitute(row.id, {
       tileKey: row.tile_key,
       href: row.href,

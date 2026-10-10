@@ -2,9 +2,10 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
+import { inArray } from "drizzle-orm";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -40,8 +41,8 @@ describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تط�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM users WHERE email IN ('admin-home-tiles@jest.test', 'cashier-home-tiles@jest.test')`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(users).where(inArray(users.email, ["admin-home-tiles@jest.test", "cashier-home-tiles@jest.test"]));
     await app.close();
   });
 

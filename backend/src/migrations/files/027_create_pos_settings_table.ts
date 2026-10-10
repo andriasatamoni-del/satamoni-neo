@@ -2,7 +2,7 @@ import { Kysely, sql } from "kysely";
 
 // إعدادات النظام (TIER3-5) - نفس مفهوم pos_settings في الريبو القديم: صف واحد ثابت (id=1) بيحل محل
 // القيم اللي كانت متثبّتة في كود contexts تانية (shifts, delivery, payment-control, production).
-// الصف بيتنشئ lazily أول ما حد يقرأ الإعدادات (راجع KyselyPosSettingsRepository.get) مش هنا في
+// الصف بيتنشئ lazily أول ما حد يقرأ الإعدادات (راجع PosSettingsRepository.get) مش هنا في
 // الـmigration، عشان التطبيق يفضل شغال حتى لو حد شغّل migration من غير سيرفر يشتغل بعدها فورًا.
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
