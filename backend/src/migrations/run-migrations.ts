@@ -1,8 +1,9 @@
 import "dotenv/config";
 import * as path from "node:path";
-import { promises as fs } from "node:fs";
-import { Kysely, Migrator, FileMigrationProvider, PostgresDialect } from "kysely";
 import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { pgSslOption } from "../shared/database/pg-ssl";
 
 // قاعدة بيانات Render (خصوصًا Free plan) ممكن تاخد شوية وقت لسه بتتجهز أول ما الـblueprint يتعمل
@@ -12,6 +13,14 @@ import { pgSslOption } from "../shared/database/pg-ssl";
 // تأخير، عشان لو قاعدة البيانات لسه بتتجهز نستنى شوية بدل ما نفشل فورًا أو نعلّق للأبد
 const CONNECT_RETRY_ATTEMPTS = 10;
 const CONNECT_RETRY_DELAY_MS = 5000;
+
+// Migrations are Drizzle SQL files in backend/drizzle (forward-only; there is no "down").
+export const MIGRATIONS_FOLDER = path.join(__dirname, "../../drizzle");
+
+// The schema used to be migrated by Kysely (src/migrations/files, 001..058). The first Drizzle migration
+// (0000_baseline) is exactly that schema, so a database the Kysely migrator brought to 058 adopts the baseline as
+// already applied instead of running it.
+export const LAST_KYSELY_MIGRATION = "058_menu_category_archive_and_layout";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,46 +46,82 @@ async function waitForDatabase(connectionString: string): Promise<void> {
   }
 }
 
+// Returns true when it recorded the baseline as applied on a database the Kysely migrator had already built.
+export async function adoptKyselyDatabase(pool: Pool, migrationsFolder = MIGRATIONS_FOLDER): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Two deploys starting at once must not both adopt.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('satamoni-neo:migrations', 0))");
+    const { rows: kysely } = await client.query<{ present: boolean }>(
+      "SELECT to_regclass('public.kysely_migration') IS NOT NULL AS present"
+    );
+    if (!kysely[0].present) {
+      await client.query("COMMIT");
+      return false;
+    }
+    const { rows: last } = await client.query<{ name: string | null }>("SELECT max(name) AS name FROM public.kysely_migration");
+    if (last[0].name !== LAST_KYSELY_MIGRATION) {
+      throw new Error(
+        `This database was migrated by Kysely only up to "${last[0].name ?? "nothing"}". ` +
+          `Bring it to ${LAST_KYSELY_MIGRATION} with the last Kysely release before switching to the Drizzle migrations.`
+      );
+    }
+    // Same bookkeeping table Drizzle's migrator creates.
+    await client.query("CREATE SCHEMA IF NOT EXISTS drizzle");
+    await client.query(
+      "CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)"
+    );
+    const { rows: applied } = await client.query<{ n: string }>("SELECT count(*) AS n FROM drizzle.__drizzle_migrations");
+    if (Number(applied[0].n) > 0) {
+      await client.query("COMMIT");
+      return false;
+    }
+    const [baseline] = readMigrationFiles({ migrationsFolder });
+    await client.query("INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)", [
+      baseline.hash,
+      baseline.folderMillis,
+    ]);
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function runMigrations(connectionString: string, migrationsFolder = MIGRATIONS_FOLDER): Promise<void> {
+  const pool = new Pool({ connectionString, ssl: pgSslOption(), connectionTimeoutMillis: 10_000 });
+  try {
+    if (await adoptKyselyDatabase(pool, migrationsFolder)) {
+      console.log(`✅ Existing Kysely database (at ${LAST_KYSELY_MIGRATION}) adopted: 0000_baseline recorded as applied`);
+    }
+    await migrate(drizzle(pool), { migrationsFolder });
+  } finally {
+    await pool.end();
+  }
+}
+
 async function main() {
-  const direction = process.argv[2] === "down" ? "down" : "up";
+  if (process.argv[2] === "down") {
+    throw new Error("Migrations are forward-only; there is no down migration. Write a new migration that reverses the change.");
+  }
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL is not set");
 
   console.log("Connecting to the database...");
   await waitForDatabase(connectionString);
 
-  const db = new Kysely<unknown>({
-    dialect: new PostgresDialect({
-      pool: new Pool({ connectionString, ssl: pgSslOption(), connectionTimeoutMillis: 10_000 }),
-    }),
-  });
-
   console.log("Running migrations...");
-  const migrator = new Migrator({
-    db,
-    provider: new FileMigrationProvider({
-      fs,
-      path,
-      migrationFolder: path.join(__dirname, "files"),
-    }),
-  });
-
-  const { error, results } = direction === "up" ? await migrator.migrateToLatest() : await migrator.migrateDown();
-
-  results?.forEach((r) => {
-    if (r.status === "Success") console.log(`✅ ${r.migrationName} (${r.direction})`);
-    else if (r.status === "Error") console.error(`❌ ${r.migrationName} failed`);
-  });
-
-  if (error) {
-    console.error("Migrations failed:", error);
-    process.exit(1);
-  }
-
-  await db.destroy();
+  await runMigrations(connectionString);
+  console.log("✅ Migrations are up to date");
 }
 
-main().catch((err) => {
-  console.error("Migration script failed:", err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Migration script failed:", err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
