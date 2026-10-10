@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
+import { eq, inArray } from "drizzle-orm";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
+import { cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
 
 // e2e حقيقي: PATCH /pos-settings بيغيّر قيمة فعلية بيستهلكها context تاني (Shifts) - مش بس CRUD على
 // جدول منفصل، ده هو أصل مشكلة TIER3-5 (قيم كانت متثبّتة في الكود، دلوقتي قابلة للتهيئة فعليًا)
@@ -54,12 +58,12 @@ describe("POS Settings - إعدادات النظام القابلة للتهيئ
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM cashier_shifts WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(cashierShifts).where(eq(cashierShifts.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
     // نرجّع الإعدادات لقيمها الافتراضية (ونشيل updated_by) قبل مسح المستخدمين - وإلا فشل بسبب FK
-    await sql`UPDATE pos_settings SET shift_variance_ack_threshold_egp = 20, updated_by = NULL WHERE id = 1`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-pos-settings@jest.test', 'cashier-pos-settings@jest.test')`.execute(db);
+    await db.update(posSettings).set({ shift_variance_ack_threshold_egp: 20, updated_by: null }).where(eq(posSettings.id, 1));
+    await db.delete(users).where(inArray(users.email, ["admin-pos-settings@jest.test", "cashier-pos-settings@jest.test"]));
     await app.close();
   });
 
