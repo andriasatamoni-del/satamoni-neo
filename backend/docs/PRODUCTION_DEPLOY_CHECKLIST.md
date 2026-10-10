@@ -53,7 +53,7 @@ It does **not** change any code, schema, migration or Render configuration; it o
 
 - [ ] **No production backup has been proven to exist yet.** The scheduled backup workflow failed on every run from 30 Sep to 3 Oct 2026 (first on the old workflow, then because `BACKUP_ENCRYPTION_KEY` is not configured). A failure-alert job now opens a GitHub issue on failure, but it has not been exercised on GitHub yet.
 - [ ] The backup workflow has been run manually **from `main`** once (**Actions → Daily database backup + restore drill → Run workflow**). The workflow only runs from `main`; from any other branch it is skipped, and a skipped run looks green. Every step succeeded, including "Restore drill" and "Verify the encrypted files", and an artifact with `*.dump.gpg` **and** `*.dump.gpg.sha256` was produced.
-- [ ] The artifact was downloaded, its checksum verified **before** decrypting, and it was decrypted (`npm run verify-encrypted-backup`, see `BACKUP_AND_RECOVERY.md`).
+- [ ] The artifact was downloaded, its checksum verified **before** decrypting, and it was decrypted (`pnpm verify-encrypted-backup`, see `BACKUP_AND_RECOVERY.md`).
 - [ ] A **restore** from that backup was done on a throw-away local PostgreSQL (never on production), and `backend/scripts/backup/verify-restore.sql` passed: 0 unbalanced entries, stock equals movements, row counts consistent with production.
 - [ ] The backup connection verifies the database certificate: the run did **not** need `BACKUP_DB_TLS_MODE=insecure-skip-verify` (if it did, the CA is pinned in `BACKUP_DB_SSL_CA` and the variable is removed).
 - [ ] Failed backup runs will be noticed: **Issues are enabled** and the repository is **watched** so the `ALERT: scheduled database backup failed` issue reaches you, GitHub Actions failure notifications are on, and someone still checks that the artifact appeared (the alert cannot fire if the schedule itself stops).
@@ -180,7 +180,7 @@ Use an admin token (`$TOKEN`) and your backend URL (`$API`).
 **Rollback:**
 
 - Cheapest option: redeploy the **previous build** in Render. Migration `057` is additive, but a previous build against the new schema has **not been tested**, so try it on a copy first.
-- `npm run migrate:down` reverts migration `057` only. It was tested on sample data only; confirm it does not lose data written after the migration before using it in production.
+- `pnpm migrate:down` reverts migration `057` only. It was tested on sample data only; confirm it does not lose data written after the migration before using it in production.
 - The real safety net is the **backup taken in section 2**.
 - Keep the old system (`satamoni-backend`) running as the fallback until you are confident (see `DEPLOYMENT.md`, sections 6 and 7).
 

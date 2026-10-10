@@ -48,12 +48,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # pnpm via Node's built-in corepack (version from "packageManager" in the root package.json). Not pnpm/action-setup:
+      # only official actions/* are allowed (workflow-security.spec.ts). Before setup-node so `cache: pnpm` finds pnpm.
+      - run: corepack enable
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
       - name: Install dependencies
-        working-directory: backend
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter satamoni-neo-backend
       - name: Run approved operation
         working-directory: backend
         env:
@@ -78,4 +80,4 @@ jobs:
             import-hr-payroll)      SCRIPT="scripts/import-hr-payroll-from-legacy.ts" ;;
             *) echo "::error::operation is not on the approved list"; exit 1 ;;
           esac
-          npx ts-node "$SCRIPT"
+          pnpm exec ts-node "$SCRIPT"

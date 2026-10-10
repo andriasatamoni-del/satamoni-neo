@@ -12,9 +12,16 @@ services:
   - type: web
     name: satamoni-neo-backend
     runtime: node
-    rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm run migrate && npm run start
+    # pnpm workspace: install from the repo root (pnpm-lock.yaml lives there), so no rootDir; buildFilter keeps
+    # auto-deploys scoped to backend changes. pnpm version comes from "packageManager" in the root package.json.
+    buildFilter:
+      paths:
+        - backend/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --filter satamoni-neo-backend && pnpm --filter satamoni-neo-backend build
+    startCommand: cd backend && pnpm run migrate && pnpm run start
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -57,9 +64,14 @@ services:
   - type: web
     name: satamoni-neo-frontend
     runtime: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    buildFilter:
+      paths:
+        - frontend/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --filter satamoni-neo-frontend && pnpm --filter satamoni-neo-frontend build
+    staticPublishPath: frontend/dist
     routes:
       - type: rewrite
         source: /*

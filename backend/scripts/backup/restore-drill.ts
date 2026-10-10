@@ -68,10 +68,10 @@ export async function runRestoreDrill(input: {
   if (!backupFile) {
     const dir = backupDirFromEnv();
     const backups = fs.existsSync(dir) ? parseBackupFiles(fs.readdirSync(dir)) : [];
-    if (backups.length === 0) throw new Error(`مفيش أي نسخة احتياطية في ${dir}`);
+    if (backups.length === 0) throw new Error(`No backups found in ${dir}`);
     backupFile = path.join(dir, backups[backups.length - 1].name);
   }
-  if (!fs.existsSync(backupFile)) throw new Error(`ملف النسخة مش موجود: ${backupFile}`);
+  if (!fs.existsSync(backupFile)) throw new Error(`Backup file not found: ${backupFile}`);
   record("تحديد النسخة الاحتياطية", true, path.basename(backupFile));
   try {
     const v = await verifyBackupFile(backupFile);
@@ -183,7 +183,7 @@ async function migrateRestoredCopy(scratchUrl: string, record: (step: string, ok
     const { error, results } = await migrator.migrateToLatest();
     if (error) {
       const failed = results?.find((r) => r.status === "Error")?.migrationName ?? "؟";
-      return record("تحديث النسخة المسترجعة لآخر migration", false, `فشل عند ${failed}: ${error instanceof Error ? error.message : error}`);
+      return record("تحديث النسخة المسترجعة لآخر migration", false, `Failed at ${failed}: ${error instanceof Error ? error.message : error}`);
     }
     return record(
       "تحديث النسخة المسترجعة لآخر migration",
@@ -217,7 +217,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error("❌ فشل تمرين الاسترجاع:", err instanceof Error ? err.message : err);
+    console.error("❌ Restore drill failed:", err instanceof Error ? err.message : err);
     process.exit(1);
   });
 }

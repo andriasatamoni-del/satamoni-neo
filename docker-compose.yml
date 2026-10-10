@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17 
+    container_name: satamoni-neo-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test123
+      POSTGRES_DB: satamoni_neo
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d satamoni_neo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:

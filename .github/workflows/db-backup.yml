@@ -87,6 +87,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # pnpm via Node's built-in corepack (version from "packageManager" in the root package.json). Not pnpm/action-setup:
+      # only official actions/* are allowed (workflow-security.spec.ts). Before setup-node so `cache: pnpm` finds pnpm.
+      - run: corepack enable
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -101,8 +104,7 @@ jobs:
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
-        working-directory: backend
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter satamoni-neo-backend
 
       # The source database certificate is VERIFIED (chain + host name) by pg_dump, the comparison and the server-identity check.
       # By default it must chain to a CA the runner trusts. If the provider's certificate is not publicly trusted, store the CA
@@ -130,7 +132,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSL: "true"
           BACKUP_DB_TLS_MODE: ${{ vars.BACKUP_DB_TLS_MODE }}
-        run: npx ts-node scripts/backup/backup.ts
+        run: pnpm exec ts-node scripts/backup/backup.ts
 
       - name: Restore drill (into throw-away Postgres service)
         working-directory: backend
@@ -141,7 +143,7 @@ jobs:
           RESTORE_DRILL_SOURCE_IS_LIVE: "true"
           RESTORE_DRILL_SOURCE_SSL: "true"
           BACKUP_DB_TLS_MODE: ${{ vars.BACKUP_DB_TLS_MODE }}
-        run: npx ts-node scripts/backup/restore-drill.ts
+        run: pnpm exec ts-node scripts/backup/restore-drill.ts
 
       - name: Encrypt dump (AES-256), prove the key decrypts it, and record the SHA-256 of the ENCRYPTED file
         working-directory: backend
@@ -170,7 +172,7 @@ jobs:
           shopt -s nullglob
           encrypted=("$BACKUP_DIR"/*.dump.gpg)
           [ "${#encrypted[@]}" -gt 0 ] || { echo "::error::no encrypted backup produced"; exit 1; }
-          npx ts-node scripts/backup/verify-encrypted-backup.ts "${encrypted[@]}"
+          pnpm exec ts-node scripts/backup/verify-encrypted-backup.ts "${encrypted[@]}"
           leftover=$(find "$BACKUP_DIR" -type f ! -name '*.dump.gpg' ! -name '*.dump.gpg.sha256' | wc -l)
           [ "$leftover" -eq 0 ] || { echo "::error::unexpected non-encrypted file left in the backup directory"; exit 1; }
 
@@ -191,7 +193,7 @@ jobs:
           ep=""; if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then ep="--endpoint-url $BACKUP_S3_ENDPOINT"; fi
           aws s3 cp $ep "$BACKUP_DIR"/ "s3://$BACKUP_S3_BUCKET/satamoni-neo/" --recursive --exclude "*" --include "*.dump.gpg" --include "*.dump.gpg.sha256"
           aws s3 ls $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/" | awk '{print $4}' | grep '\.dump\.gpg$' > "$RUNNER_TEMP/remote-names.txt"
-          npx ts-node scripts/backup/retention-plan.ts --names-file "$RUNNER_TEMP/remote-names.txt" --suffix .gpg --print-delete > "$RUNNER_TEMP/to-delete.txt"
+          pnpm exec ts-node scripts/backup/retention-plan.ts --names-file "$RUNNER_TEMP/remote-names.txt" --suffix .gpg --print-delete > "$RUNNER_TEMP/to-delete.txt"
           while read -r name; do [ -n "$name" ] && aws s3 rm $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/$name" && aws s3 rm $ep "s3://$BACKUP_S3_BUCKET/satamoni-neo/$name.sha256"; done < "$RUNNER_TEMP/to-delete.txt"
 
       - name: Upload encrypted backup artifact (encrypted dump + its SHA-256 only)

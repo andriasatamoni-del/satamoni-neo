@@ -25,7 +25,7 @@ export async function createBackup(databaseUrl: string, dir: string, now = new D
   if (size < MIN_VALID_BACKUP_BYTES) {
     // ملف أصغر من 1KB غالبًا معناه pg_dump فشل بصمت - مانسيبش نسخة فاشلة شكلها ناجح
     fs.unlinkSync(fullPath);
-    throw new Error(`ملف النسخة صغير جدًا (${size} بايت) - على الأرجح النسخ فشل`);
+    throw new Error(`Backup file is too small (${size} bytes): the dump most likely failed`);
   }
 
   // BL-13: integrity - the archive must be readable by pg_restore (its table of contents parses end to end,
@@ -60,7 +60,7 @@ export function retentionFromEnv(): RetentionPolicy {
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) throw new Error("لازم تحدد DATABASE_URL");
+  if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const dir = backupDirFromEnv();
 
   console.log(`جاري النسخ الاحتياطي في ${dir} ...`);
@@ -77,7 +77,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error("❌ فشل النسخ الاحتياطي:", err instanceof Error ? err.message : err);
+    console.error("❌ Backup failed:", err instanceof Error ? err.message : err);
     process.exit(1);
   });
 }

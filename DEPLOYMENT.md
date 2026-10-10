@@ -18,9 +18,11 @@
 ## 2. الباك إند (Web Service)
 
 1. **New + → Web Service**، اربطه بريبو `satamoni-neo` على GitHub.
-2. **Root Directory**: `backend`
-3. **Build Command**: `npm install && npm run build`
-4. **Start Command**: `npm run migrate && npm run start`
+2. **Root Directory**: سيبه فاضي (الريبو pnpm workspace والـ`pnpm-lock.yaml` في الجذر). عشان الـauto-deploy
+   ميتعملش مع كل تغيير في الفرونت، حط في **Build Filters → Included Paths**: `backend/**`, `package.json`,
+   `pnpm-lock.yaml`, `pnpm-workspace.yaml`
+3. **Build Command**: `corepack enable && pnpm install --frozen-lockfile --filter satamoni-neo-backend && pnpm --filter satamoni-neo-backend build`
+4. **Start Command**: `cd backend && pnpm run migrate && pnpm run start`
    (بيشغّل الـmigrations تلقائي قبل كل start - آمن لأنها idempotent، Kysely بيتتبّع أي migration
    اتنفذت فعلًا)
 5. **Environment Variables**:
@@ -41,9 +43,10 @@
 ## 3. الفرونت إند (Static Site)
 
 1. **New + → Static Site**، نفس الريبو.
-2. **Root Directory**: `frontend`
-3. **Build Command**: `npm install && npm run build`
-4. **Publish Directory**: `dist`
+2. **Root Directory**: سيبه فاضي، و**Build Filters → Included Paths**: `frontend/**`, `package.json`,
+   `pnpm-lock.yaml`, `pnpm-workspace.yaml`
+3. **Build Command**: `corepack enable && pnpm install --frozen-lockfile --filter satamoni-neo-frontend && pnpm --filter satamoni-neo-frontend build`
+4. **Publish Directory**: `frontend/dist`
 5. **Environment Variables**:
    - `VITE_API_BASE_URL` = رابط الباك إند بتاع الخطوة 2 بالظبط (من غير `/` في الآخر) - مثلًا
      `https://satamoni-neo-backend.onrender.com`
@@ -112,7 +115,7 @@ scripts/import-hr-payroll-from-legacy.ts
 2. تبويب **Actions → Approved maintenance operation → Run workflow**. اختار `operation` (مثلًا `import-branches`)
    واستنى موافقة المراجِع. كرر لكل عملية بالترتيب اللي فوق، واحدة بعد التانية.
 3. البدائل: لو عندك Node.js على جهازك الشخصي، تقدر تشغّل نفس الأوامر محليًا (`export DATABASE_URL=...
-   PGSSL=true && npx ts-node scripts/...`) لأن جهازك الشخصي مالوش نفس القيد. أو ترقية مؤقتة لخطة مدفوعة
+   PGSSL=true && pnpm exec ts-node scripts/...`) لأن جهازك الشخصي مالوش نفس القيد. أو ترقية مؤقتة لخطة مدفوعة
    على Render بتديك Shell access.
 
 ## 5. اختبار دخان على الإنتاج
