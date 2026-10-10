@@ -1,8 +1,9 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importUsersFromLegacy } from "../../../scripts/import-users-from-legacy";
 import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 // قاعدة وهمية بشكل جدول users القديم بالظبط (مفيش داعي نجيب الريبو القديم الحقيقي هنا - النص المتفق
 // عليه هو الأعمدة، مش القاعدة كلها) - راجع خطة إعادة البناء §7: "الاستيراد بيتجرب على نسخة من
@@ -12,7 +13,7 @@ const LEGACY_FIXTURE_URL =
 
 describe("importUsersFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let repo: KyselyUserRepository;
 
   beforeAll(async () => {
@@ -33,20 +34,18 @@ describe("importUsersFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    repo = new KyselyUserRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new KyselyUserRepository(kyselyOn(neoDb));
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await neoDb.destroy();
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM users");
-    await sql`DELETE FROM users`.execute(neoDb);
+    await sql`DELETE FROM users`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد يوزر جديد صح بكل بياناته", async () => {

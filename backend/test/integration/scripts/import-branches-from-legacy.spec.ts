@@ -1,15 +1,16 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importBranchesFromLegacy } from "../../../scripts/import-branches-from-legacy";
 import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importBranchesFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let repo: KyselyBranchRepository;
 
   beforeAll(async () => {
@@ -23,21 +24,19 @@ describe("importBranchesFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    repo = new KyselyBranchRepository(neoDb);
-    await sql`DELETE FROM branches`.execute(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new KyselyBranchRepository(kyselyOn(neoDb));
+    await sql`DELETE FROM branches`.execute(kyselyOn(neoDb));
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await neoDb.destroy();
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM branches");
-    await sql`DELETE FROM branches`.execute(neoDb);
+    await sql`DELETE FROM branches`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد فرع جديد صح", async () => {

@@ -1,18 +1,19 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importCatalogFromLegacy } from "../../../scripts/import-catalog-from-legacy";
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { KyselyRecipeRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository";
 import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importCatalogFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let itemRepo: KyselyMenuItemRepository;
   let recipeRepo: KyselyRecipeRepository;
   let ingredientItemId: string;
@@ -27,13 +28,11 @@ describe("importCatalogFromLegacy", () => {
     await legacyPool.query(`CREATE TABLE recipe_versions (id SERIAL PRIMARY KEY, recipe_id INTEGER NOT NULL, version_number INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'DRAFT')`);
     await legacyPool.query(`CREATE TABLE recipe_ingredients (id SERIAL PRIMARY KEY, recipe_version_id INTEGER NOT NULL, ingredient_item_id INTEGER NOT NULL, quantity NUMERIC NOT NULL, unit TEXT)`);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    itemRepo = new KyselyMenuItemRepository(neoDb);
-    recipeRepo = new KyselyRecipeRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    itemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
+    recipeRepo = new KyselyRecipeRepository(kyselyOn(neoDb));
 
-    const inventoryRepo = new KyselyInventoryItemRepository(neoDb);
+    const inventoryRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
     const ingredient = InventoryItem.register({ name: "دقيق-كتالوج-fixture", unit: "كيلو", legacyInventoryItemId: 850 });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
@@ -41,18 +40,18 @@ describe("importCatalogFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM recipe_ingredients; DELETE FROM recipe_versions; DELETE FROM recipes; DELETE FROM menu_item_variants; DELETE FROM menu_items; DELETE FROM menu_categories");
-    await sql`DELETE FROM recipe_ingredients`.execute(neoDb);
-    await sql`DELETE FROM recipe_versions`.execute(neoDb);
-    await sql`DELETE FROM recipes`.execute(neoDb);
-    await sql`DELETE FROM menu_item_variants`.execute(neoDb);
-    await sql`DELETE FROM menu_items`.execute(neoDb);
-    await sql`DELETE FROM menu_categories`.execute(neoDb);
+    await sql`DELETE FROM recipe_ingredients`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM recipe_versions`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM recipes`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM menu_item_variants`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM menu_items`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM menu_categories`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد قسم وصنف بحجم ووصفة نشطة كاملة", async () => {

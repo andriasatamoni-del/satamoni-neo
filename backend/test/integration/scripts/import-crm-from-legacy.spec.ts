@@ -1,18 +1,19 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importCrmFromLegacy } from "../../../scripts/import-crm-from-legacy";
 import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { KyselyComplaintRepository } from "../../../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
 import { KyselyCustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
 import { User } from "../../../src/contexts/identity-access/domain/user.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importCrmFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let userRepo: KyselyUserRepository;
   let followupRepo: KyselyCustomerFollowupRepository;
   let complaintRepo: KyselyComplaintRepository;
@@ -48,17 +49,15 @@ describe("importCrmFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    userRepo = new KyselyUserRepository(neoDb);
-    followupRepo = new KyselyCustomerFollowupRepository(neoDb);
-    complaintRepo = new KyselyComplaintRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    userRepo = new KyselyUserRepository(kyselyOn(neoDb));
+    followupRepo = new KyselyCustomerFollowupRepository(kyselyOn(neoDb));
+    complaintRepo = new KyselyComplaintRepository(kyselyOn(neoDb));
 
     // بتصفير الجدولين هنا (مش بس afterEach) لأن ملفات اختبار تانية (زي crm.e2e.spec.ts) ممكن تكون
     // سابت صفوف ورا في نفس قاعدة الاختبار المشتركة - عايزين نبدأ من صفحة فاضية مضمونة
-    await sql`DELETE FROM complaints`.execute(neoDb);
-    await sql`DELETE FROM customer_followups`.execute(neoDb);
+    await sql`DELETE FROM complaints`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM customer_followups`.execute(kyselyOn(neoDb));
 
     // يوزر مستورد مسبقًا (زي ما هيحصل فعليًا - المستخدمين بيتستوردوا قبل الـCRM) بـlegacy_user_id
     // يطابق called_by/created_by في بيانات الـfixture تحت
@@ -74,14 +73,14 @@ describe("importCrmFromLegacy", () => {
     await legacyPool.end();
     // بنشيل اليوزر اللي عملناه هنا عشان ملفات اختبار تانية بتعمل DELETE شامل على جدول users متعتمدش
     // على صف موجود هنا ومربوط بـFK من complaints/customer_followups
-    await sql`DELETE FROM users WHERE email = 'callcenter-import@legacy.test'`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM users WHERE email = 'callcenter-import@legacy.test'`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM customer_complaints; DELETE FROM whatsapp_complaints; DELETE FROM customer_followups");
-    await sql`DELETE FROM complaints`.execute(neoDb);
-    await sql`DELETE FROM customer_followups`.execute(neoDb);
+    await sql`DELETE FROM complaints`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM customer_followups`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد متابعة وشكوى تليفون مرتبطة ببعض، ومترجم called_by/created_by صح", async () => {

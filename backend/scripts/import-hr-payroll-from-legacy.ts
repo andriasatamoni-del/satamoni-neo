@@ -9,8 +9,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
+import type { Database } from "../src/shared/database/database.token";
 import { KyselyEmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
 import { KyselyDepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
 import { KyselyPositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
@@ -21,6 +20,7 @@ import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
 import { Department } from "../src/contexts/hr-payroll/domain/department.aggregate";
 import { Position } from "../src/contexts/hr-payroll/domain/position.aggregate";
 import { PayrollRun, type PayrollRunStatus } from "../src/contexts/hr-payroll/domain/payroll-run.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
 interface LegacyDepartmentRow {
   id: number; code: string; name: string; description: string | null; status: string;
@@ -53,13 +53,13 @@ export interface HrPayrollImportResult {
   payrollRuns: ImportCounts;
 }
 
-export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<HrPayrollImportResult> {
-  const employeeRepo = new KyselyEmployeeRepository(neoDb);
-  const departmentRepo = new KyselyDepartmentRepository(neoDb);
-  const positionRepo = new KyselyPositionRepository(neoDb);
-  const payrollRunRepo = new KyselyPayrollRunRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const userRepo = new KyselyUserRepository(neoDb);
+export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Database): Promise<HrPayrollImportResult> {
+  const employeeRepo = new KyselyEmployeeRepository(kyselyOn(neoDb));
+  const departmentRepo = new KyselyDepartmentRepository(kyselyOn(neoDb));
+  const positionRepo = new KyselyPositionRepository(kyselyOn(neoDb));
+  const payrollRunRepo = new KyselyPayrollRunRepository(kyselyOn(neoDb));
+  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number | null): Promise<string | null> {
@@ -264,7 +264,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importHrPayrollFromLegacy(legacyPool, neoDb);
   console.log("✅ الاستيراد خلص:");
@@ -274,7 +274,7 @@ async function main() {
   console.log(`  قوائم الرواتب: ${result.payrollRuns.created} جديد، ${result.payrollRuns.updated} اتحدّث، ${result.payrollRuns.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

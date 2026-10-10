@@ -5,10 +5,10 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
+import type { Database } from "../src/shared/database/database.token";
 import { KyselyCustomerRepository } from "../src/contexts/customers/infrastructure/persistence/kysely-customer.repository";
 import { Customer } from "../src/contexts/customers/domain/customer.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
 interface LegacyCustomerRow {
   id: number; phone: string; phone2: string | null; name: string | null; address_details: string | null;
@@ -23,8 +23,8 @@ interface LegacyCustomerAddressRow {
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 export interface CustomersImportResult { customers: ImportCounts; }
 
-export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<CustomersImportResult> {
-  const customerRepo = new KyselyCustomerRepository(neoDb);
+export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CustomersImportResult> {
+  const customerRepo = new KyselyCustomerRepository(kyselyOn(neoDb));
 
   const customers: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: customerRows } = await legacyPool.query<LegacyCustomerRow>(
@@ -80,7 +80,7 @@ export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Kysely<
       const customer = Customer.reconstitute(existing?.id ?? randomUUID(), { phone: row.phone, addresses: legacyAddresses, ...props });
       await customerRepo.save(customer);
       // الـrepository مابيكتبش الرصيد عند التحديث (بيتعدّل ذرّيًا من Loyalty بس) - الاستيراد هو المصدر هنا
-      await neoDb.updateTable("customers").set({ loyalty_points: row.loyalty_points }).where("id", "=", customer.id).execute();
+      await kyselyOn(neoDb).updateTable("customers").set({ loyalty_points: row.loyalty_points }).where("id", "=", customer.id).execute();
       if (existing) customers.updated++;
       else customers.created++;
     } catch (err) {
@@ -99,14 +99,14 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importCustomersFromLegacy(legacyPool, neoDb);
   console.log("✅ الاستيراد خلص:");
   console.log(`  العملاء: ${result.customers.created} جديد، ${result.customers.updated} اتحدّث، ${result.customers.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

@@ -8,11 +8,11 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
+import type { Database } from "../src/shared/database/database.token";
 import { KyselyAccountRepository } from "../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
 import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { Account } from "../src/contexts/accounting/domain/account.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
 interface LegacyAccountRow {
   id: number;
@@ -32,9 +32,9 @@ export interface ImportCounts {
   parentsLinked: number;
 }
 
-export async function importAccountingFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportCounts> {
-  const accountRepo = new KyselyAccountRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
+export async function importAccountingFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
+  const accountRepo = new KyselyAccountRepository(kyselyOn(neoDb));
+  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
   const { rows } = await legacyPool.query<LegacyAccountRow>(
     `SELECT id, code, name, account_type, parent_account_id, branch_id, is_active, is_system_account
      FROM accounts ORDER BY id`
@@ -113,7 +113,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importAccountingFromLegacy(legacyPool, neoDb);
   console.log(
@@ -121,7 +121,7 @@ async function main() {
   );
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

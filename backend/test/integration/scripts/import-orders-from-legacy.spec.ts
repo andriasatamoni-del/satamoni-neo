@@ -1,6 +1,6 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importOrdersFromLegacy } from "../../../scripts/import-orders-from-legacy";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
@@ -8,13 +8,14 @@ import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastru
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importOrdersFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let orderRepo: KyselyOrderRepository;
   let movementRepo: KyselyStockMovementRepository;
   let branchId: string;
@@ -41,18 +42,16 @@ describe("importOrdersFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    orderRepo = new KyselyOrderRepository(neoDb);
-    movementRepo = new KyselyStockMovementRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
+    movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
 
-    const branchRepo = new KyselyBranchRepository(neoDb);
+    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
     const branch = Branch.register({ name: "فرع طلبات-fixture", legacyBranchId: 800 });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(neoDb);
+    const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
     const item = MenuItem.register({ name: "بيتزا-طلبات-fixture", legacyMenuItemId: 850 });
     const variant = item.addVariant({ label: "وسط", price: 90, legacyVariantId: 851 });
     await menuItemRepo.save(item);
@@ -62,17 +61,17 @@ describe("importOrdersFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM menu_item_variants WHERE item_id = ${menuItemId}`.execute(neoDb);
-    await sql`DELETE FROM menu_items WHERE id = ${menuItemId}`.execute(neoDb);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM menu_item_variants WHERE item_id = ${menuItemId}`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM menu_items WHERE id = ${menuItemId}`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM order_items; DELETE FROM orders");
-    await sql`DELETE FROM print_jobs`.execute(neoDb);
-    await sql`DELETE FROM order_items`.execute(neoDb);
-    await sql`DELETE FROM orders`.execute(neoDb);
+    await sql`DELETE FROM print_jobs`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM order_items`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM orders`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد طلب تاريخي كامل من غير ما يرحّل أي حركة مخزون جديدة", async () => {

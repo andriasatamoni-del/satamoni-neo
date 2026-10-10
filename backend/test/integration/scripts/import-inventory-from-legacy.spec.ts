@@ -1,18 +1,19 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importInventoryFromLegacy } from "../../../scripts/import-inventory-from-legacy";
 import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
 import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importInventoryFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let itemRepo: KyselyInventoryItemRepository;
   let movementRepo: KyselyStockMovementRepository;
   let branchId: string;
@@ -32,16 +33,14 @@ describe("importInventoryFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    itemRepo = new KyselyInventoryItemRepository(neoDb);
-    movementRepo = new KyselyStockMovementRepository(neoDb);
-    const branchRepo = new KyselyBranchRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    itemRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
+    movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
+    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
 
-    await sql`DELETE FROM branch_stock_balances`.execute(neoDb);
-    await sql`DELETE FROM stock_movements`.execute(neoDb);
-    await sql`DELETE FROM inventory_items`.execute(neoDb);
+    await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM stock_movements`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM inventory_items`.execute(kyselyOn(neoDb));
 
     const branch = Branch.register({ name: "فرع استيراد مخزون-جست", legacyBranchId: 700 });
     await branchRepo.save(branch);
@@ -50,15 +49,15 @@ describe("importInventoryFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM branch_inventory_stock; DELETE FROM inventory_items");
-    await sql`DELETE FROM branch_stock_balances`.execute(neoDb);
-    await sql`DELETE FROM stock_movements`.execute(neoDb);
-    await sql`DELETE FROM inventory_items`.execute(neoDb);
+    await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM stock_movements`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM inventory_items`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد صنف ورصيد افتتاحي مرتبط بيه صح", async () => {

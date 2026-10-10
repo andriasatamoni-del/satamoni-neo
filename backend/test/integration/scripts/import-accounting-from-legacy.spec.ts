@@ -1,17 +1,18 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importAccountingFromLegacy } from "../../../scripts/import-accounting-from-legacy";
 import { KyselyAccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
 import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importAccountingFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let accountRepo: KyselyAccountRepository;
   let branchRepo: KyselyBranchRepository;
   let branchId: string;
@@ -27,12 +28,10 @@ describe("importAccountingFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    accountRepo = new KyselyAccountRepository(neoDb);
-    branchRepo = new KyselyBranchRepository(neoDb);
-    await sql`DELETE FROM accounts`.execute(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    accountRepo = new KyselyAccountRepository(kyselyOn(neoDb));
+    branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+    await sql`DELETE FROM accounts`.execute(kyselyOn(neoDb));
 
     const branch = Branch.register({ name: "فرع الاستيراد", legacyBranchId: 777 });
     await branchRepo.save(branch);
@@ -41,14 +40,14 @@ describe("importAccountingFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM accounts`.execute(neoDb);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM accounts`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM accounts");
-    await sql`DELETE FROM accounts`.execute(neoDb);
+    await sql`DELETE FROM accounts`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد حساب جديد صح", async () => {

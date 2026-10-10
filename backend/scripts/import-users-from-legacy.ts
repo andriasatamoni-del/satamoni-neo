@@ -12,12 +12,12 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
+import type { Database } from "../src/shared/database/database.token";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { User } from "../src/contexts/identity-access/domain/user.aggregate";
 import { isValidRole } from "../src/contexts/identity-access/domain/role";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
 interface LegacyUserRow {
   id: number;
@@ -44,9 +44,9 @@ function asStringArray(value: unknown): string[] {
 
 // الجزء القابل للاختبار - بياخد اتصالات جاهزة (بدل ما يفتحها هو) عشان الاختبارات تقدر تبعتله
 // قواعد بيانات وهمية (fixtures) من غير الحاجة للريبو القديم الحقيقي
-export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportResult> {
-  const repo = new KyselyUserRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
+export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportResult> {
+  const repo = new KyselyUserRepository(kyselyOn(neoDb));
+  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
   const { rows } = await legacyPool.query<LegacyUserRow>(
     `SELECT id, branch_id, name, email, password_hash, role, pin_hash,
             permission_grants, permission_revokes, is_active
@@ -122,13 +122,13 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importUsersFromLegacy(legacyPool, neoDb);
   console.log(`✅ الاستيراد خلص: ${result.created} جديد، ${result.updated} اتحدّث، ${result.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

@@ -6,11 +6,11 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
+import type { Database } from "../src/shared/database/database.token";
 import { KyselyDriverRepository } from "../src/contexts/delivery/infrastructure/persistence/kysely-driver.repository";
 import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
 import { Driver, DRIVER_STATUSES } from "../src/contexts/delivery/domain/driver.aggregate";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
 interface LegacyDriverRow {
   id: number; branch_id: number; name: string; phone: string | null; status: string;
@@ -18,9 +18,9 @@ interface LegacyDriverRow {
 
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 
-export async function importDriversFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportCounts> {
-  const driverRepo = new KyselyDriverRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
+export async function importDriversFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
+  const driverRepo = new KyselyDriverRepository(kyselyOn(neoDb));
+  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
 
   const result: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows } = await legacyPool.query<LegacyDriverRow>(`SELECT id, branch_id, name, phone, status FROM drivers ORDER BY id`);
@@ -56,13 +56,13 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importDriversFromLegacy(legacyPool, neoDb);
   console.log(`✅ الاستيراد خلص: ${result.created} جديد، ${result.updated} اتحدّث، ${result.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

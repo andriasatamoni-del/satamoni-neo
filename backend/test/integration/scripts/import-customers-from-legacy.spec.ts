@@ -1,15 +1,16 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { sql } from "kysely";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importCustomersFromLegacy } from "../../../scripts/import-customers-from-legacy";
 import { KyselyCustomerRepository } from "../../../src/contexts/customers/infrastructure/persistence/kysely-customer.repository";
+import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importCustomersFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
+  let neoDb: Database;
   let repo: KyselyCustomerRepository;
 
   beforeAll(async () => {
@@ -30,24 +31,24 @@ describe("importCustomersFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
-    repo = new KyselyCustomerRepository(neoDb);
-    await sql`DELETE FROM customer_addresses`.execute(neoDb);
-    await sql`DELETE FROM customers`.execute(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new KyselyCustomerRepository(kyselyOn(neoDb));
+    await sql`DELETE FROM customer_addresses`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM customers`.execute(kyselyOn(neoDb));
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM customer_addresses`.execute(neoDb);
-    await sql`DELETE FROM customers`.execute(neoDb);
-    await neoDb.destroy();
+    await sql`DELETE FROM customer_addresses`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM customers`.execute(kyselyOn(neoDb));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM customer_addresses");
     await legacyPool.query("DELETE FROM customers");
-    await sql`DELETE FROM customer_addresses`.execute(neoDb);
-    await sql`DELETE FROM customers`.execute(neoDb);
+    await sql`DELETE FROM customer_addresses`.execute(kyselyOn(neoDb));
+    await sql`DELETE FROM customers`.execute(kyselyOn(neoDb));
   });
 
   test("بيستورد عميل بحساب حقيقي (password_hash موجود) + عنوان محفوظ", async () => {
