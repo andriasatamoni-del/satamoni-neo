@@ -31,6 +31,8 @@ export interface OrderItemsTable {
   menu_item_id: string | null;
   variant_id: string | null;
   combo_id: string | null;
+  // لقطة محتويات العرض وقت البيع (راجع migration 059) - [] لسطر عادي أو عرض قديم
+  combo_components: Generated<unknown>;
   quantity: number;
   unit_price: number;
   line_total: number;

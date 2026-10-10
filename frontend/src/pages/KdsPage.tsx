@@ -12,8 +12,9 @@ import { EmptyState } from "../shared/ui/Table";
 interface Branch { id: string; name: string; }
 interface MenuItemVariant { id: string; label: string; price: number; }
 interface MenuItem { id: string; name: string; variants: MenuItemVariant[]; }
-interface OrderLine { menuItemId: string | null; variantId: string | null; comboId?: string | null; quantity: number; modifiers?: { nameAtSale: string }[]; }
-interface Combo { id: string; name: string; }
+// محتويات العرض وقت البيع (لقطة من السيرفر)؛ quantity لكل عرض واحد. الطلبات القديمة مفيهاش لقطة فبنكمّلها من العرض نفسه
+interface OrderLine { menuItemId: string | null; variantId: string | null; comboId?: string | null; quantity: number; modifiers?: { nameAtSale: string }[]; components?: { variantId: string; itemName: string; variantLabel: string | null; quantity: number }[]; }
+interface Combo { id: string; name: string; items?: { variantId: string; quantity: number }[]; }
 interface KdsOrder {
   id: string;
   orderType: string;
@@ -91,6 +92,23 @@ export function KdsPage() {
     return `صنف${extras} × ${line.quantity}`;
   };
 
+  const variantName = (variantId: string) => {
+    for (const item of menuItemsQuery.data ?? []) {
+      const v = item.variants.find((v) => v.id === variantId);
+      if (v) return `${item.name} (${v.label})`;
+    }
+    return "صنف";
+  };
+  // المطبخ لازم يشوف أصناف العرض الفعلية مش اسمه بس، بكمياتها مضروبة في كمية السطر
+  const comboComponents = (line: OrderLine): string[] => {
+    if (!line.comboId) return [];
+    if (line.components && line.components.length > 0) {
+      return line.components.map((c) => `${c.quantity * line.quantity}× ${c.itemName}${c.variantLabel ? ` (${c.variantLabel})` : ""}`);
+    }
+    const combo = combosQuery.data?.find((c) => c.id === line.comboId);
+    return (combo?.items ?? []).map((i) => `${i.quantity * line.quantity}× ${variantName(i.variantId)}`);
+  };
+
   const orders = boardQuery.data ?? [];
   const columns = KITCHEN_STATUSES.map((status) => ({ status, orders: orders.filter((o) => o.kitchenStatus === status) }));
 
@@ -141,7 +159,16 @@ export function KdsPage() {
                           </span>
                         </div>
                         <ul className="space-y-0.5 text-sm text-slate-700">
-                          {order.items.map((line, i) => <li key={i}>{itemLabel(line)}</li>)}
+                          {order.items.map((line, i) => (
+                            <li key={i}>
+                              {itemLabel(line)}
+                              {comboComponents(line).length > 0 && (
+                                <ul className="mr-4 list-disc text-xs text-slate-600" data-testid="kds-combo-contents">
+                                  {comboComponents(line).map((text, j) => <li key={j}>{text}</li>)}
+                                </ul>
+                              )}
+                            </li>
+                          ))}
                         </ul>
                         {order.customerNotes && (
                           <p className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">📝 {order.customerNotes}</p>

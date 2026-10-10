@@ -46,9 +46,14 @@ export class OrderPrintDataBuilder {
       // سطر عرض (combo) - بيتفكّ لأصنافه الأصلية عشان كل صنف يوصل لمحطة تحضيره الصحيحة (نفس فلسفة
       // combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
       if (line.comboId) {
-        const combo = await this.combos.findById(line.comboId);
-        const components = combo?.items ?? [];
+        // محتويات العرض وقت البيع (لقطة محفوظة مع الطلب - migration 059)؛ الطلبات القديمة من غير لقطة بتتكمّل من العرض الحالي
+        const combo = await this.combos.findById(line.comboId); // الاسم دايمًا من العرض، والمحتويات من اللقطة لو موجودة
+        const comboName = combo?.name ?? "عرض";
+        const components = line.components.length > 0
+          ? line.components
+          : (combo?.items ?? []).map((c) => ({ variantId: c.variantId, quantity: c.quantity, itemName: null as string | null, variantLabel: null as string | null }));
         for (const [index, component] of components.entries()) {
+          // محطة التحضير بتتحدد من إعدادات الطباعة الحالية (مش لقطة): لو المحطة اتغيّرت التذكرة تروح للمحطة الصحيحة
           const menuItem = await this.menuItems.findByVariantId(component.variantId);
           const variant = menuItem?.variants.find((v) => v.id === component.variantId);
           let stationId = menuItem?.stationId ?? null;
@@ -59,8 +64,8 @@ export class OrderPrintDataBuilder {
           // سعر العرض بالكامل بيتحط على أول مكوّن بس (عشان مجموع أعمدة السعر في الفاتورة يطابق سعر
           // العرض الحقيقي) - باقي المكوّنات بسعر صفر، نفس فكرة الريبو القديم في تفكيك الـcombo_components
           items.push({
-            name: `${combo?.name ?? "عرض"}: ${menuItem?.name ?? "صنف"}`,
-            variantLabel: variant?.label ?? null,
+            name: `${comboName}: ${component.itemName ?? menuItem?.name ?? "صنف"}`,
+            variantLabel: component.variantLabel ?? variant?.label ?? null,
             quantity: component.quantity * line.quantity,
             unitPrice: index === 0 ? line.unitPrice : 0,
             lineTotal: index === 0 ? line.lineTotal : 0,

@@ -53,6 +53,8 @@ interface ComboItem { variantId: string; quantity: number; }
 interface Combo { id: string; name: string; price: number; isActive: boolean; onlineOnly?: boolean; items: ComboItem[]; }
 interface PaymentMethod { id: string; name: string; }
 interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
+// محتويات سطر العرض وقت البيع (لقطة من السيرفر). quantity = لكل عرض واحد. الطلبات القديمة (قبل التحديث) مفيهاش لقطة فبنكمّلها من العرض نفسه
+interface OrderLineComponent { variantId: string; itemName: string; variantLabel: string | null; quantity: number; }
 interface OrderLine {
   menuItemId: string | null;
   variantId: string | null;
@@ -61,6 +63,7 @@ interface OrderLine {
   unitPrice: number;
   lineTotal: number;
   modifiers: OrderLineModifier[];
+  components?: OrderLineComponent[];
 }
 interface Order {
   id: string;
@@ -133,7 +136,8 @@ export function OrdersPage() {
     queryFn: () => apiRequest<Order[]>(`/orders${branchId ? `?branchId=${branchId}` : ""}`),
   });
 
-  const [menuGroup, setMenuGroup] = useState<"all" | "regular" | "fasting">("all");
+  // المنيو العادي أو الصيامي فقط (مفيش "الكل"): الافتراضي العادي
+  const [menuGroup, setMenuGroup] = useState<"regular" | "fasting">("regular");
   // التبويب المختار: id قسم، أو "combos" (العروض)، أو "none" (أصناف من غير قسم). فاضي = أول تبويب تلقائيًا
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -156,7 +160,7 @@ export function OrdersPage() {
 
   // الأقسام النشطة فقط (القسم الموقوف أو المؤرشف مبيظهرش) بترتيبها، وتبويب "العروض" في المكان اللي اتحدد له وسطها
   const activeCategories = useMemo(
-    () => (categoriesQuery.data ?? []).filter((c) => c.isActive && (menuGroup === "all" || c.menuGroup === menuGroup)),
+    () => (categoriesQuery.data ?? []).filter((c) => c.isActive && c.menuGroup === menuGroup),
     [categoriesQuery.data, menuGroup]
   );
   const activeCategoryIds = useMemo(() => new Set(activeCategories.map((c) => c.id)), [activeCategories]);
@@ -168,7 +172,7 @@ export function OrdersPage() {
     () =>
       (menuItemsQuery.data ?? []).filter((item) => {
         if (!item.isActive) return false;
-        if (item.categoryId === null) return menuGroup === "all";
+        if (item.categoryId === null) return menuGroup === "regular";
         return activeCategoryIds.has(item.categoryId);
       }),
     [menuItemsQuery.data, activeCategoryIds, menuGroup]
@@ -335,6 +339,17 @@ export function OrdersPage() {
   };
   const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
   const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
+  // محتويات العرض: "2× بيتزا (وسط)، 1× مشروب (عادي)" - من الأصناف الحالية (للمنيو والسلة)
+  const comboContents = (combo: Combo) => combo.items.map((i) => `${i.quantity}× ${variantLabel(i.variantId)}`).join("، ");
+  // محتويات سطر طلب مسجّل: اللقطة المحفوظة وقت البيع، وللطلبات القديمة من العرض الحالي. الكمية مضروبة في كمية السطر
+  const orderLineComponents = (line: OrderLine): string[] => {
+    if (!line.comboId) return [];
+    if (line.components && line.components.length > 0) {
+      return line.components.map((c) => `${c.quantity * line.quantity}× ${c.itemName}${c.variantLabel ? ` (${c.variantLabel})` : ""}`);
+    }
+    const combo = (combosQuery.data ?? []).find((c) => c.id === line.comboId);
+    return (combo?.items ?? []).map((i) => `${i.quantity * line.quantity}× ${variantLabel(i.variantId)}`);
+  };
   const orders = ordersQuery.data ?? [];
   // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه) - الفلتر فوق في `combos`
 
@@ -392,7 +407,7 @@ export function OrdersPage() {
                 />
                 {hasFastingMenu && (
                   <div className="flex gap-1">
-                    {(["all", "regular", "fasting"] as const).map((g) => (
+                    {(["regular", "fasting"] as const).map((g) => (
                       <button
                         key={g}
                         type="button"
@@ -401,7 +416,7 @@ export function OrdersPage() {
                           menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
                       >
-                        {g === "all" ? "الكل" : MENU_GROUP_LABELS[g]}
+                        {MENU_GROUP_LABELS[g]}
                       </button>
                     ))}
                   </div>
@@ -447,6 +462,7 @@ export function OrdersPage() {
                           )}
                           <Badge tone="warning" className="mb-0.5">عرض</Badge>
                           <p className="text-sm font-bold text-slate-900">{combo.name}</p>
+                          <p className="text-xs leading-5 text-slate-600" data-testid="combo-contents">{comboContents(combo)}</p>
                           <p className="text-sm font-semibold text-brand-700">{combo.price}ج</p>
                         </button>
                       );
@@ -535,6 +551,10 @@ export function OrdersPage() {
                   <div key={line.key} className="flex items-center gap-2 text-sm">
                     <div className="flex-1">
                       <p className="font-semibold text-slate-800">{line.itemName}</p>
+                      {line.comboId && (() => {
+                        const combo = combos.find((c) => c.id === line.comboId);
+                        return combo ? <p className="text-xs text-slate-500" data-testid="cart-combo-contents">{comboContents(combo)}</p> : null;
+                      })()}
                       {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
                       {line.modifiers.length > 0 && (
                         <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>
@@ -673,7 +693,14 @@ export function OrdersPage() {
                     </div>
                   </TD>
                   <TD className="max-w-xs">
-                    {o.items.map((i) => `${orderLineLabel(i)} × ${i.quantity}`).join("، ")}
+                    {o.items.map((i, index) => (
+                      <div key={index}>
+                        {orderLineLabel(i)} × {i.quantity}
+                        {orderLineComponents(i).length > 0 && (
+                          <p className="text-xs text-slate-500" data-testid="order-combo-contents">يشمل: {orderLineComponents(i).join("، ")}</p>
+                        )}
+                      </div>
+                    ))}
                     {o.source === "website" && (o.customerName || o.customerPhone) && (
                       <p className="mt-1 text-xs text-slate-500">
                         {o.customerName} <span dir="ltr">{o.customerPhone}</span>

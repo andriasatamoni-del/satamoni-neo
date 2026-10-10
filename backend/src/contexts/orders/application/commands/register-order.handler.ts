@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Order, type OrderItemModifierLine, type OrderSource } from "../../domain/order.aggregate";
+import { Order, type OrderItemComponent, type OrderItemModifierLine, type OrderSource } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import {
   VariantNotFoundForOrderError,
@@ -86,6 +86,7 @@ export class RegisterOrderHandler {
       quantity: number;
       unitPrice: number;
       modifiers: OrderItemModifierLine[];
+      components: OrderItemComponent[];
     }[] = [];
     // مكوّنات كل عرض (variantId+quantity) - مجمّعة هنا عشان تُستخدم في تجميع الاستهلاك تحت من غير ما
     // نعيد قراءة العرض من الريبو تاني
@@ -96,6 +97,19 @@ export class RegisterOrderHandler {
         // عرض حصري للموقع مايتسجّلش من الكاشير/البوت/طلبات (STORE-2)
         if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
 
+        // لقطة محتويات العرض وقت البيع (اسم الصنف والحجم) - بتتعرض في الطلب والمطبخ والتحضير وبتفضل زي ما هي حتى لو العرض اتعدّل بعدين
+        const components: OrderItemComponent[] = [];
+        for (const component of combo.items) {
+          const menuItem = await this.menuItems.findByVariantId(component.variantId);
+          const variant = menuItem?.variants.find((v) => v.id === component.variantId);
+          components.push({
+            menuItemId: menuItem?.id ?? null,
+            variantId: component.variantId,
+            itemName: menuItem?.name ?? "صنف",
+            variantLabel: variant?.label ?? null,
+            quantity: component.quantity,
+          });
+        }
         resolvedItems.push({
           menuItemId: null,
           variantId: null,
@@ -103,6 +117,7 @@ export class RegisterOrderHandler {
           quantity: item.quantity,
           unitPrice: combo.price,
           modifiers: [],
+          components,
         });
         comboLineComponents.set(combo.id, combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })));
         continue;
@@ -130,6 +145,7 @@ export class RegisterOrderHandler {
         quantity: item.quantity,
         unitPrice: variant.price + modifierTotal,
         modifiers,
+        components: [],
       });
     }
 

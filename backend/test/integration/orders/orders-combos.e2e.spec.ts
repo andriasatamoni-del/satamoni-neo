@@ -171,6 +171,58 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     expect(res.body.items).toHaveLength(2);
   });
 
+  test("محتويات العرض بتتسجّل مع الطلب (لقطة) وبتظهر في الطلب وشاشة المطبخ وتذاكر التحضير، وبتفضل زي ما هي لو العرض اتعدّل بعدين", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const created = await request(app.getHttpServer()).post("/catalog/combos").set(auth).send({
+      name: "عرض لقطة-طلبات-عروض-جست", price: 90, items: [{ variantId: pizzaVariantId, quantity: 1 }, { variantId: drinkVariantId, quantity: 2 }],
+    });
+    expect(created.status).toBe(201);
+    const snapshotComboId = created.body.id as string;
+
+    const res = await request(app.getHttpServer()).post("/orders").set(auth).send({ branchId, orderType: "takeaway", items: [{ comboId: snapshotComboId, quantity: 2 }] }); // 2 combos x 1 pizza x 2 kg = 4 kg = the remaining stock
+    expect(res.status).toBe(201);
+    const orderId = res.body.id as string;
+    const expected = [
+      { variantId: pizzaVariantId, itemName: "بيتزا-طلبات-عروض-جست", variantLabel: "وسط", quantity: 1 },
+      { variantId: drinkVariantId, itemName: "مشروب-طلبات-عروض-جست", variantLabel: "عادي", quantity: 2 },
+    ];
+    const componentsOf = (order: { items: { components: unknown[] }[] }) =>
+      order.items[0].components.map((c) => { const { menuItemId: _ignored, ...rest } = c as Record<string, unknown>; return rest; });
+    expect(componentsOf(res.body)).toEqual(expected); // quantity = per ONE combo (the line quantity is 2)
+
+    // persisted: the order list and the kitchen board return the same contents
+    const list = await request(app.getHttpServer()).get(`/orders?branchId=${branchId}`).set(auth);
+    expect(componentsOf(list.body.find((o: { id: string }) => o.id === orderId))).toEqual(expected);
+    const board = await request(app.getHttpServer()).get(`/orders/kitchen-board?branchId=${branchId}`).set(auth);
+    expect(componentsOf(board.body.find((o: { id: string }) => o.id === orderId))).toEqual(expected);
+
+    // a regular line carries no components
+    const plain = await request(app.getHttpServer()).post("/orders").set(auth).send({ branchId, orderType: "takeaway", items: [{ variantId: drinkVariantId, quantity: 1 }] });
+    expect(plain.body.items[0].components).toEqual([]);
+
+    // the combo is edited afterwards: the old order keeps what was sold
+    const edit = await request(app.getHttpServer()).put(`/catalog/combos/${snapshotComboId}/items`).set(auth).send({ items: [{ variantId: drinkVariantId, quantity: 5 }] });
+    expect(edit.status).toBe(200);
+    const after = await request(app.getHttpServer()).get(`/orders?branchId=${branchId}`).set(auth);
+    expect(componentsOf(after.body.find((o: { id: string }) => o.id === orderId))).toEqual(expected);
+
+    // kitchen / prep tickets: one line per component with the quantity multiplied by the line quantity, from the snapshot
+    const { OrderPrintDataBuilder } = await import("../../../src/contexts/printing/application/services/order-print-data.builder");
+    const data = await app.get(OrderPrintDataBuilder, { strict: false }).build(orderId);
+    expect(data!.items.map((i) => ({ name: i.name, quantity: i.quantity, label: i.variantLabel }))).toEqual([
+      { name: "عرض لقطة-طلبات-عروض-جست: بيتزا-طلبات-عروض-جست", quantity: 2, label: "وسط" },
+      { name: "عرض لقطة-طلبات-عروض-جست: مشروب-طلبات-عروض-جست", quantity: 4, label: "عادي" },
+    ]);
+    expect(data!.items.reduce((sum, i) => sum + (i.lineTotal ?? 0), 0)).toBe(180); // the combo price (90 x 2) is counted once
+
+    // an old order (sold before migration 059: no snapshot) falls back to the combo as it is now
+    const db = app.get(KYSELY);
+    await sql`UPDATE order_items SET combo_components = '[]'::jsonb WHERE order_id = ${orderId}`.execute(db);
+    const legacy = await app.get(OrderPrintDataBuilder, { strict: false }).build(orderId);
+    expect(legacy!.items).toHaveLength(1);
+    expect(legacy!.items[0]).toMatchObject({ name: "عرض لقطة-طلبات-عروض-جست: مشروب-طلبات-عروض-جست", quantity: 10 });
+  });
+
   test("PATCH /catalog/combos/:id items مش موجودة -> بيرفض تسجيل العرض بعد كده لغاية ما يتصحح", async () => {
     const res = await request(app.getHttpServer())
       .put(`/catalog/combos/${comboId}/items`)

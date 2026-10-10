@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
-import { Order, type OrderStatus, type KitchenStatus, type OrderType, type OrderSource } from "../../domain/order.aggregate";
+import { Order, type OrderItemComponent, type OrderStatus, type KitchenStatus, type OrderType, type OrderSource } from "../../domain/order.aggregate";
 import type { OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import type { OrdersTable, OrderItemsTable, OrderItemModifiersTable } from "./order.schema";
 
@@ -57,6 +57,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
             menu_item_id: item.menuItemId,
             variant_id: item.variantId,
             combo_id: item.comboId,
+            combo_components: JSON.stringify(item.components),
             quantity: item.quantity,
             unit_price: item.unitPrice,
             line_total: item.lineTotal,
@@ -146,6 +147,7 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
         quantity: i.quantity,
         unitPrice: Number(i.unit_price),
         lineTotal: Number(i.line_total),
+        components: Array.isArray(i.combo_components) ? (i.combo_components as OrderItemComponent[]) : [],
         modifiers: modifiers.map((m) => ({
           modifierId: m.modifier_id,
           nameAtSale: m.name_at_sale,
