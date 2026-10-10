@@ -96,6 +96,47 @@ describe("workflow security (BL-14)", () => {
       }
     }
   });
+
+  // Supply chain: a tag like @v4 can be moved to different code after review. Pinning to the full commit SHA makes the
+  // code that runs next to the production secrets exactly the code that was reviewed (the "# v4" comment records the tag).
+  test("every action is pinned to a full 40-character commit SHA, and the same action always uses the same SHA", () => {
+    const seen = new Map<string, Set<string>>();
+    for (const { file, doc } of workflows) {
+      for (const step of allSteps(doc)) {
+        if (!step.uses) continue;
+        const m = /^([\w.-]+\/[\w.-]+)@([0-9a-f]{40})$/.exec(step.uses);
+        expect({ file, uses: step.uses, pinned: !!m }).toEqual({ file, uses: step.uses, pinned: true });
+        seen.set(m![1], (seen.get(m![1]) ?? new Set()).add(m![2]));
+      }
+    }
+    for (const [action, shas] of seen) expect({ action, count: shas.size }).toEqual({ action, count: 1 });
+  });
+
+  // The SHAs themselves are NOT frozen in a test: Dependabot (.github/dependabot.yml) proposes the bumps as reviewed PRs, and a test
+  // that hard-coded them would turn every such PR red. The two tests above keep the invariant that matters: pinned + consistent.
+
+  test("Dependabot keeps the pinned actions current: github-actions ecosystem, weekly, grouped, limited, never auto-merging", () => {
+    const file = path.join(repoRoot, ".github/dependabot.yml");
+    expect(fs.existsSync(file)).toBe(true);
+    const cfg = yaml.load(fs.readFileSync(file, "utf8"));
+    expect(cfg.version).toBe(2);
+    expect(cfg.updates).toHaveLength(1);
+    const u = cfg.updates[0];
+    expect(u["package-ecosystem"]).toBe("github-actions");
+    expect(u.directory).toBe("/"); // for github-actions "/" covers .github/workflows
+    expect(u.schedule).toMatchObject({ interval: "weekly", timezone: "Africa/Cairo" });
+    expect(u["open-pull-requests-limit"]).toBeGreaterThan(0);
+    expect(u["open-pull-requests-limit"]).toBeLessThanOrEqual(5);
+    expect(u.groups["github-actions"].patterns).toEqual(["*"]);
+    // nothing that would merge or approve on its own, and no token/secret reference
+    expect(JSON.stringify(cfg)).not.toMatch(/auto-?merge|approve|secrets\.|token|registries|ignore/i);
+  });
+
+  test("the repository has no workflow that merges, approves or auto-enables merge for Dependabot pull requests", () => {
+    for (const { file, raw } of workflows) {
+      expect({ file, hit: /dependabot|enable-auto-merge|gh pr merge|auto-merge|pulls\/\d+\/merge/i.test(raw) }).toEqual({ file, hit: false });
+    }
+  });
 });
 
 describe("committed credentials and privileged test-account paths (BL-14)", () => {

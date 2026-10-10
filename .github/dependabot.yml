@@ -1,0 +1,28 @@
+# Dependabot version updates for GitHub Actions only (npm dependencies are intentionally not covered here).
+#
+# Every `uses:` in .github/workflows is pinned to a full commit SHA with a "# v4" comment (see docs/SECURITY_HARDENING.md 4b).
+# Pinned SHAs never update themselves, so Dependabot proposes the bump as a pull request: it rewrites the SHA AND the
+# comment. The PR runs the normal CI and is reviewed and merged by a person; Dependabot never merges anything.
+#
+#  * one weekly PR (all action updates grouped) instead of one PR per action
+#  * Monday morning, Cairo time, so it lands at the start of the work week
+#  * only `actions/*` is expected; workflow-security.spec.ts still fails if a non-official action or an unpinned `uses:` appears
+#
+# Security updates (alerts for known-vulnerable actions) are a repository setting, not this file:
+# Settings -> Code security -> Dependabot alerts / Dependabot security updates.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Africa/Cairo"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

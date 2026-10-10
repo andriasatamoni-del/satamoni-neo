@@ -1,3 +1,5 @@
+import { libpqSslEnv } from "./pg-tls";
+
 // بيحوّل DATABASE_URL لمتغيرات بيئة libpq (PGHOST/PGUSER/PGPASSWORD...) بدل ما الرابط كله (بالباسورد)
 // يتبعت كـargument لـpg_dump/pg_restore - الـarguments بتبان لأي حد على نفس السيرفر في `ps`
 export function pgEnvFromUrl(databaseUrl: string): NodeJS.ProcessEnv {
@@ -17,7 +19,12 @@ export function pgEnvFromUrl(databaseUrl: string): NodeJS.ProcessEnv {
   delete env.PGSERVICEFILE;
   const sslmode = url.searchParams.get("sslmode");
   if (sslmode) env.PGSSLMODE = sslmode;
-  else if (process.env.PGSSL === "true") env.PGSSLMODE = "require";
+  else if (process.env.PGSSL === "true") {
+    // تحقق كامل من شهادة السيرفر افتراضيًا (pg-tls.ts)؛ require كان بيشفّر من غير ما يتأكد من هوية السيرفر
+    const tls = libpqSslEnv(process.env);
+    env.PGSSLMODE = tls.PGSSLMODE;
+    if (tls.PGSSLROOTCERT) env.PGSSLROOTCERT = tls.PGSSLROOTCERT;
+  }
   return env;
 }
 

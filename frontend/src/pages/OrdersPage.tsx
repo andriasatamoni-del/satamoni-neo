@@ -117,7 +117,9 @@ export function OrdersPage() {
   const queryClient = useQueryClient();
   const offlineSync = useOfflineSync();
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches") });
-  const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
+  // الأقسام والترتيب بقوا الأساس لشاشة الأصناف، فلازم يتخزنوا للكاشير الأوفلاين زي الأصناف والعروض
+  const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => offlineFallbackQuery<MenuCategory[]>("/catalog/categories", "catalog-categories") });
+  const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => offlineFallbackQuery<{ combosPosition: number }>("/catalog/layout", "catalog-layout") });
   const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items") });
   const combosQuery = useQuery({ queryKey: ["catalog", "combos"], queryFn: () => offlineFallbackQuery<Combo[]>("/catalog/combos", "catalog-combos") });
   const paymentMethodsQuery = useQuery({
@@ -132,7 +134,8 @@ export function OrdersPage() {
   });
 
   const [menuGroup, setMenuGroup] = useState<"all" | "regular" | "fasting">("all");
-  const [categoryId, setCategoryId] = useState<string>("all");
+  // التبويب المختار: id قسم، أو "combos" (العروض)، أو "none" (أصناف من غير قسم). فاضي = أول تبويب تلقائيًا
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pickerVariantId, setPickerVariantId] = useState<string | null>(null);
@@ -148,33 +151,46 @@ export function OrdersPage() {
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const categoriesById = useMemo(() => {
-    const map = new Map<string, MenuCategory>();
-    for (const c of categoriesQuery.data ?? []) map.set(c.id, c);
-    return map;
-  }, [categoriesQuery.data]);
 
+  const combos = useMemo(() => (combosQuery.data ?? []).filter((c) => !c.onlineOnly), [combosQuery.data]);
+
+  // الأقسام النشطة فقط (القسم الموقوف أو المؤرشف مبيظهرش) بترتيبها، وتبويب "العروض" في المكان اللي اتحدد له وسطها
   const activeCategories = useMemo(
-    () =>
-      (categoriesQuery.data ?? [])
-        .filter((c) => c.isActive && (menuGroup === "all" || c.menuGroup === menuGroup))
-        .sort((a, b) => a.displayOrder - b.displayOrder),
+    () => (categoriesQuery.data ?? []).filter((c) => c.isActive && (menuGroup === "all" || c.menuGroup === menuGroup)),
     [categoriesQuery.data, menuGroup]
   );
+  const activeCategoryIds = useMemo(() => new Set(activeCategories.map((c) => c.id)), [activeCategories]);
 
   const hasFastingMenu = (categoriesQuery.data ?? []).some((c) => c.menuGroup === "fasting");
 
+  // الأصناف المتاحة للبيع: نشطة وقسمها نشط (أو من غير قسم). "كل الأصناف" مبقتش شاشة، الأقسام هي الشاشة.
+  const sellableItems = useMemo(
+    () =>
+      (menuItemsQuery.data ?? []).filter((item) => {
+        if (!item.isActive) return false;
+        if (item.categoryId === null) return menuGroup === "all";
+        return activeCategoryIds.has(item.categoryId);
+      }),
+    [menuItemsQuery.data, activeCategoryIds, menuGroup]
+  );
+  const hasUncategorized = sellableItems.some((i) => i.categoryId === null);
+
+  const tabs = useMemo(() => {
+    const list: Array<{ key: string; label: string; order: number; rank: number }> = activeCategories.map((c) => ({ key: c.id, label: c.name, order: c.displayOrder, rank: 1 }));
+    if (combos.length > 0) list.push({ key: "combos", label: "العروض", order: layoutQuery.data?.combosPosition ?? -1, rank: 0 });
+    if (hasUncategorized) list.push({ key: "none", label: "بدون قسم", order: Number.MAX_SAFE_INTEGER, rank: 2 });
+    return list.sort((a, b) => a.order - b.order || a.rank - b.rank || a.label.localeCompare(b.label, "ar"));
+  }, [activeCategories, combos.length, layoutQuery.data, hasUncategorized]);
+
+  const activeTab = tabs.some((t) => t.key === selectedTab) ? selectedTab : tabs[0]?.key ?? null;
+  const searching = search.trim() !== "";
+
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (menuItemsQuery.data ?? []).filter((item) => {
-      if (!item.isActive) return false;
-      const category = categoriesById.get(item.categoryId);
-      if (menuGroup !== "all" && category?.menuGroup !== menuGroup) return false;
-      if (categoryId !== "all" && item.categoryId !== categoryId) return false;
-      if (q && !item.name.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [menuItemsQuery.data, categoriesById, menuGroup, categoryId, search]);
+    if (q) return sellableItems.filter((item) => item.name.toLowerCase().includes(q)); // البحث بالاسم شغّال عبر كل الأقسام النشطة
+    if (!activeTab || activeTab === "combos") return [];
+    return sellableItems.filter((item) => (activeTab === "none" ? item.categoryId === null : item.categoryId === activeTab));
+  }, [sellableItems, activeTab, search]);
 
   function addToCart(item: MenuItem, variant: MenuItemVariant, modifierIds: string[]) {
     const modifiers: CartLineModifier[] = modifierIds.map((id) => {
@@ -320,8 +336,7 @@ export function OrdersPage() {
   const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
   const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
   const orders = ordersQuery.data ?? [];
-  // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه)
-  const combos = (combosQuery.data ?? []).filter((c) => !c.onlineOnly);
+  // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه) - الفلتر فوق في `combos`
 
   return (
     <div>
@@ -381,7 +396,7 @@ export function OrdersPage() {
                       <button
                         key={g}
                         type="button"
-                        onClick={() => { setMenuGroup(g); setCategoryId("all"); }}
+                        onClick={() => { setMenuGroup(g); setSelectedTab(null); }}
                         className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                           menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
@@ -393,31 +408,26 @@ export function OrdersPage() {
                 )}
               </div>
 
+              {/* أزرار الأقسام فقط (مفيش "كل الأصناف"): الضغط على قسم بيعرض أصنافه. ترتيبها من إعدادات قائمة الطعام */}
               <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
-                <button
-                  type="button"
-                  onClick={() => setCategoryId("all")}
-                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                    categoryId === "all" ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  كل الأصناف
-                </button>
-                {activeCategories.map((c) => (
+                {tabs.map((t) => (
                   <button
-                    key={c.id}
+                    key={t.key}
                     type="button"
-                    onClick={() => setCategoryId(c.id)}
+                    onClick={() => { setSelectedTab(t.key); setSearch(""); }}
                     className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                      categoryId === c.id ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      !searching && activeTab === t.key ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
-                    {c.name}
+                    {t.label}
                   </button>
                 ))}
+                {tabs.length === 0 && (
+                  <p className="text-sm text-slate-500">مفيش أقسام نشطة. فعّل أو أضف قسم من شاشة "قائمة الطعام".</p>
+                )}
               </div>
 
-              {combos.length > 0 && categoryId === "all" && !search.trim() && (
+              {combos.length > 0 && activeTab === "combos" && !searching && (
                 <div className="mb-4">
                   <p className="mb-2 text-xs font-semibold text-slate-500">العروض</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
@@ -471,8 +481,8 @@ export function OrdersPage() {
                     </button>
                   );
                 })}
-                {visibleItems.length === 0 && (
-                  <p className="col-span-full py-8 text-center text-sm text-slate-400">مفيش أصناف مطابقة</p>
+                {visibleItems.length === 0 && !(activeTab === "combos" && !searching) && (
+                  <p className="col-span-full py-8 text-center text-sm text-slate-400">{searching ? "مفيش أصناف مطابقة للبحث" : "مفيش أصناف في القسم ده"}</p>
                 )}
               </div>
             </CardBody>

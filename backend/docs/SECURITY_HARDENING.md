@@ -60,9 +60,22 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
    `BACKUP_ENCRYPTION_KEY` (≥ 32 random characters, stored also in your password manager — without it backups are unreadable)
    and, optionally, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION`,
    `BACKUP_S3_ENDPOINT` for independent storage.
+   The backup workflow also has a separate `report` job with `issues: write` only (no secrets, no environment, no checkout) that opens an alert issue when a run fails.
 3. **Settings → Actions → General**: set *Workflow permissions* to "Read repository contents" and require approval for
    workflows from outside collaborators.
 4. Enable **branch protection** on `main` (pull request + review required) so workflow files cannot be changed without review.
+
+## 4b. Actions are pinned to commit SHAs
+
+Every `uses:` in `.github/workflows` references a full commit SHA with a `# v4` comment, not a movable tag. A tag can be re-pointed after
+review, which would run different code next to the production secrets. `test/unit/security/workflow-security.spec.ts` fails if an
+action is unpinned or if two workflows use different SHAs for the same action.
+
+Pinned SHAs do not update themselves, so `.github/dependabot.yml` has Dependabot propose the bumps: one grouped pull request per
+week (Monday, Cairo time) for the `github-actions` ecosystem. It rewrites the SHA and the `# v4` comment; CI runs as usual and a
+person reviews and merges (nothing auto-merges, and a test fails if a workflow ever merges Dependabot PRs). Review such a PR like any
+other dependency change: read the release notes of the action and check that the new SHA belongs to an official release of
+`actions/*`. Alerts and security updates for known-vulnerable actions are a repository setting (Settings -> Code security), not this file.
 
 ## 5. Residual risk
 

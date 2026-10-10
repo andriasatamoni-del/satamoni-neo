@@ -13,7 +13,9 @@ interface MenuCategory {
   id: string;
   name: string;
   menuGroup: string;
+  displayOrder: number;
   isActive: boolean;
+  isArchived: boolean;
 }
 
 interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
@@ -68,9 +70,12 @@ export function CatalogPage() {
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const combosQuery = useQuery({ queryKey: ["catalog", "combos", "all"], queryFn: () => apiRequest<Combo[]>("/catalog/combos/all") });
+  const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => apiRequest<{ combosPosition: number }>("/catalog/layout") });
+  const archivedQuery = useQuery({ queryKey: ["catalog", "categories", "archived"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories?archived=true") });
 
   const invalidateCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "categories"] });
+    queryClient.invalidateQueries({ queryKey: ["catalog", "layout"] });
     queryClient.invalidateQueries({ queryKey: ["catalog", "items"] });
   };
 
@@ -93,6 +98,27 @@ export function CatalogPage() {
       invalidateCatalog();
     },
   });
+
+  // ترتيب الأقسام (والعروض وسطها): كل ضغطة سهم بتحفظ الترتيب الكامل
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const onCategoryError = (err: unknown) => setCategoryError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع");
+  const reorderCategories = useMutation({
+    mutationFn: (order: string[]) => apiRequest("/catalog/categories/order", { method: "PUT", body: { order } }),
+    onSuccess: () => { setCategoryError(null); invalidateCatalog(); },
+    onError: onCategoryError,
+  });
+  // "إلغاء/شيل" قسم = أرشفة (الأصناف والطلبات القديمة مبتتلمسش) - ممكن ترجّعه من "الأقسام المؤرشفة"
+  const archiveCategory = useMutation({
+    mutationFn: (id: string) => apiRequest(`/catalog/categories/${id}/archive`, { method: "POST" }),
+    onSuccess: () => { setCategoryError(null); invalidateCatalog(); queryClient.invalidateQueries({ queryKey: ["catalog", "categories", "archived"] }); },
+    onError: onCategoryError,
+  });
+  const restoreCategory = useMutation({
+    mutationFn: (id: string) => apiRequest(`/catalog/categories/${id}/restore`, { method: "POST" }),
+    onSuccess: () => { setCategoryError(null); invalidateCatalog(); queryClient.invalidateQueries({ queryKey: ["catalog", "categories", "archived"] }); },
+    onError: onCategoryError,
+  });
+  const [showArchived, setShowArchived] = useState(false);
 
   const [itemForm, setItemForm] = useState({ name: "", categoryId: "", variantLabel: "", variantPrice: "" });
   const [itemError, setItemError] = useState<string | null>(null);
@@ -246,6 +272,22 @@ export function CatalogPage() {
   }
 
   const categories = categoriesQuery.data ?? [];
+  const archivedCategories = archivedQuery.data ?? [];
+  // صفوف الترتيب: الأقسام + صف "العروض" في مكانه (نفس منطق شاشة الطلبات: الرقم ثم الاسم)
+  const orderRows = [
+    ...categories.map((c) => ({ key: c.id, order: c.displayOrder, rank: 1, category: c })),
+    { key: "combos", order: layoutQuery.data?.combosPosition ?? -1, rank: 0, category: null as MenuCategory | null },
+  ].sort((a, b) => a.order - b.order || a.rank - b.rank || (a.category?.name ?? "").localeCompare(b.category?.name ?? "", "ar"));
+  function moveRow(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= orderRows.length) return;
+    const keys = orderRows.map((r) => r.key);
+    [keys[index], keys[target]] = [keys[target], keys[index]];
+    reorderCategories.mutate(keys);
+  }
+  function confirmArchive(c: MenuCategory) {
+    if (window.confirm(`إلغاء قسم "${c.name}"؟\nهيختفي من الكاشير والإعدادات، والأصناف والطلبات القديمة هتفضل سليمة، وتقدر ترجّعه من "الأقسام المؤرشفة".`)) archiveCategory.mutate(c.id);
+  }
   const items = itemsQuery.data ?? [];
   const combos = combosQuery.data ?? [];
   const categoryName_ = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "بدون قسم";
@@ -268,10 +310,29 @@ export function CatalogPage() {
               </div>
               <Button type="submit" disabled={createCategory.isPending}>إضافة</Button>
             </form>
-            {categories.length > 0 && (
-              <div className="space-y-1.5">
-                {categories.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2">
+            {categoryError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{categoryError}</p>}
+            <p className="mb-2 text-xs text-slate-500">الترتيب هنا هو ترتيب أزرار الأقسام في شاشة الطلبات (العروض بتتحرك وسط الأقسام).</p>
+            <div className="space-y-1.5">
+              {orderRows.map((row, index) => {
+                const c = row.category;
+                const arrows = (
+                  <span className="flex flex-col">
+                    <button type="button" aria-label="لفوق" title="لفوق" disabled={index === 0 || reorderCategories.isPending} onClick={() => moveRow(index, -1)} className="px-1 text-xs leading-none text-slate-500 hover:text-brand-700 disabled:opacity-30">▲</button>
+                    <button type="button" aria-label="لتحت" title="لتحت" disabled={index === orderRows.length - 1 || reorderCategories.isPending} onClick={() => moveRow(index, 1)} className="px-1 text-xs leading-none text-slate-500 hover:text-brand-700 disabled:opacity-30">▼</button>
+                  </span>
+                );
+                if (!c) {
+                  return (
+                    <div key={row.key} className="flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/50 px-3 py-2">
+                      {arrows}
+                      <span className="flex-1 text-sm font-semibold text-slate-800">العروض</span>
+                      <Badge tone="warning">تبويب العروض</Badge>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={row.key} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2">
+                    {arrows}
                     {editingCategoryId === c.id ? (
                       <>
                         <Input
@@ -288,7 +349,7 @@ export function CatalogPage() {
                     ) : (
                       <>
                         <span className={`flex-1 text-sm font-semibold ${c.isActive ? "text-slate-800" : "text-slate-400 line-through"}`}>{c.name}</span>
-                        {!c.isActive && <Badge tone="neutral">معطّل</Badge>}
+                        {!c.isActive && <Badge tone="neutral">موقوف</Badge>}
                         <Button size="sm" variant="ghost" onClick={() => startEditCategory(c)}>تعديل</Button>
                         <Button
                           size="sm"
@@ -296,14 +357,33 @@ export function CatalogPage() {
                           onClick={() => updateCategory.mutate({ id: c.id, isActive: !c.isActive })}
                           disabled={updateCategory.isPending}
                         >
-                          {c.isActive ? "تعطيل" : "تفعيل"}
+                          {c.isActive ? "إيقاف" : "تفعيل"}
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => confirmArchive(c)} disabled={archiveCategory.isPending}>إلغاء القسم</Button>
                       </>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm font-semibold text-slate-600 hover:text-brand-700">
+                {showArchived ? "▼" : "◀"} الأقسام المؤرشفة ({archivedCategories.length})
+              </button>
+              {showArchived && (
+                <div className="mt-2 space-y-1.5">
+                  {archivedCategories.length === 0 && <p className="text-sm text-slate-400">مفيش أقسام مؤرشفة</p>}
+                  {archivedCategories.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <span className="flex-1 text-sm text-slate-500">{c.name}</span>
+                      <Button size="sm" variant="secondary" onClick={() => restoreCategory.mutate(c.id)} disabled={restoreCategory.isPending}>استرجاع (موقوف)</Button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-400">الاسترجاع بيرجّع القسم موقوف؛ فعّله بعد كده لو عايزه يظهر في الكاشير.</p>
+                </div>
+              )}
+            </div>
           </CardBody>
         </Card>
 

@@ -9,7 +9,8 @@ import {
 export class ListMenuCategoriesHandler {
   constructor(@Inject(MENU_CATEGORY_REPOSITORY) private readonly categories: MenuCategoryRepositoryPort) {}
 
-  async execute(): Promise<MenuCategory[]> {
-    return this.categories.list();
+  // الافتراضي: الأقسام غير المؤرشفة. archived=true بيرجّع المؤرشفة بس (لقائمة الاسترجاع في الإعدادات)
+  async execute(opts: { archived?: boolean } = {}): Promise<MenuCategory[]> {
+    return this.categories.list({ archived: opts.archived === true });
   }
 }

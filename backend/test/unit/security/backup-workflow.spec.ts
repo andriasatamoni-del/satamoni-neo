@@ -78,7 +78,7 @@ describe("db-backup workflow (BL-13)", () => {
   // Minimal evaluator for the ONLY expression shape allowed in the job-level `if` (github.ref == '<literal>').
   // Anything else throws, so a future, more permissive expression cannot slip past this test unnoticed.
   const evalRefCondition = (expr: string, ref: string): boolean => {
-    const m = /^\s*(?:\$\{\{\s*)?github\.ref\s*==\s*'([^']+)'(?:\s*\}\})?\s*$/.exec(expr);
+    const m = /^\s*(?:\$\{\{\s*)?(?:always\(\)\s*&&\s*)?github\.ref\s*==\s*'([^']+)'(?:\s*\}\})?\s*$/.exec(expr);
     if (!m) throw new Error(`unsupported job condition: ${expr}`);
     return ref === m[1];
   };
@@ -100,11 +100,12 @@ describe("db-backup workflow (BL-13)", () => {
     "refs/heads/",
     "",
   ])("a run from %p is skipped: it reaches no step that uses a secret or connects to the database", (ref) => {
-    const reachable = evalRefCondition(job.if, ref) ? steps : [];
+    // every job of the workflow (the backup job AND the alert job) is gated on main
+    const reachableJobs = Object.entries<any>(doc.jobs).filter(([, j]) => evalRefCondition(j.if, ref));
+    const reachable = reachableJobs.flatMap(([, j]) => j.steps);
     expect(reachable.filter(usesSecretsOrDatabase)).toEqual([]);
     expect(reachable).toHaveLength(0);
-    // the same gate also covers the service container and the protected environment (they belong to the skipped job)
-    expect(Object.keys(doc.jobs)).toEqual(["backup"]);
+    expect(Object.keys(doc.jobs).sort()).toEqual(["backup", "report"]);
   });
 
   test("a run from main still reaches every step (scheduled and manual runs keep working)", () => {
@@ -151,5 +152,203 @@ describe("db-backup workflow (BL-13)", () => {
     const s3 = steps.find((s) => String(s.name).includes("S3"));
     expect(s3.run).toContain('--include "*.dump.gpg" --include "*.dump.gpg.sha256"');
     expect(s3.run).toContain('$name.sha256"');
+  });
+
+  // ---- Failure alert (report job) ----
+  const report = doc.jobs.report;
+  const reportStep = report.steps[0];
+
+  test("alert job: after the backup job, always evaluated, main only, issues:write and nothing else, no secrets/environment/checkout", () => {
+    expect(report.needs).toBe("backup");
+    expect(report.if).toBe("always() && github.ref == 'refs/heads/main'");
+    expect(report.permissions).toEqual({ issues: "write" });
+    expect(report.environment).toBeUndefined();
+    expect(report.services).toBeUndefined();
+    expect(JSON.stringify(report)).not.toMatch(/secrets\./);
+    // the alert text may NAME a missing secret, but the job must never reference one (no $VAR use, no tools that touch the database/S3)
+    expect(reportStep.run).not.toMatch(/\$\{?(DATABASE_URL|BACKUP_ENCRYPTION_KEY|BACKUP_S3_\w+|AWS_\w+)/);
+    expect(reportStep.run).not.toMatch(/^\s*(pg_dump|pg_restore|psql|aws|npx|npm|node)\b/m);
+    expect(report.steps).toHaveLength(1);
+    expect(report.steps[0].uses).toBeUndefined(); // no third-party or checkout action runs next to an issues:write token
+    expect(report["timeout-minutes"]).toBeLessThanOrEqual(10);
+  });
+
+  test("the backup job itself did NOT gain any write scope", () => {
+    expect(job.permissions).toEqual({ contents: "read" });
+    expect(doc.permissions).toEqual({ contents: "read" });
+  });
+
+  test("alert job takes everything from trusted context values via env (nothing interpolated into the shell script)", () => {
+    expect(reportStep.run).not.toMatch(/\$\{\{/);
+    expect(Object.keys(report.env).sort()).toEqual(["EVENT", "GH_TOKEN", "REPO", "RESULT", "RUN_URL"]);
+    expect(report.env.GH_TOKEN).toBe("${{ github.token }}");
+    expect(report.env.RESULT).toBe("${{ needs.backup.result }}");
+    expect(JSON.stringify(report.env)).not.toMatch(/github\.event\.|github\.head_ref|inputs\./);
+  });
+
+  describe("alert script behaviour (real bash, fake `gh`)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { spawnSync } = require("node:child_process");
+    const os = require("node:os");
+    let dir: string;
+    let logFile: string;
+    beforeAll(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "alert-test-"));
+      logFile = path.join(dir, "gh.log");
+      fs.mkdirSync(path.join(dir, "bin"));
+      // fake gh: records its arguments; `issue list` answers with $FAKE_OPEN (an issue number or nothing); FAKE_FAIL=1 makes it fail
+      fs.writeFileSync(
+        path.join(dir, "bin", "gh"),
+        '#!/usr/bin/env bash\nargs="$*"; printf \'%s\\n\' "${args//$\'\\n\'/ ⏎ }" >> "$GH_LOG"\n[ "${FAKE_FAIL:-}" = 1 ] && exit 1\nif [ "$1 $2" = "issue list" ]; then printf \'%s\' "${FAKE_OPEN:-}"; fi\nexit 0\n',
+        { mode: 0o755 }
+      );
+      fs.writeFileSync(path.join(dir, "script.sh"), reportStep.run);
+    });
+    afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const run = (result: string, extra: Record<string, string> = {}) => {
+      fs.rmSync(logFile, { force: true });
+      const r = spawnSync("bash", [path.join(dir, "script.sh")], {
+        env: { PATH: `${path.join(dir, "bin")}:${process.env.PATH}`, GH_LOG: logFile, GH_TOKEN: "dummy", REPO: "owner/repo", RESULT: result, EVENT: "schedule", RUN_URL: "https://github.com/owner/repo/actions/runs/42", ...extra },
+        encoding: "utf8",
+      });
+      const calls = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean) : [];
+      return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls };
+    };
+
+    test("failure with no open alert -> exactly one issue is created, containing the run link and no log content", () => {
+      const r = run("failure");
+      expect(r.status).toBe(0);
+      const creates = r.calls.filter((c: string) => c.startsWith("issue create"));
+      expect(creates).toHaveLength(1);
+      expect(creates[0]).toContain("--title ALERT: scheduled database backup failed");
+      expect(creates[0]).toContain("https://github.com/owner/repo/actions/runs/42");
+      expect(r.calls.some((c: string) => c.startsWith("issue comment") || c.startsWith("issue close"))).toBe(false);
+    });
+
+    test("failure while an alert is already open -> a comment, no duplicate issue", () => {
+      const r = run("failure", { FAKE_OPEN: "17" });
+      expect(r.status).toBe(0);
+      expect(r.calls.some((c: string) => c.startsWith("issue create"))).toBe(false);
+      expect(r.calls.filter((c: string) => c.startsWith("issue comment 17"))).toHaveLength(1);
+    });
+
+    test("cancelled counts as a missed backup", () => {
+      expect(run("cancelled").calls.some((c: string) => c.startsWith("issue create"))).toBe(true);
+    });
+
+    test("success with an open alert -> comment and close; success with none -> nothing happens", () => {
+      const withOpen = run("success", { FAKE_OPEN: "17" });
+      expect(withOpen.calls.filter((c: string) => c.startsWith("issue comment 17") || c.startsWith("issue close 17"))).toHaveLength(2);
+      expect(withOpen.calls.some((c: string) => c.startsWith("issue create"))).toBe(false);
+      const none = run("success");
+      expect(none.calls.filter((c: string) => !c.startsWith("issue list"))).toEqual([]);
+    });
+
+    test("skipped backup job -> nothing to report; unknown result fails loudly", () => {
+      const skipped = run("skipped");
+      expect(skipped.status).toBe(0);
+      expect(skipped.calls.filter((c: string) => !c.startsWith("issue list"))).toEqual([]);
+      const unknown = run("weird");
+      expect(unknown.status).toBe(1);
+      expect(unknown.stderr + unknown.stdout).toContain("unexpected backup result");
+    });
+
+    test("if gh itself fails (for example Issues disabled) the alert job fails loudly instead of swallowing the problem", () => {
+      expect(run("failure", { FAKE_FAIL: "1" }).status).not.toBe(0);
+    });
+
+    test("the issue lookup filter matches only the exact alert title (checked with real jq)", () => {
+      const filter = /--jq '([^']+)'/.exec(reportStep.run)![1];
+      const jq = (json: unknown) => spawnSync("jq", ["-r", filter], { input: JSON.stringify(json), encoding: "utf8" }).stdout.trim();
+      expect(jq([{ number: 3, title: "something else" }, { number: 9, title: "ALERT: scheduled database backup failed" }])).toBe("9");
+      expect(jq([{ number: 3, title: "ALERT: scheduled database backup failed (copy)" }, { number: 4, title: "re: ALERT: scheduled database backup failed" }])).toBe("");
+      expect(jq([])).toBe("");
+    });
+  });
+
+  // ---- Source database TLS verification ----
+  describe("source database TLS verification", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { spawnSync } = require("node:child_process");
+    const os = require("node:os");
+    const stepNamed = (frag: string) => steps.find((st) => String(st.name ?? "").startsWith(frag));
+
+    test("no step weakens verification: PGSSL stays on, nothing sets PGSSLMODE / rejectUnauthorized, the opt-out is a repository VARIABLE (never a secret)", () => {
+      const text = JSON.stringify(steps);
+      expect(text).not.toMatch(/PGSSLMODE|rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|sslmode=(require|disable|allow|prefer)/i);
+      for (const name of ["Backup (pg_dump", "Restore drill"]) {
+        expect(stepNamed(name).env.BACKUP_DB_TLS_MODE).toBe("${{ vars.BACKUP_DB_TLS_MODE }}");
+      }
+      expect(stepNamed("Backup (pg_dump").env.PGSSL).toBe("true");
+      expect(stepNamed("Restore drill").env.RESTORE_DRILL_SOURCE_SSL).toBe("true");
+    });
+
+    test("the trust-preparation step runs before the backup and the drill, and only wires non-secret PATHS into later steps", () => {
+      const names = steps.map((st) => String(st.name ?? st.uses ?? ""));
+      const prep = names.findIndex((n) => n.startsWith("Prepare TLS trust"));
+      expect(prep).toBeGreaterThan(-1);
+      expect(prep).toBeLessThan(names.findIndex((n) => n.startsWith("Backup (pg_dump")));
+      expect(prep).toBeLessThan(names.findIndex((n) => n.startsWith("Restore drill")));
+      expect(steps[prep].env).toEqual({ DB_CA: "${{ secrets.BACKUP_DB_SSL_CA }}" });
+      expect(steps[prep].run).toContain("umask 077");
+      expect(steps[prep].run).not.toMatch(/echo[^\n]*\$\{?DB_CA/); // the certificate text is never echoed
+    });
+
+    describe("scripts (real bash)", () => {
+      let dir: string;
+      beforeAll(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), "tls-step-"));
+      });
+      afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+      const bash = (script: string, env: Record<string, string>) => {
+        const ghEnv = path.join(dir, "github_env");
+        fs.rmSync(ghEnv, { force: true });
+        fs.writeFileSync(ghEnv, "");
+        const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH, RUNNER_TEMP: dir, GITHUB_ENV: ghEnv, ...env }, encoding: "utf8" });
+        return { status: r.status, out: `${r.stdout}${r.stderr}`, ghEnv: fs.readFileSync(ghEnv, "utf8") };
+      };
+      const prepRun = () => stepNamed("Prepare TLS trust").run as string;
+      const CERT = "-----BEGIN CERTIFICATE-----\nMIIBfakeNOTSECRET\n-----END CERTIFICATE-----";
+
+      test("no pinned CA -> nothing is exported, the run continues with system trust", () => {
+        const r = bash(prepRun(), { DB_CA: "" });
+        expect(r.status).toBe(0);
+        expect(r.ghEnv).toBe("");
+      });
+
+      test("a PEM certificate -> written with 0600 and exported as PGSSLROOTCERT / RESTORE_DRILL_SOURCE_SSL_CA", () => {
+        const r = bash(prepRun(), { DB_CA: CERT });
+        expect(r.status).toBe(0);
+        expect(r.ghEnv).toContain(`PGSSLROOTCERT=${dir}/db-ca.pem`);
+        expect(r.ghEnv).toContain(`RESTORE_DRILL_SOURCE_SSL_CA=${dir}/db-ca.pem`);
+        expect(fs.statSync(path.join(dir, "db-ca.pem")).mode & 0o777).toBe(0o600);
+        expect(r.out).not.toContain("MIIBfake");
+      });
+
+      test("a private key or a non-certificate in the secret fails the job without echoing it", () => {
+        const key = bash(prepRun(), { DB_CA: "-----BEGIN PRIVATE KEY-----\nTOPSECRETKEY\n-----END PRIVATE KEY-----" });
+        expect(key.status).toBe(1);
+        expect(key.out).toContain("private key");
+        expect(key.out).not.toContain("TOPSECRETKEY");
+        const junk = bash(prepRun(), { DB_CA: "just some text" });
+        expect(junk.status).toBe(1);
+        expect(junk.out).toContain("not a PEM certificate");
+      });
+
+      test("validation step: default and `verify` pass, the explicit opt-out warns loudly, anything else fails", () => {
+        const run = stepNamed("Validate required configuration").run as string;
+        const base = { DATABASE_URL: "postgresql://x", BACKUP_ENCRYPTION_KEY: "k".repeat(40) };
+        expect(bash(run, { ...base, BACKUP_DB_TLS_MODE: "" }).status).toBe(0);
+        expect(bash(run, { ...base, BACKUP_DB_TLS_MODE: "verify" }).status).toBe(0);
+        const insecure = bash(run, { ...base, BACKUP_DB_TLS_MODE: "insecure-skip-verify" });
+        expect(insecure.status).toBe(0);
+        expect(insecure.out).toContain("::warning::");
+        for (const bad of ["true", "require", "off"]) {
+          const r = bash(run, { ...base, BACKUP_DB_TLS_MODE: bad });
+          expect({ bad, status: r.status }).toEqual({ bad, status: 1 });
+        }
+      });
+    });
   });
 });

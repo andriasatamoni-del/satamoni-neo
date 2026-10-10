@@ -51,11 +51,12 @@ It does **not** change any code, schema, migration or Render configuration; it o
 
 ### Backup
 
-- [ ] **No production backup has been proven to exist yet.** The scheduled backup workflow failed on every run from 30 Sep to 3 Oct 2026 (first on the old workflow, then because `BACKUP_ENCRYPTION_KEY` is not configured). It also does not alert anyone when it fails.
+- [ ] **No production backup has been proven to exist yet.** The scheduled backup workflow failed on every run from 30 Sep to 3 Oct 2026 (first on the old workflow, then because `BACKUP_ENCRYPTION_KEY` is not configured). A failure-alert job now opens a GitHub issue on failure, but it has not been exercised on GitHub yet.
 - [ ] The backup workflow has been run manually **from `main`** once (**Actions → Daily database backup + restore drill → Run workflow**). The workflow only runs from `main`; from any other branch it is skipped, and a skipped run looks green. Every step succeeded, including "Restore drill" and "Verify the encrypted files", and an artifact with `*.dump.gpg` **and** `*.dump.gpg.sha256` was produced.
 - [ ] The artifact was downloaded, its checksum verified **before** decrypting, and it was decrypted (`pnpm verify-encrypted-backup`, see `BACKUP_AND_RECOVERY.md`).
 - [ ] A **restore** from that backup was done on a throw-away local PostgreSQL (never on production), and `backend/scripts/backup/verify-restore.sql` passed: 0 unbalanced entries, stock equals movements, row counts consistent with production.
-- [ ] Failed backup runs will be noticed (GitHub Actions failure notifications on, and someone checks that the artifact appeared after each run).
+- [ ] The backup connection verifies the database certificate: the run did **not** need `BACKUP_DB_TLS_MODE=insecure-skip-verify` (if it did, the CA is pinned in `BACKUP_DB_SSL_CA` and the variable is removed).
+- [ ] Failed backup runs will be noticed: **Issues are enabled** and the repository is **watched** so the `ALERT: scheduled database backup failed` issue reaches you, GitHub Actions failure notifications are on, and someone still checks that the artifact appeared (the alert cannot fire if the schedule itself stops).
 
 ### Accounting
 

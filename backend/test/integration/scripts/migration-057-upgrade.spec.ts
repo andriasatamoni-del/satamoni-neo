@@ -8,6 +8,7 @@ import { withDatabase } from "../../../scripts/backup/pg-env";
 //   * upgrades a populated 056 database without touching or failing on historical rows (duplicates from the pre-fix era are KEPT),
 //   * enforces the new uniqueness/immutability rules for rows created after the cut-off,
 //   * is atomic (a failing step leaves no partial schema) and reversible (down() restores the 056 shape, data intact).
+const MIGRATION_057 = "057_phase31_integrity_constraints"; // the spec is about 057 itself: newer migrations must not change what it applies / reverts
 describe("migration 057 (Phase 3.1) - forward-only safe upgrade", () => {
   const serverUrl = process.env.DATABASE_URL as string;
   const dbName = `satamoni_neo_mig057_test_${Date.now()}`;
@@ -70,7 +71,7 @@ describe("migration 057 (Phase 3.1) - forward-only safe upgrade", () => {
     // make a late step of the migration fail: its index name already exists
     await q(`CREATE TABLE sabotage_marker (id int)`);
     await q(`CREATE INDEX idx_payroll_adjustments_run ON sabotage_marker (id)`);
-    const { error } = await migrator.migrateToLatest();
+    const { error } = await migrator.migrateTo(MIGRATION_057);
     expect(error).toBeTruthy();
     expect(await indexExists("uq_journal_entries_auto_source")).toBe(false); // created EARLIER in the same migration - rolled back
     expect(await indexExists("uq_stock_movements_business_effect")).toBe(false);
@@ -82,7 +83,7 @@ describe("migration 057 (Phase 3.1) - forward-only safe upgrade", () => {
   });
 
   test("057 applies cleanly over historical duplicates (they are reported by the coverage report, never deleted or rewritten)", async () => {
-    const { error, results } = await migrator.migrateToLatest();
+    const { error, results } = await migrator.migrateTo(MIGRATION_057);
     expect(error).toBeUndefined();
     expect(results?.some((r) => r.migrationName.startsWith("057_") && r.status === "Success")).toBe(true);
     expect(Number(await scalar(`SELECT count(*)::int AS v FROM journal_entries WHERE source_id = 'order-legacy-1'`))).toBe(2);
@@ -127,7 +128,7 @@ describe("migration 057 (Phase 3.1) - forward-only safe upgrade", () => {
     expect(Number(await scalar(`SELECT count(*)::int AS v FROM audit_logs WHERE action = 'LEGACY ACTION'`))).toBe(1);
     expect(Number(await scalar(`SELECT count(*)::int AS v FROM journal_entries WHERE source_id = 'order-legacy-1'`))).toBe(2);
     // and it can be re-applied
-    const again = await migrator.migrateToLatest();
+    const again = await migrator.migrateTo(MIGRATION_057);
     expect(again.error).toBeUndefined();
   });
 });

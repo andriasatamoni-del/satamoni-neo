@@ -3,7 +3,7 @@ import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
 import { MenuCategory, type MenuGroup } from "../../domain/menu-category.aggregate";
-import type { MenuCategoryRepositoryPort } from "../../domain/ports/menu-category-repository.port";
+import type { CatalogLayoutRepositoryPort, MenuCategoryRepositoryPort } from "../../domain/ports/menu-category-repository.port";
 import type { MenuCategoriesTable } from "./catalog.schema";
 
 @Injectable()
@@ -22,6 +22,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
           menu_group: row.menu_group,
           is_active: row.is_active,
           station_id: row.station_id,
+          archived_at: row.archived_at,
         })
       )
       .execute();
@@ -41,8 +42,12 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
     return row ? this.toDomain(row) : null;
   }
 
-  async list(): Promise<MenuCategory[]> {
-    const rows = await this.db.selectFrom("menu_categories").selectAll().orderBy("display_order").execute();
+  async list(opts: { archived?: boolean } = {}): Promise<MenuCategory[]> {
+    let query = this.db.selectFrom("menu_categories").selectAll();
+    if (opts.archived === true) query = query.where("archived_at", "is not", null);
+    if (opts.archived === false) query = query.where("archived_at", "is", null);
+    // display_order ثم الاسم: ترتيب ثابت حتى لو فيه أقسام بنفس الرقم (الأقسام القديمة كلها 0)
+    const rows = await query.orderBy("display_order").orderBy("name").execute();
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -55,6 +60,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
       is_active: category.isActive,
       legacy_category_id: category.legacyCategoryId,
       station_id: category.stationId,
+      archived_at: category.archivedAt,
     };
   }
 
@@ -66,6 +72,27 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
       isActive: row.is_active,
       legacyCategoryId: row.legacy_category_id,
       stationId: row.station_id,
+      archivedAt: row.archived_at,
     });
+  }
+}
+
+const COMBOS_POSITION_KEY = "combos_position";
+
+@Injectable()
+export class KyselyCatalogLayoutRepository implements CatalogLayoutRepositoryPort {
+  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+
+  async getCombosPosition(): Promise<number | null> {
+    const row = await this.db.selectFrom("catalog_layout").select("value").where("key", "=", COMBOS_POSITION_KEY).executeTakeFirst();
+    return row ? row.value : null;
+  }
+
+  async setCombosPosition(position: number): Promise<void> {
+    await this.db
+      .insertInto("catalog_layout")
+      .values({ key: COMBOS_POSITION_KEY, value: position })
+      .onConflict((oc) => oc.column("key").doUpdateSet({ value: position }))
+      .execute();
   }
 }
