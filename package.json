@@ -1,0 +1,16 @@
+{
+  "name": "satamoni-neo",
+  "private": true,
+  "description": "pnpm workspace: `pnpm install` at the root installs backend and frontend deps (one pnpm-lock.yaml).",
+  "packageManager": "pnpm@9.14.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:backend": "pnpm --filter satamoni-neo-backend start:dev",
+    "dev:frontend": "pnpm --filter satamoni-neo-frontend dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm --filter satamoni-neo-backend exec tsc --noEmit -p tsconfig.json && pnpm --filter satamoni-neo-frontend build",
+    "test:unit": "pnpm --filter satamoni-neo-backend test:unit"
+  }
+}

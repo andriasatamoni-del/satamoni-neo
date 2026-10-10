@@ -48,12 +48,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in the root package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: Install dependencies
-        working-directory: backend
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter satamoni-neo-backend
       - name: Run approved operation
         working-directory: backend
         env:
@@ -78,4 +78,4 @@ jobs:
             import-hr-payroll)      SCRIPT="scripts/import-hr-payroll-from-legacy.ts" ;;
             *) echo "::error::operation is not on the approved list"; exit 1 ;;
           esac
-          npx ts-node "$SCRIPT"
+          pnpm exec ts-node "$SCRIPT"

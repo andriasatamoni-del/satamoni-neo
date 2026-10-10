@@ -24,7 +24,7 @@ contains the password; removing the file does not remove it from history.
 1. Check whether the account exists (read-only):
    ```bash
    cd backend
-   DATABASE_URL='<production external URL>' PGSSL=true npx ts-node scripts/audit-test-account.ts
+   DATABASE_URL='<production external URL>' PGSSL=true pnpm exec ts-node scripts/audit-test-account.ts
    ```
    Exit code `2` + a `FOUND:` line means it exists.
 2. If it exists, disable it immediately and review its activity:

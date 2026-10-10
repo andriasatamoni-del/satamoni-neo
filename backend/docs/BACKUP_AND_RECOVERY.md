@@ -80,9 +80,10 @@
 على جهازك، من غير أي اتصال بقاعدة بيانات:
 
 ```bash
-cd backend && npm ci          # مرة واحدة
+pnpm install --frozen-lockfile   # مرة واحدة، من جذر الريبو
+cd backend
 # 1) البصمة + إن الملف مش plaintext (ده بيفشل لو بايت واحد اتغيّر)
-npm run verify-encrypted-backup -- /path/to/satamoni-neo-YYYYMMDD-HHMMSS.dump.gpg
+pnpm verify-encrypted-backup /path/to/satamoni-neo-YYYYMMDD-HHMMSS.dump.gpg
 
 # 2) شكل التشفير (اختياري): لازم يظهر "cipher 9" (= AES-256) و"mdc_method: 2" (حماية من التعديل)
 gpg --batch --no-tty --pinentry-mode cancel --list-packets /path/to/file.dump.gpg 2>&1 | grep -E 'symkey|cipher|mdc_method'
@@ -94,7 +95,7 @@ gpg --batch --no-tty --pinentry-mode cancel --list-packets /path/to/file.dump.gp
 
 ```bash
 read -rs BACKUP_ENCRYPTION_KEY; echo; export BACKUP_ENCRYPTION_KEY    # بتلصق المفتاح من password manager، مش بيظهر
-npm run verify-encrypted-backup -- /path/to/file.dump.gpg --decrypt-to /safe/dir/restore.dump
+pnpm verify-encrypted-backup /path/to/file.dump.gpg --decrypt-to /safe/dir/restore.dump
 unset BACKUP_ENCRYPTION_KEY
 ```
 
@@ -135,7 +136,7 @@ unset RESTORE_PGPASS
 ```bash
 cd backend
 export RESTORE_DRILL_DATABASE_URL="postgresql://postgres:${RESTORE_PGPASS}@127.0.0.1:55432/postgres"
-npm run restore-drill -- --backup=/safe/dir/restore.dump --keep
+pnpm restore-drill --backup=/safe/dir/restore.dump --keep
 unset RESTORE_DRILL_DATABASE_URL
 ```
 
@@ -171,7 +172,7 @@ constraints/indexes معطوبة، وجود indexes الـPhase 3.1 وtriggers �
 cd backend
 read -rs PROD_DATABASE_URL; echo; export DATABASE_URL="$PROD_DATABASE_URL"; unset PROD_DATABASE_URL    # بتلصق الرابط، مش بيظهر
 export PGSSL=true BACKUP_DIR=/safe/encrypted/disk/backups
-npm run backup
+pnpm backup
 unset DATABASE_URL
 ```
 
@@ -206,7 +207,7 @@ unset DATABASE_URL
 * بعدها أقدم نسخة في كل سنة للأبد.
 * ملفات بأسماء مش مطابقة للنمط عمرها ما بتتمسح.
 
-اختبرها من غير ما تمسح حاجة: `npx ts-node scripts/backup/retention-plan.ts --dir ./backups --now 2026-10-02T00:00:00Z`
+اختبرها من غير ما تمسح حاجة: `pnpm exec ts-node scripts/backup/retention-plan.ts --dir ./backups --now 2026-10-02T00:00:00Z`
 (بيطبع KEEP/DELETE/IGNORE). نفس المنطق بيتطبق على قايمة أسماء من S3 (`--names-file ... --suffix .gpg --print-delete`).
 
 ## الاسترجاع الفعلي وقت أزمة

@@ -12,7 +12,7 @@
     "backup": "ts-node scripts/backup/backup.ts",
     "restore-drill": "ts-node scripts/backup/restore-drill.ts",
     "verify-encrypted-backup": "ts-node scripts/backup/verify-encrypted-backup.ts",
-    "test": "npm run test:unit && npm run test:integration",
+    "test": "pnpm run test:unit && pnpm run test:integration",
     "test:unit": "jest --runInBand",
     "test:integration": "jest --config jest.integration.config.js --runInBand",
     "import:branches": "ts-node scripts/import-branches-from-legacy.ts",

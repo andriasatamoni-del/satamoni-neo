@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-satamoni-neo is a restaurant ERP. It rebuilds the legacy `satamoni-backend` system and covers POS/orders, kitchen display, inventory, procurement, accounting, payroll, delivery, CRM, an online storefront and a WhatsApp/Meta bot. There are two independent npm packages, with no root workspace:
+satamoni-neo is a restaurant ERP. It rebuilds the legacy `satamoni-backend` system and covers POS/orders, kitchen display, inventory, procurement, accounting, payroll, delivery, CRM, an online storefront and a WhatsApp/Meta bot. It is a pnpm workspace with two packages, `backend` and `frontend`:
 
 - `backend/`: NestJS 10 + Kysely + PostgreSQL. A DDD **modular monolith**.
 - `frontend/`: React 18 + Vite 6 + React Router 7 + TanStack Query + Tailwind 4. An SPA.
@@ -13,20 +13,22 @@ Code comments and docs are mostly in Egyptian Arabic. Newer Phase 3.1 code is co
 
 ## Commands
 
-Run every command from inside `backend/` or `frontend/`. CI (`.github/workflows/ci.yml`) uses `npm ci` with Node 22. pnpm lockfiles also exist, but npm is the canonical tool.
+pnpm is the package manager. Its version is pinned in the root `package.json` (`packageManager`), so `corepack enable` picks it up. Run `pnpm install` once at the repo root. It installs both packages, using the single root `pnpm-lock.yaml`. Don't use npm, and don't add a `package-lock.json`. Run the commands below from inside `backend/` or `frontend/`. CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile --filter <package>` with Node 22.
+
+From the root: `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `pnpm test:unit`.
 
 ### Backend
 ```bash
-npm run start:dev                 # watch mode, port 4100 (PORT); needs backend/.env (copy .env.example)
-npm run migrate                   # apply Kysely migrations (src/migrations/files); `migrate:down` reverts one
-npm run build                     # nest build -> dist/
-npx tsc --noEmit -p tsconfig.json # typecheck (CI gate; there is no linter configured)
+pnpm start:dev                    # watch mode, port 4100 (PORT); needs backend/.env (copy .env.example)
+pnpm migrate                      # apply Kysely migrations (src/migrations/files); `migrate:down` reverts one
+pnpm build                        # nest build -> dist/
+pnpm exec tsc --noEmit -p tsconfig.json # typecheck (CI gate; there is no linter configured)
 
-npm run test:unit                 # test/unit/**/*.spec.ts: pure domain logic, no DB, no Nest bootstrap
-npm run test:integration          # test/integration/**/*.spec.ts: real Postgres + full Nest app via supertest
-npx jest test/unit/orders/some.spec.ts                                     # single unit spec
-npx jest -c jest.integration.config.js test/integration/orders/some.spec.ts # single integration spec
-npx jest -c jest.integration.config.js -t "name of test"                   # filter by test name
+pnpm test:unit                    # test/unit/**/*.spec.ts: pure domain logic, no DB, no Nest bootstrap
+pnpm test:integration             # test/integration/**/*.spec.ts: real Postgres + full Nest app via supertest
+pnpm exec jest test/unit/orders/some.spec.ts                                     # single unit spec
+pnpm exec jest -c jest.integration.config.js test/integration/orders/some.spec.ts # single integration spec
+pnpm exec jest -c jest.integration.config.js -t "name of test"                   # filter by test name
 ```
 
 How the integration tests run:
@@ -39,8 +41,8 @@ How the integration tests run:
 
 ### Frontend
 ```bash
-npm run dev     # Vite on :5173; proxies /api/* -> http://localhost:4100 (override with VITE_API_PROXY_TARGET)
-npm run build   # tsc && vite build (this is the typecheck; CI gate)
+pnpm dev       # Vite on :5173; proxies /api/* -> http://localhost:4100 (override with VITE_API_PROXY_TARGET)
+pnpm build     # tsc && vite build (this is the typecheck; CI gate)
 ```
 
 ## Backend architecture
@@ -59,7 +61,7 @@ Contexts talk to each other through domain events on `EventBusService`, or by im
 ### Database
 - Kysely only, with no ORM. This is deliberate: integrity lives in real Postgres constraints and triggers.
 - Each table type in a context's `*.schema.ts` must be composed into the `Database` interface in `src/shared/database/database.types.ts` by hand.
-- Migrations are numbered files in `src/migrations/files/` (`NNN_description.ts`, with `up`/`down`). They are forward-only and additive. Kysely runs each one in a transaction. Production runs `npm run migrate` before every start.
+- Migrations are numbered files in `src/migrations/files/` (`NNN_description.ts`, with `up`/`down`). They are forward-only and additive. Kysely runs each one in a transaction. Production runs `pnpm run migrate` before every start.
 
 ### Transactions (`src/shared/database/transaction-context.ts`)
 - The injected `KYSELY` instance is a Proxy backed by `AsyncLocalStorage`. Inside `TransactionService.run(fn)`, *every* repository query automatically joins that single transaction, and nested `db.transaction()` calls join it too. **One business command = one transaction.**
@@ -113,5 +115,5 @@ The business day is the **Africa/Cairo calendar date**. The process and DB sessi
 
 - `backend/scripts/import-*-from-legacy.ts` read the old database (`LEGACY_DATABASE_URL`, read-only). They are idempotent and **must run in the dependency order listed in `DEPLOYMENT.md` §4**: branches → users → crm → inventory → catalog → procurement → orders → drivers → accounting → payment-control → hr-payroll.
 - Production operations run only through `.github/workflows/maintenance-operation.yml`. It offers a fixed operation list and is gated by the `production-maintenance` environment, which requires a reviewer. Do not reintroduce a workflow that runs arbitrary scripts with production secrets. See `backend/docs/SECURITY_HARDENING.md`.
-- Backups: `npm run backup` and `npm run restore-drill`, plus the daily `db-backup.yml` workflow. See `backend/docs/BACKUP_AND_RECOVERY.md`.
-- Deployment target is Render (`render.yaml`, `DEPLOYMENT.md`): the backend runs as a Node web service and the frontend as a static site with a `/* → /index.html` rewrite.
+- Backups: `pnpm backup` and `pnpm restore-drill`, plus the daily `db-backup.yml` workflow. See `backend/docs/BACKUP_AND_RECOVERY.md`.
+- Deployment target is Render (`render.yaml`, `DEPLOYMENT.md`): both services build from the repo root with pnpm (no `rootDir`; `buildFilter` scopes auto-deploys). The backend runs as a Node web service and the frontend as a static site with a `/* → /index.html` rewrite.

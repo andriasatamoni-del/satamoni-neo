@@ -36,11 +36,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in the root package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache: pnpm
 
       # the backup/restore drill tests call pg_dump/pg_restore, which must be the same major version as the server or newer
       - name: Install PostgreSQL 17 client
@@ -52,8 +52,7 @@ jobs:
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
-        working-directory: backend
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter satamoni-neo-backend
 
       # the import-*-from-legacy specs build their fixture tables in an EMPTY database of their own (the legacy system's stand-in)
       - name: Create the legacy-fixture database used by the import specs
@@ -63,15 +62,15 @@ jobs:
 
       - name: Typecheck
         working-directory: backend
-        run: npx tsc --noEmit -p tsconfig.json
+        run: pnpm exec tsc --noEmit -p tsconfig.json
 
       - name: Unit tests
         working-directory: backend
-        run: npm run test:unit
+        run: pnpm run test:unit
 
       - name: Integration tests (real PostgreSQL, strict accounting)
         working-directory: backend
-        run: npm run test:integration -- --forceExit
+        run: pnpm run test:integration --forceExit
 
   frontend:
     runs-on: ubuntu-latest
@@ -80,14 +79,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in the root package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: pnpm
       - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter satamoni-neo-frontend
       - name: Typecheck and build
         working-directory: frontend
-        run: npm run build
+        run: pnpm run build
