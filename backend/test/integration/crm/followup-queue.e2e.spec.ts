@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لطابور متابعة العملاء (followup-queue) - بيشتغل على أوردرات دليفري حقيقية اتسلّمت فعليًا
 // (delivery_assignments.status='DELIVERED') مش بس المستوردة من الريبو القديم (راجع migration 030 -
@@ -26,7 +26,7 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
@@ -42,7 +42,7 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-followup-queue@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع طابور-متابعة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

@@ -15,7 +15,7 @@ import type { Database } from "../src/shared/database/database.token";
 import { KyselySupplierRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-supplier.repository";
 import { KyselyPurchaseOrderRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
 import { KyselyGoodsReceiptRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { Supplier, SUPPLIER_STATUSES } from "../src/contexts/procurement/domain/supplier.aggregate";
@@ -46,7 +46,7 @@ export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Datab
   const supplierRepo = new KyselySupplierRepository(kyselyOn(neoDb));
   const purchaseOrderRepo = new KyselyPurchaseOrderRepository(kyselyOn(neoDb));
   const goodsReceiptRepo = new KyselyGoodsReceiptRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const inventoryRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
   const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
 

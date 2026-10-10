@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { AI_CHAT_CLIENT, type AiChatClientPort, type RunToolLoopInput } from "../../../src/contexts/whatsapp/domain/ports/ai-chat-client.port";
 import { OUTBOUND_MESSENGER, type OutboundMessengerPort } from "../../../src/contexts/whatsapp/domain/ports/outbound-messenger.port";
 import { signMeta, socialPayload, whatsappPayload } from "./meta-webhook.helpers";
@@ -113,7 +113,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
@@ -124,7 +124,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
 
     branchName = `فرع-بوت-جست-${Date.now()}`;
     const branch = Branch.register({ name: branchName });
-    await new KyselyBranchRepository(db).save(branch);
+    await new BranchRepository(app.get(DATABASE)).save(branch);
     branchId = branch.id;
 
     const item = await request(server())

@@ -4,7 +4,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
@@ -26,7 +26,7 @@ export interface ImportCounts {
 }
 
 export async function importBranchesFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
-  const repo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const repo = new BranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyBranchRow>(
     `SELECT id, name, address, phone, hours, lat, lng, is_central_kitchen, supports_dine_in
      FROM branches ORDER BY id`

@@ -6,7 +6,7 @@ import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-con
 import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
 import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
 import { KyselyReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
@@ -65,7 +65,7 @@ describe("importPaymentControlFromLegacy", () => {
     reconciliationRepo = new KyselyReconciliationRecordRepository(kyselyOn(neoDb));
 
     const branch = Branch.register({ name: "فرع استيراد-دفعات-جست", legacyBranchId: 501 });
-    await new KyselyBranchRepository(kyselyOn(neoDb)).save(branch);
+    await new BranchRepository(neoDb).save(branch);
     branchId = branch.id;
 
     const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));

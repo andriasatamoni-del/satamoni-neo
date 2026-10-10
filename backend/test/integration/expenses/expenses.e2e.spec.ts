@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لتسجيل المصروفات (expenses/expense_categories) - راجع تعليق expense.aggregate.ts للفلسفة
 // (نسخة مبسّطة من دورة حياة الريبو القديم الرباعية). محاسب/مدير فرع بيقدروا يرحّلوا فورًا أو
@@ -29,7 +29,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
@@ -43,7 +43,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-expenses@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع-مصروفات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

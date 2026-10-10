@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لثلاث قراءات جديدة بتخدم سيناريو "تحصيل مجمع" عند الكاشير: معاينة تسوية سائق قبل تسجيلها،
 // قايمة السائقين اللي عندهم كاش معلّق في الفرع، وتقرير كل أوردرات السائق المُسلَّمة في يوم معيّن
@@ -52,7 +52,7 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
@@ -67,7 +67,7 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-driver-reports@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع تقارير-سائقين-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

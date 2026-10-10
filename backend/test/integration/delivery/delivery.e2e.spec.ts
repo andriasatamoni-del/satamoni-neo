@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -25,8 +25,8 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyBranchRepository } = await import(
-      "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository"
+    const { BranchRepository } = await import(
+      "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuItemRepository } = await import(
@@ -46,7 +46,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
       .send({ email: "admin-delivery@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع توصيل-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

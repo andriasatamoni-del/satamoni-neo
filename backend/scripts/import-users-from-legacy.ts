@@ -14,7 +14,7 @@ import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { User } from "../src/contexts/identity-access/domain/user.aggregate";
 import { isValidRole } from "../src/contexts/identity-access/domain/role";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
@@ -46,7 +46,7 @@ function asStringArray(value: unknown): string[] {
 // قواعد بيانات وهمية (fixtures) من غير الحاجة للريبو القديم الحقيقي
 export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportResult> {
   const repo = new KyselyUserRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyUserRow>(
     `SELECT id, branch_id, name, email, password_hash, role, pin_hash,
             permission_grants, permission_revokes, is_active

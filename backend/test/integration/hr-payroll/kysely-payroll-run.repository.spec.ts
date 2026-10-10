@@ -1,19 +1,21 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
 import { KyselyPayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
 import { Employee } from "../../../src/contexts/hr-payroll/domain/employee.aggregate";
 import { PayrollRun } from "../../../src/contexts/hr-payroll/domain/payroll-run.aggregate";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 describe("KyselyPayrollRunRepository + DB-level invariants (trigger + partial unique index حقيقيين)", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let employeeRepo: KyselyEmployeeRepository;
   let runRepo: KyselyPayrollRunRepository;
   let employeeId: string;
 
   beforeAll(async () => {
-    db = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     employeeRepo = new KyselyEmployeeRepository(db);
     runRepo = new KyselyPayrollRunRepository(db);
 
@@ -25,7 +27,7 @@ describe("KyselyPayrollRunRepository + DB-level invariants (trigger + partial un
   afterAll(async () => {
     await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
     await sql`DELETE FROM employees WHERE id = ${employeeId}`.execute(db);
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   // TRUNCATE عمدًا (مش DELETE) - قوائم اتعتمدت بتبقى APPROVED فعليًا خلال التستات، والـtrigger اللي

@@ -6,7 +6,7 @@ import { KyselySupplierRepository } from "../../../src/contexts/procurement/infr
 import { KyselyPurchaseOrderRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
 import { KyselyGoodsReceiptRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
@@ -40,7 +40,7 @@ describe("importProcurementFromLegacy", () => {
     goodsReceiptRepo = new KyselyGoodsReceiptRepository(kyselyOn(neoDb));
     movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
 
-    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+    const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع مشتريات-fixture", legacyBranchId: 900 });
     await branchRepo.save(branch);
     branchId = branch.id;

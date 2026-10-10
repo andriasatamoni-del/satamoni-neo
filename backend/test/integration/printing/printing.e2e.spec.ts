@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضير + توجيه + طابور طباعة", () => {
   let app: INestApplication;
@@ -22,7 +22,7 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository");
     const { MenuCategory } = await import("../../../src/contexts/catalog/domain/menu-category.aggregate");
@@ -39,7 +39,7 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-printing@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع-طباعة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

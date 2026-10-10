@@ -1,12 +1,13 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { KyselyAccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
 import { KyselyJournalEntryRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-journal-entry.repository";
 import { Account } from "../../../src/contexts/accounting/domain/account.aggregate";
 import { JournalEntry } from "../../../src/contexts/accounting/domain/journal-entry.aggregate";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي)", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let accountRepo: KyselyAccountRepository;
   let entryRepo: KyselyJournalEntryRepository;
@@ -14,9 +15,8 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
   let salesAccountId: string;
 
   beforeAll(async () => {
-    db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     accountRepo = new KyselyAccountRepository(db);
     entryRepo = new KyselyJournalEntryRepository(db);
 
@@ -31,7 +31,7 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
   afterAll(async () => {
     await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
     await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashAccountId, salesAccountId])})`.execute(db);
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   // TRUNCATE (مش DELETE) عمدًا هنا - القيود بتتسجل POSTED فعليًا خلال التستات، والـtrigger اللي بيمنع

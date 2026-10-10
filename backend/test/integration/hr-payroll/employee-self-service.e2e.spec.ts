@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
 
 describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2e ضد تطبيق حقيقي كامل)", () => {
@@ -27,7 +27,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
@@ -51,7 +51,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     await userRepo.save(unlinkedUser);
     unlinkedUserToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-unlinked-self-service@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع خدمة ذاتية-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

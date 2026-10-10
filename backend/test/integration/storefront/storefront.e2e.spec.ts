@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { CUSTOMER_TOKEN_SERVICE } from "../../../src/contexts/customers/domain/ports/customer-token.service.port";
 
 // STORE-1/2: موقع الطلب أونلاين بحساب إلزامي - من المنيو العام، للتسجيل مرة واحدة بالعنوان، للطلب بضغطة،
@@ -70,7 +70,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository");
     const { MenuCategory } = await import("../../../src/contexts/catalog/domain/menu-category.aggregate");
@@ -90,7 +90,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-store@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع-موقع-جست", phone: "0223456789", lat: 30.05, lng: 31.23, supportsDineIn: false });
     const dineIn = Branch.register({ name: "فرع-موقع-صالة-جست", supportsDineIn: true });
     await branchRepo.save(branch);

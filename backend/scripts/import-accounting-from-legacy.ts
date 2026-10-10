@@ -10,7 +10,7 @@ import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyAccountRepository } from "../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Account } from "../src/contexts/accounting/domain/account.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
@@ -34,7 +34,7 @@ export interface ImportCounts {
 
 export async function importAccountingFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
   const accountRepo = new KyselyAccountRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyAccountRow>(
     `SELECT id, code, name, account_type, parent_account_id, branch_id, is_active, is_system_account
      FROM accounts ORDER BY id`

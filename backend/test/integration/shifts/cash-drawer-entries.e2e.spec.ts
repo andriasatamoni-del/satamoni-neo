@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e حقيقي: مصروف/مشترى نقدي بيتسجل من درج شيفت شغال -> بيتخصم من الكاش المتوقع (preview وقفل الشيفت
 // كمان) -> وبيترحّل قيد محاسبي تلقائي عبر event bus (CashDrawerEntryRegistered -> Accounting)، نفس
@@ -26,7 +26,7 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
@@ -43,7 +43,7 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
       .send({ email: "admin-cash-drawer-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع درج-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

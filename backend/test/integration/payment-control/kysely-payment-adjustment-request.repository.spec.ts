@@ -1,10 +1,9 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
 import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
 import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { PaymentMethod } from "../../../src/contexts/payment-control/domain/payment-method.aggregate";
@@ -13,8 +12,10 @@ import { PaymentAdjustmentRequest } from "../../../src/contexts/payment-control/
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 describe("KyselyPaymentAdjustmentRequestRepository", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let repo: KyselyPaymentAdjustmentRequestRepository;
   let paymentId: string;
@@ -23,11 +24,12 @@ describe("KyselyPaymentAdjustmentRequestRepository", () => {
   let orderId: string;
 
   beforeAll(async () => {
-    db = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     repo = new KyselyPaymentAdjustmentRequestRepository(db);
 
     const branch = Branch.register({ name: "فرع تعديل-جست" });
-    await new KyselyBranchRepository(db).save(branch);
+    await new BranchRepository(database).save(branch);
     branchId = branch.id;
 
     const menuItemRepo = new KyselyMenuItemRepository(db);
@@ -58,7 +60,7 @@ describe("KyselyPaymentAdjustmentRequestRepository", () => {
     await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(db);
     await sql`DELETE FROM payment_methods WHERE name LIKE '%تعديل-جست%'`.execute(db);
     await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   afterEach(async () => {

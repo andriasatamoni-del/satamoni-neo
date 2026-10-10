@@ -1,29 +1,29 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
 import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { StockMovement } from "../../../src/contexts/inventory/domain/stock-movement.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { InsufficientStockError } from "../../../src/contexts/inventory/domain/errors";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 describe("KyselyStockMovementRepository", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let repo: KyselyStockMovementRepository;
   let itemRepo: KyselyInventoryItemRepository;
-  let branchRepo: KyselyBranchRepository;
+  let branchRepo: BranchRepository;
   let branchId: string;
   let itemId: string;
 
   beforeAll(async () => {
-    db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     repo = new KyselyStockMovementRepository(db);
     itemRepo = new KyselyInventoryItemRepository(db);
-    branchRepo = new KyselyBranchRepository(db);
+    branchRepo = new BranchRepository(database);
 
     const branch = Branch.register({ name: "فرع حركات-جست" });
     await branchRepo.save(branch);
@@ -39,7 +39,7 @@ describe("KyselyStockMovementRepository", () => {
     await sql`DELETE FROM stock_movements`.execute(db);
     await sql`DELETE FROM inventory_items WHERE id = ${itemId}`.execute(db);
     await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   afterEach(async () => {

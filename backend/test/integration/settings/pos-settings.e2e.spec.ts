@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e حقيقي: PATCH /pos-settings بيغيّر قيمة فعلية بيستهلكها context تاني (Shifts) - مش بس CRUD على
 // جدول منفصل، ده هو أصل مشكلة TIER3-5 (قيم كانت متثبّتة في الكود، دلوقتي قابلة للتهيئة فعليًا)
@@ -23,7 +23,7 @@ describe("POS Settings - إعدادات النظام القابلة للتهيئ
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
@@ -38,7 +38,7 @@ describe("POS Settings - إعدادات النظام القابلة للتهيئ
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-pos-settings@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع إعدادات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

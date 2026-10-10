@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لتخطيط تصنيع السنتر كيتشن (Production Planning) - راجع تعليق get-production-plan.handler.ts.
 // قراءة بحت مفيش أي كتابة على المخزون أو المحاسبة هنا خالص
@@ -26,7 +26,7 @@ describe("Production - تخطيط تصنيع السنتر كيتشن (e2e ضد �
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyInventoryItemRepository } = await import(
       "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
@@ -44,7 +44,7 @@ describe("Production - تخطيط تصنيع السنتر كيتشن (e2e ضد �
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-prodplan@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const ck = Branch.register({ name: "سنتر كيتشن-تخطيط-جست", isCentralKitchen: true });
     await branchRepo.save(ck);
     ckBranchId = ck.id;

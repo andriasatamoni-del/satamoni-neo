@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // PROC-BUG-1: حالة أمر الشراء لازم تتحدّث تلقائيًا مع تأكيد أذون الاستلام المربوطة بيه
 describe("Procurement - استلام أوامر الشراء وتحديث حالتها (e2e)", () => {
@@ -65,8 +65,8 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyBranchRepository } = await import(
-      "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository"
+    const { BranchRepository } = await import(
+      "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyInventoryItemRepository } = await import(
@@ -85,7 +85,7 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-poreceiving@jest.test", password: "12345678" })).body.token;
 
     const branch = Branch.register({ name: "فرع-استلام-أوامر-جست" });
-    await new KyselyBranchRepository(db).save(branch);
+    await new BranchRepository(app.get(DATABASE)).save(branch);
     branchId = branch.id;
 
     const itemRepo = new KyselyInventoryItemRepository(db);

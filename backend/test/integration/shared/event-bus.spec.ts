@@ -1,8 +1,8 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { EventBusService } from "../../../src/shared/events/event-bus.service";
 import { DomainEvent } from "../../../src/shared/events/domain-event";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 class TestEvent extends DomainEvent {
   readonly eventName = "TestEvent";
@@ -12,18 +12,18 @@ class TestEvent extends DomainEvent {
 }
 
 describe("EventBusService", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let bus: EventBusService;
 
   beforeAll(() => {
-    db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     bus = new EventBusService(db);
   });
 
   afterAll(async () => {
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   afterEach(async () => {

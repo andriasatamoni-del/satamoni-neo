@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لقفل يوم الفرع - بيغطي: checklist أحمر (طلب مفتوح) بيمنع القفل، القفل بيرجع أخضر بعد ما يتحل،
 // قفل مزدوج لنفس اليوم -> 409 (نفس فلسفة الريبو القديم - UNIQUE(branch_id, business_date) هي الحماية
@@ -25,14 +25,14 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
     const userRepo = new KyselyUserRepository(db);
     const hasher = new BcryptPasswordHasher();
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع قفل-يوم-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

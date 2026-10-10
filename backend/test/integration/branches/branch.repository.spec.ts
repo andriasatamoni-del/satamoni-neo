@@ -1,26 +1,24 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 
-describe("KyselyBranchRepository", () => {
-  let db: Kysely<Database>;
-  let repo: KyselyBranchRepository;
+describe("BranchRepository", () => {
+  let db: Database;
+  let repo: BranchRepository;
 
   beforeAll(() => {
-    db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    repo = new KyselyBranchRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new BranchRepository(db);
   });
 
   afterAll(async () => {
-    await db.destroy();
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM branches`.execute(db);
+    await db.delete(branches);
   });
 
   test("save بيسجّل فرع جديد، وfindById بيرجّعه بنفس البيانات", async () => {

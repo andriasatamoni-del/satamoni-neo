@@ -1,22 +1,22 @@
-import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Kysely, sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
+import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 describe("KyselyMenuItemRepository", () => {
+  let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
   let repo: KyselyMenuItemRepository;
 
   beforeAll(() => {
-    db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
+    database = createScriptDb(process.env.DATABASE_URL as string);
+    db = kyselyOn(database);
     repo = new KyselyMenuItemRepository(db);
   });
 
   afterAll(async () => {
-    await db.destroy();
+    await closeScriptDb(database);
   });
 
   afterEach(async () => {

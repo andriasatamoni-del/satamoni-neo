@@ -4,7 +4,8 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql, type Kysely } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 import { deleteAuditLogsForTest } from "../helpers/audit";
 
 // Phase 3.1 regression harness: boots the REAL application against the disposable integration database (guarded by
@@ -15,6 +16,7 @@ import { deleteAuditLogsForTest } from "../helpers/audit";
 export interface World {
   app: INestApplication;
   db: Kysely<any>;
+  database: Database;
   http: () => ReturnType<INestApplication["getHttpServer"]>;
   tag: string;
   branchA: string;
@@ -51,11 +53,12 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   const db = app.get<Kysely<any>>(KYSELY);
+  const database = app.get<Database>(DATABASE);
 
   const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
   const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
   const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-  const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+  const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
   const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
   const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
   const { KyselyStockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository");
@@ -68,7 +71,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
   const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-  const branchRepo = new KyselyBranchRepository(db);
+  const branchRepo = new BranchRepository(database);
   const bA = Branch.register({ name: `فرع-A-${tag}` });
   const bB = Branch.register({ name: `فرع-B-${tag}` });
   await branchRepo.save(bA);
@@ -138,6 +141,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   return {
     app,
     db,
+    database,
     http: () => app.getHttpServer(),
     tag,
     branchA: bA.id,

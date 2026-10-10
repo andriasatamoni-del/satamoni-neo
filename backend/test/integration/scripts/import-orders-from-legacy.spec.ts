@@ -4,7 +4,7 @@ import type { Database } from "../../../src/shared/database/database.token";
 import { importOrdersFromLegacy } from "../../../scripts/import-orders-from-legacy";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
@@ -46,7 +46,7 @@ describe("importOrdersFromLegacy", () => {
     orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
     movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
 
-    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+    const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع طلبات-fixture", legacyBranchId: 800 });
     await branchRepo.save(branch);
     branchId = branch.id;

@@ -16,7 +16,7 @@ import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyCustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
 import { KyselyComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
 import { CustomerFollowup, CALL_RESULTS, SATISFACTION_RATINGS } from "../src/contexts/crm/domain/customer-followup.aggregate";
@@ -80,7 +80,7 @@ export interface CrmImportResult {
 
 export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CrmImportResult> {
   const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const followupRepo = new KyselyCustomerFollowupRepository(kyselyOn(neoDb));
   const complaintRepo = new KyselyComplaintRepository(kyselyOn(neoDb));
 

@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Branch } from "../../domain/branch.aggregate";
 import type { BranchRepositoryPort } from "../../domain/ports/branch-repository.port";
-import type { BranchesTable } from "./branch.schema";
+import { branches } from "./branches.tables";
 
 @Injectable()
-export class KyselyBranchRepository implements BranchRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class BranchRepository implements BranchRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(branch: Branch): Promise<void> {
     const row = this.toRow(branch);
     await this.db
-      .insertInto("branches")
+      .insert(branches)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: branches.id,
+        set: {
           name: row.name,
           address: row.address,
           phone: row.phone,
@@ -26,40 +26,31 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
           is_central_kitchen: row.is_central_kitchen,
           supports_dine_in: row.supports_dine_in,
           talabat_branch_id: row.talabat_branch_id,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Branch | null> {
-    const row = await this.db.selectFrom("branches").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(branches).where(eq(branches.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyBranchId(legacyBranchId: number): Promise<Branch | null> {
-    const row = await this.db
-      .selectFrom("branches")
-      .selectAll()
-      .where("legacy_branch_id", "=", legacyBranchId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(branches).where(eq(branches.legacy_branch_id, legacyBranchId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByTalabatBranchId(talabatBranchId: string): Promise<Branch | null> {
-    const row = await this.db
-      .selectFrom("branches")
-      .selectAll()
-      .where("talabat_branch_id", "=", talabatBranchId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(branches).where(eq(branches.talabat_branch_id, talabatBranchId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(): Promise<Branch[]> {
-    const rows = await this.db.selectFrom("branches").selectAll().orderBy("name").execute();
+    const rows = await this.db.select().from(branches).orderBy(asc(branches.name));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(branch: Branch) {
+  private toRow(branch: Branch): typeof branches.$inferInsert {
     return {
       id: branch.id,
       name: branch.name,
@@ -75,7 +66,7 @@ export class KyselyBranchRepository implements BranchRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<BranchesTable>): Branch {
+  private toDomain(row: typeof branches.$inferSelect): Branch {
     return Branch.reconstitute(row.id, {
       name: row.name,
       address: row.address,

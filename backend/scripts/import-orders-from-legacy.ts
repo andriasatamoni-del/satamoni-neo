@@ -11,7 +11,7 @@ import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES, type OrderSource } from "../src/contexts/orders/domain/order.aggregate";
@@ -38,7 +38,7 @@ export interface ImportCounts { created: number; updated: number; skipped: numbe
 
 export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
   const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
   const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
 

@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importBranchesFromLegacy } from "../../../scripts/import-branches-from-legacy";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
@@ -11,7 +11,7 @@ const LEGACY_FIXTURE_URL =
 describe("importBranchesFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let repo: KyselyBranchRepository;
+  let repo: BranchRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -25,7 +25,7 @@ describe("importBranchesFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    repo = new KyselyBranchRepository(kyselyOn(neoDb));
+    repo = new BranchRepository(neoDb);
     await sql`DELETE FROM branches`.execute(kyselyOn(neoDb));
   });
 

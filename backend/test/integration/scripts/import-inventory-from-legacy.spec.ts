@@ -4,7 +4,7 @@ import type { Database } from "../../../src/shared/database/database.token";
 import { importInventoryFromLegacy } from "../../../scripts/import-inventory-from-legacy";
 import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
@@ -36,7 +36,7 @@ describe("importInventoryFromLegacy", () => {
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
     itemRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
     movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
-    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+    const branchRepo = new BranchRepository(neoDb);
 
     await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));
     await sql`DELETE FROM stock_movements`.execute(kyselyOn(neoDb));

@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لتسجيل طلب فيه سطر عرض (combo) - بيتأكد إن استهلاك المخزون بيتفكّ لأصناف العرض الأصلية عن طريق
 // وصفة كل حجم (نفس فلسفة combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
@@ -27,7 +27,7 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyInventoryItemRepository } = await import(
       "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
@@ -55,7 +55,7 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-orders-combos@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع-طلبات-عروض-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

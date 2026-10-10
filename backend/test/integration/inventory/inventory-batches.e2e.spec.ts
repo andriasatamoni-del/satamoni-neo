@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // BATCH-1: تتبّع دفعات/لوط - راجع تعليق inventory-batch.aggregate.ts لنطاق الميزة (استلام رسمي/إنتاج بس،
 // استهلاك يدوي، تتبّع مستوى واحد). هنا بنغطي المسارين الرئيسيين: GRN (procurement) وConversionOrder
@@ -29,7 +29,7 @@ describe("Inventory - دفعات/لوط (BATCH-1, e2e ضد تطبيق حقيقي
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyInventoryItemRepository } = await import(
       "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
@@ -47,7 +47,7 @@ describe("Inventory - دفعات/لوط (BATCH-1, e2e ضد تطبيق حقيقي
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-batches@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع-دفعات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

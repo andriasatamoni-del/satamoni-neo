@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
@@ -29,7 +29,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
@@ -44,7 +44,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payment-control-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const branch = Branch.register({ name: "فرع دفعات-e2e" });
     await branchRepo.save(branch);
     branchId = branch.id;

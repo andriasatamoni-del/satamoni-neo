@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لطلبات التحويل بين الفروع (transfer_requests) - نفس مفهوم kitchen_orders بالريبو القديم بس معمّم.
 // راجع تعليق transfer-request.aggregate.ts للتفاصيل الكاملة
@@ -24,7 +24,7 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
     const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { KyselyInventoryItemRepository } = await import(
       "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
@@ -42,7 +42,7 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-transfer@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get(DATABASE));
     const ck = Branch.register({ name: "سنتر كيتشن-تحويل-جست", isCentralKitchen: true });
     await branchRepo.save(ck);
     ckBranchId = ck.id;

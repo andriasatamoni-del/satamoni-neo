@@ -14,7 +14,7 @@ import { KyselyEmployeeRepository } from "../src/contexts/hr-payroll/infrastruct
 import { KyselyDepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
 import { KyselyPositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
 import { KyselyPayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
 import { Department } from "../src/contexts/hr-payroll/domain/department.aggregate";
@@ -58,7 +58,7 @@ export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Databas
   const departmentRepo = new KyselyDepartmentRepository(kyselyOn(neoDb));
   const positionRepo = new KyselyPositionRepository(kyselyOn(neoDb));
   const payrollRunRepo = new KyselyPayrollRunRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
   const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
 
   const branchIdCache = new Map<number, string | null>();

@@ -3,7 +3,7 @@ import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importDriversFromLegacy } from "../../../scripts/import-drivers-from-legacy";
 import { KyselyDriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/kysely-driver.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
@@ -24,7 +24,7 @@ describe("importDriversFromLegacy", () => {
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
     driverRepo = new KyselyDriverRepository(kyselyOn(neoDb));
 
-    const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+    const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع سائقين-fixture", legacyBranchId: 600 });
     await branchRepo.save(branch);
     branchId = branch.id;

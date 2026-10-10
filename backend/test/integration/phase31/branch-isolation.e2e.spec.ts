@@ -20,10 +20,10 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
   beforeAll(async () => {
     w = await bootstrap("iso");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const c = Branch.register({ name: "فرع-C-iso" });
-    await new KyselyBranchRepository(w.db).save(c);
+    await new BranchRepository(w.database).save(c);
     branchC = c.id;
 
     // ---- branch B owns: order+payment, adjustment request, expense, purchase, PO, GRN, invoice, stocktake, shift, driver, employee ----

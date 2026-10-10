@@ -13,7 +13,7 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
 import { KyselyStockMovementRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { InventoryItem, ITEM_TYPES, NEGATIVE_STOCK_POLICIES } from "../src/contexts/inventory/domain/inventory-item.aggregate";
 import { StockMovement } from "../src/contexts/inventory/domain/stock-movement.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
@@ -47,7 +47,7 @@ export interface InventoryImportResult {
 export async function importInventoryFromLegacy(legacyPool: Pool, neoDb: Database): Promise<InventoryImportResult> {
   const itemRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
   const movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
-  const branchRepo = new KyselyBranchRepository(kyselyOn(neoDb));
+  const branchRepo = new BranchRepository(neoDb);
 
   const items: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: itemRows } = await legacyPool.query<LegacyItemRow>(
