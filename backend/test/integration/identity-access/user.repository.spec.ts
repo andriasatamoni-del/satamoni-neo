@@ -1,28 +1,26 @@
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { UserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { User } from "../../../src/contexts/identity-access/domain/user.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
 
-describe("KyselyUserRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyUserRepository;
+describe("UserRepository", () => {
+  let db: Database;
+  let repo: UserRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
+    db = createScriptDb(process.env.DATABASE_URL as string);
     // بنعمل instance يدوي هنا بدل ما نقلع كل Nest module، عشان اختبار التخزين نفسه بس من غير
     // الحاجة لباقي التطبيق (نفس الـconnection type اللي DatabaseModule بيستخدمه فعليًا)
-    repo = new KyselyUserRepository(db);
+    repo = new UserRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await db.deleteFrom("users").execute();
+    await db.delete(users);
   });
 
   test("save بيسجّل يوزر جديد، وfindById بيرجّعه بنفس البيانات", async () => {

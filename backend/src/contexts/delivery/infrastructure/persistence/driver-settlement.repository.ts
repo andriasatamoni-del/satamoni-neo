@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { DriverSettlement, type VarianceStatus } from "../../domain/driver-settlement.aggregate";
 import type { DriverSettlementRepositoryPort } from "../../domain/ports/driver-settlement-repository.port";
-import type { DriverSettlementsTable } from "./delivery.schema";
+import { driverSettlements } from "./delivery.tables";
 
 @Injectable()
-export class KyselyDriverSettlementRepository implements DriverSettlementRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class DriverSettlementRepository implements DriverSettlementRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(settlement: DriverSettlement): Promise<void> {
     await this.db
-      .insertInto("driver_settlements")
+      .insert(driverSettlements)
       .values({
         id: settlement.id,
         driver_id: settlement.driverId,
@@ -32,32 +31,38 @@ export class KyselyDriverSettlementRepository implements DriverSettlementReposit
         bonus_total: settlement.bonusTotal,
         notes: settlement.notes,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: driverSettlements.id,
+        set: {
           variance_status: settlement.varianceStatus,
           variance_reviewed_by: settlement.varianceReviewedBy,
           variance_reviewed_at: settlement.varianceReviewedAt,
           variance_review_notes: settlement.varianceReviewNotes,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<DriverSettlement | null> {
-    const row = await this.db.selectFrom("driver_settlements").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(driverSettlements).where(eq(driverSettlements.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { driverId?: string; branchId?: string; varianceStatus?: string }): Promise<DriverSettlement[]> {
-    let query = this.db.selectFrom("driver_settlements").selectAll();
-    if (filter?.driverId) query = query.where("driver_id", "=", filter.driverId);
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.varianceStatus) query = query.where("variance_status", "=", filter.varianceStatus);
-    const rows = await query.orderBy("settled_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(driverSettlements)
+      .where(
+        and(
+          filter?.driverId ? eq(driverSettlements.driver_id, filter.driverId) : undefined,
+          filter?.branchId ? eq(driverSettlements.branch_id, filter.branchId) : undefined,
+          filter?.varianceStatus ? eq(driverSettlements.variance_status, filter.varianceStatus) : undefined
+        )
+      )
+      .orderBy(desc(driverSettlements.settled_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<DriverSettlementsTable>): DriverSettlement {
+  private toDomain(row: typeof driverSettlements.$inferSelect): DriverSettlement {
     return DriverSettlement.reconstitute(row.id, {
       driverId: row.driver_id,
       branchId: row.branch_id,

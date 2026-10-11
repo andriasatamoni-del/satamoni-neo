@@ -1,56 +1,58 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import {
   TalabatIntegrationError,
   type IntegrationErrorStage,
   type IntegrationErrorStatus,
 } from "../../domain/talabat-integration-error.aggregate";
 import type { TalabatIntegrationErrorRepositoryPort } from "../../domain/ports/talabat-integration-error-repository.port";
-import type { TalabatIntegrationErrorsTable } from "./talabat.schema";
+import { talabatIntegrationErrors } from "./talabat.tables";
 
 @Injectable()
-export class KyselyTalabatIntegrationErrorRepository implements TalabatIntegrationErrorRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class TalabatIntegrationErrorRepository implements TalabatIntegrationErrorRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(error: TalabatIntegrationError): Promise<void> {
     const row = this.toRow(error);
     await this.db
-      .insertInto("talabat_integration_errors")
+      .insert(talabatIntegrationErrors)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: talabatIntegrationErrors.id,
+        set: {
           message: row.message,
           context: row.context,
           retry_count: row.retry_count,
           last_retry_at: row.last_retry_at,
           status: row.status,
           updated_at: row.updated_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<TalabatIntegrationError | null> {
-    const row = await this.db.selectFrom("talabat_integration_errors").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(talabatIntegrationErrors).where(eq(talabatIntegrationErrors.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { status?: string }): Promise<TalabatIntegrationError[]> {
-    let query = this.db.selectFrom("talabat_integration_errors").selectAll();
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(talabatIntegrationErrors)
+      .where(filter?.status ? eq(talabatIntegrationErrors.status, filter.status) : undefined)
+      .orderBy(desc(talabatIntegrationErrors.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(error: TalabatIntegrationError) {
+  // context is jsonb: Drizzle serialises it.
+  private toRow(error: TalabatIntegrationError): typeof talabatIntegrationErrors.$inferInsert {
     return {
       id: error.id,
       stage: error.stage,
       talabat_order_id: error.talabatOrderId,
       message: error.message,
-      context: error.context === null ? null : JSON.stringify(error.context),
+      context: error.context,
       retry_count: error.retryCount,
       last_retry_at: error.lastRetryAt,
       status: error.status,
@@ -59,12 +61,12 @@ export class KyselyTalabatIntegrationErrorRepository implements TalabatIntegrati
     };
   }
 
-  private toDomain(row: Selectable<TalabatIntegrationErrorsTable>): TalabatIntegrationError {
+  private toDomain(row: typeof talabatIntegrationErrors.$inferSelect): TalabatIntegrationError {
     return TalabatIntegrationError.reconstitute(row.id, {
       stage: row.stage as IntegrationErrorStage,
       talabatOrderId: row.talabat_order_id,
       message: row.message,
-      context: typeof row.context === "string" ? JSON.parse(row.context) : row.context,
+      context: (typeof row.context === "string" ? JSON.parse(row.context) : row.context) as Record<string, unknown> | null,
       retryCount: row.retry_count,
       lastRetryAt: row.last_retry_at,
       status: row.status as IntegrationErrorStatus,

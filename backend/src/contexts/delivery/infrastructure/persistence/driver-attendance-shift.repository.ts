@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { DriverAttendanceShift, type DriverAttendanceShiftStatus } from "../../domain/driver-attendance-shift.aggregate";
 import type { DriverAttendanceShiftRepositoryPort } from "../../domain/ports/driver-attendance-shift-repository.port";
-import type { DriverAttendanceShiftsTable } from "./delivery.schema";
+import { driverAttendanceShifts } from "./delivery.tables";
 
 @Injectable()
-export class KyselyDriverAttendanceShiftRepository implements DriverAttendanceShiftRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class DriverAttendanceShiftRepository implements DriverAttendanceShiftRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(shift: DriverAttendanceShift): Promise<void> {
     await this.db
-      .insertInto("driver_attendance_shifts")
+      .insert(driverAttendanceShifts)
       .values({
         id: shift.id,
         driver_id: shift.driverId,
@@ -29,8 +28,9 @@ export class KyselyDriverAttendanceShiftRepository implements DriverAttendanceSh
         total_pay: shift.totalPay,
         notes: shift.notes,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: driverAttendanceShifts.id,
+        set: {
           status: shift.status,
           checked_out_by: shift.checkedOutBy,
           checked_out_at: shift.checkedOutAt,
@@ -39,36 +39,40 @@ export class KyselyDriverAttendanceShiftRepository implements DriverAttendanceSh
           bonus_total: shift.bonusTotal,
           total_pay: shift.totalPay,
           notes: shift.notes,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<DriverAttendanceShift | null> {
-    const row = await this.db.selectFrom("driver_attendance_shifts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(driverAttendanceShifts).where(eq(driverAttendanceShifts.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findActiveByDriverId(driverId: string): Promise<DriverAttendanceShift | null> {
-    const row = await this.db
-      .selectFrom("driver_attendance_shifts")
-      .selectAll()
-      .where("driver_id", "=", driverId)
-      .where("status", "=", "ACTIVE")
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(driverAttendanceShifts)
+      .where(and(eq(driverAttendanceShifts.driver_id, driverId), eq(driverAttendanceShifts.status, "ACTIVE")))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { branchId?: string; driverId?: string; status?: string }): Promise<DriverAttendanceShift[]> {
-    let query = this.db.selectFrom("driver_attendance_shifts").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.driverId) query = query.where("driver_id", "=", filter.driverId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("checked_in_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(driverAttendanceShifts)
+      .where(
+        and(
+          filter?.branchId ? eq(driverAttendanceShifts.branch_id, filter.branchId) : undefined,
+          filter?.driverId ? eq(driverAttendanceShifts.driver_id, filter.driverId) : undefined,
+          filter?.status ? eq(driverAttendanceShifts.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(driverAttendanceShifts.checked_in_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<DriverAttendanceShiftsTable>): DriverAttendanceShift {
+  private toDomain(row: typeof driverAttendanceShifts.$inferSelect): DriverAttendanceShift {
     return DriverAttendanceShift.reconstitute(row.id, {
       driverId: row.driver_id,
       branchId: row.branch_id,

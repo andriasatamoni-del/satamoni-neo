@@ -58,8 +58,8 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -81,7 +81,7 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
       passwordHash: await new BcryptPasswordHasher().hash("12345678"),
       role: "admin",
     });
-    await new KyselyUserRepository(db).save(admin);
+    await new UserRepository(app.get(DATABASE)).save(admin);
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-poreceiving@jest.test", password: "12345678" })).body.token;
 
     const branch = Branch.register({ name: "فرع-استلام-أوامر-جست" });

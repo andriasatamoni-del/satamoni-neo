@@ -17,7 +17,7 @@ import { KyselyPaymentAdjustmentRequestRepository } from "../src/contexts/paymen
 import { KyselyReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { PaymentMethod, type PaymentMethodKind, type SettlementChannel } from "../src/contexts/payment-control/domain/payment-method.aggregate";
 import { Payment } from "../src/contexts/payment-control/domain/payment.aggregate";
 import { PaymentAdjustmentRequest, type AdjustmentRequestStatus } from "../src/contexts/payment-control/domain/payment-adjustment-request.aggregate";
@@ -55,7 +55,7 @@ export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Da
   const reconciliationRepo = new KyselyReconciliationRecordRepository(kyselyOn(neoDb));
   const branchRepo = new BranchRepository(neoDb);
   const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
-  const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
+  const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number): Promise<string | null> {

@@ -2,9 +2,18 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { deliveryAssignments, driverAttendanceShifts, driverSettlements, drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { truncate } from "../helpers/db";
 
 describe("Delivery - تسويات كاش السائقين وشيفتات الحضور (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -46,8 +55,8 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -67,7 +76,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تسويات-سائقين-جست", email: "admin-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -111,23 +120,23 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM driver_attendance_shifts`.execute(db);
-    await sql`UPDATE delivery_assignments SET settlement_id = NULL WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM driver_settlements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM delivery_assignments WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM drivers WHERE id = ${driverId}`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE id = ${cashPaymentMethodId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE code IN ('1100', '6950', '6900')`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-driver-settlements@jest.test'`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(driverAttendanceShifts);
+    await db.update(deliveryAssignments).set({ settlement_id: null }).where(eq(deliveryAssignments.branch_id, branchId));
+    await db.delete(driverSettlements).where(eq(driverSettlements.branch_id, branchId));
+    await db.delete(deliveryAssignments).where(eq(deliveryAssignments.branch_id, branchId));
+    await db.delete(drivers).where(eq(drivers.id, driverId));
+    await db.delete(orderItems);
+    await db.delete(payments).where(inArray(payments.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(paymentMethods).where(eq(paymentMethods.id, cashPaymentMethodId));
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.code, ["1100", "6950", "6900"]));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-driver-settlements@jest.test"));
     await app.close();
   });
 
@@ -255,15 +264,15 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
   });
 
   test("كاشير معندوش delivery.settlements.review -> 403 على مراجعة التسوية", async () => {
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const db = app.get(DATABASE);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-تسويات-سائقين-جست", email: "cashier-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier", branchId, // Phase 3.1: cashier is branch-bound
@@ -287,7 +296,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
       .send({ driverId, branchId, actualHandover: 100 });
     expect(createRes.status).toBe(201);
 
-    await sql`UPDATE driver_settlements SET settled_by = NULL WHERE settled_by IN (SELECT id FROM users WHERE email = 'cashier-driver-settlements@jest.test')`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'cashier-driver-settlements@jest.test'`.execute(db);
+    await db.update(driverSettlements).set({ settled_by: null }).where(inArray(driverSettlements.settled_by, db.select({ id: users.id }).from(users).where(eq(users.email, "cashier-driver-settlements@jest.test"))));
+    await db.delete(users).where(eq(users.email, "cashier-driver-settlements@jest.test"));
   });
 });

@@ -55,7 +55,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const db = app.get<Kysely<any>>(KYSELY);
   const database = app.get<Database>(DATABASE);
 
-  const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+  const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
   const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
   const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
   const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
@@ -77,7 +77,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   await branchRepo.save(bA);
   await branchRepo.save(bB);
 
-  const userRepo = new KyselyUserRepository(db);
+  const userRepo = new UserRepository(database);
   const hasher = new BcryptPasswordHasher();
   const passwordHash = await hasher.hash("12345678");
   const defs: Array<[keyof World["tokens"], "admin" | "accountant" | "branch_manager" | "cashier", string | null]> = [

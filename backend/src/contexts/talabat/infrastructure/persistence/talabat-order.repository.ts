@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { TalabatOrder, type CancellationSource, type TalabatOrderStatus } from "../../domain/talabat-order.aggregate";
 import type { TalabatOrderRepositoryPort } from "../../domain/ports/talabat-order-repository.port";
-import type { TalabatOrdersTable } from "./talabat.schema";
+import { talabatOrders } from "./talabat.tables";
 
 @Injectable()
-export class KyselyTalabatOrderRepository implements TalabatOrderRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class TalabatOrderRepository implements TalabatOrderRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(order: TalabatOrder): Promise<void> {
     const row = this.toRow(order);
     await this.db
-      .insertInto("talabat_orders")
+      .insert(talabatOrders)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: talabatOrders.id,
+        set: {
           branch_id: row.branch_id,
           pos_order_id: row.pos_order_id,
           status: row.status,
@@ -24,39 +24,45 @@ export class KyselyTalabatOrderRepository implements TalabatOrderRepositoryPort 
           canceled_at: row.canceled_at,
           cancellation_source: row.cancellation_source,
           updated_at: row.updated_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<TalabatOrder | null> {
-    const row = await this.db.selectFrom("talabat_orders").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(talabatOrders).where(eq(talabatOrders.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByTalabatOrderId(talabatOrderId: string): Promise<TalabatOrder | null> {
-    const row = await this.db.selectFrom("talabat_orders").selectAll().where("talabat_order_id", "=", talabatOrderId).executeTakeFirst();
+    const [row] = await this.db.select().from(talabatOrders).where(eq(talabatOrders.talabat_order_id, talabatOrderId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { branchId?: string; status?: string; from?: Date; to?: Date }): Promise<TalabatOrder[]> {
-    let query = this.db.selectFrom("talabat_orders").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    if (filter?.from) query = query.where("created_at", ">=", filter.from);
-    if (filter?.to) query = query.where("created_at", "<=", filter.to);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(talabatOrders)
+      .where(
+        and(
+          filter?.branchId ? eq(talabatOrders.branch_id, filter.branchId) : undefined,
+          filter?.status ? eq(talabatOrders.status, filter.status) : undefined,
+          filter?.from ? gte(talabatOrders.created_at, filter.from) : undefined,
+          filter?.to ? lte(talabatOrders.created_at, filter.to) : undefined
+        )
+      )
+      .orderBy(desc(talabatOrders.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(order: TalabatOrder) {
+  // raw_payload is jsonb: Drizzle serialises it.
+  private toRow(order: TalabatOrder): typeof talabatOrders.$inferInsert {
     return {
       id: order.id,
       talabat_order_id: order.talabatOrderId,
       branch_id: order.branchId,
       pos_order_id: order.posOrderId,
       status: order.status,
-      raw_payload: JSON.stringify(order.rawPayload),
+      raw_payload: order.rawPayload,
       error_reason: order.errorReason,
       canceled_at: order.canceledAt,
       cancellation_source: order.cancellationSource,
@@ -65,13 +71,13 @@ export class KyselyTalabatOrderRepository implements TalabatOrderRepositoryPort 
     };
   }
 
-  private toDomain(row: Selectable<TalabatOrdersTable>): TalabatOrder {
+  private toDomain(row: typeof talabatOrders.$inferSelect): TalabatOrder {
     return TalabatOrder.reconstitute(row.id, {
       talabatOrderId: row.talabat_order_id,
       branchId: row.branch_id,
       posOrderId: row.pos_order_id,
       status: row.status as TalabatOrderStatus,
-      rawPayload: typeof row.raw_payload === "string" ? JSON.parse(row.raw_payload) : row.raw_payload,
+      rawPayload: (typeof row.raw_payload === "string" ? JSON.parse(row.raw_payload) : row.raw_payload) as TalabatOrder["rawPayload"],
       errorReason: row.error_reason,
       canceledAt: row.canceled_at,
       cancellationSource: row.cancellation_source as CancellationSource | null,

@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لسلف/جزاءات/مكافآت الموظفين (payroll_adjustments) - راجع تعليق payroll-adjustment.aggregate.ts
 // و migration 036: سجل تاريخي دائم، الإلغاء soft-cancel بس مع سبب إجباري (نفس فلسفة الريبو القديم
@@ -22,12 +22,12 @@ describe("HR & Payroll - سلف وجزاءات ومكافآت الموظفين (
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-سلف-جست", email: "admin-payroll-adjustments@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",

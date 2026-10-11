@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq, ne } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { WhatsappPendingOrder, type WhatsappPendingOrderStatus } from "../../domain/whatsapp-pending-order.aggregate";
 import type { WhatsappPendingOrderRepositoryPort } from "../../domain/ports/whatsapp-pending-order-repository.port";
-import type { WhatsappPendingOrderLinesTable, WhatsappPendingOrdersTable } from "./whatsapp.schema";
+import { whatsappPendingOrderLines, whatsappPendingOrders } from "./whatsapp.tables";
 
 @Injectable()
-export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrderRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(order: WhatsappPendingOrder): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("whatsapp_pending_orders")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(whatsappPendingOrders)
         .values({
           id: order.id,
           conversation_id: order.conversationId,
@@ -30,8 +29,9 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
           confirmed_order_id: order.confirmedOrderId,
           created_at: order.createdAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: whatsappPendingOrders.id,
+          set: {
             customer_name: order.customerName,
             order_type: order.orderType,
             branch_id: order.branchId,
@@ -43,64 +43,61 @@ export class KyselyWhatsappPendingOrderRepository implements WhatsappPendingOrde
             reviewed_at: order.reviewedAt,
             confirmed_order_id: order.confirmedOrderId,
             updated_at: new Date(),
-          })
-        )
-        .execute();
+          },
+        });
 
       // المسودة بتتعدّل بالكامل كل مرة (البوت بيبعت قايمة الأصناف كاملة) - أبسط وأصح من diff سطر بسطر
-      await trx.deleteFrom("whatsapp_pending_order_lines").where("pending_order_id", "=", order.id).execute();
+      await tx.delete(whatsappPendingOrderLines).where(eq(whatsappPendingOrderLines.pending_order_id, order.id));
       for (const line of order.lines) {
-        await trx
-          .insertInto("whatsapp_pending_order_lines")
-          .values({
-            id: line.id,
-            pending_order_id: order.id,
-            variant_id: line.variantId,
-            item_name: line.itemName,
-            quantity: line.quantity,
-            unit_price: line.unitPrice,
-            modifier_ids: JSON.stringify(line.modifierIds) as unknown as string[],
-          })
-          .execute();
+        // modifier_ids is jsonb: Drizzle serialises the array.
+        await tx.insert(whatsappPendingOrderLines).values({
+          id: line.id,
+          pending_order_id: order.id,
+          variant_id: line.variantId,
+          item_name: line.itemName,
+          quantity: line.quantity,
+          unit_price: line.unitPrice,
+          modifier_ids: [...line.modifierIds],
+        });
       }
     });
   }
 
   async findById(id: string): Promise<WhatsappPendingOrder | null> {
-    const row = await this.db.selectFrom("whatsapp_pending_orders").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(whatsappPendingOrders).where(eq(whatsappPendingOrders.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async findDraftByConversation(conversationId: string): Promise<WhatsappPendingOrder | null> {
-    const row = await this.db
-      .selectFrom("whatsapp_pending_orders")
-      .selectAll()
-      .where("conversation_id", "=", conversationId)
-      .where("status", "=", "DRAFT")
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(whatsappPendingOrders)
+      .where(and(eq(whatsappPendingOrders.conversation_id, conversationId), eq(whatsappPendingOrders.status, "DRAFT")))
+      .limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(row.id));
   }
 
   // المسودات (اللي البوت لسه بيجمّعها) مش بتظهر لطاقم المراجعة إلا لو اتطلبت صراحة بالحالة
   async list(filter?: { status?: string }): Promise<WhatsappPendingOrder[]> {
-    let query = this.db.selectFrom("whatsapp_pending_orders").selectAll();
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    else query = query.where("status", "<>", "DRAFT");
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(whatsappPendingOrders)
+      .where(filter?.status ? eq(whatsappPendingOrders.status, filter.status) : ne(whatsappPendingOrders.status, "DRAFT"))
+      .orderBy(desc(whatsappPendingOrders.created_at));
     const orders: WhatsappPendingOrder[] = [];
     for (const row of rows) orders.push(this.toDomain(row, await this.loadLines(row.id)));
     return orders;
   }
 
-  private loadLines(pendingOrderId: string): Promise<Selectable<WhatsappPendingOrderLinesTable>[]> {
-    return this.db.selectFrom("whatsapp_pending_order_lines").selectAll().where("pending_order_id", "=", pendingOrderId).execute();
+  private loadLines(pendingOrderId: string): Promise<(typeof whatsappPendingOrderLines.$inferSelect)[]> {
+    return this.db.select().from(whatsappPendingOrderLines).where(eq(whatsappPendingOrderLines.pending_order_id, pendingOrderId));
   }
 
   private toDomain(
-    row: Selectable<WhatsappPendingOrdersTable>,
-    lineRows: Selectable<WhatsappPendingOrderLinesTable>[]
+    row: typeof whatsappPendingOrders.$inferSelect,
+    lineRows: (typeof whatsappPendingOrderLines.$inferSelect)[]
   ): WhatsappPendingOrder {
     return WhatsappPendingOrder.reconstitute(row.id, {
       conversationId: row.conversation_id,

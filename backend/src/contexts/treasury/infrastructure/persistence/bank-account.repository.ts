@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { BankAccount } from "../../domain/bank-account.aggregate";
 import type { BankAccountRepositoryPort } from "../../domain/ports/bank-account-repository.port";
-import type { BankAccountsTable } from "./treasury.schema";
+import { bankAccounts } from "./treasury.tables";
 
 @Injectable()
-export class KyselyBankAccountRepository implements BankAccountRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class BankAccountRepository implements BankAccountRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(bankAccount: BankAccount): Promise<void> {
     await this.db
-      .insertInto("bank_accounts")
+      .insert(bankAccounts)
       .values({
         id: bankAccount.id,
         bank_id: bankAccount.bankId,
@@ -24,29 +23,29 @@ export class KyselyBankAccountRepository implements BankAccountRepositoryPort {
         is_active: bankAccount.isActive,
         created_at: bankAccount.createdAt,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: bankAccounts.id,
+        set: {
           account_number: bankAccount.accountNumber,
           iban: bankAccount.iban,
           bank_branch_name: bankAccount.bankBranchName,
           notes: bankAccount.notes,
           is_active: bankAccount.isActive,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<BankAccount | null> {
-    const row = await this.db.selectFrom("bank_accounts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(bankAccounts).where(eq(bankAccounts.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(): Promise<BankAccount[]> {
-    const rows = await this.db.selectFrom("bank_accounts").selectAll().execute();
+    const rows = await this.db.select().from(bankAccounts);
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<BankAccountsTable>): BankAccount {
+  private toDomain(row: typeof bankAccounts.$inferSelect): BankAccount {
     return BankAccount.reconstitute(row.id, {
       bankId: row.bank_id,
       treasuryId: row.treasury_id,

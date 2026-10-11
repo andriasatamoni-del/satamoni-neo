@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importCrmFromLegacy } from "../../../scripts/import-crm-from-legacy";
-import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { ComplaintRepository } from "../../../src/contexts/crm/infrastructure/persistence/complaint.repository";
 import { CustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
 import { User } from "../../../src/contexts/identity-access/domain/user.aggregate";
@@ -14,7 +14,7 @@ const LEGACY_FIXTURE_URL =
 describe("importCrmFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let userRepo: KyselyUserRepository;
+  let userRepo: UserRepository;
   let followupRepo: CustomerFollowupRepository;
   let complaintRepo: ComplaintRepository;
   let calledById: string;
@@ -50,7 +50,7 @@ describe("importCrmFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    userRepo = new KyselyUserRepository(kyselyOn(neoDb));
+    userRepo = new UserRepository(neoDb);
     followupRepo = new CustomerFollowupRepository(neoDb);
     complaintRepo = new ComplaintRepository(neoDb);
 

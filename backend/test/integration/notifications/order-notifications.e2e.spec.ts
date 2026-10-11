@@ -72,7 +72,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
@@ -81,7 +81,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
     const db = app.get(KYSELY);
-    await new KyselyUserRepository(db).save(
+    await new UserRepository(app.get(DATABASE)).save(
       User.register({ name: "أدمن-رسايل-جست", email: "admin-notify@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-notify@jest.test", password: "12345678" })).body.token;

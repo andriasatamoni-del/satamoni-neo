@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { deliveryAssignments, drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -18,8 +24,8 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -35,7 +41,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-توصيل", email: "admin-delivery@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -64,16 +70,16 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM delivery_assignments`.execute(db);
-    await sql`DELETE FROM drivers`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-delivery@jest.test'`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(deliveryAssignments);
+    await db.delete(drivers);
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-delivery@jest.test"));
     await app.close();
   });
 

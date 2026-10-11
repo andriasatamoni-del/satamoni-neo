@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // POS category groups: user-defined order (with the "العروض" tab placed among the categories) and archiving a category
 // instead of deleting it. Real application, real PostgreSQL.
@@ -27,11 +27,11 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const db = app.get(KYSELY);
-    const repo = new KyselyUserRepository(db);
+    const repo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     await sql`DELETE FROM catalog_layout`.execute(db);
     for (const [name, email, role] of [["أدمن-ترتيب", "admin-catgroups@jest.test", "admin"], ["كاشير-ترتيب", "cashier-catgroups@jest.test", "cashier"]] as const) {

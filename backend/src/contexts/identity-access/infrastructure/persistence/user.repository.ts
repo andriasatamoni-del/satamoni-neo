@@ -1,23 +1,23 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq, isNull } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { User } from "../../domain/user.aggregate";
 import type { UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import type { Role } from "../../domain/role";
-import type { UsersTable } from "./user.schema";
+import { users } from "./identity-access.tables";
 
 @Injectable()
-export class KyselyUserRepository implements UserRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class UserRepository implements UserRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(user: User): Promise<void> {
     const row = this.toRow(user);
     await this.db
-      .insertInto("users")
+      .insert(users)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
           branch_id: row.branch_id,
           name: row.name,
           email: row.email,
@@ -28,56 +28,39 @@ export class KyselyUserRepository implements UserRepositoryPort {
           pin_hash: row.pin_hash,
           is_active: row.is_active,
           updated_at: row.updated_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<User | null> {
-    const row = await this.db.selectFrom("users").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const row = await this.db
-      .selectFrom("users")
-      .selectAll()
-      .where("email", "=", email.trim().toLowerCase())
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyUserId(legacyUserId: number): Promise<User | null> {
-    const row = await this.db
-      .selectFrom("users")
-      .selectAll()
-      .where("legacy_user_id", "=", legacyUserId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(users).where(eq(users.legacy_user_id, legacyUserId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByEmail(email: string): Promise<boolean> {
-    const row = await this.db
-      .selectFrom("users")
-      .select("id")
-      .where("email", "=", email.trim().toLowerCase())
-      .executeTakeFirst();
+    const [row] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
     return !!row;
   }
 
   async list(filter?: { branchId?: string | null }): Promise<User[]> {
-    let query = this.db.selectFrom("users").selectAll();
-    if (filter?.branchId !== undefined) {
-      query =
-        filter.branchId === null
-          ? query.where("branch_id", "is", null)
-          : query.where("branch_id", "=", filter.branchId);
-    }
-    const rows = await query.orderBy("created_at").execute();
+    const branchFilter =
+      filter?.branchId === undefined ? undefined : filter.branchId === null ? isNull(users.branch_id) : eq(users.branch_id, filter.branchId);
+    const rows = await this.db.select().from(users).where(branchFilter).orderBy(asc(users.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(user: User) {
+  // permission_grants / permission_revokes are jsonb: Drizzle serialises the arrays itself.
+  private toRow(user: User): typeof users.$inferInsert & { permission_grants: string[]; permission_revokes: string[] } {
     return {
       id: user.id,
       branch_id: user.branchId,
@@ -85,8 +68,8 @@ export class KyselyUserRepository implements UserRepositoryPort {
       email: user.email,
       password_hash: user.passwordHash,
       role: user.role,
-      permission_grants: JSON.stringify(user.permissionGrants),
-      permission_revokes: JSON.stringify(user.permissionRevokes),
+      permission_grants: [...user.permissionGrants],
+      permission_revokes: [...user.permissionRevokes],
       pin_hash: user.pinHash,
       is_active: user.isActive,
       legacy_user_id: user.legacyUserId,
@@ -95,7 +78,7 @@ export class KyselyUserRepository implements UserRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<UsersTable>): User {
+  private toDomain(row: typeof users.$inferSelect): User {
     return User.reconstitute(row.id, {
       name: row.name,
       email: row.email,

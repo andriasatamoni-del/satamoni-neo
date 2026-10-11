@@ -5,9 +5,9 @@ import { SettingsModule } from "../settings/settings.module";
 import { CASHIER_SHIFT_REPOSITORY } from "./domain/ports/cashier-shift-repository.port";
 import { SHIFT_FINANCIALS_READER } from "./domain/ports/shift-financials-reader.port";
 import { CASH_DRAWER_ENTRY_REPOSITORY } from "./domain/ports/cash-drawer-entry-repository.port";
-import { KyselyCashierShiftRepository } from "./infrastructure/persistence/kysely-cashier-shift.repository";
-import { KyselyShiftFinancialsReader } from "./infrastructure/persistence/kysely-shift-financials-reader";
-import { KyselyCashDrawerEntryRepository } from "./infrastructure/persistence/kysely-cash-drawer-entry.repository";
+import { CashierShiftRepository } from "./infrastructure/persistence/cashier-shift.repository";
+import { ShiftFinancialsReader } from "./infrastructure/persistence/shift-financials-reader";
+import { CashDrawerEntryRepository } from "./infrastructure/persistence/cash-drawer-entry.repository";
 import { OpenShiftHandler } from "./application/commands/open-shift.handler";
 import { CloseShiftHandler } from "./application/commands/close-shift.handler";
 import { ReviewShiftVarianceHandler } from "./application/commands/review-shift-variance.handler";
@@ -21,9 +21,9 @@ import { ShiftsController } from "./api/shifts.controller";
   imports: [IdentityAccessModule, SettingsModule],
   controllers: [ShiftsController],
   providers: [
-    { provide: CASHIER_SHIFT_REPOSITORY, useClass: KyselyCashierShiftRepository },
-    { provide: SHIFT_FINANCIALS_READER, useClass: KyselyShiftFinancialsReader },
-    { provide: CASH_DRAWER_ENTRY_REPOSITORY, useClass: KyselyCashDrawerEntryRepository },
+    { provide: CASHIER_SHIFT_REPOSITORY, useClass: CashierShiftRepository },
+    { provide: SHIFT_FINANCIALS_READER, useClass: ShiftFinancialsReader },
+    { provide: CASH_DRAWER_ENTRY_REPOSITORY, useClass: CashDrawerEntryRepository },
     OpenShiftHandler,
     CloseShiftHandler,
     ReviewShiftVarianceHandler,

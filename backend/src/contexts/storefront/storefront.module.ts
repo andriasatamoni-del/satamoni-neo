@@ -5,7 +5,7 @@ import { CustomersModule } from "../customers/customers.module";
 import { SettingsModule } from "../settings/settings.module";
 import { LoyaltyModule } from "../loyalty/loyalty.module";
 import { STOREFRONT_READER } from "./domain/ports/storefront-reader.port";
-import { KyselyStorefrontReader } from "./infrastructure/persistence/kysely-storefront.reader";
+import { StorefrontReader } from "./infrastructure/persistence/storefront.reader";
 import { GetStorefrontMenuHandler } from "./application/queries/get-storefront-menu.handler";
 import { PlaceOnlineOrderHandler } from "./application/commands/place-online-order.handler";
 import { TrackOnlineOrderHandler } from "./application/queries/track-online-order.handler";
@@ -18,7 +18,7 @@ import { StorefrontController } from "./api/storefront.controller";
   imports: [OrdersModule, BranchesModule, CustomersModule, SettingsModule, LoyaltyModule],
   controllers: [StorefrontController],
   providers: [
-    { provide: STOREFRONT_READER, useClass: KyselyStorefrontReader },
+    { provide: STOREFRONT_READER, useClass: StorefrontReader },
     GetStorefrontMenuHandler,
     PlaceOnlineOrderHandler,
     TrackOnlineOrderHandler,

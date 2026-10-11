@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 // e2e لسجل تغييرات الموظف (employee_history) وتبعات إنهاء الخدمة (بنود معلّقة + تعطيل حساب الدخول) -
 // راجع تعليق set-employee-status.handler.ts وupdate-employee.handler.ts: نفس منطق
@@ -30,8 +30,8 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -39,7 +39,7 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
     );
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({

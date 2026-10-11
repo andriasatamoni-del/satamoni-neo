@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { branchDays } from "../../../src/contexts/branch-day/infrastructure/persistence/branch-day.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
 // e2e لقفل يوم الفرع - بيغطي: checklist أحمر (طلب مفتوح) بيمنع القفل، القفل بيرجع أخضر بعد ما يتحل،
 // قفل مزدوج لنفس اليوم -> 409 (نفس فلسفة الريبو القديم - UNIQUE(branch_id, business_date) هي الحماية
@@ -22,14 +26,14 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const branchRepo = new BranchRepository(app.get(DATABASE));
@@ -57,11 +61,11 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM branch_days WHERE branch_id = ${branchId}`.execute(db);
-    if (orderId) await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('manager-branch-day@jest.test', 'cashier-branch-day@jest.test')`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(branchDays).where(eq(branchDays.branch_id, branchId));
+    if (orderId) await db.delete(orders).where(eq(orders.id, orderId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["manager-branch-day@jest.test", "cashier-branch-day@jest.test"]));
     await app.close();
   });
 

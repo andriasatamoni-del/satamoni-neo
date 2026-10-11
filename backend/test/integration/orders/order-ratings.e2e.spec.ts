@@ -33,8 +33,8 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -50,7 +50,7 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقييمات", email: "admin-ratings@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",

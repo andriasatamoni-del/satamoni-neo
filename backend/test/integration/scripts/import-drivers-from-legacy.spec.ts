@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importDriversFromLegacy } from "../../../scripts/import-drivers-from-legacy";
-import { KyselyDriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/kysely-driver.repository";
+import { DriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/driver.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
@@ -13,7 +13,7 @@ const LEGACY_FIXTURE_URL =
 describe("importDriversFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let driverRepo: KyselyDriverRepository;
+  let driverRepo: DriverRepository;
   let branchId: string;
 
   beforeAll(async () => {
@@ -22,7 +22,7 @@ describe("importDriversFromLegacy", () => {
     await legacyPool.query(`CREATE TABLE drivers (id SERIAL PRIMARY KEY, branch_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT, status TEXT NOT NULL DEFAULT 'AVAILABLE')`);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    driverRepo = new KyselyDriverRepository(kyselyOn(neoDb));
+    driverRepo = new DriverRepository(neoDb);
 
     const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع سائقين-fixture", legacyBranchId: 600 });

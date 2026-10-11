@@ -93,10 +93,10 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
     });
 
     test("deleting a user (FK ON DELETE SET NULL) is the only tolerated update of an audit row and keeps the evidence", async () => {
-      const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+      const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
       const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
       const user = User.register({ name: "مؤقت-aud", email: "temp-aud@p31.jest.test", passwordHash: "x".repeat(60), role: "cashier", branchId: w.branchA });
-      await new KyselyUserRepository(w.db).save(user);
+      await new UserRepository(w.database).save(user);
       await sql`INSERT INTO audit_logs (actor_user_id, action) VALUES (${user.id}, 'TEMP ACTION')`.execute(w.db);
       await sql`DELETE FROM users WHERE id = ${user.id}`.execute(w.db);
       const row = await sql<{ actor_user_id: string | null; action: string }>`SELECT actor_user_id, action FROM audit_logs WHERE action = 'TEMP ACTION'`.execute(w.db);

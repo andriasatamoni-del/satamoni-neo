@@ -1,12 +1,12 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { journalEntries, journalEntryLines } from "../../../accounting/infrastructure/persistence/accounting.tables";
 import type { TreasuryBalanceReaderPort } from "../../domain/ports/treasury-balance-reader.port";
 
 @Injectable()
-export class KyselyTreasuryBalanceReader implements TreasuryBalanceReaderPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class TreasuryBalanceReader implements TreasuryBalanceReaderPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async getBalances(accountIds: string[]): Promise<Map<string, number>> {
     const balances = new Map<string, number>(accountIds.map((id) => [id, 0]));
@@ -16,12 +16,10 @@ export class KyselyTreasuryBalanceReader implements TreasuryBalanceReaderPort {
     // وقيد العكس الجديد (POSTED) هو اللي بيلغي أثره - لو استبعدنا REVERSED هنا هيبقى الإلغاء بيرحّل
     // التصحيح مرتين (إزالة الأصلي + إضافة عكسه) بدل مرة واحدة (اتلقّطت بالظبط كده في اختبار إلغاء فاتورة مورد)
     const rows = await this.db
-      .selectFrom("journal_entry_lines")
-      .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
-      .select(["journal_entry_lines.account_id as account_id", "journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
-      .where("journal_entry_lines.account_id", "in", accountIds)
-      .where("journal_entries.status", "<>", "DRAFT")
-      .execute();
+      .select({ account_id: journalEntryLines.account_id, debit: journalEntryLines.debit, credit: journalEntryLines.credit })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .where(and(inArray(journalEntryLines.account_id, accountIds), ne(journalEntries.status, "DRAFT")));
 
     for (const row of rows) {
       const current = balances.get(row.account_id) ?? 0;

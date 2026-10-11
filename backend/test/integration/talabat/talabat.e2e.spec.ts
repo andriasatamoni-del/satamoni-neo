@@ -3,9 +3,19 @@ import { createHmac } from "node:crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { talabatIntegrationErrors, talabatOrders, talabatProductMapping, talabatWebhookEvents } from "../../../src/contexts/talabat/infrastructure/persistence/talabat.tables";
+import { truncate } from "../helpers/db";
 
 const WEBHOOK_SECRET = "neo_test_talabat_webhook_secret";
 
@@ -38,7 +48,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
@@ -64,7 +74,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
 
     const db = app.get(KYSELY);
 
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-Talabat-جست", email: "admin-talabat@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -135,32 +145,32 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM talabat_integration_errors`.execute(db);
-    await sql`DELETE FROM talabat_webhook_events`.execute(db);
-    await sql`DELETE FROM talabat_product_mapping WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM talabat_orders`.execute(db);
-    await sql`DELETE FROM payments WHERE payment_method_id = ${paymentMethodId}`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(talabatIntegrationErrors);
+    await db.delete(talabatWebhookEvents);
+    await db.delete(talabatProductMapping).where(eq(talabatProductMapping.branch_id, branchId));
+    await db.delete(talabatOrders);
+    await db.delete(payments).where(eq(payments.payment_method_id, paymentMethodId));
     // القيود POSTED/REVERSED غير قابلة للحذف/التعديل بـDELETE عادي (trigger حقيقي على مستوى القاعدة -
     // نفس فلسفة عدم قابلية التعديل بالحرف) - TRUNCATE بيتخطّى الـtrigger زي باقي اختبارات المحاسبة
     // بالظبط (راجع order-sale-posting.e2e.spec.ts)
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    if (createdCashAccountId) await sql`DELETE FROM accounts WHERE id = ${createdCashAccountId}`.execute(db);
-    if (createdSalesAccountId) await sql`DELETE FROM accounts WHERE id = ${createdSalesAccountId}`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE id = ${paymentMethodId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-talabat@jest.test', 'bm-talabat@jest.test')`.execute(db);
+    await truncate(db, journalEntryLines, journalEntries);
+    if (createdCashAccountId) await db.delete(accounts).where(eq(accounts.id, createdCashAccountId));
+    if (createdSalesAccountId) await db.delete(accounts).where(eq(accounts.id, createdSalesAccountId));
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(paymentMethods).where(eq(paymentMethods.id, paymentMethodId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-talabat@jest.test", "bm-talabat@jest.test"]));
     await app.close();
   });
 

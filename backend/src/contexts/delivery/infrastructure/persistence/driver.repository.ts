@@ -1,42 +1,42 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Driver, type DriverStatus } from "../../domain/driver.aggregate";
 import type { DriverRepositoryPort } from "../../domain/ports/driver-repository.port";
-import type { DriversTable } from "./delivery.schema";
+import { drivers } from "./delivery.tables";
 
 @Injectable()
-export class KyselyDriverRepository implements DriverRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class DriverRepository implements DriverRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(driver: Driver): Promise<void> {
     const row = this.toRow(driver);
     await this.db
-      .insertInto("drivers")
+      .insert(drivers)
       .values(row)
-      .onConflict((oc) => oc.column("id").doUpdateSet({ name: row.name, phone: row.phone, status: row.status }))
-      .execute();
+      .onConflictDoUpdate({ target: drivers.id, set: { name: row.name, phone: row.phone, status: row.status } });
   }
 
   async findById(id: string): Promise<Driver | null> {
-    const row = await this.db.selectFrom("drivers").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(drivers).where(eq(drivers.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyDriverId(legacyId: number): Promise<Driver | null> {
-    const row = await this.db.selectFrom("drivers").selectAll().where("legacy_driver_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(drivers).where(eq(drivers.legacy_driver_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { branchId?: string }): Promise<Driver[]> {
-    let query = this.db.selectFrom("drivers").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    const rows = await query.orderBy("name").execute();
+    const rows = await this.db
+      .select()
+      .from(drivers)
+      .where(filter?.branchId ? eq(drivers.branch_id, filter.branchId) : undefined)
+      .orderBy(asc(drivers.name));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(driver: Driver) {
+  private toRow(driver: Driver): typeof drivers.$inferInsert {
     return {
       id: driver.id,
       name: driver.name,
@@ -48,7 +48,7 @@ export class KyselyDriverRepository implements DriverRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<DriversTable>): Driver {
+  private toDomain(row: typeof drivers.$inferSelect): Driver {
     return Driver.reconstitute(row.id, {
       name: row.name,
       phone: row.phone,

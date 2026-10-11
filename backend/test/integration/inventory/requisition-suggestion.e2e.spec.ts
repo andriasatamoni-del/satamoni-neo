@@ -26,8 +26,8 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -43,7 +43,7 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
     const db = app.get(KYSELY);
-    await new KyselyUserRepository(db).save(
+    await new UserRepository(app.get(DATABASE)).save(
       User.register({
         name: "أدمن-اقتراح-طلبية-جست",
         email: "admin-requisition@jest.test",

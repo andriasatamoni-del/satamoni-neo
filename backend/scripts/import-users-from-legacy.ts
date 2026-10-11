@@ -13,7 +13,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { User } from "../src/contexts/identity-access/domain/user.aggregate";
 import { isValidRole } from "../src/contexts/identity-access/domain/role";
@@ -45,7 +45,7 @@ function asStringArray(value: unknown): string[] {
 // الجزء القابل للاختبار - بياخد اتصالات جاهزة (بدل ما يفتحها هو) عشان الاختبارات تقدر تبعتله
 // قواعد بيانات وهمية (fixtures) من غير الحاجة للريبو القديم الحقيقي
 export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportResult> {
-  const repo = new KyselyUserRepository(kyselyOn(neoDb));
+  const repo = new UserRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyUserRow>(
     `SELECT id, branch_id, name, email, password_hash, role, pin_hash,

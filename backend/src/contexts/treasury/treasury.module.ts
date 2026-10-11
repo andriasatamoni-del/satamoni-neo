@@ -8,10 +8,10 @@ import { TREASURY_REPOSITORY } from "./domain/ports/treasury-repository.port";
 import { BANK_REPOSITORY } from "./domain/ports/bank-repository.port";
 import { BANK_ACCOUNT_REPOSITORY } from "./domain/ports/bank-account-repository.port";
 import { TREASURY_BALANCE_READER } from "./domain/ports/treasury-balance-reader.port";
-import { KyselyTreasuryRepository } from "./infrastructure/persistence/kysely-treasury.repository";
-import { KyselyBankRepository } from "./infrastructure/persistence/kysely-bank.repository";
-import { KyselyBankAccountRepository } from "./infrastructure/persistence/kysely-bank-account.repository";
-import { KyselyTreasuryBalanceReader } from "./infrastructure/persistence/kysely-treasury-balance-reader";
+import { TreasuryRepository } from "./infrastructure/persistence/treasury.repository";
+import { BankRepository } from "./infrastructure/persistence/bank.repository";
+import { BankAccountRepository } from "./infrastructure/persistence/bank-account.repository";
+import { TreasuryBalanceReader } from "./infrastructure/persistence/treasury-balance-reader";
 import { RegisterTreasuryHandler } from "./application/commands/register-treasury.handler";
 import { TransferBetweenTreasuriesHandler } from "./application/commands/transfer-between-treasuries.handler";
 import { RegisterBankHandler } from "./application/commands/register-bank.handler";
@@ -28,10 +28,10 @@ import { BanksController } from "./api/banks.controller";
   imports: [IdentityAccessModule, AccountingModule],
   controllers: [TreasuriesController, BanksController],
   providers: [
-    { provide: TREASURY_REPOSITORY, useClass: KyselyTreasuryRepository },
-    { provide: BANK_REPOSITORY, useClass: KyselyBankRepository },
-    { provide: BANK_ACCOUNT_REPOSITORY, useClass: KyselyBankAccountRepository },
-    { provide: TREASURY_BALANCE_READER, useClass: KyselyTreasuryBalanceReader },
+    { provide: TREASURY_REPOSITORY, useClass: TreasuryRepository },
+    { provide: BANK_REPOSITORY, useClass: BankRepository },
+    { provide: BANK_ACCOUNT_REPOSITORY, useClass: BankAccountRepository },
+    { provide: TREASURY_BALANCE_READER, useClass: TreasuryBalanceReader },
     RegisterTreasuryHandler,
     TransferBetweenTreasuriesHandler,
     RegisterBankHandler,

@@ -7,7 +7,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyDriverRepository } from "../src/contexts/delivery/infrastructure/persistence/kysely-driver.repository";
+import { DriverRepository } from "../src/contexts/delivery/infrastructure/persistence/driver.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Driver, DRIVER_STATUSES } from "../src/contexts/delivery/domain/driver.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
@@ -19,7 +19,7 @@ interface LegacyDriverRow {
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 
 export async function importDriversFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
-  const driverRepo = new KyselyDriverRepository(kyselyOn(neoDb));
+  const driverRepo = new DriverRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
 
   const result: ImportCounts = { created: 0, updated: 0, skipped: 0 };

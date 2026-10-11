@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importUsersFromLegacy } from "../../../scripts/import-users-from-legacy";
-import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 // قاعدة وهمية بشكل جدول users القديم بالظبط (مفيش داعي نجيب الريبو القديم الحقيقي هنا - النص المتفق
@@ -14,7 +14,7 @@ const LEGACY_FIXTURE_URL =
 describe("importUsersFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let repo: KyselyUserRepository;
+  let repo: UserRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -35,7 +35,7 @@ describe("importUsersFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    repo = new KyselyUserRepository(kyselyOn(neoDb));
+    repo = new UserRepository(neoDb);
   });
 
   afterAll(async () => {

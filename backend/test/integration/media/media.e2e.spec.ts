@@ -21,11 +21,11 @@ describe("Media - صور المنيو (e2e)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
     const db = app.get(KYSELY);
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const hash = await new BcryptPasswordHasher().hash("12345678");
-    const repo = new KyselyUserRepository(db);
+    const repo = new UserRepository(app.get(DATABASE));
     await repo.save(User.register({ name: "أدمن-صور", email: "admin-media@jest.test", passwordHash: hash, role: "admin" }));
     await repo.save(User.register({ name: "كاشير-صور", email: "cashier-media@jest.test", passwordHash: hash, role: "cashier" }));
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-media@jest.test", password: "12345678" })).body.token;

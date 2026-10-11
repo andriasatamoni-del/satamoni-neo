@@ -103,12 +103,12 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   });
 
   test("GET /customer-auth/me بتوكن موظف عادي (سر مختلف) -> 401", async () => {
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const db = app.get(KYSELY);
     const database = app.get(DATABASE);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const staff = User.register({
       name: "موظف-كروس-توكن-جست", email: "staff-cross-token@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",

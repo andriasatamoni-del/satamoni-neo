@@ -21,8 +21,8 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
@@ -38,7 +38,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
@@ -147,15 +147,15 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
   });
 
   test("كاشير معندوش reports.view -> 403", async () => {
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
     const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",

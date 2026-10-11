@@ -9,11 +9,11 @@ import { DELIVERY_ASSIGNMENT_REPOSITORY } from "./domain/ports/delivery-assignme
 import { DRIVER_SETTLEMENT_REPOSITORY } from "./domain/ports/driver-settlement-repository.port";
 import { DRIVER_ATTENDANCE_SHIFT_REPOSITORY } from "./domain/ports/driver-attendance-shift-repository.port";
 import { DRIVER_SETTLEMENT_READER } from "./domain/ports/driver-settlement-reader.port";
-import { KyselyDriverRepository } from "./infrastructure/persistence/kysely-driver.repository";
-import { KyselyDeliveryAssignmentRepository } from "./infrastructure/persistence/kysely-delivery-assignment.repository";
-import { KyselyDriverSettlementRepository } from "./infrastructure/persistence/kysely-driver-settlement.repository";
-import { KyselyDriverAttendanceShiftRepository } from "./infrastructure/persistence/kysely-driver-attendance-shift.repository";
-import { KyselyDriverSettlementReader } from "./infrastructure/persistence/kysely-driver-settlement-reader";
+import { DriverRepository } from "./infrastructure/persistence/driver.repository";
+import { DeliveryAssignmentRepository } from "./infrastructure/persistence/delivery-assignment.repository";
+import { DriverSettlementRepository } from "./infrastructure/persistence/driver-settlement.repository";
+import { DriverAttendanceShiftRepository } from "./infrastructure/persistence/driver-attendance-shift.repository";
+import { DriverSettlementReader } from "./infrastructure/persistence/driver-settlement-reader";
 import { RegisterDriverHandler } from "./application/commands/register-driver.handler";
 import { AssignDriverHandler } from "./application/commands/assign-driver.handler";
 import { UpdateDeliveryStatusHandler } from "./application/commands/update-delivery-status.handler";
@@ -39,11 +39,11 @@ import { DeliveryController } from "./api/delivery.controller";
   imports: [IdentityAccessModule, OrdersModule, PaymentControlModule, SettingsModule],
   controllers: [DeliveryController],
   providers: [
-    { provide: DRIVER_REPOSITORY, useClass: KyselyDriverRepository },
-    { provide: DELIVERY_ASSIGNMENT_REPOSITORY, useClass: KyselyDeliveryAssignmentRepository },
-    { provide: DRIVER_SETTLEMENT_REPOSITORY, useClass: KyselyDriverSettlementRepository },
-    { provide: DRIVER_ATTENDANCE_SHIFT_REPOSITORY, useClass: KyselyDriverAttendanceShiftRepository },
-    { provide: DRIVER_SETTLEMENT_READER, useClass: KyselyDriverSettlementReader },
+    { provide: DRIVER_REPOSITORY, useClass: DriverRepository },
+    { provide: DELIVERY_ASSIGNMENT_REPOSITORY, useClass: DeliveryAssignmentRepository },
+    { provide: DRIVER_SETTLEMENT_REPOSITORY, useClass: DriverSettlementRepository },
+    { provide: DRIVER_ATTENDANCE_SHIFT_REPOSITORY, useClass: DriverAttendanceShiftRepository },
+    { provide: DRIVER_SETTLEMENT_READER, useClass: DriverSettlementReader },
     RegisterDriverHandler,
     AssignDriverHandler,
     UpdateDeliveryStatusHandler,

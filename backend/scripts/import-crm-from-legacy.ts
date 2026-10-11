@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { CustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
 import { ComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/complaint.repository";
@@ -79,7 +79,7 @@ export interface CrmImportResult {
 }
 
 export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CrmImportResult> {
-  const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
+  const userRepo = new UserRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
   const followupRepo = new CustomerFollowupRepository(neoDb);
   const complaintRepo = new ComplaintRepository(neoDb);

@@ -1,21 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { CashierShift, type ShiftStatus, type VarianceStatus } from "../../domain/cashier-shift.aggregate";
 import type { CashierShiftRepositoryPort } from "../../domain/ports/cashier-shift-repository.port";
-import type { CashierShiftsTable } from "./cashier-shift.schema";
+import { cashierShifts } from "./shifts.tables";
 
 @Injectable()
-export class KyselyCashierShiftRepository implements CashierShiftRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class CashierShiftRepository implements CashierShiftRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(shift: CashierShift): Promise<void> {
-    const existing = await this.db
-      .selectFrom("cashier_shifts")
-      .select("id")
-      .where("id", "=", shift.id)
-      .executeTakeFirst();
+    const [existing] = await this.db.select({ id: cashierShifts.id }).from(cashierShifts).where(eq(cashierShifts.id, shift.id)).limit(1);
 
     const values = {
       status: shift.status,
@@ -39,46 +34,45 @@ export class KyselyCashierShiftRepository implements CashierShiftRepositoryPort 
     };
 
     if (existing) {
-      await this.db.updateTable("cashier_shifts").set(values).where("id", "=", shift.id).execute();
+      await this.db.update(cashierShifts).set(values).where(eq(cashierShifts.id, shift.id));
       return;
     }
-    await this.db
-      .insertInto("cashier_shifts")
-      .values({
-        id: shift.id,
-        branch_id: shift.branchId,
-        user_id: shift.userId,
-        opened_at: shift.openedAt,
-        opening_cash: shift.openingCash,
-        opening_notes: shift.openingNotes,
-        ...values,
-      })
-      .execute();
+    await this.db.insert(cashierShifts).values({
+      id: shift.id,
+      branch_id: shift.branchId,
+      user_id: shift.userId,
+      opened_at: shift.openedAt,
+      opening_cash: shift.openingCash,
+      opening_notes: shift.openingNotes,
+      ...values,
+    });
   }
 
   async findById(id: string): Promise<CashierShift | null> {
-    const row = await this.db.selectFrom("cashier_shifts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(cashierShifts).where(eq(cashierShifts.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findActiveByUserId(userId: string): Promise<CashierShift | null> {
-    const row = await this.db
-      .selectFrom("cashier_shifts")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("status", "=", "ACTIVE")
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(cashierShifts)
+      .where(and(eq(cashierShifts.user_id, userId), eq(cashierShifts.status, "ACTIVE")))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter: { branchId: string; status?: string }): Promise<CashierShift[]> {
-    let query = this.db.selectFrom("cashier_shifts").selectAll().where("branch_id", "=", filter.branchId);
-    if (filter.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("opened_at", "desc").limit(200).execute();
+    const rows = await this.db
+      .select()
+      .from(cashierShifts)
+      .where(and(eq(cashierShifts.branch_id, filter.branchId), filter.status ? eq(cashierShifts.status, filter.status) : undefined))
+      .orderBy(desc(cashierShifts.opened_at))
+      .limit(200);
     return rows.map((row) => this.toDomain(row));
   }
 
-  private toDomain(row: Selectable<CashierShiftsTable>): CashierShift {
+  private toDomain(row: typeof cashierShifts.$inferSelect): CashierShift {
     return CashierShift.reconstitute(row.id, {
       branchId: row.branch_id,
       userId: row.user_id,

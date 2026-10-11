@@ -2,12 +2,24 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 import { AI_CHAT_CLIENT, type AiChatClientPort, type RunToolLoopInput } from "../../../src/contexts/whatsapp/domain/ports/ai-chat-client.port";
 import { OUTBOUND_MESSENGER, type OutboundMessengerPort } from "../../../src/contexts/whatsapp/domain/ports/outbound-messenger.port";
 import { signMeta, socialPayload, whatsappPayload } from "./meta-webhook.helpers";
+import { journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemModifiers, menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { complaints } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { whatsappConversations, whatsappMessages, whatsappPendingOrderLines, whatsappPendingOrders } from "../../../src/contexts/whatsapp/infrastructure/persistence/whatsapp.tables";
+import { truncate } from "../helpers/db";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
 // Gemini مكانه "سكريبت" ثابت: بيقرا آخر رسالة من العميل وبينده نفس الأدوات الحقيقية اللي الموديل كان
 // هينده عليها - كده الاختبار بيغطي الأدوات والقاعدة والمسودة والتأكيد فعليًا، من غير أي اتصال بـGoogle
@@ -77,10 +89,13 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
   }
 
   async function outboundCount(channel = "whatsapp", who = phone): Promise<number> {
-    const db = app.get(KYSELY);
-    const res = await sql<{ c: number }>`SELECT COUNT(*)::int AS c FROM whatsapp_messages m JOIN whatsapp_conversations c ON c.id = m.conversation_id
-      WHERE c.channel = ${channel} AND c.phone = ${who} AND m.direction = 'out'`.execute(db);
-    return res.rows[0].c;
+    const [row] = await app
+      .get<Database>(DATABASE)
+      .select({ c: count() })
+      .from(whatsappMessages)
+      .innerJoin(whatsappConversations, eq(whatsappConversations.id, whatsappMessages.conversation_id))
+      .where(and(eq(whatsappConversations.channel, channel), eq(whatsappConversations.phone, who), eq(whatsappMessages.direction, "out")));
+    return row.c;
   }
 
   async function waitForOutbound(expected: number, channel = "whatsapp", who = phone) {
@@ -92,11 +107,21 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
   }
 
   async function draftFor(who = phone) {
-    const db = app.get(KYSELY);
-    const res = await sql<{ id: string; status: string; total: string; branch_id: string | null; customer_name: string | null }>`
-      SELECT p.id, p.status, p.total, p.branch_id, p.customer_name FROM whatsapp_pending_orders p
-      JOIN whatsapp_conversations c ON c.id = p.conversation_id WHERE c.phone = ${who} ORDER BY p.created_at DESC LIMIT 1`.execute(db);
-    return res.rows[0];
+    const [row] = await app
+      .get<Database>(DATABASE)
+      .select({
+        id: whatsappPendingOrders.id,
+        status: whatsappPendingOrders.status,
+        total: whatsappPendingOrders.total,
+        branch_id: whatsappPendingOrders.branch_id,
+        customer_name: whatsappPendingOrders.customer_name,
+      })
+      .from(whatsappPendingOrders)
+      .innerJoin(whatsappConversations, eq(whatsappConversations.id, whatsappPendingOrders.conversation_id))
+      .where(eq(whatsappConversations.phone, who))
+      .orderBy(desc(whatsappPendingOrders.created_at))
+      .limit(1);
+    return row;
   }
 
   beforeAll(async () => {
@@ -110,14 +135,13 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    await new KyselyUserRepository(db).save(
+    await new UserRepository(app.get(DATABASE)).save(
       User.register({ name: "أدمن-بوت-جست", email: "admin-bot@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-bot@jest.test", password: "12345678" })).body.token;
@@ -136,27 +160,27 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
+    const database = app.get(DATABASE);
     await request(server()).patch("/pos-settings").set(auth()).send({ whatsappBotEnabled: false });
-    const convs = sql`SELECT id FROM whatsapp_conversations WHERE phone IN (${phone}, ${messengerId})`;
-    await sql`DELETE FROM whatsapp_pending_order_lines WHERE pending_order_id IN (SELECT id FROM whatsapp_pending_orders WHERE conversation_id IN (${convs}))`.execute(db);
-    await sql`DELETE FROM whatsapp_pending_orders WHERE conversation_id IN (${convs})`.execute(db);
-    await sql`DELETE FROM whatsapp_messages WHERE conversation_id IN (${convs})`.execute(db);
-    await sql`DELETE FROM complaints WHERE customer_phone IN (${phone}, ${messengerId})`.execute(db);
-    await sql`DELETE FROM whatsapp_conversations WHERE phone IN (${phone}, ${messengerId})`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId}))`.execute(db).catch(() => undefined);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_price_history WHERE entity_id IN (SELECT id FROM menu_item_modifiers WHERE item_id = ${itemId})`.execute(db);
-    await sql`DELETE FROM menu_item_modifiers WHERE item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE id = ${itemId}`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`UPDATE pos_settings SET updated_by = NULL WHERE updated_by = (SELECT id FROM users WHERE email = 'admin-bot@jest.test')`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-bot@jest.test'`.execute(db);
+    const convs = database.select({ id: whatsappConversations.id }).from(whatsappConversations).where(inArray(whatsappConversations.phone, [phone, messengerId]));
+    await database.delete(whatsappPendingOrderLines).where(inArray(whatsappPendingOrderLines.pending_order_id, database.select({ id: whatsappPendingOrders.id }).from(whatsappPendingOrders).where(inArray(whatsappPendingOrders.conversation_id, convs))));
+    await database.delete(whatsappPendingOrders).where(inArray(whatsappPendingOrders.conversation_id, convs));
+    await database.delete(whatsappMessages).where(inArray(whatsappMessages.conversation_id, convs));
+    await database.delete(complaints).where(inArray(complaints.customer_phone, [phone, messengerId]));
+    await database.delete(whatsappConversations).where(inArray(whatsappConversations.phone, [phone, messengerId]));
+    await truncate(database, journalEntryLines, journalEntries);
+    await database.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await database.delete(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, database.select({ id: orderItems.id }).from(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId)))))).catch(() => undefined);
+    await database.delete(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await database.delete(orders).where(eq(orders.branch_id, branchId));
+    await database.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, database.select({ id: menuItemModifiers.id }).from(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId))));
+    await database.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
+    await database.delete(menuItemVariants).where(eq(menuItemVariants.item_id, itemId));
+    await database.delete(menuItems).where(eq(menuItems.id, itemId));
+    await database.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await database.delete(branches).where(eq(branches.id, branchId));
+    await database.update(posSettings).set({ updated_by: null }).where(inArray(posSettings.updated_by, database.select({ id: users.id }).from(users).where(eq(users.email, "admin-bot@jest.test"))));
+    await database.delete(users).where(eq(users.email, "admin-bot@jest.test"));
     await app.close();
   });
 
