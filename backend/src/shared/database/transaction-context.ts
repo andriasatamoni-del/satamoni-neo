@@ -1,13 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import type { PgColumn } from "drizzle-orm/pg-core";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Transaction } from "kysely";
-import type { Pool, PoolClient } from "pg";
-import type { Database as KyselyDatabase } from "./database.types";
 import { DATABASE, type Database } from "./database.token";
 import * as schema from "./schema";
 
@@ -22,15 +17,9 @@ import * as schema from "./schema";
 // Drizzle runs the transaction itself (BEGIN / COMMIT / ROLLBACK and savepoints). This file only adds what Drizzle
 // lacks: the ambient transaction above, the retry on deadlock / serialization failure, after-commit hooks and the
 // advisory lock.
-//
-// TEMPORARY (Kysely -> Drizzle migration): while contexts are ported one by one, a command can still touch Kysely
-// repositories. So run() borrows ONE connection, starts the Drizzle transaction on it, and also pins a Kysely instance
-// to the same connection; both libraries then share a single transaction. Remove the Kysely half (and PG_POOL use
-// here) once the last context is ported.
 
 interface TxContext {
   db: Database;
-  kysely: Kysely<KyselyDatabase>;
   afterCommit: Array<() => Promise<void> | void>;
 }
 
@@ -59,7 +48,7 @@ function routeTo<T extends object>(base: T, pick: (ctx: TxContext) => object, jo
       const value = Reflect.get(active, prop, active);
       if (typeof value !== "function") return value;
       // Only METHODS (data properties on the prototype chain) are bound to the active executor. Getters that return
-      // callable objects carrying their own properties (Kysely's `db.fn`) must be returned untouched.
+      // callable objects carrying their own properties must be returned untouched.
       for (let o: object | null = active as object; o; o = Object.getPrototypeOf(o)) {
         const d = Object.getOwnPropertyDescriptor(o, prop);
         if (d) return d.get ? value : (value as (...a: unknown[]) => unknown).bind(active);
@@ -72,29 +61,6 @@ function routeTo<T extends object>(base: T, pick: (ctx: TxContext) => object, jo
 export function createTransactionalDb(base: Database): Database {
   // Already inside the command transaction: a nested `db.transaction(fn)` just runs `fn` on it.
   return routeTo(base, (ctx) => ctx.db, (ctx) => <T>(fn: (tx: Database) => Promise<T>) => fn(ctx.db));
-}
-
-// TEMPORARY: the Kysely side of the bridge (see the header). Deleted with the last Kysely repository.
-export function createTransactionalKysely(base: Kysely<KyselyDatabase>): Kysely<KyselyDatabase> {
-  return routeTo(base, (ctx) => ctx.kysely, (ctx) => () => {
-    const builder = {
-      execute: <T>(fn: (trx: Transaction<KyselyDatabase>) => Promise<T>) => fn(ctx.kysely as unknown as Transaction<KyselyDatabase>),
-      setIsolationLevel: () => builder,
-      setAccessMode: () => builder,
-    };
-    return builder;
-  });
-}
-
-// A pool-shaped wrapper that always hands out the one connection already inside the transaction (release is a no-op;
-// TransactionService releases the real connection). `query` must run with `this` = the real client: pg keeps the
-// active-query state on the client object, so a prototype-derived copy would desynchronise the protocol.
-function singleConnectionPool(client: PoolClient) {
-  const borrowed = { query: client.query.bind(client), release: () => undefined } as unknown as PoolClient;
-  return {
-    connect: async () => borrowed,
-    end: async () => undefined,
-  };
 }
 
 const RETRYABLE_SQLSTATES = new Set(["40P01", "40001"]); // deadlock_detected, serialization_failure
@@ -126,10 +92,7 @@ export function tableByName(name: string): PgTable | undefined {
 export class TransactionService {
   private readonly logger = new Logger(TransactionService.name);
 
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    @Inject(PG_POOL) private readonly pool: Pool
-  ) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   // One business command = one transaction. Joins the surrounding one when nested. Deadlocks / serialization
   // failures (only possible between concurrent commands) are retried transparently up to 3 times.
@@ -141,25 +104,17 @@ export class TransactionService {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const callbacks: TxContext["afterCommit"] = [];
       let result: T;
-      const client = await this.pool.connect();
-      let broken: Error | undefined;
       try {
-        const kysely = new Kysely<KyselyDatabase>({ dialect: new PostgresDialect({ pool: singleConnectionPool(client) }) });
-        result = await drizzle(client, { schema }).transaction((tx) =>
-          txStorage.run({ db: tx as unknown as Database, kysely, afterCommit: callbacks }, fn)
-        );
+        // outside a command the proxy routes to the pool: Drizzle takes a connection, BEGINs, and COMMITs / ROLLBACKs
+        result = await this.db.transaction((tx) => txStorage.run({ db: tx as unknown as Database, afterCommit: callbacks }, fn));
       } catch (err) {
         lastError = err;
         const code = pgErrorCode(err);
-        if (!code) broken = err instanceof Error ? err : undefined;
         if (code && RETRYABLE_SQLSTATES.has(code) && attempt < maxAttempts) {
           await new Promise((r) => setTimeout(r, 15 * attempt + Math.floor(Math.random() * 25)));
           continue;
         }
         throw err;
-      } finally {
-        // A connection that failed for a non-SQL reason is discarded instead of going back to the pool.
-        client.release(broken && /connection|terminat|ECONN/i.test(broken.message) ? broken : undefined);
       }
       for (const cb of callbacks) {
         try {

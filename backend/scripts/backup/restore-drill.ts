@@ -174,20 +174,23 @@ async function migrateRestoredCopy(scratchUrl: string, record: (step: string, ok
   const pool = new Pool({ connectionString: scratchUrl, max: 1, connectionTimeoutMillis: 10_000 });
   try {
     const total = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER }).length;
+    // (two queries: a statement naming a missing table fails at parse time, even inside an unreached CASE branch)
     const applied = async () => {
-      const { rows } = await pool.query<{ n: number }>(
-        "SELECT CASE WHEN to_regclass('drizzle.__drizzle_migrations') IS NULL THEN 0 ELSE (SELECT count(*)::int FROM drizzle.__drizzle_migrations) END AS n"
-      );
+      const { rows: journal } = await pool.query<{ present: boolean }>("SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present");
+      if (!journal[0].present) return 0;
+      const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
       return rows[0].n;
     };
-    // a backup taken before the switch to Drizzle carries the Kysely history: adopt it (records the baseline), then migrate
-    await adoptKyselyDatabase(pool, MIGRATIONS_FOLDER);
     const pending = total - (await applied());
+    // a backup taken before the switch to Drizzle carries the Kysely history: adopt it (records the baseline), then migrate
+    const adopted = await adoptKyselyDatabase(pool, MIGRATIONS_FOLDER);
     await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER });
     return record(
       "تحديث النسخة المسترجعة لآخر migration",
       true,
-      pending === 0 ? `النسخة كانت محدّثة (${total} migration)` : `اتطبّق ${pending} migration ناقصين بنجاح`
+      pending === 0
+        ? `النسخة كانت محدّثة (${total} migration)`
+        : `اتطبّق ${pending} migration ناقصين بنجاح${adopted ? " (نسخة من قبل Drizzle: الـbaseline اتسجّل على تاريخ Kysely من غير ما يتنفّذ)" : ""}`
     );
   } catch (err) {
     return record("تحديث النسخة المسترجعة لآخر migration", false, err instanceof Error ? err.message : String(err));

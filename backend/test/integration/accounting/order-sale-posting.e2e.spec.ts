@@ -75,7 +75,7 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
   afterAll(async () => {
     const db = app.get<Database>(DATABASE);
     // TRUNCATE عمدًا (مش DELETE) - القيود اتسجّلت POSTED فعليًا، وDELETE هيترفض من الـtrigger اللي
-    // بيمنع أي تعديل على سطور قيد POSTED (نفس السبب في kysely-journal-entry.repository.spec.ts)
+    // بيمنع أي تعديل على سطور قيد POSTED (نفس السبب في journal-entry.repository.spec.ts)
     await truncate(db, journalEntryLines, journalEntries);
     await db.delete(accounts).where(inArray(accounts.id, [cashAccountId, salesAccountId]));
     await db.delete(printJobs);

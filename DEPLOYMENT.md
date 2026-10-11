@@ -23,8 +23,10 @@
    `pnpm-lock.yaml`, `pnpm-workspace.yaml`
 3. **Build Command**: `corepack enable && pnpm install --frozen-lockfile --filter satamoni-neo-backend && pnpm --filter satamoni-neo-backend build`
 4. **Start Command**: `cd backend && pnpm run migrate && pnpm run start`
-   (بيشغّل الـmigrations تلقائي قبل كل start - آمن لأنها idempotent، Kysely بيتتبّع أي migration
-   اتنفذت فعلًا)
+   (بيشغّل الـmigrations تلقائي قبل كل start - آمن لأنها idempotent، Drizzle بيتتبّع أي migration
+   اتنفذت فعلًا في `drizzle.__drizzle_migrations`. أول deploy بعد التحويل من Kysely: قاعدة البيانات اللي
+   عليها `kysely_migration` لحد 058 بيتسجّل عليها الـbaseline كأنه اتنفذ من غير ما يتشغّل تاني، وقاعدة واقفة
+   قبل 058 بيرفضها بخطأ واضح - لازم تتحدّث لـ058 الأول)
 5. **Environment Variables**:
    - `DATABASE_URL` = الـInternal Database URL بتاع الخطوة 1
    - `PGSSL` = `false` (Internal URL مش محتاج SSL - لو استخدمت External حدّدها `true`)

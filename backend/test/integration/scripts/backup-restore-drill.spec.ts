@@ -1,13 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promises as fsp } from "node:fs";
-import { Client, Pool } from "pg";
-import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from "kysely";
+import { Client } from "pg";
 import { createBackup, applyRetention, verifyBackupFile, sha256File } from "../../../scripts/backup/backup";
 import { compareDatabases } from "../../../scripts/backup/compare-databases";
 import { runRestoreDrill } from "../../../scripts/backup/restore-drill";
 import { withDatabase } from "../../../scripts/backup/pg-env";
+import { LAST_KYSELY_MIGRATION, runMigrations } from "../../../src/migrations/run-migrations";
 
 // OPS-1: نسخ حقيقي بـpg_dump واسترجاع حقيقي بـpg_restore على نفس سيرفر Postgres بتاع الاختبارات
 describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
@@ -19,16 +18,18 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
   let admin: Client;
   let dir: string;
 
-  const provider = new FileMigrationProvider({ fs: fsp, path, migrationFolder: path.join(__dirname, "../../../src/migrations/files") });
-
-  async function migrate(url: string, upTo?: string) {
-    const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: url, max: 1 }) }) });
+  // A database from before the switch to Drizzle: the full schema plus the Kysely migrator's bookkeeping table at 058,
+  // and no Drizzle journal (the same simulation as baseline-adoption.spec.ts).
+  async function makePreDrizzleDatabase(url: string) {
+    await runMigrations(url);
+    const db = new Client({ connectionString: url });
+    await db.connect();
     try {
-      const migrator = new Migrator({ db, provider });
-      const { error } = upTo ? await migrator.migrateTo(upTo) : await migrator.migrateToLatest();
-      if (error) throw error;
+      await db.query("DROP SCHEMA drizzle CASCADE");
+      await db.query("CREATE TABLE kysely_migration (name varchar(255) PRIMARY KEY, timestamp varchar(255) NOT NULL)");
+      await db.query("INSERT INTO kysely_migration VALUES ($1, now()::text)", [LAST_KYSELY_MIGRATION]);
     } finally {
-      await db.destroy();
+      await db.end();
     }
   }
 
@@ -39,15 +40,15 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
     await admin.query(`CREATE DATABASE "${sourceDb}"`);
     await admin.query(`CREATE DATABASE "${emptyDb}"`);
 
-    // نسخة "قديمة": متحدّثة لحد قبل آخر migration بواحدة - زي نسخة امبارح قبل deploy النهارده
-    const names = Object.keys(await provider.getMigrations()).sort();
-    await migrate(sourceUrl, names[names.length - 2]);
+    // نسخة "قديمة": ناقصها آخر migration بواحدة - زي نسخة امبارح قبل deploy النهارده. أقدم نسخة ممكنة دلوقتي هي نسخة من
+    // قبل التحويل لـDrizzle (تاريخ Kysely لحد 058 من غير journal بتاع Drizzle): التمرين لازم يكمّلها بالـbaseline
+    await makePreDrizzleDatabase(sourceUrl);
     const src = new Client({ connectionString: sourceUrl });
     await src.connect();
     await src.query(`INSERT INTO branches (name) VALUES ('فرع-نسخة-احتياطية-جست')`);
     await src.end();
 
-    await migrate(emptyUrl);
+    await runMigrations(emptyUrl);
   }, 120000);
 
   afterAll(async () => {
