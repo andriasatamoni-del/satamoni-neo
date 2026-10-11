@@ -2,9 +2,11 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { inArray } from "drizzle-orm";
+import { complaints, customerFollowups } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -51,10 +53,10 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
   afterAll(async () => {
     // بننضّف الصفوف اللي عملناها هنا (complaints/customer_followups بترجع لليوزرز دول بـFK حقيقي)
     // عشان ملفات اختبار تانية بتعمل DELETE شامل على جدول users متتعثرش في constraint violation
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM complaints`.execute(db);
-    await sql`DELETE FROM customer_followups`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-crm@jest.test', 'callcenter-crm@jest.test', 'driver-crm@jest.test')`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(complaints);
+    await db.delete(customerFollowups);
+    await db.delete(users).where(inArray(users.email, ["admin-crm@jest.test", "callcenter-crm@jest.test", "driver-crm@jest.test"]));
     await app.close();
   });
 

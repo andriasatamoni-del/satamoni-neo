@@ -2,9 +2,14 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuCategories, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { kitchenStations, printJobs, printers } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضير + توجيه + طابور طباعة", () => {
   let app: INestApplication;
@@ -57,17 +62,17 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM kitchen_stations WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM printers WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE id IN (SELECT id FROM menu_items WHERE category_id = ${categoryId})`.execute(db);
-    await sql`DELETE FROM menu_categories WHERE id = ${categoryId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-printing@jest.test'`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(kitchenStations).where(eq(kitchenStations.branch_id, branchId));
+    await db.delete(printers).where(eq(printers.branch_id, branchId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(inArray(menuItems.id, db.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.category_id, categoryId))));
+    await db.delete(menuCategories).where(eq(menuCategories.id, categoryId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-printing@jest.test"));
     await app.close();
   });
 

@@ -8,7 +8,7 @@ export interface ClaimPrintJobCommand {
 }
 
 // وكيل الطباعة المحلي بيحجز الـjob لنفسه قبل ما يطبعها فعليًا (PENDING -> PRINTING) - UPDATE ذرّي بشرط
-// status='PENDING' على مستوى الداتابيز (راجع KyselyPrintJobRepository.claim)، عشان لو أكتر من وكيل
+// status='PENDING' على مستوى الداتابيز (راجع PrintJobRepository.claim)، عشان لو أكتر من وكيل
 // حاولوا ياخدوا نفس الـjob مش هيحصل تكرار طباعة أبدًا
 @Injectable()
 export class ClaimPrintJobHandler {

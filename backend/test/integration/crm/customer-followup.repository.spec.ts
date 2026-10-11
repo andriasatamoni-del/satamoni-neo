@@ -1,27 +1,25 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyCustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { CustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
 import { CustomerFollowup } from "../../../src/contexts/crm/domain/customer-followup.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { complaints, customerFollowups } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
 
-describe("KyselyCustomerFollowupRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyCustomerFollowupRepository;
+describe("CustomerFollowupRepository", () => {
+  let db: Database;
+  let repo: CustomerFollowupRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyCustomerFollowupRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new CustomerFollowupRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM complaints`.execute(db);
-    await sql`DELETE FROM customer_followups`.execute(db);
+    await db.delete(complaints);
+    await db.delete(customerFollowups);
   });
 
   test("save بيسجّل متابعة جديدة، وfindById بيرجّعها بنفس البيانات", async () => {

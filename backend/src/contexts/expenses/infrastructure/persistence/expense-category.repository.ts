@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { ExpenseCategory } from "../../domain/expense-category.aggregate";
 import type { ExpenseCategoryRepositoryPort } from "../../domain/ports/expense-category-repository.port";
-import type { ExpenseCategoriesTable } from "./expense-category.schema";
+import { expenseCategories } from "./expenses.tables";
 
 @Injectable()
-export class KyselyExpenseCategoryRepository implements ExpenseCategoryRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class ExpenseCategoryRepository implements ExpenseCategoryRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(category: ExpenseCategory): Promise<void> {
     await this.db
-      .insertInto("expense_categories")
+      .insert(expenseCategories)
       .values({
         id: category.id,
         name: category.name,
@@ -21,33 +20,33 @@ export class KyselyExpenseCategoryRepository implements ExpenseCategoryRepositor
         account_id: category.accountId,
         created_at: category.createdAt,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: expenseCategories.id,
+        set: {
           name: category.name,
           is_active: category.isActive,
           alert_threshold: category.alertThreshold,
           account_id: category.accountId,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<ExpenseCategory | null> {
-    const row = await this.db.selectFrom("expense_categories").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(expenseCategories).where(eq(expenseCategories.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByName(name: string): Promise<boolean> {
-    const row = await this.db.selectFrom("expense_categories").select("id").where("name", "=", name).executeTakeFirst();
+    const [row] = await this.db.select({ id: expenseCategories.id }).from(expenseCategories).where(eq(expenseCategories.name, name)).limit(1);
     return !!row;
   }
 
   async list(): Promise<ExpenseCategory[]> {
-    const rows = await this.db.selectFrom("expense_categories").selectAll().orderBy("name").execute();
+    const rows = await this.db.select().from(expenseCategories).orderBy(asc(expenseCategories.name));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<ExpenseCategoriesTable>): ExpenseCategory {
+  private toDomain(row: typeof expenseCategories.$inferSelect): ExpenseCategory {
     return ExpenseCategory.reconstitute(row.id, {
       name: row.name,
       isActive: row.is_active,

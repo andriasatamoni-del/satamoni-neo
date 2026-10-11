@@ -1,14 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { LoyaltyReward, type LoyaltyRewardKind } from "../../domain/loyalty-reward.aggregate";
 import type { LoyaltyRewardRepositoryPort } from "../../domain/ports/loyalty-reward-repository.port";
-import type { LoyaltyRewardsTable } from "./loyalty.schema";
+import { loyaltyRewards } from "./loyalty.tables";
 
 @Injectable()
-export class KyselyLoyaltyRewardRepository implements LoyaltyRewardRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class LoyaltyRewardRepository implements LoyaltyRewardRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(reward: LoyaltyReward): Promise<void> {
     const row = {
@@ -25,21 +24,24 @@ export class KyselyLoyaltyRewardRepository implements LoyaltyRewardRepositoryPor
       created_at: reward.createdAt,
     };
     const { id: _id, created_at: _createdAt, ...update } = row;
-    await this.db.insertInto("loyalty_rewards").values(row).onConflict((oc) => oc.column("id").doUpdateSet(update)).execute();
+    await this.db.insert(loyaltyRewards).values(row).onConflictDoUpdate({ target: loyaltyRewards.id, set: update });
   }
 
   async findById(id: string): Promise<LoyaltyReward | null> {
-    const row = await this.db.selectFrom("loyalty_rewards").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(loyaltyRewards).where(eq(loyaltyRewards.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { activeOnly?: boolean }): Promise<LoyaltyReward[]> {
-    let query = this.db.selectFrom("loyalty_rewards").selectAll();
-    if (filter?.activeOnly) query = query.where("is_active", "=", true);
-    return (await query.orderBy("points_cost").orderBy("name").execute()).map((r) => this.toDomain(r));
+    const rows = await this.db
+      .select()
+      .from(loyaltyRewards)
+      .where(filter?.activeOnly ? eq(loyaltyRewards.is_active, true) : undefined)
+      .orderBy(asc(loyaltyRewards.points_cost), asc(loyaltyRewards.name));
+    return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<LoyaltyRewardsTable>): LoyaltyReward {
+  private toDomain(row: typeof loyaltyRewards.$inferSelect): LoyaltyReward {
     return LoyaltyReward.reconstitute(row.id, {
       name: row.name,
       description: row.description,

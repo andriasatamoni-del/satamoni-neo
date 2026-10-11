@@ -1,15 +1,15 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { pgErrorCode } from "../../../../shared/database/transaction-context";
 import { KitchenStation } from "../../domain/kitchen-station.aggregate";
 import type { KitchenStationRepositoryPort } from "../../domain/ports/kitchen-station-repository.port";
-import type { KitchenStationsTable } from "./printing.schema";
 import { DuplicateKitchenStationNameError } from "../../domain/errors";
+import { kitchenStations } from "./printing.tables";
 
 @Injectable()
-export class KyselyKitchenStationRepository implements KitchenStationRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class KitchenStationRepository implements KitchenStationRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(station: KitchenStation): Promise<void> {
     const row = {
@@ -22,38 +22,37 @@ export class KyselyKitchenStationRepository implements KitchenStationRepositoryP
     };
     try {
       await this.db
-        .insertInto("kitchen_stations")
+        .insert(kitchenStations)
         .values(row)
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({ name: row.name, printer_id: row.printer_id, is_active: row.is_active })
-        )
-        .execute();
+        .onConflictDoUpdate({
+          target: kitchenStations.id,
+          set: { name: row.name, printer_id: row.printer_id, is_active: row.is_active },
+        });
     } catch (err) {
-      if ((err as { code?: string }).code === "23505") throw new DuplicateKitchenStationNameError();
+      if (pgErrorCode(err) === "23505") throw new DuplicateKitchenStationNameError();
       throw err;
     }
   }
 
   async findById(id: string): Promise<KitchenStation | null> {
-    const row = await this.db.selectFrom("kitchen_stations").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(kitchenStations).where(eq(kitchenStations.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async listByBranch(branchId: string): Promise<KitchenStation[]> {
     const rows = await this.db
-      .selectFrom("kitchen_stations")
-      .selectAll()
-      .where("branch_id", "=", branchId)
-      .orderBy("name")
-      .execute();
+      .select()
+      .from(kitchenStations)
+      .where(eq(kitchenStations.branch_id, branchId))
+      .orderBy(asc(kitchenStations.name));
     return rows.map((r) => this.toDomain(r));
   }
 
   async delete(id: string): Promise<void> {
-    await this.db.deleteFrom("kitchen_stations").where("id", "=", id).execute();
+    await this.db.delete(kitchenStations).where(eq(kitchenStations.id, id));
   }
 
-  private toDomain(row: Selectable<KitchenStationsTable>): KitchenStation {
+  private toDomain(row: typeof kitchenStations.$inferSelect): KitchenStation {
     return KitchenStation.reconstitute(row.id, {
       branchId: row.branch_id,
       name: row.name,

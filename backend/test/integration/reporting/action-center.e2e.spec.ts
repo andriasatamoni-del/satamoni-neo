@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 
 describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -41,8 +41,8 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const { KyselyComplaintRepository } = await import(
-      "../../../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository"
+    const { ComplaintRepository } = await import(
+      "../../../src/contexts/crm/infrastructure/persistence/complaint.repository"
     );
     const { Complaint } = await import("../../../src/contexts/crm/domain/complaint.aggregate");
 
@@ -104,7 +104,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
       .send({ branchId, businessDate: today, categoryId: categoryRes.body.id, amount: 150 });
 
     // 4) شكوى عميل فاضلة من زمان (backdated مباشرة في القاعدة - مفيش API لإنشاء شكوى مباشرة)
-    const complaintRepo = new KyselyComplaintRepository(db);
+    const complaintRepo = new ComplaintRepository(app.get(DATABASE));
     const complaint = Complaint.register({
       channel: "phone_followup", branchId, customerPhone: "01000000000", category: "late_order", status: "open",
     });

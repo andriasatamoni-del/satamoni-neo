@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importCustomersFromLegacy } from "../../../scripts/import-customers-from-legacy";
-import { KyselyCustomerRepository } from "../../../src/contexts/customers/infrastructure/persistence/kysely-customer.repository";
+import { CustomerRepository } from "../../../src/contexts/customers/infrastructure/persistence/customer.repository";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
@@ -11,7 +11,7 @@ const LEGACY_FIXTURE_URL =
 describe("importCustomersFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let repo: KyselyCustomerRepository;
+  let repo: CustomerRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -32,7 +32,7 @@ describe("importCustomersFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    repo = new KyselyCustomerRepository(kyselyOn(neoDb));
+    repo = new CustomerRepository(neoDb);
     await sql`DELETE FROM customer_addresses`.execute(kyselyOn(neoDb));
     await sql`DELETE FROM customers`.execute(kyselyOn(neoDb));
   });

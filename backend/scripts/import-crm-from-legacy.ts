@@ -17,8 +17,8 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyCustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
-import { KyselyComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
+import { CustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
+import { ComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/complaint.repository";
 import { CustomerFollowup, CALL_RESULTS, SATISFACTION_RATINGS } from "../src/contexts/crm/domain/customer-followup.aggregate";
 import { Complaint, CATEGORIES, STATUSES } from "../src/contexts/crm/domain/complaint.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
@@ -81,8 +81,8 @@ export interface CrmImportResult {
 export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CrmImportResult> {
   const userRepo = new KyselyUserRepository(kyselyOn(neoDb));
   const branchRepo = new BranchRepository(neoDb);
-  const followupRepo = new KyselyCustomerFollowupRepository(kyselyOn(neoDb));
-  const complaintRepo = new KyselyComplaintRepository(kyselyOn(neoDb));
+  const followupRepo = new CustomerFollowupRepository(neoDb);
+  const complaintRepo = new ComplaintRepository(neoDb);
 
   const userIdCache = new Map<number, string | null>();
   async function resolveUserId(legacyUserId: number | null): Promise<string | null> {

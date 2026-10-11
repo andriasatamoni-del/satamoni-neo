@@ -10,8 +10,8 @@ import type { OrderStatusChangedEvent } from "../orders/domain/events/order-stat
 import type { OrderCancelledEvent } from "../orders/domain/events/order-cancelled.event";
 import { LOYALTY_REWARD_REPOSITORY } from "./domain/ports/loyalty-reward-repository.port";
 import { LOYALTY_LEDGER, type LoyaltyLedgerPort } from "./domain/ports/loyalty-ledger.port";
-import { KyselyLoyaltyRewardRepository } from "./infrastructure/persistence/kysely-loyalty-reward.repository";
-import { KyselyLoyaltyLedger } from "./infrastructure/persistence/kysely-loyalty-ledger";
+import { LoyaltyRewardRepository } from "./infrastructure/persistence/loyalty-reward.repository";
+import { LoyaltyLedger } from "./infrastructure/persistence/loyalty-ledger";
 import { RewardCatalogViewService } from "./application/services/reward-catalog-view.service";
 import { LoyaltyRedemptionService } from "./application/services/loyalty-redemption.service";
 import { AwardPointsForCompletedOrderHandler } from "./application/commands/award-points-for-completed-order.handler";
@@ -26,8 +26,8 @@ import { CustomerLoyaltyController, LoyaltyRewardsController } from "./api/loyal
   imports: [IdentityAccessModule, OrdersModule, CustomersModule, CatalogModule, SettingsModule],
   controllers: [LoyaltyRewardsController, CustomerLoyaltyController],
   providers: [
-    { provide: LOYALTY_REWARD_REPOSITORY, useClass: KyselyLoyaltyRewardRepository },
-    { provide: LOYALTY_LEDGER, useClass: KyselyLoyaltyLedger },
+    { provide: LOYALTY_REWARD_REPOSITORY, useClass: LoyaltyRewardRepository },
+    { provide: LOYALTY_LEDGER, useClass: LoyaltyLedger },
     RewardCatalogViewService,
     LoyaltyRedemptionService,
     AwardPointsForCompletedOrderHandler,

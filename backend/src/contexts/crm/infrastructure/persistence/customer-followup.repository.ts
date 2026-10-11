@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { CustomerFollowup } from "../../domain/customer-followup.aggregate";
 import type { CustomerFollowupRepositoryPort } from "../../domain/ports/customer-followup-repository.port";
-import type { CustomerFollowupsTable } from "./customer-followup.schema";
+import { customerFollowups } from "./crm.tables";
 
 @Injectable()
-export class KyselyCustomerFollowupRepository implements CustomerFollowupRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class CustomerFollowupRepository implements CustomerFollowupRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(followup: CustomerFollowup): Promise<void> {
     const row = this.toRow(followup);
     await this.db
-      .insertInto("customer_followups")
+      .insert(customerFollowups)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: customerFollowups.id,
+        set: {
           order_id: row.order_id,
           legacy_order_id: row.legacy_order_id,
           branch_id: row.branch_id,
@@ -27,44 +27,35 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
           has_complaint: row.has_complaint,
           called_by: row.called_by,
           called_at: row.called_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<CustomerFollowup | null> {
-    const row = await this.db.selectFrom("customer_followups").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(customerFollowups).where(eq(customerFollowups.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyOrderId(legacyOrderId: number): Promise<CustomerFollowup | null> {
-    const row = await this.db
-      .selectFrom("customer_followups")
-      .selectAll()
-      .where("legacy_order_id", "=", legacyOrderId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(customerFollowups).where(eq(customerFollowups.legacy_order_id, legacyOrderId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByOrderId(orderId: string): Promise<CustomerFollowup | null> {
-    const row = await this.db
-      .selectFrom("customer_followups")
-      .selectAll()
-      .where("order_id", "=", orderId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(customerFollowups).where(eq(customerFollowups.order_id, orderId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyFollowupId(legacyFollowupId: number): Promise<CustomerFollowup | null> {
-    const row = await this.db
-      .selectFrom("customer_followups")
-      .selectAll()
-      .where("legacy_followup_id", "=", legacyFollowupId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(customerFollowups)
+      .where(eq(customerFollowups.legacy_followup_id, legacyFollowupId))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
-  private toRow(followup: CustomerFollowup) {
+  private toRow(followup: CustomerFollowup): typeof customerFollowups.$inferInsert {
     return {
       id: followup.id,
       order_id: followup.orderId,
@@ -81,7 +72,7 @@ export class KyselyCustomerFollowupRepository implements CustomerFollowupReposit
     };
   }
 
-  private toDomain(row: Selectable<CustomerFollowupsTable>): CustomerFollowup {
+  private toDomain(row: typeof customerFollowups.$inferSelect): CustomerFollowup {
     return CustomerFollowup.reconstitute(row.id, {
       orderId: row.order_id,
       legacyOrderId: row.legacy_order_id,

@@ -2,9 +2,11 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { inArray, like } from "drizzle-orm";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { mediaImages } from "../../../src/contexts/media/infrastructure/persistence/media.tables";
 
 // صور المنيو والعروض (STORE-2): رفع بصلاحية إدارة المنيو، وخدمة عامة بكاش طويل
 describe("Media - صور المنيو (e2e)", () => {
@@ -31,9 +33,9 @@ describe("Media - صور المنيو (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM media_images WHERE uploaded_by IN (SELECT id FROM users WHERE email LIKE '%-media@jest.test')`.execute(db);
-    await sql`DELETE FROM users WHERE email LIKE '%-media@jest.test'`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(mediaImages).where(inArray(mediaImages.uploaded_by, db.select({ id: users.id }).from(users).where(like(users.email, "%-media@jest.test"))));
+    await db.delete(users).where(like(users.email, "%-media@jest.test"));
     await app.close();
   });
 

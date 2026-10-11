@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { sql, type Kysely, type Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq, sql } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Customer } from "../../domain/customer.aggregate";
 import type { CustomerRepositoryPort } from "../../domain/ports/customer-repository.port";
-import type { CustomerAddressesTable, CustomersTable } from "./customer.schema";
+import { customerAddresses, customers } from "./customers.tables";
 
 @Injectable()
-export class KyselyCustomerRepository implements CustomerRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class CustomerRepository implements CustomerRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(customer: Customer): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("customers")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(customers)
         .values({
           id: customer.id,
           phone: customer.phone,
@@ -33,8 +32,9 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
           created_at: customer.createdAt,
           updated_at: customer.updatedAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: customers.id,
+          set: {
             phone2: customer.phone2,
             email: customer.email,
             name: customer.name,
@@ -49,62 +49,62 @@ export class KyselyCustomerRepository implements CustomerRepositoryPort {
             blocked_by: customer.blockedBy,
             blocked_at: customer.blockedAt,
             updated_at: customer.updatedAt,
-          })
-        )
-        .execute();
+          },
+        });
 
-      await trx.deleteFrom("customer_addresses").where("customer_id", "=", customer.id).execute();
+      await tx.delete(customerAddresses).where(eq(customerAddresses.customer_id, customer.id));
       for (const address of customer.addresses) {
-        await trx
-          .insertInto("customer_addresses")
-          .values({
-            id: address.id,
-            customer_id: customer.id,
-            label: address.label,
-            address_details: address.addressDetails,
-            area: address.area,
-            street: address.street,
-            building: address.building,
-            floor: address.floor,
-            apartment: address.apartment,
-            distinguishing_mark: address.distinguishingMark,
-            is_default: address.isDefault,
-            created_at: address.createdAt,
-          })
-          .execute();
+        await tx.insert(customerAddresses).values({
+          id: address.id,
+          customer_id: customer.id,
+          label: address.label,
+          address_details: address.addressDetails,
+          area: address.area,
+          street: address.street,
+          building: address.building,
+          floor: address.floor,
+          apartment: address.apartment,
+          distinguishing_mark: address.distinguishingMark,
+          is_default: address.isDefault,
+          created_at: address.createdAt,
+        });
       }
     });
   }
 
   async findById(id: string): Promise<Customer | null> {
-    const row = await this.db.selectFrom("customers").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(customers).where(eq(customers.id, id)).limit(1);
     return row ? this.toDomain(row, await this.loadAddresses(id)) : null;
   }
 
   async findByPhone(phone: string): Promise<Customer | null> {
-    const row = await this.db.selectFrom("customers").selectAll().where("phone", "=", phone).executeTakeFirst();
+    const [row] = await this.db.select().from(customers).where(eq(customers.phone, phone)).limit(1);
     return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
   }
 
   async findByEmail(email: string): Promise<Customer | null> {
-    const row = await this.db
-      .selectFrom("customers")
-      .selectAll()
-      .where(sql`lower(email)`, "=", email.toLowerCase())
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(customers)
+      .where(eq(sql`lower(${customers.email})`, email.toLowerCase()))
+      .limit(1);
     return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
   }
 
   async findByLegacyCustomerId(legacyId: number): Promise<Customer | null> {
-    const row = await this.db.selectFrom("customers").selectAll().where("legacy_customer_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(customers).where(eq(customers.legacy_customer_id, legacyId)).limit(1);
     return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
   }
 
-  private loadAddresses(customerId: string): Promise<Selectable<CustomerAddressesTable>[]> {
-    return this.db.selectFrom("customer_addresses").selectAll().where("customer_id", "=", customerId).orderBy("created_at").execute();
+  private loadAddresses(customerId: string): Promise<(typeof customerAddresses.$inferSelect)[]> {
+    return this.db
+      .select()
+      .from(customerAddresses)
+      .where(eq(customerAddresses.customer_id, customerId))
+      .orderBy(asc(customerAddresses.created_at));
   }
 
-  private toDomain(row: Selectable<CustomersTable>, addressRows: Selectable<CustomerAddressesTable>[]): Customer {
+  private toDomain(row: typeof customers.$inferSelect, addressRows: (typeof customerAddresses.$inferSelect)[]): Customer {
     return Customer.reconstitute(row.id, {
       phone: row.phone,
       phone2: row.phone2,

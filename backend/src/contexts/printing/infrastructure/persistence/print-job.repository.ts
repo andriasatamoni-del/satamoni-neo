@@ -1,95 +1,83 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PrintJob, type PrintType, type PrintJobStatus } from "../../domain/print-job.aggregate";
 import type { PrintJobRepositoryPort } from "../../domain/ports/print-job-repository.port";
-import type { PrintJobsTable } from "./printing.schema";
+import { printJobs } from "./printing.tables";
 
 @Injectable()
-export class KyselyPrintJobRepository implements PrintJobRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PrintJobRepository implements PrintJobRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   // INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING - نفس فلسفة insertPrintJob في
   // الريبو القديم بالظبط: لو نفس المفتاح موجود بالفعل، بيرجّع الصف الموجود من غير تعديل
   async queue(job: PrintJob): Promise<PrintJob> {
-    const row = this.toRow(job);
-    const inserted = await this.db
-      .insertInto("print_jobs")
-      .values(row)
-      .onConflict((oc) => oc.column("idempotency_key").doNothing())
-      .returningAll()
-      .executeTakeFirst();
+    const [inserted] = await this.db
+      .insert(printJobs)
+      .values(this.toRow(job))
+      .onConflictDoNothing({ target: printJobs.idempotency_key })
+      .returning();
     if (inserted) return this.toDomain(inserted);
-    const existing = await this.db
-      .selectFrom("print_jobs")
-      .selectAll()
-      .where("idempotency_key", "=", job.idempotencyKey)
-      .executeTakeFirstOrThrow();
+    const [existing] = await this.db.select().from(printJobs).where(eq(printJobs.idempotency_key, job.idempotencyKey)).limit(1);
+    if (!existing) throw new Error(`print job ${job.idempotencyKey} vanished after a conflicting insert`);
     return this.toDomain(existing);
   }
 
   async claim(id: string): Promise<PrintJob | null> {
-    const row = await this.db
-      .updateTable("print_jobs")
-      .set((eb) => ({ status: "PRINTING", printing_started_at: new Date(), attempts: eb("attempts", "+", 1) }))
-      .where("id", "=", id)
-      .where("status", "=", "PENDING")
-      .returningAll()
-      .executeTakeFirst();
+    const [row] = await this.db
+      .update(printJobs)
+      .set({ status: "PRINTING", printing_started_at: new Date(), attempts: sql`${printJobs.attempts} + 1` })
+      .where(and(eq(printJobs.id, id), eq(printJobs.status, "PENDING")))
+      .returning();
     return row ? this.toDomain(row) : null;
   }
 
   async markPrinted(id: string): Promise<PrintJob | null> {
-    const row = await this.db
-      .updateTable("print_jobs")
+    const [row] = await this.db
+      .update(printJobs)
       .set({ status: "PRINTED", printed_at: new Date() })
-      .where("id", "=", id)
-      .where("status", "=", "PRINTING")
-      .returningAll()
-      .executeTakeFirst();
+      .where(and(eq(printJobs.id, id), eq(printJobs.status, "PRINTING")))
+      .returning();
     return row ? this.toDomain(row) : null;
   }
 
   async markFailed(id: string, error: string | null): Promise<PrintJob | null> {
-    const row = await this.db
-      .updateTable("print_jobs")
+    const [row] = await this.db
+      .update(printJobs)
       .set({ status: "FAILED", failed_at: new Date(), last_error: error || "فشلت الطباعة" })
-      .where("id", "=", id)
-      .where("status", "=", "PRINTING")
-      .returningAll()
-      .executeTakeFirst();
+      .where(and(eq(printJobs.id, id), eq(printJobs.status, "PRINTING")))
+      .returning();
     return row ? this.toDomain(row) : null;
   }
 
   async retry(id: string): Promise<PrintJob | null> {
-    const row = await this.db
-      .updateTable("print_jobs")
+    const [row] = await this.db
+      .update(printJobs)
       .set({ status: "PENDING", last_error: null, failed_at: null })
-      .where("id", "=", id)
-      .where("status", "=", "FAILED")
-      .returningAll()
-      .executeTakeFirst();
+      .where(and(eq(printJobs.id, id), eq(printJobs.status, "FAILED")))
+      .returning();
     return row ? this.toDomain(row) : null;
   }
 
   async findById(id: string): Promise<PrintJob | null> {
-    const row = await this.db.selectFrom("print_jobs").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(printJobs).where(eq(printJobs.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter: { branchId: string; status?: string; orderId?: string; limit?: number }): Promise<PrintJob[]> {
-    let query = this.db.selectFrom("print_jobs").selectAll().where("branch_id", "=", filter.branchId);
-    if (filter.status) query = query.where("status", "=", filter.status);
-    if (filter.orderId) query = query.where("order_id", "=", filter.orderId);
-    const rows = await query
-      .orderBy("created_at", "asc")
-      .limit(Math.min(filter.limit ?? 100, 300))
-      .execute();
+    const conditions: SQL[] = [eq(printJobs.branch_id, filter.branchId)];
+    if (filter.status) conditions.push(eq(printJobs.status, filter.status));
+    if (filter.orderId) conditions.push(eq(printJobs.order_id, filter.orderId));
+    const rows = await this.db
+      .select()
+      .from(printJobs)
+      .where(and(...conditions))
+      .orderBy(asc(printJobs.created_at))
+      .limit(Math.min(filter.limit ?? 100, 300));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toRow(job: PrintJob) {
+  private toRow(job: PrintJob): typeof printJobs.$inferInsert {
     return {
       id: job.id,
       order_id: job.orderId,
@@ -110,7 +98,7 @@ export class KyselyPrintJobRepository implements PrintJobRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<PrintJobsTable>): PrintJob {
+  private toDomain(row: typeof printJobs.$inferSelect): PrintJob {
     return PrintJob.reconstitute(row.id, {
       orderId: row.order_id,
       branchId: row.branch_id,

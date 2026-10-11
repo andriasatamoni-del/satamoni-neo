@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq, type SQL } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Expense, type ExpenseStatus } from "../../domain/expense.aggregate";
 import type { ExpenseRepositoryPort } from "../../domain/ports/expense-repository.port";
-import type { ExpensesTable } from "./expense.schema";
+import { expenses } from "./expenses.tables";
 
 @Injectable()
-export class KyselyExpenseRepository implements ExpenseRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class ExpenseRepository implements ExpenseRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(expense: Expense): Promise<void> {
     await this.db
-      .insertInto("expenses")
+      .insert(expenses)
       .values({
         id: expense.id,
         branch_id: expense.branchId,
@@ -32,8 +31,9 @@ export class KyselyExpenseRepository implements ExpenseRepositoryPort {
         idempotency_key: expense.idempotencyKey,
         created_at: expense.createdAt,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: expenses.id,
+        set: {
           category_id: expense.categoryId,
           amount: expense.amount,
           notes: expense.notes,
@@ -44,31 +44,34 @@ export class KyselyExpenseRepository implements ExpenseRepositoryPort {
           cancelled_by: expense.cancelledBy,
           cancelled_at: expense.cancelledAt,
           cancellation_reason: expense.cancellationReason,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Expense | null> {
-    const row = await this.db.selectFrom("expenses").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(expenses).where(eq(expenses.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByIdempotencyKey(key: string): Promise<Expense | null> {
-    const row = await this.db.selectFrom("expenses").selectAll().where("idempotency_key", "=", key).executeTakeFirst();
+    const [row] = await this.db.select().from(expenses).where(eq(expenses.idempotency_key, key)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { branchId?: string; businessDate?: Date; status?: string }): Promise<Expense[]> {
-    let query = this.db.selectFrom("expenses").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.businessDate) query = query.where("business_date", "=", filter.businessDate);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("business_date", "desc").orderBy("created_at", "desc").execute();
+    const conditions: SQL[] = [];
+    if (filter?.branchId) conditions.push(eq(expenses.branch_id, filter.branchId));
+    if (filter?.businessDate) conditions.push(eq(expenses.business_date, filter.businessDate));
+    if (filter?.status) conditions.push(eq(expenses.status, filter.status));
+    const rows = await this.db
+      .select()
+      .from(expenses)
+      .where(and(...conditions))
+      .orderBy(desc(expenses.business_date), desc(expenses.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<ExpensesTable>): Expense {
+  private toDomain(row: typeof expenses.$inferSelect): Expense {
     return Expense.reconstitute(row.id, {
       branchId: row.branch_id,
       businessDate: row.business_date,

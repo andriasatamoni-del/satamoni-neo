@@ -4,9 +4,17 @@ import type { AddressInfo } from "node:net";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { asc, eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderNotifications } from "../../../src/contexts/notifications/infrastructure/persistence/notifications.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 // CHAN-1: رسايل SMS للعميل (تأكيد + طلب تقييم) - بوابة SMS حقيقية بـHTTP (سيرفر محلي في الاختبار)
 describe("Notifications - رسايل العميل التلقائية (e2e)", () => {
@@ -32,8 +40,8 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
   }
 
   async function notificationsFor(orderId: string) {
-    const db = app.get(KYSELY);
-    return db.selectFrom("order_notifications").selectAll().where("order_id", "=", orderId).orderBy("created_at").execute();
+    const db = app.get(DATABASE);
+    return db.select().from(orderNotifications).where(eq(orderNotifications.order_id, orderId)).orderBy(asc(orderNotifications.created_at));
   }
 
   async function setSettings(body: Record<string, boolean>) {
@@ -95,18 +103,18 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
+    const db = app.get(DATABASE);
     await request(server()).patch("/pos-settings").set(auth()).send({ smsConfirmationsEnabled: false, smsRatingRequestsEnabled: false });
-    await sql`UPDATE pos_settings SET updated_by = NULL`.execute(db);
-    await sql`DELETE FROM order_notifications WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-رسايل-جست'`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-notify@jest.test'`.execute(db);
+    await db.update(posSettings).set({ updated_by: null });
+    await db.delete(orderNotifications).where(inArray(orderNotifications.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-رسايل-جست"));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-notify@jest.test"));
     await app.close();
     await new Promise((resolve) => gateway.close(resolve));
   });
@@ -167,8 +175,8 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     await request(server()).patch(`/orders/${delivery}/status`).set(auth()).send({ status: "completed" });
     const rows = await notificationsFor(delivery);
     expect(rows).toHaveLength(1);
-    const db = app.get(KYSELY);
-    const token = (await db.selectFrom("orders").select("rating_token").where("id", "=", delivery).executeTakeFirstOrThrow()).rating_token;
+    const db = app.get(DATABASE);
+    const [{ rating_token: token }] = await db.select({ rating_token: orders.rating_token }).from(orders).where(eq(orders.id, delivery));
     expect(rows[0].message).toContain(`https://app.satamoni.test/rate/${delivery}?token=${token}`);
     expect(rows[0].kind).toBe("rating_request");
 

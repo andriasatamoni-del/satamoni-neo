@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Complaint, type ComplaintStatus } from "../../domain/complaint.aggregate";
 import type { ComplaintRepositoryPort } from "../../domain/ports/complaint-repository.port";
-import type { ComplaintsTable } from "./complaint.schema";
+import { complaints } from "./crm.tables";
 
 @Injectable()
-export class KyselyComplaintRepository implements ComplaintRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class ComplaintRepository implements ComplaintRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(complaint: Complaint): Promise<void> {
     const row = this.toRow(complaint);
     await this.db
-      .insertInto("complaints")
+      .insert(complaints)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: complaints.id,
+        set: {
           legacy_order_id: row.legacy_order_id,
           branch_id: row.branch_id,
           followup_id: row.followup_id,
@@ -28,31 +28,31 @@ export class KyselyComplaintRepository implements ComplaintRepositoryPort {
           assigned_to: row.assigned_to,
           resolved_by: row.resolved_by,
           resolved_at: row.resolved_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Complaint | null> {
-    const row = await this.db.selectFrom("complaints").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(complaints).where(eq(complaints.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { status?: ComplaintStatus }): Promise<Complaint[]> {
-    let query = this.db.selectFrom("complaints").selectAll();
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(complaints)
+      .where(filter?.status ? eq(complaints.status, filter.status) : undefined)
+      .orderBy(desc(complaints.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
   async findLatestByPhone(phone: string): Promise<Complaint | null> {
-    const row = await this.db
-      .selectFrom("complaints")
-      .selectAll()
-      .where("customer_phone", "=", phone)
-      .orderBy("created_at", "desc")
-      .limit(1)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(complaints)
+      .where(eq(complaints.customer_phone, phone))
+      .orderBy(desc(complaints.created_at))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
@@ -60,16 +60,15 @@ export class KyselyComplaintRepository implements ComplaintRepositoryPort {
     legacySource: "customer_complaints" | "whatsapp_complaints",
     legacyComplaintId: number
   ): Promise<Complaint | null> {
-    const row = await this.db
-      .selectFrom("complaints")
-      .selectAll()
-      .where("legacy_source", "=", legacySource)
-      .where("legacy_complaint_id", "=", legacyComplaintId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(complaints)
+      .where(and(eq(complaints.legacy_source, legacySource), eq(complaints.legacy_complaint_id, legacyComplaintId)))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
-  private toRow(complaint: Complaint) {
+  private toRow(complaint: Complaint): typeof complaints.$inferInsert {
     return {
       id: complaint.id,
       channel: complaint.channel,
@@ -91,7 +90,7 @@ export class KyselyComplaintRepository implements ComplaintRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<ComplaintsTable>): Complaint {
+  private toDomain(row: typeof complaints.$inferSelect): Complaint {
     return Complaint.reconstitute(row.id, {
       channel: row.channel as Complaint["channel"],
       legacyOrderId: row.legacy_order_id,

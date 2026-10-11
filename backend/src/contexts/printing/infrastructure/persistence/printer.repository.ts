@@ -1,14 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Printer, type PrinterType, type ConnectionType } from "../../domain/printer.aggregate";
 import type { PrinterRepositoryPort } from "../../domain/ports/printer-repository.port";
-import type { PrintersTable } from "./printing.schema";
+import { printers } from "./printing.tables";
 
 @Injectable()
-export class KyselyPrinterRepository implements PrinterRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PrinterRepository implements PrinterRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(printer: Printer): Promise<void> {
     const row = {
@@ -27,10 +26,11 @@ export class KyselyPrinterRepository implements PrinterRepositoryPort {
       updated_at: printer.updatedAt,
     };
     await this.db
-      .insertInto("printers")
+      .insert(printers)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: printers.id,
+        set: {
           name: row.name,
           printer_type: row.printer_type,
           connection_type: row.connection_type,
@@ -41,46 +41,39 @@ export class KyselyPrinterRepository implements PrinterRepositoryPort {
           is_enabled: row.is_enabled,
           is_default_for_type: row.is_default_for_type,
           updated_at: row.updated_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Printer | null> {
-    const row = await this.db.selectFrom("printers").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(printers).where(eq(printers.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async listByBranch(branchId: string): Promise<Printer[]> {
     const rows = await this.db
-      .selectFrom("printers")
-      .selectAll()
-      .where("branch_id", "=", branchId)
-      .orderBy("printer_type")
-      .orderBy("name")
-      .execute();
+      .select()
+      .from(printers)
+      .where(eq(printers.branch_id, branchId))
+      .orderBy(asc(printers.printer_type), asc(printers.name));
     return rows.map((r) => this.toDomain(r));
   }
 
   async resolveForType(branchId: string, printerType: PrinterType): Promise<Printer | null> {
-    const row = await this.db
-      .selectFrom("printers")
-      .selectAll()
-      .where("branch_id", "=", branchId)
-      .where("printer_type", "=", printerType)
-      .where("is_enabled", "=", true)
-      .orderBy("is_default_for_type", "desc")
-      .orderBy("created_at", "asc")
-      .limit(1)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(printers)
+      .where(and(eq(printers.branch_id, branchId), eq(printers.printer_type, printerType), eq(printers.is_enabled, true)))
+      .orderBy(desc(printers.is_default_for_type), asc(printers.created_at))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async delete(id: string): Promise<void> {
-    await this.db.deleteFrom("printers").where("id", "=", id).execute();
+    await this.db.delete(printers).where(eq(printers.id, id));
   }
 
-  private toDomain(row: Selectable<PrintersTable>): Printer {
+  private toDomain(row: typeof printers.$inferSelect): Printer {
     return Printer.reconstitute(row.id, {
       branchId: row.branch_id,
       name: row.name,

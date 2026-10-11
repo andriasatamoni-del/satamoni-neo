@@ -4,8 +4,8 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { AccountingModule } from "../accounting/accounting.module";
 import { EXPENSE_CATEGORY_REPOSITORY } from "./domain/ports/expense-category-repository.port";
 import { EXPENSE_REPOSITORY } from "./domain/ports/expense-repository.port";
-import { KyselyExpenseCategoryRepository } from "./infrastructure/persistence/kysely-expense-category.repository";
-import { KyselyExpenseRepository } from "./infrastructure/persistence/kysely-expense.repository";
+import { ExpenseCategoryRepository } from "./infrastructure/persistence/expense-category.repository";
+import { ExpenseRepository } from "./infrastructure/persistence/expense.repository";
 import { RegisterExpenseCategoryHandler } from "./application/commands/register-expense-category.handler";
 import { UpdateExpenseCategoryHandler } from "./application/commands/update-expense-category.handler";
 import { RegisterExpenseHandler } from "./application/commands/register-expense.handler";
@@ -22,8 +22,8 @@ import { ExpensesController } from "./api/expenses.controller";
   imports: [IdentityAccessModule, AccountingModule],
   controllers: [ExpensesController],
   providers: [
-    { provide: EXPENSE_CATEGORY_REPOSITORY, useClass: KyselyExpenseCategoryRepository },
-    { provide: EXPENSE_REPOSITORY, useClass: KyselyExpenseRepository },
+    { provide: EXPENSE_CATEGORY_REPOSITORY, useClass: ExpenseCategoryRepository },
+    { provide: EXPENSE_REPOSITORY, useClass: ExpenseRepository },
     RegisterExpenseCategoryHandler,
     UpdateExpenseCategoryHandler,
     RegisterExpenseHandler,

@@ -3,8 +3,8 @@ import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importCrmFromLegacy } from "../../../scripts/import-crm-from-legacy";
 import { KyselyUserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
-import { KyselyComplaintRepository } from "../../../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
-import { KyselyCustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
+import { ComplaintRepository } from "../../../src/contexts/crm/infrastructure/persistence/complaint.repository";
+import { CustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
 import { User } from "../../../src/contexts/identity-access/domain/user.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
@@ -15,8 +15,8 @@ describe("importCrmFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
   let userRepo: KyselyUserRepository;
-  let followupRepo: KyselyCustomerFollowupRepository;
-  let complaintRepo: KyselyComplaintRepository;
+  let followupRepo: CustomerFollowupRepository;
+  let complaintRepo: ComplaintRepository;
   let calledById: string;
 
   beforeAll(async () => {
@@ -51,8 +51,8 @@ describe("importCrmFromLegacy", () => {
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
     userRepo = new KyselyUserRepository(kyselyOn(neoDb));
-    followupRepo = new KyselyCustomerFollowupRepository(kyselyOn(neoDb));
-    complaintRepo = new KyselyComplaintRepository(kyselyOn(neoDb));
+    followupRepo = new CustomerFollowupRepository(neoDb);
+    complaintRepo = new ComplaintRepository(neoDb);
 
     // بتصفير الجدولين هنا (مش بس afterEach) لأن ملفات اختبار تانية (زي crm.e2e.spec.ts) ممكن تكون
     // سابت صفوف ورا في نفس قاعدة الاختبار المشتركة - عايزين نبدأ من صفحة فاضية مضمونة

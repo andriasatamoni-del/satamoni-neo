@@ -1,10 +1,13 @@
 import "reflect-metadata";
+import { randomUUID } from "node:crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { customerAddresses, customers } from "../../../src/contexts/customers/infrastructure/persistence/customers.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // e2e لبوابة الدخول الذاتي للعملاء (customer-auth) - راجع تعليق customer.aggregate.ts للفلسفة (نفس
 // مفهوم المرحلة 8.38 بالريبو القديم بالحرف: رقم تليفون + كلمة سر، منفصل تمامًا عن دخول الموظفين)
@@ -25,9 +28,9 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM customer_addresses WHERE customer_id IN (SELECT id FROM customers WHERE phone IN (${phone}, ${guestPhone}))`.execute(db);
-    await sql`DELETE FROM customers WHERE phone IN (${phone}, ${guestPhone})`.execute(db);
+    const db = app.get(DATABASE);
+    await db.delete(customerAddresses).where(inArray(customerAddresses.customer_id, db.select({ id: customers.id }).from(customers).where(inArray(customers.phone, [phone, guestPhone]))));
+    await db.delete(customers).where(inArray(customers.phone, [phone, guestPhone]));
     await app.close();
   });
 
@@ -104,6 +107,7 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const db = app.get(KYSELY);
+    const database = app.get(DATABASE);
     const userRepo = new KyselyUserRepository(db);
     const hasher = new BcryptPasswordHasher();
     const staff = User.register({
@@ -117,16 +121,13 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
     const res = await request(app.getHttpServer()).get("/customer-auth/me").set("Authorization", `Bearer ${staffToken}`);
     expect(res.status).toBe(401);
 
-    await sql`DELETE FROM users WHERE email = 'staff-cross-token@jest.test'`.execute(db);
+    await database.delete(users).where(eq(users.email, "staff-cross-token@jest.test"));
   });
 
   test("عميل ضيف (سجّل قبل كده من غير حساب) - register بيتحول لحساب حقيقي وبيحافظ على نقاط الولاء", async () => {
-    const db = app.get(KYSELY);
+    const db = app.get(DATABASE);
     // عميل ضيف حقيقي بيتسجّل من غير باسورد خالص (password_hash=NULL) - نفس فلسفة الريبو القديم بالحرف
-    await sql`
-      INSERT INTO customers (id, phone, name, loyalty_points, password_hash)
-      VALUES (gen_random_uuid(), ${guestPhone}, 'ضيف-جست', 30, NULL)
-    `.execute(db);
+    await db.insert(customers).values({ id: randomUUID(), phone: guestPhone, name: "ضيف-جست", loyalty_points: 30, password_hash: null });
 
     const res = await request(app.getHttpServer())
       .post("/customer-auth/register")

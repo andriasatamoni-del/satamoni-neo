@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyCustomerRepository } from "../src/contexts/customers/infrastructure/persistence/kysely-customer.repository";
+import { CustomerRepository } from "../src/contexts/customers/infrastructure/persistence/customer.repository";
 import { Customer } from "../src/contexts/customers/domain/customer.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
 
@@ -24,7 +24,7 @@ export interface ImportCounts { created: number; updated: number; skipped: numbe
 export interface CustomersImportResult { customers: ImportCounts; }
 
 export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CustomersImportResult> {
-  const customerRepo = new KyselyCustomerRepository(kyselyOn(neoDb));
+  const customerRepo = new CustomerRepository(neoDb);
 
   const customers: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const { rows: customerRows } = await legacyPool.query<LegacyCustomerRow>(

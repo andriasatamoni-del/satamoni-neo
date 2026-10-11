@@ -3,7 +3,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { CUSTOMER_REPOSITORY } from "./domain/ports/customer-repository.port";
 import { CUSTOMER_PASSWORD_HASHER } from "./domain/ports/customer-password-hasher.port";
 import { CUSTOMER_TOKEN_SERVICE } from "./domain/ports/customer-token.service.port";
-import { KyselyCustomerRepository } from "./infrastructure/persistence/kysely-customer.repository";
+import { CustomerRepository } from "./infrastructure/persistence/customer.repository";
 import { BcryptCustomerPasswordHasher } from "./infrastructure/security/bcrypt-customer-password-hasher";
 import { JwtCustomerTokenService } from "./infrastructure/security/jwt-customer-token.service";
 import { RegisterCustomerHandler } from "./application/commands/register-customer.handler";
@@ -27,7 +27,7 @@ import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
   ],
   controllers: [CustomerAuthController],
   providers: [
-    { provide: CUSTOMER_REPOSITORY, useClass: KyselyCustomerRepository },
+    { provide: CUSTOMER_REPOSITORY, useClass: CustomerRepository },
     { provide: CUSTOMER_PASSWORD_HASHER, useClass: BcryptCustomerPasswordHasher },
     { provide: CUSTOMER_TOKEN_SERVICE, useClass: JwtCustomerTokenService },
     RegisterCustomerHandler,

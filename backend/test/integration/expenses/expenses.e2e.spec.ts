@@ -2,9 +2,14 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { expenseCategories, expenses } from "../../../src/contexts/expenses/infrastructure/persistence/expenses.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { truncate } from "../helpers/db";
 
 // e2e لتسجيل المصروفات (expenses/expense_categories) - راجع تعليق expense.aggregate.ts للفلسفة
 // (نسخة مبسّطة من دورة حياة الريبو القديم الرباعية). محاسب/مدير فرع بيقدروا يرحّلوا فورًا أو
@@ -88,13 +93,13 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM expenses WHERE branch_id = ${branchId}`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM expense_categories WHERE id IN (${categoryId}, ${categoryWithAccountId})`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${linkedAccountId}, ${cashAccountId}, ${defaultExpenseAccountId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-expenses@jest.test', 'cashier-expenses@jest.test')`.execute(db);
+    const database = app.get(DATABASE);
+    await database.delete(expenses).where(eq(expenses.branch_id, branchId));
+    await truncate(database, journalEntryLines, journalEntries);
+    await database.delete(expenseCategories).where(inArray(expenseCategories.id, [categoryId, categoryWithAccountId]));
+    await database.delete(accounts).where(inArray(accounts.id, [linkedAccountId, cashAccountId, defaultExpenseAccountId]));
+    await database.delete(branches).where(eq(branches.id, branchId));
+    await database.delete(users).where(inArray(users.email, ["admin-expenses@jest.test", "cashier-expenses@jest.test"]));
     await app.close();
   });
 
