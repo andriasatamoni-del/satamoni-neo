@@ -6,8 +6,8 @@ import { InventoryModule } from "../inventory/inventory.module";
 import { BranchesModule } from "../branches/branches.module";
 import { ORDER_REPOSITORY } from "./domain/ports/order-repository.port";
 import { ORDER_RATING_REPOSITORY } from "./domain/ports/order-rating-repository.port";
-import { KyselyOrderRepository } from "./infrastructure/persistence/kysely-order.repository";
-import { KyselyOrderRatingRepository } from "./infrastructure/persistence/kysely-order-rating.repository";
+import { OrderRepository } from "./infrastructure/persistence/order.repository";
+import { OrderRatingRepository } from "./infrastructure/persistence/order-rating.repository";
 import { RegisterOrderHandler } from "./application/commands/register-order.handler";
 import { CancelOrderHandler } from "./application/commands/cancel-order.handler";
 import { UpdateOrderStatusHandler } from "./application/commands/update-order-status.handler";
@@ -26,8 +26,8 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
   imports: [IdentityAccessModule, CatalogModule, InventoryModule, BranchesModule],
   controllers: [OrdersController, OrderRatingsController],
   providers: [
-    { provide: ORDER_REPOSITORY, useClass: KyselyOrderRepository },
-    { provide: ORDER_RATING_REPOSITORY, useClass: KyselyOrderRatingRepository },
+    { provide: ORDER_REPOSITORY, useClass: OrderRepository },
+    { provide: ORDER_RATING_REPOSITORY, useClass: OrderRatingRepository },
     RegisterOrderHandler,
     CancelOrderHandler,
     UpdateOrderStatusHandler,

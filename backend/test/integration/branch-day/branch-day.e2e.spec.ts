@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { eq, inArray } from "drizzle-orm";
 import { branchDays } from "../../../src/contexts/branch-day/infrastructure/persistence/branch-day.tables";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
@@ -80,12 +80,11 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
   });
 
   test("طلب مفتوح (preparing) -> أحمر ومينفعش يقفل", async () => {
-    const db = app.get(KYSELY);
-    const row = await db
-      .insertInto("orders")
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db
+      .insert(orders)
       .values({ branch_id: branchId, order_type: "takeaway", total: 150, status: "preparing" })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+      .returning({ id: orders.id });
     orderId = row.id;
 
     const statusRes = await request(app.getHttpServer())
@@ -113,8 +112,8 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
   });
 
   test("بعد ما الطلب يخلص -> أخضر، والقفل بينجح، وقفل تاني بيرجع 409", async () => {
-    const db = app.get(KYSELY);
-    await db.updateTable("orders").set({ status: "completed" }).where("id", "=", orderId).execute();
+    const db = app.get<Database>(DATABASE);
+    await db.update(orders).set({ status: "completed" }).where(eq(orders.id, orderId));
 
     const statusRes = await request(app.getHttpServer())
       .get(`/branch-days/${branchId}/status`)

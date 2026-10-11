@@ -4,7 +4,7 @@ import { ReconciliationRecordRepository } from "../../../src/contexts/payment-co
 import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
 import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
+import { OrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/order.repository";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { ReconciliationRecord } from "../../../src/contexts/payment-control/domain/reconciliation-record.aggregate";
 import { PaymentMethod } from "../../../src/contexts/payment-control/domain/payment-method.aggregate";
@@ -41,7 +41,7 @@ describe("ReconciliationRecordRepository", () => {
     const variant = item.addVariant({ label: "عادي", price: 50 });
     await menuItemRepo.save(item);
     const order = Order.register({ branchId, orderType: "delivery", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 50 }] });
-    await new KyselyOrderRepository(db).save(order);
+    await new OrderRepository(database).save(order);
     orderId = order.id;
 
     const instapayMethod = PaymentMethod.register({ name: "إنستاباي-مطابقة-جست", kind: "card_or_wallet", settlementChannel: "instapay" });

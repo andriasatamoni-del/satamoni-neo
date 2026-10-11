@@ -12,7 +12,7 @@ export interface SubmitOrderRatingCommand {
 }
 
 // POST /api/order-ratings/:orderId - إنشاء/تحديث التقييم عبر اللينك العام. الـupsert في
-// KyselyOrderRatingRepository هو اللي بيضمن "تقييم واحد بس لكل طلب" - إعادة الإرسال بنفس اللينك بتحدّث
+// OrderRatingRepository هو اللي بيضمن "تقييم واحد بس لكل طلب" - إعادة الإرسال بنفس اللينك بتحدّث
 // نفس الصف مش تنشئ واحد جديد
 @Injectable()
 export class SubmitOrderRatingHandler {

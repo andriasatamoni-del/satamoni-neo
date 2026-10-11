@@ -11,7 +11,7 @@ export interface OrderRatingProps {
 }
 
 // OrderRating - نفس مفهوم order_ratings في الريبو القديم: تقييم واحد بس لكل طلب (upsert في
-// الـrepository عند order_id مكرر، راجع kysely-order-rating.repository.ts) - إعادة الإرسال بنفس
+// الـrepository عند order_id مكرر، راجع order-rating.repository.ts) - إعادة الإرسال بنفس
 // اللينك بتحدّث نفس الصف مش تنشئ واحد جديد. مفيش أجريجيت مستقل ليه دورة حياة معقدة - مجرد سطر واحد
 // (stars 1-5 + تعليق اختياري) مرتبط بطلب واحد، فالقاعدة الوحيدة الحقيقية هنا هي نطاق النجوم.
 export class OrderRating {

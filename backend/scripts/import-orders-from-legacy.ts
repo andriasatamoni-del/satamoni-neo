@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
+import { OrderRepository } from "../src/contexts/orders/infrastructure/persistence/order.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
@@ -37,7 +37,7 @@ interface LegacyOrderItemRow {
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 
 export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
-  const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
+  const orderRepo = new OrderRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
   const menuItemRepo = new MenuItemRepository(neoDb);
   const userRepo = new UserRepository(neoDb);

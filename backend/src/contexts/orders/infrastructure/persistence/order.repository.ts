@@ -1,19 +1,20 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Order, type OrderStatus, type KitchenStatus, type OrderType, type OrderSource } from "../../domain/order.aggregate";
 import type { OrderRepositoryPort } from "../../domain/ports/order-repository.port";
-import type { OrdersTable, OrderItemsTable, OrderItemModifiersTable } from "./order.schema";
+import { orderItemModifiers, orderItems, orders } from "./orders.tables";
+
+type ItemWithModifiers = { item: typeof orderItems.$inferSelect; modifiers: (typeof orderItemModifiers.$inferSelect)[] };
 
 @Injectable()
-export class KyselyOrderRepository implements OrderRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class OrderRepository implements OrderRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(order: Order): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("orders")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(orders)
         .values({
           id: order.id,
           branch_id: order.branchId,
@@ -38,19 +39,19 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
           source: order.source,
           customer_notes: order.customerNotes,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: orders.id,
+          set: {
             status: order.status,
             kitchen_status: order.kitchenStatus,
             kitchen_accepted_at: order.kitchenAcceptedAt,
             kitchen_ready_at: order.kitchenReadyAt,
-          })
-        )
-        .execute();
+          },
+        });
 
       for (const item of order.items) {
-        await trx
-          .insertInto("order_items")
+        await tx
+          .insert(orderItems)
           .values({
             id: item.id,
             order_id: order.id,
@@ -61,76 +62,67 @@ export class KyselyOrderRepository implements OrderRepositoryPort {
             unit_price: item.unitPrice,
             line_total: item.lineTotal,
           })
-          .onConflict((oc) => oc.column("id").doNothing())
-          .execute();
+          .onConflictDoNothing({ target: orderItems.id });
 
         for (const modifier of item.modifiers) {
-          await trx
-            .insertInto("order_item_modifiers")
+          await tx
+            .insert(orderItemModifiers)
             .values({
               order_item_id: item.id,
               modifier_id: modifier.modifierId,
               name_at_sale: modifier.nameAtSale,
               price_at_sale: modifier.priceAtSale,
             })
-            .onConflict((oc) => oc.columns(["order_item_id", "modifier_id"]).doNothing())
-            .execute();
+            .onConflictDoNothing({ target: [orderItemModifiers.order_item_id, orderItemModifiers.modifier_id] });
         }
       }
     });
   }
 
   async updatePaymentMethod(orderId: string, paymentMethodId: string): Promise<void> {
-    await this.db.updateTable("orders").set({ payment_method_id: paymentMethodId }).where("id", "=", orderId).execute();
+    await this.db.update(orders).set({ payment_method_id: paymentMethodId }).where(eq(orders.id, orderId));
   }
 
   async findById(id: string): Promise<Order | null> {
-    const row = await this.db.selectFrom("orders").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(orders).where(eq(orders.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadItems(id));
   }
 
   async findByLegacyOrderId(legacyId: number): Promise<Order | null> {
-    const row = await this.db.selectFrom("orders").selectAll().where("legacy_order_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(orders).where(eq(orders.legacy_order_id, legacyId)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadItems(row.id));
   }
 
   async findByClientRequestId(clientRequestId: string): Promise<Order | null> {
-    const row = await this.db.selectFrom("orders").selectAll().where("client_request_id", "=", clientRequestId).executeTakeFirst();
+    const [row] = await this.db.select().from(orders).where(eq(orders.client_request_id, clientRequestId)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadItems(row.id));
   }
 
   async list(filter?: { branchId?: string }): Promise<Order[]> {
-    let query = this.db.selectFrom("orders").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    const rows = await query.orderBy("created_at", "desc").execute();
-    const orders: Order[] = [];
-    for (const row of rows) orders.push(this.toDomain(row, await this.loadItems(row.id)));
-    return orders;
+    const rows = await this.db
+      .select()
+      .from(orders)
+      .where(filter?.branchId ? eq(orders.branch_id, filter.branchId) : undefined)
+      .orderBy(desc(orders.created_at));
+    const result: Order[] = [];
+    for (const row of rows) result.push(this.toDomain(row, await this.loadItems(row.id)));
+    return result;
   }
 
-  private async loadItems(
-    orderId: string
-  ): Promise<{ item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[]> {
-    const itemRows = await this.db.selectFrom("order_items").selectAll().where("order_id", "=", orderId).execute();
-    const result: { item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[] = [];
+  private async loadItems(orderId: string): Promise<ItemWithModifiers[]> {
+    const itemRows = await this.db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
+    const result: ItemWithModifiers[] = [];
     for (const item of itemRows) {
-      const modifiers = await this.db
-        .selectFrom("order_item_modifiers")
-        .selectAll()
-        .where("order_item_id", "=", item.id)
-        .execute();
+      const modifiers = await this.db.select().from(orderItemModifiers).where(eq(orderItemModifiers.order_item_id, item.id));
       result.push({ item, modifiers });
     }
     return result;
   }
 
-  private toDomain(
-    row: Selectable<OrdersTable>,
-    itemRows: { item: Selectable<OrderItemsTable>; modifiers: Selectable<OrderItemModifiersTable>[] }[]
-  ): Order {
+  private toDomain(row: typeof orders.$inferSelect, itemRows: ItemWithModifiers[]): Order {
     return Order.reconstitute(row.id, {
       branchId: row.branch_id,
       orderType: row.order_type as OrderType,

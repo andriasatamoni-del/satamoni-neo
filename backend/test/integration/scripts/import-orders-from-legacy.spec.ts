@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importOrdersFromLegacy } from "../../../scripts/import-orders-from-legacy";
-import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
+import { OrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/order.repository";
 import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
@@ -16,7 +16,7 @@ const LEGACY_FIXTURE_URL =
 describe("importOrdersFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let orderRepo: KyselyOrderRepository;
+  let orderRepo: OrderRepository;
   let movementRepo: StockMovementRepository;
   let branchId: string;
   let menuItemId: string;
@@ -43,7 +43,7 @@ describe("importOrdersFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
+    orderRepo = new OrderRepository(neoDb);
     movementRepo = new StockMovementRepository(neoDb);
 
     const branchRepo = new BranchRepository(neoDb);

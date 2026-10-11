@@ -7,7 +7,7 @@ import { PaymentRepository } from "../../../src/contexts/payment-control/infrast
 import { PaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
 import { ReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
+import { OrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/order.repository";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
@@ -75,7 +75,7 @@ describe("importPaymentControlFromLegacy", () => {
     const order = Order.register({
       branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 80 }], legacyOrderId: 901,
     });
-    await new KyselyOrderRepository(kyselyOn(neoDb)).save(order);
+    await new OrderRepository(neoDb).save(order);
     orderId = order.id;
   });
 

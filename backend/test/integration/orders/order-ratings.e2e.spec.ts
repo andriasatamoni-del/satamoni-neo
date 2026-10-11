@@ -2,10 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orderRatings, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول (TIER3-3، راجع routes/order-ratings.js في الريبو القديم)", () => {
   let app: INestApplication;
@@ -23,8 +28,8 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
   }
 
   async function ratingTokenOf(orderId: string): Promise<string> {
-    const db = app.get(KYSELY);
-    const row = await db.selectFrom("orders").select("rating_token").where("id", "=", orderId).executeTakeFirstOrThrow();
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db.select({ rating_token: orders.rating_token }).from(orders).where(eq(orders.id, orderId));
     return row.rating_token;
   }
 
@@ -74,15 +79,15 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM order_ratings WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-تقييمات-جست'`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-ratings@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(orderRatings).where(eq(orderRatings.branch_id, branchId));
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-تقييمات-جست"));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-ratings@jest.test"));
     await app.close();
   });
 
@@ -140,8 +145,8 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
     const res = await request(app.getHttpServer()).post(`/order-ratings/${orderId}`).send({ token, stars: 5, comment: "غيرت رأيي" });
     expect(res.status).toBe(200);
 
-    const db = app.get(KYSELY);
-    const rows = await db.selectFrom("order_ratings").selectAll().where("order_id", "=", orderId).execute();
+    const db = app.get<Database>(DATABASE);
+    const rows = await db.select().from(orderRatings).where(eq(orderRatings.order_id, orderId));
     expect(rows).toHaveLength(1);
     expect(rows[0].stars).toBe(5);
     expect(rows[0].comment).toBe("غيرت رأيي");
@@ -164,8 +169,8 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
       .send({ token: "00000000-0000-0000-0000-000000000000", stars: 4 });
     expect(res.status).toBe(404);
 
-    const db = app.get(KYSELY);
-    const rows = await db.selectFrom("order_ratings").selectAll().where("order_id", "=", orderId).execute();
+    const db = app.get<Database>(DATABASE);
+    const rows = await db.select().from(orderRatings).where(eq(orderRatings.order_id, orderId));
     expect(rows).toHaveLength(0);
   });
 });

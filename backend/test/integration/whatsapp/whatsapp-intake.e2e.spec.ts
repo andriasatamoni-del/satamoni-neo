@@ -2,11 +2,10 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { signMeta, whatsappPayload } from "./meta-webhook.helpers";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
@@ -85,9 +84,12 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     expect(res.status).toBe(200);
     expect(res.body.received).toBe(1);
 
-    const db = app.get(KYSELY);
-    const row = await sql<{ id: string }>`SELECT id FROM whatsapp_conversations WHERE channel = 'whatsapp' AND phone = '+201000000001'`.execute(db);
-    conversationId = row.rows[0].id;
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db
+      .select({ id: whatsappConversations.id })
+      .from(whatsappConversations)
+      .where(and(eq(whatsappConversations.channel, "whatsapp"), eq(whatsappConversations.phone, "+201000000001")));
+    conversationId = row.id;
   });
 
   test("GET /whatsapp/conversations و /conversations/:id - بيرجّعوا المحادثة والرسالة", async () => {

@@ -16,7 +16,7 @@ import { PaymentRepository } from "../src/contexts/payment-control/infrastructur
 import { PaymentAdjustmentRequestRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
 import { ReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
+import { OrderRepository } from "../src/contexts/orders/infrastructure/persistence/order.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { PaymentMethod, type PaymentMethodKind, type SettlementChannel } from "../src/contexts/payment-control/domain/payment-method.aggregate";
 import { Payment } from "../src/contexts/payment-control/domain/payment.aggregate";
@@ -54,7 +54,7 @@ export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Da
   const adjustmentRepo = new PaymentAdjustmentRequestRepository(neoDb);
   const reconciliationRepo = new ReconciliationRecordRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
-  const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
+  const orderRepo = new OrderRepository(neoDb);
   const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
