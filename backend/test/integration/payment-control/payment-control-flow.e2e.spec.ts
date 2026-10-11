@@ -2,11 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
 // طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
@@ -88,18 +94,18 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM payment_adjustment_requests`.execute(db);
-    await sql`DELETE FROM payment_reconciliation_records`.execute(db);
-    await sql`DELETE FROM payments`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE id IN (${sql.join([cashMethodId, visaMethodId, talabatMethodId])})`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-payment-control-e2e@jest.test', 'bm-payment-control-e2e@jest.test', 'admin2-payment-control-e2e@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(paymentAdjustmentRequests);
+    await db.delete(paymentReconciliationRecords);
+    await db.delete(payments);
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(paymentMethods).where(inArray(paymentMethods.id, [cashMethodId, visaMethodId, talabatMethodId]));
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-payment-control-e2e@jest.test", "bm-payment-control-e2e@jest.test", "admin2-payment-control-e2e@jest.test"]));
     await app.close();
   });
 

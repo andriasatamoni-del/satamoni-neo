@@ -1,26 +1,24 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
 import { PaymentMethod } from "../../../src/contexts/payment-control/domain/payment-method.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { paymentMethods } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 
-describe("KyselyPaymentMethodRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyPaymentMethodRepository;
+describe("PaymentMethodRepository", () => {
+  let db: Database;
+  let repo: PaymentMethodRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyPaymentMethodRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new PaymentMethodRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM payment_methods`.execute(db);
+    await db.delete(paymentMethods);
   });
 
   test("save بيسجّل طريقة دفع، وfindById بيرجّعها بنفس البيانات", async () => {

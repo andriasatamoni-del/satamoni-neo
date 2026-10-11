@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PaymentAdjustmentRequest, type AdjustmentRequestStatus } from "../../domain/payment-adjustment-request.aggregate";
 import type { PaymentAdjustmentRequestRepositoryPort } from "../../domain/ports/payment-adjustment-request-repository.port";
-import type { PaymentAdjustmentRequestsTable } from "./payment-control.schema";
+import { paymentAdjustmentRequests } from "./payment-control.tables";
 
 @Injectable()
-export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustmentRequestRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PaymentAdjustmentRequestRepository implements PaymentAdjustmentRequestRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(request: PaymentAdjustmentRequest): Promise<void> {
     const row = this.toRow(request);
     await this.db
-      .insertInto("payment_adjustment_requests")
+      .insert(paymentAdjustmentRequests)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: paymentAdjustmentRequests.id,
+        set: {
           reason: row.reason,
           proposed_payment_method_id: row.proposed_payment_method_id,
           proposed_amount: row.proposed_amount,
@@ -26,30 +26,35 @@ export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustme
           decided_at: row.decided_at,
           previous_payment_method_id: row.previous_payment_method_id,
           previous_amount: row.previous_amount,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<PaymentAdjustmentRequest | null> {
-    const row = await this.db.selectFrom("payment_adjustment_requests").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyAdjustmentRequestId(legacyId: number): Promise<PaymentAdjustmentRequest | null> {
-    const row = await this.db
-      .selectFrom("payment_adjustment_requests")
-      .selectAll()
-      .where("legacy_adjustment_request_id", "=", legacyId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(paymentAdjustmentRequests)
+      .where(eq(paymentAdjustmentRequests.legacy_adjustment_request_id, legacyId))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { paymentId?: string; status?: string }): Promise<PaymentAdjustmentRequest[]> {
-    let query = this.db.selectFrom("payment_adjustment_requests").selectAll();
-    if (filter?.paymentId) query = query.where("payment_id", "=", filter.paymentId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("requested_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(paymentAdjustmentRequests)
+      .where(
+        and(
+          filter?.paymentId ? eq(paymentAdjustmentRequests.payment_id, filter.paymentId) : undefined,
+          filter?.status ? eq(paymentAdjustmentRequests.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(paymentAdjustmentRequests.requested_at));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -72,7 +77,7 @@ export class KyselyPaymentAdjustmentRequestRepository implements PaymentAdjustme
     };
   }
 
-  private toDomain(row: Selectable<PaymentAdjustmentRequestsTable>): PaymentAdjustmentRequest {
+  private toDomain(row: typeof paymentAdjustmentRequests.$inferSelect): PaymentAdjustmentRequest {
     return PaymentAdjustmentRequest.reconstitute(row.id, {
       paymentId: row.payment_id,
       requestedBy: row.requested_by,

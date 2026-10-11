@@ -1,27 +1,33 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
+import { menuItems } from "../../../catalog/infrastructure/persistence/catalog.tables";
+import { orderItems, orders } from "../../../orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
 import type { DashboardSummary, DashboardSummaryReaderPort } from "../../domain/ports/dashboard-summary-reader.port";
 import { businessDateString } from "../../../../shared/time/business-date";
 
 @Injectable()
-export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class DashboardSummaryReader implements DashboardSummaryReaderPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async getSummary(input: { branchId: string | null; fromTs: Date; toTs: Date }): Promise<DashboardSummary> {
-    let orderQuery = this.db
-      .selectFrom("orders")
-      .select(["id", "branch_id", "status", "total", "created_at"])
-      .where("created_at", ">=", input.fromTs)
-      .where("created_at", "<=", input.toTs);
-    if (input.branchId) orderQuery = orderQuery.where("branch_id", "=", input.branchId);
-    const orders = await orderQuery.execute();
+    const orderRows = await this.db
+      .select({ id: orders.id, branch_id: orders.branch_id, status: orders.status, total: orders.total, created_at: orders.created_at })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.created_at, input.fromTs),
+          lte(orders.created_at, input.toTs),
+          input.branchId ? eq(orders.branch_id, input.branchId) : undefined
+        )
+      );
 
-    const activeOrders = orders.filter((o) => o.status !== "cancelled");
+    const activeOrders = orderRows.filter((o) => o.status !== "cancelled");
     const revenue = activeOrders.reduce((sum, o) => sum + Number(o.total), 0);
     const orderCount = activeOrders.length;
-    const cancelledCount = orders.length - orderCount;
+    const cancelledCount = orderRows.length - orderCount;
     const avgOrderValue = orderCount > 0 ? revenue / orderCount : 0;
 
     const dailyMap = new Map<string, number>();
@@ -34,7 +40,7 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const statusMap = new Map<string, number>();
-    for (const o of orders) statusMap.set(o.status, (statusMap.get(o.status) ?? 0) + 1);
+    for (const o of orderRows) statusMap.set(o.status, (statusMap.get(o.status) ?? 0) + 1);
     const orderStatusBreakdown = [...statusMap.entries()].map(([status, count]) => ({ status, count }));
 
     const branchMap = new Map<string, { revenue: number; orderCount: number }>();
@@ -45,9 +51,8 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
       branchMap.set(o.branch_id, entry);
     }
     const branchIds = [...branchMap.keys()];
-    const branchRows = branchIds.length > 0
-      ? await this.db.selectFrom("branches").select(["id", "name"]).where("id", "in", branchIds).execute()
-      : [];
+    const branchRows =
+      branchIds.length > 0 ? await this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds)) : [];
     const branchNameById = new Map(branchRows.map((b) => [b.id, b.name]));
     const revenueByBranch = branchIds
       .map((branchId) => ({
@@ -62,11 +67,15 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
     const itemMap = new Map<string, { name: string; quantity: number; revenue: number }>();
     if (activeOrderIds.length > 0) {
       const itemRows = await this.db
-        .selectFrom("order_items")
-        .innerJoin("menu_items", "menu_items.id", "order_items.menu_item_id")
-        .select(["order_items.menu_item_id as menu_item_id", "menu_items.name as name", "order_items.quantity as quantity", "order_items.line_total as line_total"])
-        .where("order_items.order_id", "in", activeOrderIds)
-        .execute();
+        .select({
+          menu_item_id: orderItems.menu_item_id,
+          name: menuItems.name,
+          quantity: orderItems.quantity,
+          line_total: orderItems.line_total,
+        })
+        .from(orderItems)
+        .innerJoin(menuItems, eq(menuItems.id, orderItems.menu_item_id))
+        .where(inArray(orderItems.order_id, activeOrderIds));
       for (const row of itemRows) {
         // INNER JOIN على menu_items بيستبعد سطور العروض (menu_item_id فاضي) من الأساس - الـ! هنا أمان
         // نوعي بس، مش افتراض جديد
@@ -82,14 +91,17 @@ export class KyselyDashboardSummaryReader implements DashboardSummaryReaderPort 
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
-    let paymentQuery = this.db
-      .selectFrom("payments")
-      .innerJoin("payment_methods", "payment_methods.id", "payments.payment_method_id")
-      .select(["payments.payment_method_id as payment_method_id", "payment_methods.name as name", "payments.amount as amount"])
-      .where("payments.locked_at", ">=", input.fromTs)
-      .where("payments.locked_at", "<=", input.toTs);
-    if (input.branchId) paymentQuery = paymentQuery.where("payments.branch_id", "=", input.branchId);
-    const paymentRows = await paymentQuery.execute();
+    const paymentRows = await this.db
+      .select({ payment_method_id: payments.payment_method_id, name: paymentMethods.name, amount: payments.amount })
+      .from(payments)
+      .innerJoin(paymentMethods, eq(paymentMethods.id, payments.payment_method_id))
+      .where(
+        and(
+          gte(payments.locked_at, input.fromTs),
+          lte(payments.locked_at, input.toTs),
+          input.branchId ? eq(payments.branch_id, input.branchId) : undefined
+        )
+      );
     const paymentMap = new Map<string, { name: string; amount: number }>();
     for (const row of paymentRows) {
       const entry = paymentMap.get(row.payment_method_id) ?? { name: row.name, amount: 0 };

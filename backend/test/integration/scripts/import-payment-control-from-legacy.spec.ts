@@ -2,10 +2,10 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importPaymentControlFromLegacy } from "../../../scripts/import-payment-control-from-legacy";
-import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
-import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
+import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
+import { PaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
+import { ReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
@@ -20,10 +20,10 @@ const LEGACY_FIXTURE_URL =
 describe("importPaymentControlFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let methodRepo: KyselyPaymentMethodRepository;
-  let paymentRepo: KyselyPaymentRepository;
-  let adjustmentRepo: KyselyPaymentAdjustmentRequestRepository;
-  let reconciliationRepo: KyselyReconciliationRecordRepository;
+  let methodRepo: PaymentMethodRepository;
+  let paymentRepo: PaymentRepository;
+  let adjustmentRepo: PaymentAdjustmentRequestRepository;
+  let reconciliationRepo: ReconciliationRecordRepository;
   let branchId: string;
   let orderId: string;
 
@@ -59,10 +59,10 @@ describe("importPaymentControlFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    methodRepo = new KyselyPaymentMethodRepository(kyselyOn(neoDb));
-    paymentRepo = new KyselyPaymentRepository(kyselyOn(neoDb));
-    adjustmentRepo = new KyselyPaymentAdjustmentRequestRepository(kyselyOn(neoDb));
-    reconciliationRepo = new KyselyReconciliationRecordRepository(kyselyOn(neoDb));
+    methodRepo = new PaymentMethodRepository(neoDb);
+    paymentRepo = new PaymentRepository(neoDb);
+    adjustmentRepo = new PaymentAdjustmentRequestRepository(neoDb);
+    reconciliationRepo = new ReconciliationRecordRepository(neoDb);
 
     const branch = Branch.register({ name: "فرع استيراد-دفعات-جست", legacyBranchId: 501 });
     await new BranchRepository(neoDb).save(branch);

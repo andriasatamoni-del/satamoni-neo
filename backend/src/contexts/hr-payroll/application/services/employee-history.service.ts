@@ -1,7 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
+import { employeeHistory } from "../../infrastructure/persistence/hr-payroll.tables";
 
 // نفس TRACKED_FIELDS في الريبو القديم بالظبط (db/employee-history.js) - department/job_title هناك
 // بقوا department_id/position_id هنا (HRF-6: كيانات حقيقية بدل نص حر)
@@ -32,7 +33,7 @@ export interface EmployeeHistoryEntry {
 // القديمة، مفيش سطر يتسجّل خالص)
 @Injectable()
 export class EmployeeHistoryService {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async recordChanges(input: {
     employeeId: string;
@@ -49,41 +50,36 @@ export class EmployeeHistoryService {
       const newValue = newRaw === null ? null : String(newRaw);
       if (oldValue === newValue) continue;
 
-      await this.db
-        .insertInto("employee_history")
-        .values({
-          employee_id: input.employeeId,
-          field_name: field,
-          old_value: oldValue,
-          new_value: newValue,
-          effective_date: input.effectiveDate ?? new Date(),
-          changed_by: input.changedBy,
-          reason: input.reason ?? null,
-        })
-        .execute();
+      await this.db.insert(employeeHistory).values({
+        employee_id: input.employeeId,
+        field_name: field,
+        old_value: oldValue,
+        new_value: newValue,
+        effective_date: input.effectiveDate ?? new Date(),
+        changed_by: input.changedBy,
+        reason: input.reason ?? null,
+      });
     }
   }
 
   async listByEmployee(employeeId: string): Promise<EmployeeHistoryEntry[]> {
     const rows = await this.db
-      .selectFrom("employee_history")
-      .leftJoin("users", "users.id", "employee_history.changed_by")
-      .select([
-        "employee_history.id as id",
-        "employee_history.employee_id as employee_id",
-        "employee_history.field_name as field_name",
-        "employee_history.old_value as old_value",
-        "employee_history.new_value as new_value",
-        "employee_history.effective_date as effective_date",
-        "employee_history.changed_by as changed_by",
-        "users.name as changed_by_name",
-        "employee_history.reason as reason",
-        "employee_history.created_at as created_at",
-      ])
-      .where("employee_history.employee_id", "=", employeeId)
-      .orderBy("employee_history.effective_date", "desc")
-      .orderBy("employee_history.id", "desc")
-      .execute();
+      .select({
+        id: employeeHistory.id,
+        employee_id: employeeHistory.employee_id,
+        field_name: employeeHistory.field_name,
+        old_value: employeeHistory.old_value,
+        new_value: employeeHistory.new_value,
+        effective_date: employeeHistory.effective_date,
+        changed_by: employeeHistory.changed_by,
+        changed_by_name: users.name,
+        reason: employeeHistory.reason,
+        created_at: employeeHistory.created_at,
+      })
+      .from(employeeHistory)
+      .leftJoin(users, eq(users.id, employeeHistory.changed_by))
+      .where(eq(employeeHistory.employee_id, employeeId))
+      .orderBy(desc(employeeHistory.effective_date), desc(employeeHistory.id));
 
     return rows.map((r) => ({
       id: r.id,

@@ -2,10 +2,10 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importHrPayrollFromLegacy } from "../../../scripts/import-hr-payroll-from-legacy";
-import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
-import { KyselyDepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
-import { KyselyPositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
-import { KyselyPayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
+import { EmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
+import { DepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/department.repository";
+import { PositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/position.repository";
+import { PayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
 
 const LEGACY_FIXTURE_URL =
@@ -14,10 +14,10 @@ const LEGACY_FIXTURE_URL =
 describe("importHrPayrollFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let employeeRepo: KyselyEmployeeRepository;
-  let departmentRepo: KyselyDepartmentRepository;
-  let positionRepo: KyselyPositionRepository;
-  let payrollRunRepo: KyselyPayrollRunRepository;
+  let employeeRepo: EmployeeRepository;
+  let departmentRepo: DepartmentRepository;
+  let positionRepo: PositionRepository;
+  let payrollRunRepo: PayrollRunRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -58,10 +58,10 @@ describe("importHrPayrollFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    employeeRepo = new KyselyEmployeeRepository(kyselyOn(neoDb));
-    departmentRepo = new KyselyDepartmentRepository(kyselyOn(neoDb));
-    positionRepo = new KyselyPositionRepository(kyselyOn(neoDb));
-    payrollRunRepo = new KyselyPayrollRunRepository(kyselyOn(neoDb));
+    employeeRepo = new EmployeeRepository(neoDb);
+    departmentRepo = new DepartmentRepository(neoDb);
+    positionRepo = new PositionRepository(neoDb);
+    payrollRunRepo = new PayrollRunRepository(neoDb);
     await sql`DELETE FROM employees`.execute(kyselyOn(neoDb));
   });
 

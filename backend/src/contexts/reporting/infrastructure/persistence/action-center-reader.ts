@@ -1,7 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
+import { and, asc, count, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import type { Database as KyselyDatabase } from "../../../../shared/database/database.types";
 import { KYSELY } from "../../../../shared/database/database.module";
+import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
+import { recipeIngredients, recipeVersions } from "../../../catalog/infrastructure/persistence/catalog.tables";
+import { complaints } from "../../../crm/infrastructure/persistence/crm.tables";
+import { expenseCategories, expenses } from "../../../expenses/infrastructure/persistence/expenses.tables";
+import { branchStockBalances, inventoryItems } from "../../../inventory/infrastructure/persistence/inventory.tables";
+import { supplierInvoices, supplierPayments, suppliers } from "../../../procurement/infrastructure/persistence/procurement.tables";
+import { conversionOrders } from "../../../production/infrastructure/persistence/production.tables";
 import { assembleActionCenterAlerts } from "../../domain/action-center-assembler";
 import type { ActionCenterAlert, ActionCenterReaderPort, ActionCenterReport } from "../../domain/ports/action-center-reader.port";
 import { ListExceptionsHandler } from "../../../payment-control/application/queries/list-exceptions.handler";
@@ -16,9 +25,11 @@ const STALE_COMPLAINT_DAYS = 3;
 const OVERDUE_INVOICE_STATUSES = ["MATCHED", "VARIANCE_PENDING", "APPROVED", "PARTIALLY_PAID"];
 
 @Injectable()
-export class KyselyActionCenterReader implements ActionCenterReaderPort {
+export class ActionCenterReader implements ActionCenterReaderPort {
   constructor(
-    @Inject(KYSELY) private readonly db: Kysely<Database>,
+    @Inject(DATABASE) private readonly db: Database,
+    // Temporary: the accounting journal-coverage checks still take a Kysely handle until accounting is ported.
+    @Inject(KYSELY) private readonly kysely: Kysely<KyselyDatabase>,
     private readonly listExceptions: ListExceptionsHandler,
     private readonly getPosSettings: GetPosSettingsHandler,
     @Inject(FOOD_COST_READER) private readonly foodCostReader: FoodCostReaderPort
@@ -68,7 +79,7 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
   // Phase 3.1 (BL-08): required chart-of-accounts mappings missing -> automatic postings are blocked (strict) or deferred
   private async findAccountingNotConfiguredAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
     if (branchId) return []; // company-level configuration issue
-    const missing = (await checkChartOfAccounts(this.db)).filter((a) => !a.present);
+    const missing = (await checkChartOfAccounts(this.kysely)).filter((a) => !a.present);
     if (missing.length === 0) return [];
     return [
       {
@@ -84,12 +95,12 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
 
   // Phase 3.1 (BL-08): business transactions (sales, COGS, GRN payables, payroll, adjustments, unreversed cancellations) without their journal
   private async findMissingJournalAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
-    const gaps = await findJournalGaps(this.db, { branchId, limit: 5000 });
+    const gaps = await findJournalGaps(this.kysely, { branchId, limit: 5000 });
     if (gaps.length === 0) return [];
     const byBranch = new Map<string | null, typeof gaps>();
     for (const gap of gaps) byBranch.set(gap.branchId, [...(byBranch.get(gap.branchId) ?? []), gap]);
     const names = new Map<string, string>(
-      (await this.db.selectFrom("branches").select(["id", "name"]).execute()).map((b) => [b.id, b.name] as [string, string])
+      (await this.db.select({ id: branches.id, name: branches.name }).from(branches)).map((b) => [b.id, b.name] as [string, string])
     );
     return [...byBranch.entries()].map(([id, list]) => {
       const kinds = new Map<string, number>();
@@ -106,15 +117,16 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
   }
 
   private async findNegativeStockAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
-    let query = this.db
-      .selectFrom("branch_stock_balances")
-      .innerJoin("branches", "branches.id", "branch_stock_balances.branch_id")
-      .select(["branch_stock_balances.branch_id as branch_id", "branches.name as branch_name"])
-      .select((eb) => eb.fn.count("branch_stock_balances.inventory_item_id").as("item_count"))
-      .where("branch_stock_balances.quantity", "<", 0)
-      .groupBy(["branch_stock_balances.branch_id", "branches.name"]);
-    if (branchId) query = query.where("branch_stock_balances.branch_id", "=", branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        branch_id: branchStockBalances.branch_id,
+        branch_name: branches.name,
+        item_count: count(branchStockBalances.inventory_item_id),
+      })
+      .from(branchStockBalances)
+      .innerJoin(branches, eq(branches.id, branchStockBalances.branch_id))
+      .where(and(lt(branchStockBalances.quantity, 0), branchId ? eq(branchStockBalances.branch_id, branchId) : undefined))
+      .groupBy(branchStockBalances.branch_id, branches.name);
 
     return rows.map((r) => ({
       type: "NEGATIVE_STOCK",
@@ -140,22 +152,25 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
     const settings = await this.getPosSettings.execute();
     const threshold = settings.productionVarianceAlertPercent;
 
-    let query = this.db
-      .selectFrom("conversion_orders")
-      .innerJoin("branches", "branches.id", "conversion_orders.branch_id")
-      .select([
-        "conversion_orders.branch_id as branch_id",
-        "branches.name as branch_name",
-        "conversion_orders.variance_reason as variance_reason",
-        "conversion_orders.planned_output_quantity as planned_output_quantity",
-        "conversion_orders.actual_output_quantity as actual_output_quantity",
-      ])
-      .where("conversion_orders.status", "=", "COMPLETED")
-      .where("conversion_orders.completed_at", ">=", input.fromTs)
-      .where("conversion_orders.completed_at", "<=", input.toTs)
-      .where("conversion_orders.planned_output_quantity", ">", 0);
-    if (input.branchId) query = query.where("conversion_orders.branch_id", "=", input.branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        branch_id: conversionOrders.branch_id,
+        branch_name: branches.name,
+        variance_reason: conversionOrders.variance_reason,
+        planned_output_quantity: conversionOrders.planned_output_quantity,
+        actual_output_quantity: conversionOrders.actual_output_quantity,
+      })
+      .from(conversionOrders)
+      .innerJoin(branches, eq(branches.id, conversionOrders.branch_id))
+      .where(
+        and(
+          eq(conversionOrders.status, "COMPLETED"),
+          gte(conversionOrders.completed_at, input.fromTs),
+          lte(conversionOrders.completed_at, input.toTs),
+          gt(conversionOrders.planned_output_quantity, 0),
+          input.branchId ? eq(conversionOrders.branch_id, input.branchId) : undefined
+        )
+      );
 
     return rows
       .map((r) => {
@@ -176,23 +191,26 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
   }
 
   private async findExpenseAnomalyAlerts(input: { branchId: string | null; fromTs: Date; toTs: Date }): Promise<ActionCenterAlert[]> {
-    let query = this.db
-      .selectFrom("expenses")
-      .innerJoin("expense_categories", "expense_categories.id", "expenses.category_id")
-      .innerJoin("branches", "branches.id", "expenses.branch_id")
-      .select([
-        "expenses.branch_id as branch_id",
-        "branches.name as branch_name",
-        "expense_categories.name as category_name",
-        "expenses.amount as amount",
-        "expense_categories.alert_threshold as alert_threshold",
-      ])
-      .where("expenses.business_date", ">=", input.fromTs)
-      .where("expenses.business_date", "<=", input.toTs)
-      .where("expense_categories.alert_threshold", "is not", null)
-      .whereRef("expenses.amount", ">", "expense_categories.alert_threshold");
-    if (input.branchId) query = query.where("expenses.branch_id", "=", input.branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        branch_id: expenses.branch_id,
+        branch_name: branches.name,
+        category_name: expenseCategories.name,
+        amount: expenses.amount,
+        alert_threshold: expenseCategories.alert_threshold,
+      })
+      .from(expenses)
+      .innerJoin(expenseCategories, eq(expenseCategories.id, expenses.category_id))
+      .innerJoin(branches, eq(branches.id, expenses.branch_id))
+      .where(
+        and(
+          gte(expenses.business_date, input.fromTs),
+          lte(expenses.business_date, input.toTs),
+          isNotNull(expenseCategories.alert_threshold),
+          gt(expenses.amount, expenseCategories.alert_threshold),
+          input.branchId ? eq(expenses.branch_id, input.branchId) : undefined
+        )
+      );
 
     return rows.map((r) => ({
       type: "EXPENSE_OVER_THRESHOLD",
@@ -224,16 +242,12 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
   private async findItemsMissingCostAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
     if (branchId) return []; // بيانات الصنف الأساسية شركة-wide مش خاصة بفرع - نفس قرار الريبو القديم بالظبط
     const rows = await this.db
-      .selectFrom("inventory_items")
-      .innerJoin("recipe_ingredients", "recipe_ingredients.ingredient_item_id", "inventory_items.id")
-      .innerJoin("recipe_versions", (join) =>
-        join.onRef("recipe_versions.id", "=", "recipe_ingredients.recipe_version_id").on("recipe_versions.status", "=", "ACTIVE")
-      )
-      .select(["inventory_items.id as id", "inventory_items.name as name"])
-      .where("inventory_items.unit_cost", "is", null)
-      .distinct()
-      .orderBy("inventory_items.name")
-      .execute();
+      .selectDistinct({ id: inventoryItems.id, name: inventoryItems.name })
+      .from(inventoryItems)
+      .innerJoin(recipeIngredients, eq(recipeIngredients.ingredient_item_id, inventoryItems.id))
+      .innerJoin(recipeVersions, and(eq(recipeVersions.id, recipeIngredients.recipe_version_id), eq(recipeVersions.status, "ACTIVE")))
+      .where(isNull(inventoryItems.unit_cost))
+      .orderBy(asc(inventoryItems.name));
     if (rows.length === 0) return [];
     return [
       {
@@ -248,31 +262,28 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
   }
 
   private async findOverdueSupplierInvoiceAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
-    let query = this.db
-      .selectFrom("supplier_invoices")
-      .innerJoin("branches", "branches.id", "supplier_invoices.branch_id")
-      .innerJoin("suppliers", "suppliers.id", "supplier_invoices.supplier_id")
-      .leftJoin("supplier_payments", "supplier_payments.supplier_invoice_id", "supplier_invoices.id")
-      .select([
-        "supplier_invoices.branch_id as branch_id",
-        "branches.name as branch_name",
-        "supplier_invoices.id as invoice_id",
-        "suppliers.name as supplier_name",
-        "supplier_invoices.total as total",
-      ])
-      .select((eb) => eb.fn.coalesce(eb.fn.sum("supplier_payments.amount"), eb.lit(0)).as("paid"))
-      .where("supplier_invoices.status", "in", OVERDUE_INVOICE_STATUSES)
-      .where("supplier_invoices.due_date", "is not", null)
-      .where("supplier_invoices.due_date", "<", new Date())
-      .groupBy([
-        "supplier_invoices.id",
-        "supplier_invoices.branch_id",
-        "branches.name",
-        "suppliers.name",
-        "supplier_invoices.total",
-      ]);
-    if (branchId) query = query.where("supplier_invoices.branch_id", "=", branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        branch_id: supplierInvoices.branch_id,
+        branch_name: branches.name,
+        invoice_id: supplierInvoices.id,
+        supplier_name: suppliers.name,
+        total: supplierInvoices.total,
+        paid: sql<string>`COALESCE(SUM(${supplierPayments.amount}), 0)`,
+      })
+      .from(supplierInvoices)
+      .innerJoin(branches, eq(branches.id, supplierInvoices.branch_id))
+      .innerJoin(suppliers, eq(suppliers.id, supplierInvoices.supplier_id))
+      .leftJoin(supplierPayments, eq(supplierPayments.supplier_invoice_id, supplierInvoices.id))
+      .where(
+        and(
+          inArray(supplierInvoices.status, OVERDUE_INVOICE_STATUSES),
+          isNotNull(supplierInvoices.due_date),
+          lt(supplierInvoices.due_date, new Date()),
+          branchId ? eq(supplierInvoices.branch_id, branchId) : undefined
+        )
+      )
+      .groupBy(supplierInvoices.id, supplierInvoices.branch_id, branches.name, suppliers.name, supplierInvoices.total);
 
     const remaining = rows
       .map((r) => ({ ...r, remainingValue: Number(r.total) - Number(r.paid) }))
@@ -300,16 +311,18 @@ export class KyselyActionCenterReader implements ActionCenterReaderPort {
 
   private async findStaleComplaintAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
     const staleCutoff = new Date(Date.now() - STALE_COMPLAINT_DAYS * 24 * 60 * 60 * 1000);
-    let query = this.db
-      .selectFrom("complaints")
-      .innerJoin("branches", "branches.id", "complaints.branch_id")
-      .select(["complaints.branch_id as branch_id", "branches.name as branch_name"])
-      .select((eb) => eb.fn.count("complaints.id").as("stale_count"))
-      .where("complaints.status", "in", ["open", "in_progress"])
-      .where("complaints.created_at", "<", staleCutoff)
-      .groupBy(["complaints.branch_id", "branches.name"]);
-    if (branchId) query = query.where("complaints.branch_id", "=", branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({ branch_id: complaints.branch_id, branch_name: branches.name, stale_count: count(complaints.id) })
+      .from(complaints)
+      .innerJoin(branches, eq(branches.id, complaints.branch_id))
+      .where(
+        and(
+          inArray(complaints.status, ["open", "in_progress"]),
+          lt(complaints.created_at, staleCutoff),
+          branchId ? eq(complaints.branch_id, branchId) : undefined
+        )
+      )
+      .groupBy(complaints.branch_id, branches.name);
 
     return rows.map((r) => ({
       type: "STALE_COMPLAINTS",

@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Employee, type WageType, type EmployeeStatus } from "../../domain/employee.aggregate";
 import type { EmployeeRepositoryPort } from "../../domain/ports/employee-repository.port";
-import type { EmployeesTable } from "./hr-payroll.schema";
+import { employees } from "./hr-payroll.tables";
 
 @Injectable()
-export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class EmployeeRepository implements EmployeeRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(employee: Employee): Promise<void> {
     const row = this.toRow(employee);
     await this.db
-      .insertInto("employees")
+      .insert(employees)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: employees.id,
+        set: {
           name: row.name,
           department_id: row.department_id,
           position_id: row.position_id,
@@ -33,30 +33,31 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
           status: row.status,
           termination_date: row.termination_date,
           termination_reason: row.termination_reason,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Employee | null> {
-    const row = await this.db.selectFrom("employees").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(employees).where(eq(employees.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyEmployeeId(legacyId: number): Promise<Employee | null> {
-    const row = await this.db.selectFrom("employees").selectAll().where("legacy_employee_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(employees).where(eq(employees.legacy_employee_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByUserId(userId: string): Promise<Employee | null> {
-    const row = await this.db.selectFrom("employees").selectAll().where("user_id", "=", userId).executeTakeFirst();
+    const [row] = await this.db.select().from(employees).where(eq(employees.user_id, userId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { status?: string }): Promise<Employee[]> {
-    let query = this.db.selectFrom("employees").selectAll();
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("name").execute();
+    const rows = await this.db
+      .select()
+      .from(employees)
+      .where(filter?.status ? eq(employees.status, filter.status) : undefined)
+      .orderBy(asc(employees.name));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -85,7 +86,7 @@ export class KyselyEmployeeRepository implements EmployeeRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<EmployeesTable>): Employee {
+  private toDomain(row: typeof employees.$inferSelect): Employee {
     return Employee.reconstitute(row.id, {
       userId: row.user_id,
       name: row.name,

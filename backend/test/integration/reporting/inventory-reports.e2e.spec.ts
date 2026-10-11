@@ -2,10 +2,14 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements, transferRequestLines, transferRequests } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -144,15 +148,15 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM transfer_request_lines WHERE transfer_request_id = ${transferRequestId}`.execute(db);
-    await sql`DELETE FROM transfer_requests WHERE id = ${transferRequestId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${costedItemId}, ${uncostedItemId}, ${negItemId}, ${transferItemId})`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-invreports@jest.test', 'manager-invreports@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(transferRequestLines).where(eq(transferRequestLines.transfer_request_id, transferRequestId));
+    await db.delete(transferRequests).where(eq(transferRequests.id, transferRequestId));
+    await db.delete(stockMovements).where(inArray(stockMovements.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(branchStockBalances).where(inArray(branchStockBalances.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [costedItemId, uncostedItemId, negItemId, transferItemId]));
+    await db.delete(treasuries).where(inArray(treasuries.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(branches).where(inArray(branches.id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(users).where(inArray(users.email, ["admin-invreports@jest.test", "manager-invreports@jest.test"]));
     await app.close();
   });
 

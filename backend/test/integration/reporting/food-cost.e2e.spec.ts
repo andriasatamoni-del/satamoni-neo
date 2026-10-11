@@ -2,10 +2,16 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -106,20 +112,20 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-foodcost@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-foodcost@jest.test"));
     await app.close();
   });
 

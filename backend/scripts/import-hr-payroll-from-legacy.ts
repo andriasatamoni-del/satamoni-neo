@@ -10,10 +10,10 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyEmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
-import { KyselyDepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
-import { KyselyPositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
-import { KyselyPayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
+import { EmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
+import { DepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/department.repository";
+import { PositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/position.repository";
+import { PayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
@@ -54,10 +54,10 @@ export interface HrPayrollImportResult {
 }
 
 export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Database): Promise<HrPayrollImportResult> {
-  const employeeRepo = new KyselyEmployeeRepository(kyselyOn(neoDb));
-  const departmentRepo = new KyselyDepartmentRepository(kyselyOn(neoDb));
-  const positionRepo = new KyselyPositionRepository(kyselyOn(neoDb));
-  const payrollRunRepo = new KyselyPayrollRunRepository(kyselyOn(neoDb));
+  const employeeRepo = new EmployeeRepository(neoDb);
+  const departmentRepo = new DepartmentRepository(neoDb);
+  const positionRepo = new PositionRepository(neoDb);
+  const payrollRunRepo = new PayrollRunRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
   const userRepo = new UserRepository(neoDb);
 

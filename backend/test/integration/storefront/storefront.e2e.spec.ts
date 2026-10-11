@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { CUSTOMER_TOKEN_SERVICE } from "../../../src/contexts/customers/domain/ports/customer-token.service.port";
 import { eq, inArray } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
@@ -77,7 +77,6 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
-    const db = app.get(KYSELY);
 
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
@@ -90,7 +89,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { ComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/combo.repository");
     const { Combo } = await import("../../../src/contexts/catalog/domain/combo.aggregate");
-    const { KyselyPaymentMethodRepository } = await import("../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository");
+    const { PaymentMethodRepository } = await import("../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository");
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
     const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
@@ -152,7 +151,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     exclusiveComboId = exclusive.id;
 
     const cash = PaymentMethod.register({ name: "كاش-موقع-جست", kind: "cash", settlementChannel: null });
-    await new KyselyPaymentMethodRepository(db).save(cash);
+    await new PaymentMethodRepository(app.get<Database>(DATABASE)).save(cash);
     cashMethodId = cash.id;
 
     const reg = await request(server())

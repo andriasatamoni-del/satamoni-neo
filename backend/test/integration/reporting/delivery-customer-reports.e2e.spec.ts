@@ -2,10 +2,22 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { deliveryAssignments, drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
+import { expenseCategories, expenses } from "../../../src/contexts/expenses/infrastructure/persistence/expenses.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { purchases } from "../../../src/contexts/purchases/infrastructure/persistence/purchases.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { truncate } from "../helpers/db";
 
 describe("Reporting - تقارير التوصيل والعملاء والمصروفات والمشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -148,23 +160,23 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM purchases WHERE id = ${purchaseId}`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM expenses WHERE id = ${expenseId}`.execute(db);
-    await sql`DELETE FROM expense_categories WHERE id = ${categoryId}`.execute(db);
-    await sql`DELETE FROM accounts WHERE code IN ('1100', '6900')`.execute(db);
-    await sql`DELETE FROM delivery_assignments WHERE id IN (${assignmentAId}, ${assignmentBId})`.execute(db);
-    await sql`DELETE FROM drivers WHERE id = ${driverId}`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE order_id IN (${orderAId}, ${orderBId})`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (${orderAId}, ${orderBId})`.execute(db);
-    await sql`DELETE FROM payments WHERE order_id IN (${orderAId}, ${orderBId})`.execute(db);
-    await sql`DELETE FROM orders WHERE id IN (${orderAId}, ${orderBId})`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-تقارير-توصيل-جست'`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-delcustreports@jest.test', 'cashier-delcustreports@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(purchases).where(eq(purchases.id, purchaseId));
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(expenses).where(eq(expenses.id, expenseId));
+    await db.delete(expenseCategories).where(eq(expenseCategories.id, categoryId));
+    await db.delete(accounts).where(inArray(accounts.code, ["1100", "6900"]));
+    await db.delete(deliveryAssignments).where(inArray(deliveryAssignments.id, [assignmentAId, assignmentBId]));
+    await db.delete(drivers).where(eq(drivers.id, driverId));
+    await db.delete(printJobs).where(inArray(printJobs.order_id, [orderAId, orderBId]));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, [orderAId, orderBId]));
+    await db.delete(payments).where(inArray(payments.order_id, [orderAId, orderBId]));
+    await db.delete(orders).where(inArray(orders.id, [orderAId, orderBId]));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-تقارير-توصيل-جست"));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-delcustreports@jest.test", "cashier-delcustreports@jest.test"]));
     await app.close();
   });
 

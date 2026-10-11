@@ -1,26 +1,24 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { EmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
 import { Employee } from "../../../src/contexts/hr-payroll/domain/employee.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { employees } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 
-describe("KyselyEmployeeRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyEmployeeRepository;
+describe("EmployeeRepository", () => {
+  let db: Database;
+  let repo: EmployeeRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyEmployeeRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new EmployeeRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM employees`.execute(db);
+    await db.delete(employees);
   });
 
   test("save بيسجّل موظف، وfindById بيرجّعه بنفس البيانات", async () => {

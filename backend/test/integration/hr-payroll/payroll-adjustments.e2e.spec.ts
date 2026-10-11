@@ -2,10 +2,12 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq } from "drizzle-orm";
+import { employees, payrollAdjustments } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // e2e لسلف/جزاءات/مكافآت الموظفين (payroll_adjustments) - راجع تعليق payroll-adjustment.aggregate.ts
 // و migration 036: سجل تاريخي دائم، الإلغاء soft-cancel بس مع سبب إجباري (نفس فلسفة الريبو القديم
@@ -45,10 +47,10 @@ describe("HR & Payroll - سلف وجزاءات ومكافآت الموظفين (
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM payroll_adjustments WHERE employee_id = ${employeeId}`.execute(db);
-    await sql`DELETE FROM employees WHERE id = ${employeeId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-payroll-adjustments@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(payrollAdjustments).where(eq(payrollAdjustments.employee_id, employeeId));
+    await db.delete(employees).where(eq(employees.id, employeeId));
+    await db.delete(users).where(eq(users.email, "admin-payroll-adjustments@jest.test"));
     await app.close();
   });
 

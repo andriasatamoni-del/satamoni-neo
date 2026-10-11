@@ -1,47 +1,55 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, eq, ne } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Position } from "../../domain/position.aggregate";
 import type { PositionRepositoryPort } from "../../domain/ports/position-repository.port";
-import type { PositionsTable } from "./hr-payroll.schema";
+import { positions } from "./hr-payroll.tables";
 
 @Injectable()
-export class KyselyPositionRepository implements PositionRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PositionRepository implements PositionRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(position: Position): Promise<void> {
     const row = this.toRow(position);
     await this.db
-      .insertInto("positions")
+      .insert(positions)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({ name: row.name, department_id: row.department_id, description: row.description, status: row.status })
-      )
-      .execute();
+      .onConflictDoUpdate({
+        target: positions.id,
+        set: { name: row.name, department_id: row.department_id, description: row.description, status: row.status },
+      });
   }
 
   async findById(id: string): Promise<Position | null> {
-    const row = await this.db.selectFrom("positions").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(positions).where(eq(positions.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyPositionId(legacyId: number): Promise<Position | null> {
-    const row = await this.db.selectFrom("positions").selectAll().where("legacy_position_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(positions).where(eq(positions.legacy_position_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByCode(code: string, excludeId?: string): Promise<boolean> {
-    let query = this.db.selectFrom("positions").select("id").where("code", "=", code);
-    if (excludeId) query = query.where("id", "!=", excludeId);
-    return !!(await query.executeTakeFirst());
+    const [row] = await this.db
+      .select({ id: positions.id })
+      .from(positions)
+      .where(and(eq(positions.code, code), excludeId ? ne(positions.id, excludeId) : undefined))
+      .limit(1);
+    return !!row;
   }
 
   async list(filter?: { status?: string; departmentId?: string }): Promise<Position[]> {
-    let query = this.db.selectFrom("positions").selectAll();
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    if (filter?.departmentId) query = query.where("department_id", "=", filter.departmentId);
-    const rows = await query.orderBy("name").execute();
+    const rows = await this.db
+      .select()
+      .from(positions)
+      .where(
+        and(
+          filter?.status ? eq(positions.status, filter.status) : undefined,
+          filter?.departmentId ? eq(positions.department_id, filter.departmentId) : undefined
+        )
+      )
+      .orderBy(asc(positions.name));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -58,7 +66,7 @@ export class KyselyPositionRepository implements PositionRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<PositionsTable>): Position {
+  private toDomain(row: typeof positions.$inferSelect): Position {
     return Position.reconstitute(row.id, {
       code: row.code,
       name: row.name,

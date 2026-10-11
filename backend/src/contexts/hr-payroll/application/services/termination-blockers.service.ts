@@ -1,8 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, eq, gt, inArray } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { cashierShifts } from "../../../shifts/infrastructure/persistence/shifts.tables";
 import type { TerminationBlocker } from "../../domain/termination-blocker";
+import { payrollRunEmployees, payrollRuns } from "../../infrastructure/persistence/hr-payroll.tables";
 
 // بيرجّع كل حاجة معلّقة صراحة (مش بيخفيها) قبل إنهاء خدمة موظف - نفس فلسفة checkTerminationBlockers
 // بالريبو القديم بالظبط (db/employee-termination.js). قرار نطاق موثّق: بندي "الموظف مديون للشركة"
@@ -11,18 +12,16 @@ import type { TerminationBlocker } from "../../domain/termination-blocker";
 // أصلًا (Driver وEmployee كيانين منفصلين تمامًا هنا لسه)
 @Injectable()
 export class TerminationBlockersService {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async check(input: { employeeId: string; userId: string | null }): Promise<TerminationBlocker[]> {
     const blockers: TerminationBlocker[] = [];
 
     if (input.userId) {
       const openShifts = await this.db
-        .selectFrom("cashier_shifts")
-        .select(["id", "status", "opened_at"])
-        .where("user_id", "=", input.userId)
-        .where("status", "in", ["ACTIVE", "PENDING_REVIEW"])
-        .execute();
+        .select({ id: cashierShifts.id, status: cashierShifts.status, opened_at: cashierShifts.opened_at })
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.user_id, input.userId), inArray(cashierShifts.status, ["ACTIVE", "PENDING_REVIEW"])));
       if (openShifts.length > 0) {
         blockers.push({
           code: "OPEN_SHIFT",
@@ -33,13 +32,16 @@ export class TerminationBlockersService {
     }
 
     const unpaidRuns = await this.db
-      .selectFrom("payroll_run_employees")
-      .innerJoin("payroll_runs", "payroll_runs.id", "payroll_run_employees.payroll_run_id")
-      .select(["payroll_runs.year as year", "payroll_runs.month as month", "payroll_run_employees.net_pay as net_pay"])
-      .where("payroll_run_employees.employee_id", "=", input.employeeId)
-      .where("payroll_runs.status", "=", "APPROVED")
-      .where("payroll_run_employees.net_pay", ">", 0)
-      .execute();
+      .select({ year: payrollRuns.year, month: payrollRuns.month, net_pay: payrollRunEmployees.net_pay })
+      .from(payrollRunEmployees)
+      .innerJoin(payrollRuns, eq(payrollRuns.id, payrollRunEmployees.payroll_run_id))
+      .where(
+        and(
+          eq(payrollRunEmployees.employee_id, input.employeeId),
+          eq(payrollRuns.status, "APPROVED"),
+          gt(payrollRunEmployees.net_pay, 0)
+        )
+      );
     if (unpaidRuns.length > 0) {
       const total = unpaidRuns.reduce((s, r) => s + Number(r.net_pay), 0);
       blockers.push({

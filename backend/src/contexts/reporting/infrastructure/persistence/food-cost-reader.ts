@@ -1,7 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
+import { inventoryItems, stockMovements } from "../../../inventory/infrastructure/persistence/inventory.tables";
 import { computeFoodCostBucket, type MovementCostRow } from "../../domain/food-cost-calculator";
 import type {
   FoodCostReaderPort,
@@ -13,18 +14,26 @@ import { businessDateString } from "../../../../shared/time/business-date";
 const RELEVANT_TYPES = ["CONSUMPTION", "PRODUCTION_OUT", "ADJUSTMENT", "STOCK_COUNT", "PRODUCTION_REVERSAL"];
 
 @Injectable()
-export class KyselyFoodCostReader implements FoodCostReaderPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class FoodCostReader implements FoodCostReaderPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async getVariance(input: { branchId: string | null; fromTs: Date; toTs: Date }): Promise<FoodCostReport> {
-    let query = this.db
-      .selectFrom("stock_movements")
-      .select(["inventory_item_id", "movement_type", "quantity_delta", "total_cost"])
-      .where("occurred_at", ">=", input.fromTs)
-      .where("occurred_at", "<=", input.toTs)
-      .where("movement_type", "in", RELEVANT_TYPES);
-    if (input.branchId) query = query.where("branch_id", "=", input.branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        inventory_item_id: stockMovements.inventory_item_id,
+        movement_type: stockMovements.movement_type,
+        quantity_delta: stockMovements.quantity_delta,
+        total_cost: stockMovements.total_cost,
+      })
+      .from(stockMovements)
+      .where(
+        and(
+          gte(stockMovements.occurred_at, input.fromTs),
+          lte(stockMovements.occurred_at, input.toTs),
+          inArray(stockMovements.movement_type, RELEVANT_TYPES),
+          input.branchId ? eq(stockMovements.branch_id, input.branchId) : undefined
+        )
+      );
 
     const byItem = new Map<string, MovementCostRow[]>();
     for (const row of rows) {
@@ -38,9 +47,10 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
     }
 
     const itemIds = [...byItem.keys()];
-    const itemRows = itemIds.length > 0
-      ? await this.db.selectFrom("inventory_items").select(["id", "name"]).where("id", "in", itemIds).execute()
-      : [];
+    const itemRows =
+      itemIds.length > 0
+        ? await this.db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, itemIds))
+        : [];
     const nameById = new Map(itemRows.map((r) => [r.id, r.name]));
 
     const byItemResult = itemIds
@@ -67,12 +77,20 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
 
   async getByBranch(input: { fromTs: Date; toTs: Date }): Promise<FoodCostByBranchReport> {
     const rows = await this.db
-      .selectFrom("stock_movements")
-      .select(["branch_id", "movement_type", "quantity_delta", "total_cost"])
-      .where("occurred_at", ">=", input.fromTs)
-      .where("occurred_at", "<=", input.toTs)
-      .where("movement_type", "in", RELEVANT_TYPES)
-      .execute();
+      .select({
+        branch_id: stockMovements.branch_id,
+        movement_type: stockMovements.movement_type,
+        quantity_delta: stockMovements.quantity_delta,
+        total_cost: stockMovements.total_cost,
+      })
+      .from(stockMovements)
+      .where(
+        and(
+          gte(stockMovements.occurred_at, input.fromTs),
+          lte(stockMovements.occurred_at, input.toTs),
+          inArray(stockMovements.movement_type, RELEVANT_TYPES)
+        )
+      );
 
     const byBranch = new Map<string, MovementCostRow[]>();
     for (const row of rows) {
@@ -86,12 +104,11 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
     }
 
     const branchIds = [...byBranch.keys()];
-    const branchRows = branchIds.length > 0
-      ? await this.db.selectFrom("branches").select(["id", "name"]).where("id", "in", branchIds).execute()
-      : [];
+    const branchRows =
+      branchIds.length > 0 ? await this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds)) : [];
     const nameById = new Map(branchRows.map((r) => [r.id, r.name]));
 
-    const branches = branchIds
+    const branchReports = branchIds
       .map((branchId) => ({
         branchId,
         branchName: nameById.get(branchId) ?? branchId,
@@ -102,7 +119,7 @@ export class KyselyFoodCostReader implements FoodCostReaderPort {
     return {
       from: businessDateString(input.fromTs),
       to: businessDateString(input.toTs),
-      branches,
+      branches: branchReports,
     };
   }
 }

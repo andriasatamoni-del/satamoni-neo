@@ -11,10 +11,10 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyPaymentMethodRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
-import { KyselyPaymentAdjustmentRequestRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
+import { PaymentMethodRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment.repository";
+import { PaymentAdjustmentRequestRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
+import { ReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
@@ -49,10 +49,10 @@ export interface PaymentControlImportResult {
 }
 
 export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Database): Promise<PaymentControlImportResult> {
-  const methodRepo = new KyselyPaymentMethodRepository(kyselyOn(neoDb));
-  const paymentRepo = new KyselyPaymentRepository(kyselyOn(neoDb));
-  const adjustmentRepo = new KyselyPaymentAdjustmentRequestRepository(kyselyOn(neoDb));
-  const reconciliationRepo = new KyselyReconciliationRecordRepository(kyselyOn(neoDb));
+  const methodRepo = new PaymentMethodRepository(neoDb);
+  const paymentRepo = new PaymentRepository(neoDb);
+  const adjustmentRepo = new PaymentAdjustmentRequestRepository(neoDb);
+  const reconciliationRepo = new ReconciliationRecordRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
   const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
   const userRepo = new UserRepository(neoDb);

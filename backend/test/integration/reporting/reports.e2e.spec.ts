@@ -2,10 +2,16 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -93,16 +99,16 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM payments WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE id = ${paymentMethodId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = ${"صنف-تقارير-جست"}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-reports@jest.test', 'manager-reports@jest.test')`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(payments).where(eq(payments.branch_id, branchId));
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(paymentMethods).where(eq(paymentMethods.id, paymentMethodId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-تقارير-جست"));
+    await db.delete(users).where(inArray(users.email, ["admin-reports@jest.test", "manager-reports@jest.test"]));
+    await db.delete(branches).where(eq(branches.id, branchId));
     await app.close();
   });
 
@@ -154,7 +160,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
+    const db = app.get<Database>(DATABASE);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
@@ -170,6 +176,6 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .set("Authorization", `Bearer ${loginRes.body.token}`);
     expect(res.status).toBe(403);
 
-    await sql`DELETE FROM users WHERE email = 'cashier-reports@jest.test'`.execute(db);
+    await db.delete(users).where(eq(users.email, "cashier-reports@jest.test"));
   });
 });

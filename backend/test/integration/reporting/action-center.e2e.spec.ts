@@ -2,10 +2,18 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { complaints } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
+import { expenseCategories, expenses } from "../../../src/contexts/expenses/infrastructure/persistence/expenses.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { supplierInvoiceLines, supplierInvoices, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -47,7 +55,6 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     );
     const { Complaint } = await import("../../../src/contexts/crm/domain/complaint.aggregate");
 
-    const db = app.get(KYSELY);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
@@ -111,7 +118,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     });
     await complaintRepo.save(complaint);
     complaintId = complaint.id;
-    await sql`UPDATE complaints SET created_at = now() - interval '5 days' WHERE id = ${complaintId}`.execute(db);
+    await app.get<Database>(DATABASE).update(complaints).set({ created_at: sql`now() - interval '5 days'` }).where(eq(complaints.id, complaintId));
 
     // 5) فاتورة مورد فات معاد استحقاقها ولسه من غير سداد
     const supplierRes = await request(app.getHttpServer())
@@ -130,24 +137,24 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM supplier_invoice_lines WHERE supplier_invoice_id = ${supplierInvoiceId}`.execute(db);
-    await sql`DELETE FROM supplier_invoices WHERE id = ${supplierInvoiceId}`.execute(db);
-    await sql`DELETE FROM suppliers WHERE name = 'مورد-مركز-تنبيهات-جست'`.execute(db);
-    await sql`DELETE FROM complaints WHERE id = ${complaintId}`.execute(db);
-    await sql`DELETE FROM expenses WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM expense_categories WHERE name = 'صيانة-مركز-تنبيهات-جست'`.execute(db);
-    await sql`DELETE FROM recipe_ingredients WHERE ingredient_item_id = ${missingCostItemId}`.execute(db);
-    await sql`DELETE FROM recipe_versions WHERE id IN (SELECT rv.id FROM recipe_versions rv JOIN recipes r ON r.id = rv.recipe_id)`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE label = 'عادي' AND item_id IN (SELECT id FROM menu_items WHERE name = 'صنف-مركز-تنبيهات-جست')`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-مركز-تنبيهات-جست'`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${negativeStockItemId}, ${missingCostItemId})`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-actioncenter@jest.test'`.execute(db);
+    const database = app.get<Database>(DATABASE);
+    await database.delete(supplierInvoiceLines).where(eq(supplierInvoiceLines.supplier_invoice_id, supplierInvoiceId));
+    await database.delete(supplierInvoices).where(eq(supplierInvoices.id, supplierInvoiceId));
+    await database.delete(suppliers).where(eq(suppliers.name, "مورد-مركز-تنبيهات-جست"));
+    await database.delete(complaints).where(eq(complaints.id, complaintId));
+    await database.delete(expenses).where(eq(expenses.branch_id, branchId));
+    await database.delete(expenseCategories).where(eq(expenseCategories.name, "صيانة-مركز-تنبيهات-جست"));
+    await database.delete(recipeIngredients).where(eq(recipeIngredients.ingredient_item_id, missingCostItemId));
+    await database.delete(recipeVersions).where(inArray(recipeVersions.id, database.select({ id: recipeVersions.id }).from(recipeVersions).innerJoin(recipes, eq(recipes.id, recipeVersions.recipe_id))));
+    await database.delete(recipes);
+    await database.delete(menuItemVariants).where(and(eq(menuItemVariants.label, "عادي"), inArray(menuItemVariants.item_id, database.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.name, "صنف-مركز-تنبيهات-جست")))));
+    await database.delete(menuItems).where(eq(menuItems.name, "صنف-مركز-تنبيهات-جست"));
+    await database.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await database.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await database.delete(inventoryItems).where(inArray(inventoryItems.id, [negativeStockItemId, missingCostItemId]));
+    await database.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await database.delete(branches).where(eq(branches.id, branchId));
+    await database.delete(users).where(eq(users.email, "admin-actioncenter@jest.test"));
     await app.close();
   });
 

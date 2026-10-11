@@ -1,23 +1,23 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
-import { KyselyPayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { EmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
+import { PayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
 import { Employee } from "../../../src/contexts/hr-payroll/domain/employee.aggregate";
 import { PayrollRun } from "../../../src/contexts/hr-payroll/domain/payroll-run.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { employees, payrollRunEmployees, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { dbCause, truncate } from "../helpers/db";
 
-describe("KyselyPayrollRunRepository + DB-level invariants (trigger + partial unique index حقيقيين)", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let employeeRepo: KyselyEmployeeRepository;
-  let runRepo: KyselyPayrollRunRepository;
+describe("PayrollRunRepository + DB-level invariants (trigger + partial unique index حقيقيين)", () => {
+  let db: Database;
+  let employeeRepo: EmployeeRepository;
+  let runRepo: PayrollRunRepository;
   let employeeId: string;
 
   beforeAll(async () => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    employeeRepo = new KyselyEmployeeRepository(db);
-    runRepo = new KyselyPayrollRunRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    employeeRepo = new EmployeeRepository(db);
+    runRepo = new PayrollRunRepository(db);
 
     const employee = Employee.register({ name: "موظف رواتب-جست", baseSalary: 4000 });
     await employeeRepo.save(employee);
@@ -25,16 +25,16 @@ describe("KyselyPayrollRunRepository + DB-level invariants (trigger + partial un
   });
 
   afterAll(async () => {
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
-    await sql`DELETE FROM employees WHERE id = ${employeeId}`.execute(db);
-    await closeScriptDb(database);
+    await truncate(db, payrollRunEmployees, payrollRuns);
+    await db.delete(employees).where(eq(employees.id, employeeId));
+    await closeScriptDb(db);
   });
 
   // TRUNCATE عمدًا (مش DELETE) - قوائم اتعتمدت بتبقى APPROVED فعليًا خلال التستات، والـtrigger اللي
   // بيمنع التعديل على سطور قائمة مش DRAFT (block_non_draft_payroll_run_employees_changes) بيرفض أي
   // DELETE عليها كمان - نفس فلسفة تنظيف تستات journal_entry_lines بالظبط
   afterEach(async () => {
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
+    await truncate(db, payrollRunEmployees, payrollRuns);
   });
 
   test("save بيسجّل قائمة DRAFT بسطورها", async () => {
@@ -91,10 +91,10 @@ describe("KyselyPayrollRunRepository + DB-level invariants (trigger + partial un
     await runRepo.save(run);
 
     await expect(
-      sql`UPDATE payroll_run_employees SET gross_pay = 9999 WHERE payroll_run_id = ${run.id}`.execute(db)
+      dbCause(db.update(payrollRunEmployees).set({ gross_pay: 9999 }).where(eq(payrollRunEmployees.payroll_run_id, run.id)))
     ).rejects.toThrow(/مش DRAFT/);
     await expect(
-      sql`DELETE FROM payroll_run_employees WHERE payroll_run_id = ${run.id}`.execute(db)
+      dbCause(db.delete(payrollRunEmployees).where(eq(payrollRunEmployees.payroll_run_id, run.id)))
     ).rejects.toThrow(/مش DRAFT/);
   });
 

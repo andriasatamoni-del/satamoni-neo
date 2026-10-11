@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { sql, type Kysely, type Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PayrollAdjustment, type AdjustmentStatus, type AdjustmentType } from "../../domain/payroll-adjustment.aggregate";
 import type { PayrollAdjustmentRepositoryPort } from "../../domain/ports/payroll-adjustment-repository.port";
-import type { PayrollAdjustmentsTable } from "./hr-payroll.schema";
+import { payrollAdjustments } from "./hr-payroll.tables";
 
 @Injectable()
-export class KyselyPayrollAdjustmentRepository implements PayrollAdjustmentRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PayrollAdjustmentRepository implements PayrollAdjustmentRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(adjustment: PayrollAdjustment): Promise<void> {
     await this.db
-      .insertInto("payroll_adjustments")
+      .insert(payrollAdjustments)
       .values({
         id: adjustment.id,
         employee_id: adjustment.employeeId,
@@ -28,58 +27,69 @@ export class KyselyPayrollAdjustmentRepository implements PayrollAdjustmentRepos
         cancellation_reason: adjustment.cancellationReason,
         payroll_run_id: adjustment.payrollRunId,
       })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: payrollAdjustments.id,
+        set: {
           status: adjustment.status,
           cancelled_by: adjustment.cancelledBy,
           cancelled_at: adjustment.cancelledAt,
           cancellation_reason: adjustment.cancellationReason,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<PayrollAdjustment | null> {
-    const row = await this.db.selectFrom("payroll_adjustments").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(payrollAdjustments).where(eq(payrollAdjustments.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { employeeId?: string; fromDate?: Date; toDate?: Date; status?: string }): Promise<PayrollAdjustment[]> {
-    let query = this.db.selectFrom("payroll_adjustments").selectAll();
-    if (filter?.employeeId) query = query.where("employee_id", "=", filter.employeeId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    if (filter?.fromDate) query = query.where("entry_date", ">=", filter.fromDate);
-    if (filter?.toDate) query = query.where("entry_date", "<=", filter.toDate);
-    const rows = await query.orderBy("entry_date", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(payrollAdjustments)
+      .where(
+        and(
+          filter?.employeeId ? eq(payrollAdjustments.employee_id, filter.employeeId) : undefined,
+          filter?.status ? eq(payrollAdjustments.status, filter.status) : undefined,
+          filter?.fromDate ? gte(payrollAdjustments.entry_date, filter.fromDate) : undefined,
+          filter?.toDate ? lte(payrollAdjustments.entry_date, filter.toDate) : undefined
+        )
+      )
+      .orderBy(desc(payrollAdjustments.entry_date));
     return rows.map((r) => this.toDomain(r));
   }
 
   async listUnlinkedActiveForMonth(year: number, month: number, employeeIds?: string[]): Promise<PayrollAdjustment[]> {
+    if (employeeIds && employeeIds.length === 0) return [];
     const first = `${year}-${String(month).padStart(2, "0")}-01`;
     const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-    let query = this.db
-      .selectFrom("payroll_adjustments")
-      .selectAll()
-      .where("status", "=", "ACTIVE")
-      .where("payroll_run_id", "is", null)
-      .where(sql<boolean>`entry_date >= ${first}::date AND entry_date < ${next}::date`);
-    if (employeeIds) {
-      if (employeeIds.length === 0) return [];
-      query = query.where("employee_id", "in", employeeIds);
-    }
-    return (await query.orderBy("entry_date").forUpdate().execute()).map((r) => this.toDomain(r));
+    const rows = await this.db
+      .select()
+      .from(payrollAdjustments)
+      .where(
+        and(
+          eq(payrollAdjustments.status, "ACTIVE"),
+          isNull(payrollAdjustments.payroll_run_id),
+          gte(payrollAdjustments.entry_date, sql`${first}::date`),
+          lt(payrollAdjustments.entry_date, sql`${next}::date`),
+          employeeIds ? inArray(payrollAdjustments.employee_id, employeeIds) : undefined
+        )
+      )
+      .orderBy(asc(payrollAdjustments.entry_date))
+      .for("update");
+    return rows.map((r) => this.toDomain(r));
   }
 
   async linkToRun(adjustmentIds: string[], payrollRunId: string): Promise<void> {
     if (adjustmentIds.length === 0) return;
-    await this.db.updateTable("payroll_adjustments").set({ payroll_run_id: payrollRunId }).where("id", "in", adjustmentIds).execute();
+    await this.db.update(payrollAdjustments).set({ payroll_run_id: payrollRunId }).where(inArray(payrollAdjustments.id, adjustmentIds));
   }
 
   async unlinkFromRun(payrollRunId: string): Promise<void> {
-    await this.db.updateTable("payroll_adjustments").set({ payroll_run_id: null }).where("payroll_run_id", "=", payrollRunId).execute();
+    await this.db.update(payrollAdjustments).set({ payroll_run_id: null }).where(eq(payrollAdjustments.payroll_run_id, payrollRunId));
   }
 
-  private toDomain(row: Selectable<PayrollAdjustmentsTable>): PayrollAdjustment {
+  private toDomain(row: typeof payrollAdjustments.$inferSelect): PayrollAdjustment {
     return PayrollAdjustment.reconstitute(row.id, {
       employeeId: row.employee_id,
       entryDate: row.entry_date,

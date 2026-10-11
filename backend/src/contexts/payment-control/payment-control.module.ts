@@ -7,10 +7,10 @@ import { PAYMENT_METHOD_REPOSITORY } from "./domain/ports/payment-method-reposit
 import { PAYMENT_REPOSITORY } from "./domain/ports/payment-repository.port";
 import { PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY } from "./domain/ports/payment-adjustment-request-repository.port";
 import { RECONCILIATION_RECORD_REPOSITORY } from "./domain/ports/reconciliation-record-repository.port";
-import { KyselyPaymentMethodRepository } from "./infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "./infrastructure/persistence/kysely-payment.repository";
-import { KyselyPaymentAdjustmentRequestRepository } from "./infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyReconciliationRecordRepository } from "./infrastructure/persistence/kysely-reconciliation-record.repository";
+import { PaymentMethodRepository } from "./infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "./infrastructure/persistence/payment.repository";
+import { PaymentAdjustmentRequestRepository } from "./infrastructure/persistence/payment-adjustment-request.repository";
+import { ReconciliationRecordRepository } from "./infrastructure/persistence/reconciliation-record.repository";
 import { RegisterPaymentMethodHandler } from "./application/commands/register-payment-method.handler";
 import { LinkTalabatPaymentCodeHandler } from "./application/commands/link-talabat-payment-code.handler";
 import { LockPaymentForOrderHandler } from "./application/commands/lock-payment-for-order.handler";
@@ -36,10 +36,10 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
   imports: [IdentityAccessModule, SettingsModule],
   controllers: [PaymentControlController],
   providers: [
-    { provide: PAYMENT_METHOD_REPOSITORY, useClass: KyselyPaymentMethodRepository },
-    { provide: PAYMENT_REPOSITORY, useClass: KyselyPaymentRepository },
-    { provide: PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY, useClass: KyselyPaymentAdjustmentRequestRepository },
-    { provide: RECONCILIATION_RECORD_REPOSITORY, useClass: KyselyReconciliationRecordRepository },
+    { provide: PAYMENT_METHOD_REPOSITORY, useClass: PaymentMethodRepository },
+    { provide: PAYMENT_REPOSITORY, useClass: PaymentRepository },
+    { provide: PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY, useClass: PaymentAdjustmentRequestRepository },
+    { provide: RECONCILIATION_RECORD_REPOSITORY, useClass: ReconciliationRecordRepository },
     RegisterPaymentMethodHandler,
     LinkTalabatPaymentCodeHandler,
     LockPaymentForOrderHandler,

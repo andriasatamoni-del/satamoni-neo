@@ -66,8 +66,8 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const { KyselyPaymentMethodRepository } = await import(
-      "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository"
+    const { PaymentMethodRepository } = await import(
+      "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository"
     );
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
     const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
@@ -99,7 +99,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const methodRepo = new KyselyPaymentMethodRepository(db);
+    const methodRepo = new PaymentMethodRepository(app.get<Database>(DATABASE));
     const method = PaymentMethod.register({ name: "Talabat - دفع آجل-جست", kind: "credit" });
     method.linkTalabatCode(talabatPaymentCode);
     await methodRepo.save(method);

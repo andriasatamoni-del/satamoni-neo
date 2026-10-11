@@ -1,41 +1,46 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { LeaveRequest, type LeaveRequestStatus } from "../../domain/leave-request.aggregate";
 import type { LeaveRequestRepositoryPort } from "../../domain/ports/leave-request-repository.port";
-import type { EmployeeLeaveRequestsTable } from "./hr-payroll.schema";
+import { employeeLeaveRequests } from "./hr-payroll.tables";
 
 @Injectable()
-export class KyselyLeaveRequestRepository implements LeaveRequestRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class LeaveRequestRepository implements LeaveRequestRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(request: LeaveRequest): Promise<void> {
     const row = this.toRow(request);
     await this.db
-      .insertInto("employee_leave_requests")
+      .insert(employeeLeaveRequests)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: employeeLeaveRequests.id,
+        set: {
           status: row.status,
           reviewed_by: row.reviewed_by,
           reviewed_at: row.reviewed_at,
           review_notes: row.review_notes,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<LeaveRequest | null> {
-    const row = await this.db.selectFrom("employee_leave_requests").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(employeeLeaveRequests).where(eq(employeeLeaveRequests.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { employeeId?: string; status?: string }): Promise<LeaveRequest[]> {
-    let query = this.db.selectFrom("employee_leave_requests").selectAll();
-    if (filter?.employeeId) query = query.where("employee_id", "=", filter.employeeId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(employeeLeaveRequests)
+      .where(
+        and(
+          filter?.employeeId ? eq(employeeLeaveRequests.employee_id, filter.employeeId) : undefined,
+          filter?.status ? eq(employeeLeaveRequests.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(employeeLeaveRequests.created_at));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -56,7 +61,7 @@ export class KyselyLeaveRequestRepository implements LeaveRequestRepositoryPort 
     };
   }
 
-  private toDomain(row: Selectable<EmployeeLeaveRequestsTable>): LeaveRequest {
+  private toDomain(row: typeof employeeLeaveRequests.$inferSelect): LeaveRequest {
     return LeaveRequest.reconstitute(row.id, {
       employeeId: row.employee_id,
       leaveType: row.leave_type,

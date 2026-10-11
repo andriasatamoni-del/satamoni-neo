@@ -1,50 +1,50 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { EmployeeAttendanceShift, type EmployeeAttendanceShiftStatus } from "../../domain/employee-attendance-shift.aggregate";
 import type { EmployeeAttendanceShiftRepositoryPort } from "../../domain/ports/employee-attendance-shift-repository.port";
-import type { EmployeeAttendanceShiftsTable } from "./hr-payroll.schema";
+import { employeeAttendanceShifts } from "./hr-payroll.tables";
 
 @Injectable()
-export class KyselyEmployeeAttendanceShiftRepository implements EmployeeAttendanceShiftRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class EmployeeAttendanceShiftRepository implements EmployeeAttendanceShiftRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(shift: EmployeeAttendanceShift): Promise<void> {
     const row = this.toRow(shift);
     await this.db
-      .insertInto("employee_attendance_shifts")
+      .insert(employeeAttendanceShifts)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: employeeAttendanceShifts.id,
+        set: {
           status: row.status,
           checked_out_at: row.checked_out_at,
           hours_worked: row.hours_worked,
           notes: row.notes,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<EmployeeAttendanceShift | null> {
-    const row = await this.db.selectFrom("employee_attendance_shifts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(employeeAttendanceShifts).where(eq(employeeAttendanceShifts.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findActiveByEmployeeId(employeeId: string): Promise<EmployeeAttendanceShift | null> {
-    const row = await this.db
-      .selectFrom("employee_attendance_shifts")
-      .selectAll()
-      .where("employee_id", "=", employeeId)
-      .where("status", "=", "ACTIVE")
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(employeeAttendanceShifts)
+      .where(and(eq(employeeAttendanceShifts.employee_id, employeeId), eq(employeeAttendanceShifts.status, "ACTIVE")))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { employeeId?: string }): Promise<EmployeeAttendanceShift[]> {
-    let query = this.db.selectFrom("employee_attendance_shifts").selectAll();
-    if (filter?.employeeId) query = query.where("employee_id", "=", filter.employeeId);
-    const rows = await query.orderBy("checked_in_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(employeeAttendanceShifts)
+      .where(filter?.employeeId ? eq(employeeAttendanceShifts.employee_id, filter.employeeId) : undefined)
+      .orderBy(desc(employeeAttendanceShifts.checked_in_at));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -61,7 +61,7 @@ export class KyselyEmployeeAttendanceShiftRepository implements EmployeeAttendan
     };
   }
 
-  private toDomain(row: Selectable<EmployeeAttendanceShiftsTable>): EmployeeAttendanceShift {
+  private toDomain(row: typeof employeeAttendanceShifts.$inferSelect): EmployeeAttendanceShift {
     return EmployeeAttendanceShift.reconstitute(row.id, {
       employeeId: row.employee_id,
       branchId: row.branch_id,

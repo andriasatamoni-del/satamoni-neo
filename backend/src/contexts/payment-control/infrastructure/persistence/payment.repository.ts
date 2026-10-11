@@ -1,56 +1,61 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Payment } from "../../domain/payment.aggregate";
 import type { PaymentMethodKind, SettlementChannel } from "../../domain/payment-method.aggregate";
 import type { PaymentRepositoryPort } from "../../domain/ports/payment-repository.port";
-import type { PaymentsTable } from "./payment-control.schema";
+import { payments } from "./payment-control.tables";
 
 @Injectable()
-export class KyselyPaymentRepository implements PaymentRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PaymentRepository implements PaymentRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   // onConflict بيغطي تحديث applyAdjustment() كمان (طريقة/كود/قناة/مبلغ) - التحديث الوحيد المسموح
   // بيه على Payment مقفولة، وبيحصل بس من ApprovePaymentAdjustmentHandler
   async save(payment: Payment): Promise<void> {
     const row = this.toRow(payment);
     await this.db
-      .insertInto("payments")
+      .insert(payments)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: payments.id,
+        set: {
           payment_method_id: row.payment_method_id,
           method_kind: row.method_kind,
           settlement_channel: row.settlement_channel,
           amount: row.amount,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Payment | null> {
-    const row = await this.db.selectFrom("payments").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(payments).where(eq(payments.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
-    const row = await this.db.selectFrom("payments").selectAll().where("order_id", "=", orderId).executeTakeFirst();
+    const [row] = await this.db.select().from(payments).where(eq(payments.order_id, orderId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyPaymentId(legacyId: number): Promise<Payment | null> {
-    const row = await this.db.selectFrom("payments").selectAll().where("legacy_payment_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(payments).where(eq(payments.legacy_payment_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { branchId?: string; settlementChannel?: string; fromDate?: Date; toDate?: Date }): Promise<Payment[]> {
-    let query = this.db.selectFrom("payments").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.settlementChannel) query = query.where("settlement_channel", "=", filter.settlementChannel);
-    if (filter?.fromDate) query = query.where("locked_at", ">=", filter.fromDate);
-    if (filter?.toDate) query = query.where("locked_at", "<=", filter.toDate);
-    const rows = await query.orderBy("locked_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          filter?.branchId ? eq(payments.branch_id, filter.branchId) : undefined,
+          filter?.settlementChannel ? eq(payments.settlement_channel, filter.settlementChannel) : undefined,
+          filter?.fromDate ? gte(payments.locked_at, filter.fromDate) : undefined,
+          filter?.toDate ? lte(payments.locked_at, filter.toDate) : undefined
+        )
+      )
+      .orderBy(desc(payments.locked_at));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -70,7 +75,7 @@ export class KyselyPaymentRepository implements PaymentRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<PaymentsTable>): Payment {
+  private toDomain(row: typeof payments.$inferSelect): Payment {
     return Payment.reconstitute(row.id, {
       orderId: row.order_id,
       branchId: row.branch_id,

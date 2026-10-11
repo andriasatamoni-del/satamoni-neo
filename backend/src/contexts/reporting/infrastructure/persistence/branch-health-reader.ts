@@ -1,25 +1,28 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, count, eq, gte, inArray, isNotNull, lt, lte, ne, sql, sum } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
+import { complaints } from "../../../crm/infrastructure/persistence/crm.tables";
+import { branchStockBalances } from "../../../inventory/infrastructure/persistence/inventory.tables";
+import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
+import { cashierShifts } from "../../../shifts/infrastructure/persistence/shifts.tables";
 import type { BranchHealthReaderPort, BranchHealthReport, BranchHealthRow } from "../../domain/ports/branch-health-reader.port";
 import { FOOD_COST_READER, type FoodCostReaderPort } from "../../domain/ports/food-cost-reader.port";
 import { businessDateString } from "../../../../shared/time/business-date";
 
 @Injectable()
-export class KyselyBranchHealthReader implements BranchHealthReaderPort {
+export class BranchHealthReader implements BranchHealthReaderPort {
   constructor(
-    @Inject(KYSELY) private readonly db: Kysely<Database>,
+    @Inject(DATABASE) private readonly db: Database,
     @Inject(FOOD_COST_READER) private readonly foodCostReader: FoodCostReaderPort
   ) {}
 
   async getBranchHealth(input: { fromTs: Date; toTs: Date }): Promise<BranchHealthReport> {
-    const branches = await this.db
-      .selectFrom("branches")
-      .select(["id", "name"])
-      .where("is_central_kitchen", "=", false)
-      .orderBy("name")
-      .execute();
+    const branchRows = await this.db
+      .select({ id: branches.id, name: branches.name })
+      .from(branches)
+      .where(eq(branches.is_central_kitchen, false))
+      .orderBy(asc(branches.name));
 
     const [revenueByBranch, cashByBranch, negativeStockByBranch, complaintsByBranch, foodCostReport] = await Promise.all([
       this.revenueByBranch(input),
@@ -30,7 +33,7 @@ export class KyselyBranchHealthReader implements BranchHealthReaderPort {
     ]);
     const foodCostCostByBranch = new Map(foodCostReport.branches.map((b) => [b.branchId, b.actualUsageCost]));
 
-    const rows: BranchHealthRow[] = branches.map((b) => {
+    const rows: BranchHealthRow[] = branchRows.map((b) => {
       const revenue = revenueByBranch.get(b.id) ?? { ordersCount: 0, revenue: 0 };
       const cash = cashByBranch.get(b.id) ?? { cashVariance: 0, pendingReviewCount: 0 };
       const foodCost = foodCostCostByBranch.get(b.id) ?? 0;
@@ -53,15 +56,10 @@ export class KyselyBranchHealthReader implements BranchHealthReaderPort {
 
   private async revenueByBranch(input: { fromTs: Date; toTs: Date }): Promise<Map<string, { ordersCount: number; revenue: number }>> {
     const rows = await this.db
-      .selectFrom("orders")
-      .select(["branch_id"])
-      .select((eb) => eb.fn.count("id").as("orders_count"))
-      .select((eb) => eb.fn.sum("total").as("revenue"))
-      .where("status", "<>", "cancelled")
-      .where("created_at", ">=", input.fromTs)
-      .where("created_at", "<=", input.toTs)
-      .groupBy("branch_id")
-      .execute();
+      .select({ branch_id: orders.branch_id, orders_count: count(orders.id), revenue: sum(orders.total) })
+      .from(orders)
+      .where(and(ne(orders.status, "cancelled"), gte(orders.created_at, input.fromTs), lte(orders.created_at, input.toTs)))
+      .groupBy(orders.branch_id);
     return new Map(rows.map((r) => [r.branch_id, { ordersCount: Number(r.orders_count), revenue: Number(r.revenue ?? 0) }]));
   }
 
@@ -69,15 +67,20 @@ export class KyselyBranchHealthReader implements BranchHealthReaderPort {
     input: { fromTs: Date; toTs: Date }
   ): Promise<Map<string, { cashVariance: number; pendingReviewCount: number }>> {
     const rows = await this.db
-      .selectFrom("cashier_shifts")
-      .select(["branch_id"])
-      .select((eb) => eb.fn.coalesce(eb.fn.sum("cash_variance"), eb.lit(0)).as("total_variance"))
-      .select((eb) => eb.fn.count("id").filterWhere("variance_status", "=", "PENDING_REVIEW").as("pending_review_count"))
-      .where("status", "in", ["CLOSED", "PENDING_REVIEW"])
-      .where("closed_at", ">=", input.fromTs)
-      .where("closed_at", "<=", input.toTs)
-      .groupBy("branch_id")
-      .execute();
+      .select({
+        branch_id: cashierShifts.branch_id,
+        total_variance: sql<string>`COALESCE(SUM(${cashierShifts.cash_variance}), 0)`,
+        pending_review_count: sql<string>`COUNT(${cashierShifts.id}) FILTER (WHERE ${cashierShifts.variance_status} = 'PENDING_REVIEW')`,
+      })
+      .from(cashierShifts)
+      .where(
+        and(
+          inArray(cashierShifts.status, ["CLOSED", "PENDING_REVIEW"]),
+          gte(cashierShifts.closed_at, input.fromTs),
+          lte(cashierShifts.closed_at, input.toTs)
+        )
+      )
+      .groupBy(cashierShifts.branch_id);
     return new Map(
       rows.map((r) => [r.branch_id, { cashVariance: Number(r.total_variance), pendingReviewCount: Number(r.pending_review_count) }])
     );
@@ -85,26 +88,26 @@ export class KyselyBranchHealthReader implements BranchHealthReaderPort {
 
   private async negativeStockByBranch(): Promise<Map<string, number>> {
     const rows = await this.db
-      .selectFrom("branch_stock_balances")
-      .select(["branch_id"])
-      .select((eb) => eb.fn.count("inventory_item_id").as("item_count"))
-      .where("quantity", "<", 0)
-      .groupBy("branch_id")
-      .execute();
+      .select({ branch_id: branchStockBalances.branch_id, item_count: count(branchStockBalances.inventory_item_id) })
+      .from(branchStockBalances)
+      .where(lt(branchStockBalances.quantity, 0))
+      .groupBy(branchStockBalances.branch_id);
     return new Map(rows.map((r) => [r.branch_id, Number(r.item_count)]));
   }
 
   private async openComplaintsByBranch(input: { fromTs: Date; toTs: Date }): Promise<Map<string, number>> {
     const rows = await this.db
-      .selectFrom("complaints")
-      .select(["branch_id"])
-      .select((eb) => eb.fn.count("id").as("open_count"))
-      .where("status", "in", ["open", "in_progress"])
-      .where("branch_id", "is not", null)
-      .where("created_at", ">=", input.fromTs)
-      .where("created_at", "<=", input.toTs)
-      .groupBy("branch_id")
-      .execute();
+      .select({ branch_id: complaints.branch_id, open_count: count(complaints.id) })
+      .from(complaints)
+      .where(
+        and(
+          inArray(complaints.status, ["open", "in_progress"]),
+          isNotNull(complaints.branch_id),
+          gte(complaints.created_at, input.fromTs),
+          lte(complaints.created_at, input.toTs)
+        )
+      )
+      .groupBy(complaints.branch_id);
     return new Map(rows.filter((r) => r.branch_id !== null).map((r) => [r.branch_id as string, Number(r.open_count)]));
   }
 }

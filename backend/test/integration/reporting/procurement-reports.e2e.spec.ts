@@ -2,10 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -102,18 +107,18 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM goods_receipt_items WHERE goods_receipt_id IN (SELECT id FROM goods_receipts WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM goods_receipts WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM purchase_order_items WHERE purchase_order_id IN (${poReceivedId}, ${poOutstandingId})`.execute(db);
-    await sql`DELETE FROM purchase_orders WHERE id IN (${poReceivedId}, ${poOutstandingId})`.execute(db);
-    await sql`DELETE FROM suppliers WHERE id = ${supplierId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${inventoryItemId}`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-procreports@jest.test', 'cashier-procreports@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(goodsReceiptItems).where(inArray(goodsReceiptItems.goods_receipt_id, db.select({ id: goodsReceipts.id }).from(goodsReceipts).where(eq(goodsReceipts.branch_id, branchId))));
+    await db.delete(goodsReceipts).where(eq(goodsReceipts.branch_id, branchId));
+    await db.delete(purchaseOrderItems).where(inArray(purchaseOrderItems.purchase_order_id, [poReceivedId, poOutstandingId]));
+    await db.delete(purchaseOrders).where(inArray(purchaseOrders.id, [poReceivedId, poOutstandingId]));
+    await db.delete(suppliers).where(eq(suppliers.id, supplierId));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-procreports@jest.test", "cashier-procreports@jest.test"]));
     await app.close();
   });
 

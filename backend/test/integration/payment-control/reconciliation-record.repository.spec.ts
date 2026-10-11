@@ -1,8 +1,8 @@
-import { Kysely, sql } from "kysely";
+import { Kysely } from "kysely";
 import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
-import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
+import { ReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
+import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
@@ -13,11 +13,16 @@ import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
 import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { eq, like } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
-describe("KyselyReconciliationRecordRepository", () => {
+describe("ReconciliationRecordRepository", () => {
   let database: ReturnType<typeof createScriptDb>;
   let db: Kysely<Database>;
-  let repo: KyselyReconciliationRecordRepository;
+  let repo: ReconciliationRecordRepository;
   let paymentId: string;
   let branchId: string;
   let orderId: string;
@@ -25,7 +30,7 @@ describe("KyselyReconciliationRecordRepository", () => {
   beforeAll(async () => {
     database = createScriptDb(process.env.DATABASE_URL as string);
     db = kyselyOn(database);
-    repo = new KyselyReconciliationRecordRepository(db);
+    repo = new ReconciliationRecordRepository(database);
 
     const branch = Branch.register({ name: "فرع مطابقة-جست" });
     await new BranchRepository(database).save(branch);
@@ -40,26 +45,26 @@ describe("KyselyReconciliationRecordRepository", () => {
     orderId = order.id;
 
     const instapayMethod = PaymentMethod.register({ name: "إنستاباي-مطابقة-جست", kind: "card_or_wallet", settlementChannel: "instapay" });
-    await new KyselyPaymentMethodRepository(db).save(instapayMethod);
+    await new PaymentMethodRepository(database).save(instapayMethod);
 
     const payment = Payment.lock({ orderId, branchId, paymentMethodId: instapayMethod.id, methodKind: "card_or_wallet", settlementChannel: "instapay", amount: 50 });
-    await new KyselyPaymentRepository(db).save(payment);
+    await new PaymentRepository(database).save(payment);
     paymentId = payment.id;
   });
 
   afterAll(async () => {
-    await sql`DELETE FROM payment_reconciliation_records`.execute(db);
-    await sql`DELETE FROM payments`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE order_id = ${orderId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id = ${orderId}`.execute(db);
-    await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE name LIKE '%مطابقة-جست%'`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
+    await database.delete(paymentReconciliationRecords);
+    await database.delete(payments);
+    await database.delete(printJobs).where(eq(printJobs.order_id, orderId));
+    await database.delete(orderItems).where(eq(orderItems.order_id, orderId));
+    await database.delete(orders).where(eq(orders.id, orderId));
+    await database.delete(paymentMethods).where(like(paymentMethods.name, "%مطابقة-جست%"));
+    await database.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(database);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM payment_reconciliation_records`.execute(db);
+    await database.delete(paymentReconciliationRecords);
   });
 
   test("save بيسجّل سطر UNMATCHED، وfindById بيرجّعه", async () => {
