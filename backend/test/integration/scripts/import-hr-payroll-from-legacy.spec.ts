@@ -1,12 +1,13 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importHrPayrollFromLegacy } from "../../../scripts/import-hr-payroll-from-legacy";
 import { EmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
 import { DepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/department.repository";
 import { PositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/position.repository";
 import { PayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { departments, employees, payrollRunEmployees, payrollRuns, positions } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { truncate } from "../helpers/db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -62,15 +63,15 @@ describe("importHrPayrollFromLegacy", () => {
     departmentRepo = new DepartmentRepository(neoDb);
     positionRepo = new PositionRepository(neoDb);
     payrollRunRepo = new PayrollRunRepository(neoDb);
-    await sql`DELETE FROM employees`.execute(kyselyOn(neoDb));
+    await neoDb.delete(employees);
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM employees`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM positions`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM departments`.execute(kyselyOn(neoDb));
+    await truncate(neoDb, payrollRunEmployees, payrollRuns);
+    await neoDb.delete(employees);
+    await neoDb.delete(positions);
+    await neoDb.delete(departments);
     await closeScriptDb(neoDb);
   });
 
@@ -80,10 +81,10 @@ describe("importHrPayrollFromLegacy", () => {
     await legacyPool.query("DELETE FROM employees");
     await legacyPool.query("DELETE FROM positions");
     await legacyPool.query("DELETE FROM departments");
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM employees`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM positions`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM departments`.execute(kyselyOn(neoDb));
+    await truncate(neoDb, payrollRunEmployees, payrollRuns);
+    await neoDb.delete(employees);
+    await neoDb.delete(positions);
+    await neoDb.delete(departments);
   });
 
   test("بيستورد موظف + قائمة رواتب APPROVED بحالتها التاريخية النهائية بسطرها", async () => {

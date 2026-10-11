@@ -6,7 +6,7 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../src/contexts/branches/domain/branch.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyBranchRow {
   id: number;

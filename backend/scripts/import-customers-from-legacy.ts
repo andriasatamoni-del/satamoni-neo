@@ -8,7 +8,9 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { CustomerRepository } from "../src/contexts/customers/infrastructure/persistence/customer.repository";
 import { Customer } from "../src/contexts/customers/domain/customer.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { customers as customersTable } from "../src/contexts/customers/infrastructure/persistence/customers.tables";
+import { eq } from "drizzle-orm";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyCustomerRow {
   id: number; phone: string; phone2: string | null; name: string | null; address_details: string | null;
@@ -80,7 +82,7 @@ export async function importCustomersFromLegacy(legacyPool: Pool, neoDb: Databas
       const customer = Customer.reconstitute(existing?.id ?? randomUUID(), { phone: row.phone, addresses: legacyAddresses, ...props });
       await customerRepo.save(customer);
       // الـrepository مابيكتبش الرصيد عند التحديث (بيتعدّل ذرّيًا من Loyalty بس) - الاستيراد هو المصدر هنا
-      await kyselyOn(neoDb).updateTable("customers").set({ loyalty_points: row.loyalty_points }).where("id", "=", customer.id).execute();
+      await neoDb.update(customersTable).set({ loyalty_points: row.loyalty_points }).where(eq(customersTable.id, customer.id));
       if (existing) customers.updated++;
       else customers.created++;
     } catch (err) {

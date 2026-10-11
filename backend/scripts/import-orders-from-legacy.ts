@@ -15,7 +15,7 @@ import { BranchRepository } from "../src/contexts/branches/infrastructure/persis
 import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES, type OrderSource } from "../src/contexts/orders/domain/order.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 // orders.source القديم: pos/talabat/website/callcenter (+whatsapp). الكول سنتر موظف بيسجّل الطلب بنفسه
 // من شاشة الكاشير - في neo ده pos عادي

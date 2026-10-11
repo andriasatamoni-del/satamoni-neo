@@ -1,9 +1,9 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importUsersFromLegacy } from "../../../scripts/import-users-from-legacy";
 import { UserRepository } from "../../../src/contexts/identity-access/infrastructure/persistence/user.repository";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // قاعدة وهمية بشكل جدول users القديم بالظبط (مفيش داعي نجيب الريبو القديم الحقيقي هنا - النص المتفق
 // عليه هو الأعمدة، مش القاعدة كلها) - راجع خطة إعادة البناء §7: "الاستيراد بيتجرب على نسخة من
@@ -45,7 +45,7 @@ describe("importUsersFromLegacy", () => {
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM users");
-    await sql`DELETE FROM users`.execute(kyselyOn(neoDb));
+    await neoDb.delete(users);
   });
 
   test("بيستورد يوزر جديد صح بكل بياناته", async () => {

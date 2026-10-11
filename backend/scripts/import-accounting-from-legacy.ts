@@ -12,7 +12,7 @@ import type { Database } from "../src/shared/database/database.token";
 import { AccountRepository } from "../src/contexts/accounting/infrastructure/persistence/account.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Account } from "../src/contexts/accounting/domain/account.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyAccountRow {
   id: number;

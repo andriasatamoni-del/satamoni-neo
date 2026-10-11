@@ -20,7 +20,7 @@ import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
 import { Department } from "../src/contexts/hr-payroll/domain/department.aggregate";
 import { Position } from "../src/contexts/hr-payroll/domain/position.aggregate";
 import { PayrollRun, type PayrollRunStatus } from "../src/contexts/hr-payroll/domain/payroll-run.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyDepartmentRow {
   id: number; code: string; name: string; description: string | null; status: string;

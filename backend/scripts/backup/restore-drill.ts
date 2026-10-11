@@ -2,9 +2,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { promises as fsp } from "node:fs";
 import { Client, Pool } from "pg";
-import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from "kysely";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { readMigrationFiles } from "drizzle-orm/migrator";
+import { adoptKyselyDatabase, MIGRATIONS_FOLDER } from "../../src/migrations/run-migrations";
 import { parseBackupFiles } from "./retention";
 import { backupDirFromEnv, verifyBackupFile } from "./backup-verify";
 import { compareDatabases } from "./compare-databases";
@@ -12,7 +14,6 @@ import { pgEnvFromUrl, withDatabase } from "./pg-env";
 import { assertDifferentCluster, assertLocalRestoreTarget, assertNotSameServer, resolveRestoreDrillConfig, type SourceRef } from "./restore-target-guard";
 
 const execFileAsync = promisify(execFile);
-const MIGRATIONS_DIR = path.join(__dirname, "..", "..", "src", "migrations", "files");
 
 // عينة جداول أساسية من كل context رئيسي - لو أي واحد ناقص يبقى النسخة ناقصة جزء كامل
 export const CORE_TABLES = [
@@ -170,28 +171,28 @@ export async function runRestoreDrill(input: {
 }
 
 async function migrateRestoredCopy(scratchUrl: string, record: (step: string, ok: boolean, detail?: string) => boolean): Promise<boolean> {
-  const db = new Kysely<unknown>({
-    dialect: new PostgresDialect({ pool: new Pool({ connectionString: scratchUrl, max: 1, connectionTimeoutMillis: 10_000 }) }),
-  });
+  const pool = new Pool({ connectionString: scratchUrl, max: 1, connectionTimeoutMillis: 10_000 });
   try {
-    const migrator = new Migrator({
-      db,
-      provider: new FileMigrationProvider({ fs: fsp, path, migrationFolder: MIGRATIONS_DIR }),
-    });
-    const before = await migrator.getMigrations();
-    const pending = before.filter((m) => !m.executedAt).length;
-    const { error, results } = await migrator.migrateToLatest();
-    if (error) {
-      const failed = results?.find((r) => r.status === "Error")?.migrationName ?? "؟";
-      return record("تحديث النسخة المسترجعة لآخر migration", false, `Failed at ${failed}: ${error instanceof Error ? error.message : error}`);
-    }
+    const total = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER }).length;
+    const applied = async () => {
+      const { rows } = await pool.query<{ n: number }>(
+        "SELECT CASE WHEN to_regclass('drizzle.__drizzle_migrations') IS NULL THEN 0 ELSE (SELECT count(*)::int FROM drizzle.__drizzle_migrations) END AS n"
+      );
+      return rows[0].n;
+    };
+    // a backup taken before the switch to Drizzle carries the Kysely history: adopt it (records the baseline), then migrate
+    await adoptKyselyDatabase(pool, MIGRATIONS_FOLDER);
+    const pending = total - (await applied());
+    await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER });
     return record(
       "تحديث النسخة المسترجعة لآخر migration",
       true,
-      pending === 0 ? `النسخة كانت محدّثة (${before.length} migration)` : `اتطبّق ${pending} migration ناقصين بنجاح`
+      pending === 0 ? `النسخة كانت محدّثة (${total} migration)` : `اتطبّق ${pending} migration ناقصين بنجاح`
     );
+  } catch (err) {
+    return record("تحديث النسخة المسترجعة لآخر migration", false, err instanceof Error ? err.message : String(err));
   } finally {
-    await db.destroy();
+    await pool.end();
   }
 }
 

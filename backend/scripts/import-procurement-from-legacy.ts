@@ -21,7 +21,7 @@ import { UserRepository } from "../src/contexts/identity-access/infrastructure/p
 import { Supplier, SUPPLIER_STATUSES } from "../src/contexts/procurement/domain/supplier.aggregate";
 import { PurchaseOrder } from "../src/contexts/procurement/domain/purchase-order.aggregate";
 import { GoodsReceipt } from "../src/contexts/procurement/domain/goods-receipt.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacySupplierRow {
   id: number; name: string; contact_person: string | null; phone: string | null; email: string | null;

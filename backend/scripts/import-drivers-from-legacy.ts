@@ -10,7 +10,7 @@ import type { Database } from "../src/shared/database/database.token";
 import { DriverRepository } from "../src/contexts/delivery/infrastructure/persistence/driver.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Driver, DRIVER_STATUSES } from "../src/contexts/delivery/domain/driver.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyDriverRow {
   id: number; branch_id: number; name: string; phone: string | null; status: string;

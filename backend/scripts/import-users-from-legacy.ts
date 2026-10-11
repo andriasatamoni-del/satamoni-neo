@@ -17,7 +17,7 @@ import { UserRepository } from "../src/contexts/identity-access/infrastructure/p
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { User } from "../src/contexts/identity-access/domain/user.aggregate";
 import { isValidRole } from "../src/contexts/identity-access/domain/role";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyUserRow {
   id: number;

@@ -16,7 +16,7 @@ import { InventoryItemRepository } from "../src/contexts/inventory/infrastructur
 import { MenuCategory, MENU_GROUPS } from "../src/contexts/catalog/domain/menu-category.aggregate";
 import { MenuItem } from "../src/contexts/catalog/domain/menu-item.aggregate";
 import { Recipe, type RecipeVersionStatus } from "../src/contexts/catalog/domain/recipe.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyCategoryRow {
   id: number; name: string; display_order: number; menu_group: string; is_active: boolean;

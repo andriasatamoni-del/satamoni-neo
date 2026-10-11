@@ -1,11 +1,13 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importDriversFromLegacy } from "../../../scripts/import-drivers-from-legacy";
 import { DriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/driver.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -32,13 +34,13 @@ describe("importDriversFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM drivers");
-    await sql`DELETE FROM drivers`.execute(kyselyOn(neoDb));
+    await neoDb.delete(drivers);
   });
 
   test("بيستورد سائق جديد صح", async () => {

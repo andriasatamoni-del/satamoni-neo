@@ -1,5 +1,4 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importPaymentControlFromLegacy } from "../../../scripts/import-payment-control-from-legacy";
 import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
@@ -12,7 +11,12 @@ import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq, like } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -81,14 +85,14 @@ describe("importPaymentControlFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM payment_reconciliation_records`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payment_adjustment_requests`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payments`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM print_jobs WHERE order_id = ${orderId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM order_items WHERE order_id = ${orderId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payment_methods WHERE name LIKE '%استيراد-دفعات-جست%'`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(paymentReconciliationRecords);
+    await neoDb.delete(paymentAdjustmentRequests);
+    await neoDb.delete(payments);
+    await neoDb.delete(printJobs).where(eq(printJobs.order_id, orderId));
+    await neoDb.delete(orderItems).where(eq(orderItems.order_id, orderId));
+    await neoDb.delete(orders).where(eq(orders.id, orderId));
+    await neoDb.delete(paymentMethods).where(like(paymentMethods.name, "%استيراد-دفعات-جست%"));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(neoDb);
   });
 
@@ -97,10 +101,10 @@ describe("importPaymentControlFromLegacy", () => {
     await legacyPool.query("DELETE FROM payment_adjustment_requests");
     await legacyPool.query("DELETE FROM payments");
     await legacyPool.query("DELETE FROM payment_methods");
-    await sql`DELETE FROM payment_reconciliation_records`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payment_adjustment_requests`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payments`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM payment_methods WHERE name LIKE '%استيراد-دفعات-جست%'`.execute(kyselyOn(neoDb));
+    await neoDb.delete(paymentReconciliationRecords);
+    await neoDb.delete(paymentAdjustmentRequests);
+    await neoDb.delete(payments);
+    await neoDb.delete(paymentMethods).where(like(paymentMethods.name, "%استيراد-دفعات-جست%"));
   });
 
   test("بيستورد طريقة دفع + دفعة مقفولة (بحالتها النهائية) + طلب تعديل + سطر مطابقة", async () => {

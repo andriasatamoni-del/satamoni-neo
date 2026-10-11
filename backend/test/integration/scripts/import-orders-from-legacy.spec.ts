@@ -1,5 +1,4 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importOrdersFromLegacy } from "../../../scripts/import-orders-from-legacy";
 import { OrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/order.repository";
@@ -8,7 +7,12 @@ import { BranchRepository } from "../../../src/contexts/branches/infrastructure/
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -61,17 +65,17 @@ describe("importOrdersFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM menu_item_variants WHERE item_id = ${menuItemId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM menu_items WHERE id = ${menuItemId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(menuItemVariants).where(eq(menuItemVariants.item_id, menuItemId));
+    await neoDb.delete(menuItems).where(eq(menuItems.id, menuItemId));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM order_items; DELETE FROM orders");
-    await sql`DELETE FROM print_jobs`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM order_items`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM orders`.execute(kyselyOn(neoDb));
+    await neoDb.delete(printJobs);
+    await neoDb.delete(orderItems);
+    await neoDb.delete(orders);
   });
 
   test("بيستورد طلب تاريخي كامل من غير ما يرحّل أي حركة مخزون جديدة", async () => {

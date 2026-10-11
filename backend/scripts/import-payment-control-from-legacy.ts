@@ -22,7 +22,7 @@ import { PaymentMethod, type PaymentMethodKind, type SettlementChannel } from ".
 import { Payment } from "../src/contexts/payment-control/domain/payment.aggregate";
 import { PaymentAdjustmentRequest, type AdjustmentRequestStatus } from "../src/contexts/payment-control/domain/payment-adjustment-request.aggregate";
 import { ReconciliationRecord, type MatchStatus, type ReconciliationSource } from "../src/contexts/payment-control/domain/reconciliation-record.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyPaymentMethodRow { id: number; name: string; kind: string; enabled: boolean; settlement_channel: string | null; }
 interface LegacyPaymentRow {

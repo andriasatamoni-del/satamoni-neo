@@ -1,5 +1,4 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importProcurementFromLegacy } from "../../../scripts/import-procurement-from-legacy";
 import { SupplierRepository } from "../../../src/contexts/procurement/infrastructure/persistence/supplier.repository";
@@ -10,7 +9,11 @@ import { BranchRepository } from "../../../src/contexts/branches/infrastructure/
 import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -53,18 +56,18 @@ describe("importProcurementFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM inventory_items WHERE id = ${inventoryItemId}`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM goods_receipt_items; DELETE FROM goods_receipts; DELETE FROM purchase_order_items; DELETE FROM purchase_orders; DELETE FROM suppliers");
-    await sql`DELETE FROM goods_receipt_items`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM goods_receipts`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM purchase_order_items`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM purchase_orders`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM suppliers`.execute(kyselyOn(neoDb));
+    await neoDb.delete(goodsReceiptItems);
+    await neoDb.delete(goodsReceipts);
+    await neoDb.delete(purchaseOrderItems);
+    await neoDb.delete(purchaseOrders);
+    await neoDb.delete(suppliers);
   });
 
   test("بيستورد مورد وأمر شراء وإذن استلام POSTED مرتبط ببعض", async () => {

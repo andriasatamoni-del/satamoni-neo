@@ -1,12 +1,14 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importInventoryFromLegacy } from "../../../scripts/import-inventory-from-legacy";
 import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -38,9 +40,9 @@ describe("importInventoryFromLegacy", () => {
     movementRepo = new StockMovementRepository(neoDb);
     const branchRepo = new BranchRepository(neoDb);
 
-    await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM stock_movements`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM inventory_items`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branchStockBalances);
+    await neoDb.delete(stockMovements);
+    await neoDb.delete(inventoryItems);
 
     const branch = Branch.register({ name: "فرع استيراد مخزون-جست", legacyBranchId: 700 });
     await branchRepo.save(branch);
@@ -49,15 +51,15 @@ describe("importInventoryFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
     await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM branch_inventory_stock; DELETE FROM inventory_items");
-    await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM stock_movements`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM inventory_items`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branchStockBalances);
+    await neoDb.delete(stockMovements);
+    await neoDb.delete(inventoryItems);
   });
 
   test("بيستورد صنف ورصيد افتتاحي مرتبط بيه صح", async () => {

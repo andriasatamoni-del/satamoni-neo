@@ -1,12 +1,14 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importCatalogFromLegacy } from "../../../scripts/import-catalog-from-legacy";
 import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { RecipeRepository } from "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository";
 import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { menuCategories, menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -40,18 +42,18 @@ describe("importCatalogFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(kyselyOn(neoDb));
+    await neoDb.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
     await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM recipe_ingredients; DELETE FROM recipe_versions; DELETE FROM recipes; DELETE FROM menu_item_variants; DELETE FROM menu_items; DELETE FROM menu_categories");
-    await sql`DELETE FROM recipe_ingredients`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM recipe_versions`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM recipes`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM menu_item_variants`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM menu_items`.execute(kyselyOn(neoDb));
-    await sql`DELETE FROM menu_categories`.execute(kyselyOn(neoDb));
+    await neoDb.delete(recipeIngredients);
+    await neoDb.delete(recipeVersions);
+    await neoDb.delete(recipes);
+    await neoDb.delete(menuItemVariants);
+    await neoDb.delete(menuItems);
+    await neoDb.delete(menuCategories);
   });
 
   test("بيستورد قسم وصنف بحجم ووصفة نشطة كاملة", async () => {

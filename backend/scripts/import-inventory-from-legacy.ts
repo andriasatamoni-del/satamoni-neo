@@ -16,7 +16,7 @@ import { StockMovementRepository } from "../src/contexts/inventory/infrastructur
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { InventoryItem, ITEM_TYPES, NEGATIVE_STOCK_POLICIES } from "../src/contexts/inventory/domain/inventory-item.aggregate";
 import { StockMovement } from "../src/contexts/inventory/domain/stock-movement.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyItemRow {
   id: number;

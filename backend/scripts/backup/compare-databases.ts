@@ -11,7 +11,7 @@ export interface Metric { name: string; sql: string; appendOnly?: boolean; mustM
 
 export const CRITICAL_METRICS: Metric[] = [
   { name: "tables", sql: "SELECT count(*)::text v FROM information_schema.tables WHERE table_schema='public'", mustMatchAlways: true },
-  { name: "migrations", sql: "SELECT count(*)::text v FROM kysely_migration", mustMatchAlways: true },
+  { name: "migrations", sql: "SELECT count(*)::text v FROM drizzle.__drizzle_migrations", mustMatchAlways: true },
   { name: "users", sql: "SELECT count(*)::text v FROM users", appendOnly: true },
   { name: "user_roles", sql: "SELECT coalesce(string_agg(DISTINCT role, ',' ORDER BY role),'') v FROM users", mustMatchAlways: false },
   { name: "branches", sql: "SELECT count(*)::text v FROM branches", appendOnly: true },

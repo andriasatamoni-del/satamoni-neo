@@ -21,7 +21,7 @@ import { CustomerFollowupRepository } from "../src/contexts/crm/infrastructure/p
 import { ComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/complaint.repository";
 import { CustomerFollowup, CALL_RESULTS, SATISFACTION_RATINGS } from "../src/contexts/crm/domain/customer-followup.aggregate";
 import { Complaint, CATEGORIES, STATUSES } from "../src/contexts/crm/domain/complaint.aggregate";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyFollowupRow {
   id: number;

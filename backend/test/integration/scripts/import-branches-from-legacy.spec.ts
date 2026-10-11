@@ -1,9 +1,9 @@
 import { Pool } from "pg";
-import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importBranchesFromLegacy } from "../../../scripts/import-branches-from-legacy";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
@@ -26,7 +26,7 @@ describe("importBranchesFromLegacy", () => {
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
     repo = new BranchRepository(neoDb);
-    await sql`DELETE FROM branches`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branches);
   });
 
   afterAll(async () => {
@@ -36,7 +36,7 @@ describe("importBranchesFromLegacy", () => {
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM branches");
-    await sql`DELETE FROM branches`.execute(kyselyOn(neoDb));
+    await neoDb.delete(branches);
   });
 
   test("بيستورد فرع جديد صح", async () => {

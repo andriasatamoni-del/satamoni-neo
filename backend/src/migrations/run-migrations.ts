@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
 import * as path from "node:path";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -104,7 +104,10 @@ export async function runMigrations(connectionString: string, migrationsFolder =
   }
 }
 
+// backend/.env is loaded only when this file runs as the migration CLI. Importing it (the restore drill does) must not
+// load .env: the drill takes its target from the real environment only (scripts/backup/restore-target-guard.ts).
 async function main() {
+  loadEnv();
   if (process.argv[2] === "down") {
     throw new Error("Migrations are forward-only; there is no down migration. Write a new migration that reverses the change.");
   }
