@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements, stocktakeLines, stocktakes } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -30,8 +36,8 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { KyselyAccountRepository } = await import(
@@ -40,7 +46,7 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-جرد-جست", email: "admin-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -51,12 +57,12 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
       .send({ email: "admin-stocktake@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع جرد-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const itemWithCost = InventoryItem.register({ name: "أرز-جرد-جست", unit: "كيلو", unitCost: 20 });
     await inventoryRepo.save(itemWithCost);
     itemWithCostId = itemWithCost.id;
@@ -82,16 +88,16 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM stocktake_lines WHERE stocktake_id IN (SELECT id FROM stocktakes WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM stocktakes WHERE branch_id = ${branchId}`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE code IN ('1400', '5300')`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${itemWithCostId}, ${itemNoCostId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-stocktake@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(stocktakeLines).where(inArray(stocktakeLines.stocktake_id, db.select({ id: stocktakes.id }).from(stocktakes).where(eq(stocktakes.branch_id, branchId))));
+    await db.delete(stocktakes).where(eq(stocktakes.branch_id, branchId));
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.code, ["1400", "5300"]));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [itemWithCostId, itemNoCostId]));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-stocktake@jest.test"));
     await app.close();
   });
 
@@ -200,8 +206,8 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-جرد-جست", email: "cashier-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
@@ -217,6 +223,6 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
       .send({ branchId, lines: [{ inventoryItemId: itemWithCostId, actualQuantity: 5 }] });
     expect(res.status).toBe(403);
 
-    await sql`DELETE FROM users WHERE email = 'cashier-stocktake@jest.test'`.execute(db);
+    await db.delete(users).where(eq(users.email, "cashier-stocktake@jest.test"));
   });
 });

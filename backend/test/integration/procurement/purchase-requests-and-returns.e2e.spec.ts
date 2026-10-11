@@ -2,9 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, purchaseRequestItems, purchaseRequests, purchaseReturnItems, purchaseReturns, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { truncate } from "../helpers/db";
 
 describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -26,8 +34,8 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { KyselyAccountRepository } = await import(
@@ -36,7 +44,7 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طلبات-موردين-جست", email: "admin-purchase-requests@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -53,7 +61,7 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
       .send({ name: "فرع طلبات-موردين-جست" });
     branchId = branchRes.body.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const item = InventoryItem.register({ name: "زيت-طلبات-موردين-جست", unit: "لتر", unitCost: 30 });
     await inventoryRepo.save(item);
     inventoryItemId = item.id;
@@ -72,24 +80,24 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM purchase_return_items`.execute(db);
-    await sql`DELETE FROM purchase_returns`.execute(db);
-    await sql`DELETE FROM purchase_request_items`.execute(db);
-    await sql`DELETE FROM purchase_requests`.execute(db);
-    await sql`DELETE FROM purchase_order_items`.execute(db);
-    await sql`DELETE FROM purchase_orders`.execute(db);
-    await sql`DELETE FROM goods_receipt_items`.execute(db);
-    await sql`DELETE FROM goods_receipts`.execute(db);
-    await sql`DELETE FROM suppliers`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE code IN ('1400', '2100')`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${inventoryItemId}`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-purchase-requests@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(purchaseReturnItems);
+    await db.delete(purchaseReturns);
+    await db.delete(purchaseRequestItems);
+    await db.delete(purchaseRequests);
+    await db.delete(purchaseOrderItems);
+    await db.delete(purchaseOrders);
+    await db.delete(goodsReceiptItems);
+    await db.delete(goodsReceipts);
+    await db.delete(suppliers);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.code, ["1400", "2100"]));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-purchase-requests@jest.test"));
     await app.close();
   });
 
@@ -280,8 +288,8 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-طلبات-موردين-جست", email: "cashier-purchase-requests@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
@@ -301,6 +309,6 @@ describe("Procurement - طلبات ومرتجعات المشتريات (e2e ضد
       .set("Authorization", `Bearer ${loginRes.body.token}`);
     expect(retRes.status).toBe(403);
 
-    await sql`DELETE FROM users WHERE email = 'cashier-purchase-requests@jest.test'`.execute(db);
+    await db.delete(users).where(eq(users.email, "cashier-purchase-requests@jest.test"));
   });
 });

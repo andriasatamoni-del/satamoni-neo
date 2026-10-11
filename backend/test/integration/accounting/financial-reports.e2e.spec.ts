@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e للتقارير المحاسبية الأساسية (ميزان المراجعة/دفتر الأستاذ/قائمة الدخل) - كلهم مشتقّين من نفس
 // دفتر الأستاذ (accounts + journal_entries + journal_entry_lines)، مفيش حسابات موازية منفصلة
@@ -26,8 +27,7 @@ describe("Accounting Reports - ميزان المراجعة/دفتر الأستا
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقارير-محاسبية-جست", email: "admin-financial-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",

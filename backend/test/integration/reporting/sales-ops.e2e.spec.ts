@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -28,21 +29,20 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
-    const { KyselyRecipeRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository"
+    const { RecipeRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مبيعات-تشغيل-جست", email: "admin-salesops@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -56,7 +56,7 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
       .send({ name: "فرع مبيعات-تشغيل-جست" });
     branchId = branchRes.body.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "مكوّن-مبيعات-تشغيل-جست", unit: "كيلو", unitCost: 5 });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
@@ -65,13 +65,13 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 100 });
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-مبيعات-تشغيل-جست" });
     const variant = item.addVariant({ label: "عادي", price: 50 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // تكلفة وحدة = 2×5 = 10

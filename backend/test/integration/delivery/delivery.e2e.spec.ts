@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { eq } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
@@ -11,6 +11,7 @@ import { deliveryAssignments, drivers } from "../../../src/contexts/delivery/inf
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -35,13 +36,12 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-توصيل", email: "admin-delivery@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -52,12 +52,12 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
       .send({ email: "admin-delivery@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع توصيل-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-توصيل-جست" });
     const variant = item.addVariant({ label: "وسط", price: 90 });
     await menuItemRepo.save(item);
@@ -70,7 +70,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(deliveryAssignments);
     await db.delete(drivers);
     await db.delete(printJobs);

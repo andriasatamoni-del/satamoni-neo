@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -32,13 +33,12 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
@@ -50,7 +50,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .send({ email: "admin-reports@jest.test", password: "12345678" });
     adminToken = adminLogin.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع تقارير-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -65,7 +65,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .send({ email: "manager-reports@jest.test", password: "12345678" });
     branchManagerToken = managerLogin.body.token;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-تقارير-جست" });
     const variant = item.addVariant({ label: "عادي", price: 100 });
     await menuItemRepo.save(item);
@@ -155,7 +155,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",

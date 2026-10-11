@@ -3,10 +3,11 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { inArray } from "drizzle-orm";
 import { complaints, customerFollowups } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -26,8 +27,7 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const repo = new UserRepository(app.get(DATABASE));
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
@@ -53,7 +53,7 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
   afterAll(async () => {
     // بننضّف الصفوف اللي عملناها هنا (complaints/customer_followups بترجع لليوزرز دول بـFK حقيقي)
     // عشان ملفات اختبار تانية بتعمل DELETE شامل على جدول users متتعثرش في constraint violation
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(complaints);
     await db.delete(customerFollowups);
     await db.delete(users).where(inArray(users.email, ["admin-crm@jest.test", "callcenter-crm@jest.test", "driver-crm@jest.test"]));
@@ -162,8 +162,7 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const repo = new UserRepository(app.get(DATABASE));
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const driver = User.register({
       name: "سواق-كرم", email: "driver-crm@jest.test", passwordHash: await hasher.hash("12345678"), role: "driver",

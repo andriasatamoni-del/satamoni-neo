@@ -161,9 +161,9 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     let recipeId: string;
 
     beforeAll(async () => {
-      const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
+      const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
       const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-      const repo = new KyselyInventoryItemRepository(w.db);
+      const repo = new InventoryItemRepository(w.database);
       const mk = async (name: string, unitCost: number) => {
         const item = InventoryItem.register({ name: `${name}-prod`, unit: "كيلو", unitCost, negativeStockPolicy: "STRICT" });
         await repo.save(item);

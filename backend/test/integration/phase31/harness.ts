@@ -60,12 +60,12 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
   const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
   const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-  const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
-  const { KyselyStockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository");
+  const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
+  const { StockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository");
   const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
   const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-  const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-  const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+  const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+  const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
   const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
   const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
   const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
@@ -110,10 +110,10 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
     }
   }
 
-  const inventoryRepo = new KyselyInventoryItemRepository(db);
+  const inventoryRepo = new InventoryItemRepository(database);
   const ingredient = InventoryItem.register({ name: `مكوّن-${tag}`, unit: "كيلو", unitCost: INGREDIENT_UNIT_COST, negativeStockPolicy: "STRICT" });
   await inventoryRepo.save(ingredient);
-  const movementRepo = new KyselyStockMovementRepository(db);
+  const movementRepo = new StockMovementRepository(database);
   for (const branchId of [bA.id, bB.id]) {
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredient.id, branchId, movementType: "RECEIPT", quantityDelta: options.stock ?? 100 }),
@@ -121,11 +121,11 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
     );
   }
 
-  const menuRepo = new KyselyMenuItemRepository(db);
+  const menuRepo = new MenuItemRepository(database);
   const item = MenuItem.register({ name: `صنف-${tag}` });
   const variant = item.addVariant({ label: "عادي", price: VARIANT_PRICE });
   await menuRepo.save(item);
-  const recipeRepo = new KyselyRecipeRepository(db);
+  const recipeRepo = new RecipeRepository(database);
   const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
   const version = recipe.createDraftVersion({});
   recipe.addIngredient(version.id, { ingredientItemId: ingredient.id, quantity: RECIPE_QTY });

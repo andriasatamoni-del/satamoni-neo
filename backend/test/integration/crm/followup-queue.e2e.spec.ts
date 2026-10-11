@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { eq } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
@@ -12,6 +12,7 @@ import { deliveryAssignments, drivers } from "../../../src/contexts/delivery/inf
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لطابور متابعة العملاء (followup-queue) - بيشتغل على أوردرات دليفري حقيقية اتسلّمت فعليًا
 // (delivery_assignments.status='DELIVERED') مش بس المستوردة من الريبو القديم (راجع migration 030 -
@@ -35,11 +36,10 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طابور-متابعة-جست", email: "admin-followup-queue@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -49,12 +49,12 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-followup-queue@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع طابور-متابعة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "ساندوتش-طابور-متابعة-جست" });
     const variant = item.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(item);
@@ -88,7 +88,7 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(complaints).where(eq(complaints.branch_id, branchId));
     await db.delete(customerFollowups).where(eq(customerFollowups.order_id, orderId));
     await db.delete(deliveryAssignments).where(eq(deliveryAssignments.branch_id, branchId));

@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { GoodsReceipt, type GoodsReceiptStatus } from "../../domain/goods-receipt.aggregate";
 import type { GoodsReceiptRepositoryPort } from "../../domain/ports/goods-receipt-repository.port";
-import type { GoodsReceiptsTable, GoodsReceiptItemsTable } from "./procurement.schema";
+import { goodsReceiptItems, goodsReceipts } from "./procurement.tables";
 
 @Injectable()
-export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class GoodsReceiptRepository implements GoodsReceiptRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(receipt: GoodsReceipt): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("goods_receipts")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(goodsReceipts)
         .values({
           id: receipt.id,
           purchase_order_id: receipt.purchaseOrderId,
@@ -26,12 +25,11 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
           confirmed_at: receipt.confirmedAt,
           legacy_goods_receipt_id: receipt.legacyGoodsReceiptId,
         })
-        .onConflict((oc) => oc.column("id").doUpdateSet({ status: receipt.status, confirmed_at: receipt.confirmedAt }))
-        .execute();
+        .onConflictDoUpdate({ target: goodsReceipts.id, set: { status: receipt.status, confirmed_at: receipt.confirmedAt } });
 
       for (const line of receipt.lines) {
-        await trx
-          .insertInto("goods_receipt_items")
+        await tx
+          .insert(goodsReceiptItems)
           .values({
             id: line.id,
             goods_receipt_id: receipt.id,
@@ -41,43 +39,44 @@ export class KyselyGoodsReceiptRepository implements GoodsReceiptRepositoryPort 
             expiry_date: line.expiryDate,
             production_date: line.productionDate,
           })
-          .onConflict((oc) => oc.column("id").doNothing())
-          .execute();
+          .onConflictDoNothing({ target: goodsReceiptItems.id });
       }
     });
   }
 
   async findById(id: string): Promise<GoodsReceipt | null> {
-    const row = await this.db.selectFrom("goods_receipts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async findByLegacyGoodsReceiptId(legacyId: number): Promise<GoodsReceipt | null> {
-    const row = await this.db
-      .selectFrom("goods_receipts")
-      .selectAll()
-      .where("legacy_goods_receipt_id", "=", legacyId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(goodsReceipts).where(eq(goodsReceipts.legacy_goods_receipt_id, legacyId)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(row.id));
   }
 
   async list(filter?: { branchId?: string; purchaseOrderId?: string }): Promise<GoodsReceipt[]> {
-    let query = this.db.selectFrom("goods_receipts").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.purchaseOrderId) query = query.where("purchase_order_id", "=", filter.purchaseOrderId);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(goodsReceipts)
+      .where(
+        and(
+          filter?.branchId ? eq(goodsReceipts.branch_id, filter.branchId) : undefined,
+          filter?.purchaseOrderId ? eq(goodsReceipts.purchase_order_id, filter.purchaseOrderId) : undefined
+        )
+      )
+      .orderBy(desc(goodsReceipts.created_at));
     const receipts: GoodsReceipt[] = [];
     for (const row of rows) receipts.push(this.toDomain(row, await this.loadLines(row.id)));
     return receipts;
   }
 
-  private loadLines(receiptId: string): Promise<Selectable<GoodsReceiptItemsTable>[]> {
-    return this.db.selectFrom("goods_receipt_items").selectAll().where("goods_receipt_id", "=", receiptId).execute();
+  private loadLines(receiptId: string): Promise<(typeof goodsReceiptItems.$inferSelect)[]> {
+    return this.db.select().from(goodsReceiptItems).where(eq(goodsReceiptItems.goods_receipt_id, receiptId));
   }
 
-  private toDomain(row: Selectable<GoodsReceiptsTable>, lineRows: Selectable<GoodsReceiptItemsTable>[]): GoodsReceipt {
+  private toDomain(row: typeof goodsReceipts.$inferSelect, lineRows: (typeof goodsReceiptItems.$inferSelect)[]): GoodsReceipt {
     return GoodsReceipt.reconstitute(row.id, {
       purchaseOrderId: row.purchase_order_id,
       supplierId: row.supplier_id,

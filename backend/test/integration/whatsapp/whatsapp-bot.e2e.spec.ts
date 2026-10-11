@@ -141,14 +141,14 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    await new UserRepository(app.get(DATABASE)).save(
+    await new UserRepository(app.get<Database>(DATABASE)).save(
       User.register({ name: "أدمن-بوت-جست", email: "admin-bot@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-bot@jest.test", password: "12345678" })).body.token;
 
     branchName = `فرع-بوت-جست-${Date.now()}`;
     const branch = Branch.register({ name: branchName });
-    await new BranchRepository(app.get(DATABASE)).save(branch);
+    await new BranchRepository(app.get<Database>(DATABASE)).save(branch);
     branchId = branch.id;
 
     const item = await request(server())
@@ -160,7 +160,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
   });
 
   afterAll(async () => {
-    const database = app.get(DATABASE);
+    const database = app.get<Database>(DATABASE);
     await request(server()).patch("/pos-settings").set(auth()).send({ whatsappBotEnabled: false });
     const convs = database.select({ id: whatsappConversations.id }).from(whatsappConversations).where(inArray(whatsappConversations.phone, [phone, messengerId]));
     await database.delete(whatsappPendingOrderLines).where(inArray(whatsappPendingOrderLines.pending_order_id, database.select({ id: whatsappPendingOrders.id }).from(whatsappPendingOrders).where(inArray(whatsappPendingOrders.conversation_id, convs))));

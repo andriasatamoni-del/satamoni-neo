@@ -6,6 +6,7 @@ import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { deleteAuditLogsForTest } from "../helpers/audit";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -25,8 +26,7 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({ name: "أدمن-تدقيق-جست", email: "admin-audit@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });

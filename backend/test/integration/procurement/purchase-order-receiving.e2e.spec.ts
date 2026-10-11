@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 // PROC-BUG-1: حالة أمر الشراء لازم تتحدّث تلقائيًا مع تأكيد أذون الاستلام المربوطة بيه
 describe("Procurement - استلام أوامر الشراء وتحديث حالتها (e2e)", () => {
@@ -69,26 +75,25 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
     const admin = User.register({
       name: "أدمن-استلام-أوامر-جست",
       email: "admin-poreceiving@jest.test",
       passwordHash: await new BcryptPasswordHasher().hash("12345678"),
       role: "admin",
     });
-    await new UserRepository(app.get(DATABASE)).save(admin);
+    await new UserRepository(app.get<Database>(DATABASE)).save(admin);
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-poreceiving@jest.test", password: "12345678" })).body.token;
 
     const branch = Branch.register({ name: "فرع-استلام-أوامر-جست" });
-    await new BranchRepository(app.get(DATABASE)).save(branch);
+    await new BranchRepository(app.get<Database>(DATABASE)).save(branch);
     branchId = branch.id;
 
-    const itemRepo = new KyselyInventoryItemRepository(db);
+    const itemRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const flour = InventoryItem.register({ name: "دقيق-استلام-أوامر-جست", unit: "كيلو" });
     const sugar = InventoryItem.register({ name: "سكر-استلام-أوامر-جست", unit: "كيلو" });
     await itemRepo.save(flour);
@@ -101,18 +106,18 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM goods_receipt_items WHERE goods_receipt_id IN (SELECT id FROM goods_receipts WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM goods_receipts WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM purchase_order_items WHERE purchase_order_id IN (SELECT id FROM purchase_orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM purchase_orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM suppliers WHERE id = ${supplierId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${flourId}, ${sugarId})`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-poreceiving@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(goodsReceiptItems).where(inArray(goodsReceiptItems.goods_receipt_id, db.select({ id: goodsReceipts.id }).from(goodsReceipts).where(eq(goodsReceipts.branch_id, branchId))));
+    await db.delete(goodsReceipts).where(eq(goodsReceipts.branch_id, branchId));
+    await db.delete(purchaseOrderItems).where(inArray(purchaseOrderItems.purchase_order_id, db.select({ id: purchaseOrders.id }).from(purchaseOrders).where(eq(purchaseOrders.branch_id, branchId))));
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.branch_id, branchId));
+    await db.delete(suppliers).where(eq(suppliers.id, supplierId));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [flourId, sugarId]));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-poreceiving@jest.test"));
     await app.close();
   });
 

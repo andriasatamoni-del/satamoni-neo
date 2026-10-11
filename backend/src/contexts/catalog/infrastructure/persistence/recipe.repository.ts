@@ -1,21 +1,20 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Recipe, type RecipeType, type RecipeVersionStatus } from "../../domain/recipe.aggregate";
 import type { RecipeRepositoryPort } from "../../domain/ports/recipe-repository.port";
-import type { RecipesTable } from "./catalog.schema";
+import { recipeIngredients, recipes, recipeVersions } from "./catalog.tables";
 
 @Injectable()
-export class KyselyRecipeRepository implements RecipeRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class RecipeRepository implements RecipeRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  // بيسجّل الوصفة + كل نسخها + مكوّنات كل نسخة في معاملة واحدة - نفس فلسفة KyselyMenuItemRepository
+  // بيسجّل الوصفة + كل نسخها + مكوّنات كل نسخة في معاملة واحدة - نفس فلسفة MenuItemRepository
   // (versions/ingredients entities تابعة، مش aggregates منفصلة)
   async save(recipe: Recipe): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("recipes")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(recipes)
         .values({
           id: recipe.id,
           recipe_type: recipe.recipeType,
@@ -23,12 +22,11 @@ export class KyselyRecipeRepository implements RecipeRepositoryPort {
           inventory_item_id: recipe.inventoryItemId,
           legacy_recipe_id: recipe.legacyRecipeId,
         })
-        .onConflict((oc) => oc.column("id").doNothing())
-        .execute();
+        .onConflictDoNothing({ target: recipes.id });
 
       for (const version of recipe.versions) {
-        await trx
-          .insertInto("recipe_versions")
+        await tx
+          .insert(recipeVersions)
           .values({
             id: version.id,
             recipe_id: recipe.id,
@@ -39,12 +37,14 @@ export class KyselyRecipeRepository implements RecipeRepositoryPort {
             activated_at: version.activatedAt,
             archived_at: version.archivedAt,
           })
-          .onConflict((oc) => oc.column("id").doUpdateSet({ status: version.status, activated_at: version.activatedAt, archived_at: version.archivedAt }))
-          .execute();
+          .onConflictDoUpdate({
+            target: recipeVersions.id,
+            set: { status: version.status, activated_at: version.activatedAt, archived_at: version.archivedAt },
+          });
 
         for (const ingredient of version.ingredients) {
-          await trx
-            .insertInto("recipe_ingredients")
+          await tx
+            .insert(recipeIngredients)
             .values({
               id: ingredient.id,
               recipe_version_id: version.id,
@@ -52,61 +52,52 @@ export class KyselyRecipeRepository implements RecipeRepositoryPort {
               quantity: ingredient.quantity,
               unit: ingredient.unit,
             })
-            .onConflict((oc) => oc.column("id").doUpdateSet({ quantity: ingredient.quantity, unit: ingredient.unit }))
-            .execute();
+            .onConflictDoUpdate({ target: recipeIngredients.id, set: { quantity: ingredient.quantity, unit: ingredient.unit } });
         }
       }
     });
   }
 
   async findById(id: string): Promise<Recipe | null> {
-    const row = await this.db.selectFrom("recipes").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(recipes).where(eq(recipes.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByVariantId(variantId: string): Promise<Recipe | null> {
-    const row = await this.db.selectFrom("recipes").selectAll().where("variant_id", "=", variantId).executeTakeFirst();
+    const [row] = await this.db.select().from(recipes).where(eq(recipes.variant_id, variantId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByInventoryItemId(inventoryItemId: string): Promise<Recipe | null> {
-    const row = await this.db
-      .selectFrom("recipes")
-      .selectAll()
-      .where("inventory_item_id", "=", inventoryItemId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(recipes).where(eq(recipes.inventory_item_id, inventoryItemId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyRecipeId(legacyId: number): Promise<Recipe | null> {
-    const row = await this.db.selectFrom("recipes").selectAll().where("legacy_recipe_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(recipes).where(eq(recipes.legacy_recipe_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(filter?: { recipeType?: string }): Promise<Recipe[]> {
-    let query = this.db.selectFrom("recipes").selectAll();
-    if (filter?.recipeType) query = query.where("recipe_type", "=", filter.recipeType);
-    const rows = await query.execute();
-    const recipes: Recipe[] = [];
-    for (const row of rows) recipes.push(await this.toDomain(row));
-    return recipes;
+    const rows = await this.db
+      .select()
+      .from(recipes)
+      .where(filter?.recipeType ? eq(recipes.recipe_type, filter.recipeType) : undefined);
+    const result: Recipe[] = [];
+    for (const row of rows) result.push(await this.toDomain(row));
+    return result;
   }
 
-  private async toDomain(row: Selectable<RecipesTable>): Promise<Recipe> {
+  private async toDomain(row: typeof recipes.$inferSelect): Promise<Recipe> {
     const versionRows = await this.db
-      .selectFrom("recipe_versions")
-      .selectAll()
-      .where("recipe_id", "=", row.id)
-      .orderBy("version_number")
-      .execute();
+      .select()
+      .from(recipeVersions)
+      .where(eq(recipeVersions.recipe_id, row.id))
+      .orderBy(asc(recipeVersions.version_number));
 
     const versions = [];
     for (const v of versionRows) {
-      const ingredientRows = await this.db
-        .selectFrom("recipe_ingredients")
-        .selectAll()
-        .where("recipe_version_id", "=", v.id)
-        .execute();
+      const ingredientRows = await this.db.select().from(recipeIngredients).where(eq(recipeIngredients.recipe_version_id, v.id));
       versions.push({
         id: v.id,
         versionNumber: v.version_number,

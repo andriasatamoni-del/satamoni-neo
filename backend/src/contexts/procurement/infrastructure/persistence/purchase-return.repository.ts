@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PurchaseReturn, type PurchaseReturnStatus } from "../../domain/purchase-return.aggregate";
 import type { PurchaseReturnRepositoryPort } from "../../domain/ports/purchase-return-repository.port";
-import type { PurchaseReturnItemsTable, PurchaseReturnsTable } from "./procurement.schema";
+import { purchaseReturnItems, purchaseReturns } from "./procurement.tables";
 
 @Injectable()
-export class KyselyPurchaseReturnRepository implements PurchaseReturnRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PurchaseReturnRepository implements PurchaseReturnRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(purchaseReturn: PurchaseReturn): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("purchase_returns")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(purchaseReturns)
         .values({
           id: purchaseReturn.id,
           branch_id: purchaseReturn.branchId,
@@ -31,8 +30,9 @@ export class KyselyPurchaseReturnRepository implements PurchaseReturnRepositoryP
           cancelled_by: purchaseReturn.cancelledBy,
           cancelled_at: purchaseReturn.cancelledAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: purchaseReturns.id,
+          set: {
             status: purchaseReturn.status,
             total_value: purchaseReturn.totalValue,
             journal_entry_id: purchaseReturn.journalEntryId,
@@ -40,13 +40,12 @@ export class KyselyPurchaseReturnRepository implements PurchaseReturnRepositoryP
             posted_at: purchaseReturn.postedAt,
             cancelled_by: purchaseReturn.cancelledBy,
             cancelled_at: purchaseReturn.cancelledAt,
-          })
-        )
-        .execute();
+          },
+        });
 
       for (const line of purchaseReturn.lines) {
-        await trx
-          .insertInto("purchase_return_items")
+        await tx
+          .insert(purchaseReturnItems)
           .values({
             id: line.id,
             purchase_return_id: purchaseReturn.id,
@@ -56,34 +55,42 @@ export class KyselyPurchaseReturnRepository implements PurchaseReturnRepositoryP
             unit_cost: line.unitCost,
             line_value: line.lineValue,
           })
-          .onConflict((oc) => oc.column("id").doNothing())
-          .execute();
+          .onConflictDoNothing({ target: purchaseReturnItems.id });
       }
     });
   }
 
   async findById(id: string): Promise<PurchaseReturn | null> {
-    const row = await this.db.selectFrom("purchase_returns").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(purchaseReturns).where(eq(purchaseReturns.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async list(filter?: { branchId?: string; supplierId?: string; status?: string }): Promise<PurchaseReturn[]> {
-    let query = this.db.selectFrom("purchase_returns").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.supplierId) query = query.where("supplier_id", "=", filter.supplierId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(purchaseReturns)
+      .where(
+        and(
+          filter?.branchId ? eq(purchaseReturns.branch_id, filter.branchId) : undefined,
+          filter?.supplierId ? eq(purchaseReturns.supplier_id, filter.supplierId) : undefined,
+          filter?.status ? eq(purchaseReturns.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(purchaseReturns.created_at));
     const returns: PurchaseReturn[] = [];
     for (const row of rows) returns.push(this.toDomain(row, await this.loadLines(row.id)));
     return returns;
   }
 
-  private loadLines(returnId: string): Promise<Selectable<PurchaseReturnItemsTable>[]> {
-    return this.db.selectFrom("purchase_return_items").selectAll().where("purchase_return_id", "=", returnId).execute();
+  private loadLines(returnId: string): Promise<(typeof purchaseReturnItems.$inferSelect)[]> {
+    return this.db.select().from(purchaseReturnItems).where(eq(purchaseReturnItems.purchase_return_id, returnId));
   }
 
-  private toDomain(row: Selectable<PurchaseReturnsTable>, lineRows: Selectable<PurchaseReturnItemsTable>[]): PurchaseReturn {
+  private toDomain(
+    row: typeof purchaseReturns.$inferSelect,
+    lineRows: (typeof purchaseReturnItems.$inferSelect)[]
+  ): PurchaseReturn {
     return PurchaseReturn.reconstitute(row.id, {
       branchId: row.branch_id,
       supplierId: row.supplier_id,

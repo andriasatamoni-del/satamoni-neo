@@ -12,11 +12,11 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselySupplierRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-supplier.repository";
-import { KyselyPurchaseOrderRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
-import { KyselyGoodsReceiptRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
+import { SupplierRepository } from "../src/contexts/procurement/infrastructure/persistence/supplier.repository";
+import { PurchaseOrderRepository } from "../src/contexts/procurement/infrastructure/persistence/purchase-order.repository";
+import { GoodsReceiptRepository } from "../src/contexts/procurement/infrastructure/persistence/goods-receipt.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import { InventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Supplier, SUPPLIER_STATUSES } from "../src/contexts/procurement/domain/supplier.aggregate";
 import { PurchaseOrder } from "../src/contexts/procurement/domain/purchase-order.aggregate";
@@ -43,11 +43,11 @@ export interface ProcurementImportResult {
 }
 
 export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ProcurementImportResult> {
-  const supplierRepo = new KyselySupplierRepository(kyselyOn(neoDb));
-  const purchaseOrderRepo = new KyselyPurchaseOrderRepository(kyselyOn(neoDb));
-  const goodsReceiptRepo = new KyselyGoodsReceiptRepository(kyselyOn(neoDb));
+  const supplierRepo = new SupplierRepository(neoDb);
+  const purchaseOrderRepo = new PurchaseOrderRepository(neoDb);
+  const goodsReceiptRepo = new GoodsReceiptRepository(neoDb);
   const branchRepo = new BranchRepository(neoDb);
-  const inventoryRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
+  const inventoryRepo = new InventoryItemRepository(neoDb);
   const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();

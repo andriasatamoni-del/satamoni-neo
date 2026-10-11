@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { ConversionOrder, type ConversionOrderStatus } from "../../domain/conversion-order.aggregate";
 import type { ConversionOrderRepositoryPort } from "../../domain/ports/conversion-order-repository.port";
-import type { ConversionOrderInputLinesTable, ConversionOrdersTable } from "./conversion-order.schema";
+import { conversionOrderInputLines, conversionOrders } from "./production.tables";
 
 @Injectable()
-export class KyselyConversionOrderRepository implements ConversionOrderRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class ConversionOrderRepository implements ConversionOrderRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(order: ConversionOrder): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("conversion_orders")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(conversionOrders)
         .values({
           id: order.id,
           branch_id: order.branchId,
@@ -37,8 +36,9 @@ export class KyselyConversionOrderRepository implements ConversionOrderRepositor
           cancelled_at: order.cancelledAt,
           created_at: order.createdAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: conversionOrders.id,
+          set: {
             status: order.status,
             actual_output_quantity: order.actualOutputQuantity,
             output_unit_cost: order.outputUnitCost,
@@ -52,13 +52,12 @@ export class KyselyConversionOrderRepository implements ConversionOrderRepositor
             started_at: order.startedAt,
             completed_at: order.completedAt,
             cancelled_at: order.cancelledAt,
-          })
-        )
-        .execute();
+          },
+        });
 
       for (const line of order.inputLines) {
-        await trx
-          .insertInto("conversion_order_input_lines")
+        await tx
+          .insert(conversionOrderInputLines)
           .values({
             id: line.id,
             conversion_order_id: order.id,
@@ -69,45 +68,47 @@ export class KyselyConversionOrderRepository implements ConversionOrderRepositor
             unit_cost: line.unitCost,
             movement_id: line.movementId,
           })
-          .onConflict((oc) =>
-            oc.column("id").doUpdateSet({
+          .onConflictDoUpdate({
+            target: conversionOrderInputLines.id,
+            set: {
               actual_quantity: line.actualQuantity,
               unit_cost: line.unitCost,
               movement_id: line.movementId,
-            })
-          )
-          .execute();
+            },
+          });
       }
     });
   }
 
   async findById(id: string): Promise<ConversionOrder | null> {
-    const row = await this.db.selectFrom("conversion_orders").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(conversionOrders).where(eq(conversionOrders.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadInputLines(id));
   }
 
   async list(filter?: { branchId?: string; status?: string }): Promise<ConversionOrder[]> {
-    let query = this.db.selectFrom("conversion_orders").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(conversionOrders)
+      .where(
+        and(
+          filter?.branchId ? eq(conversionOrders.branch_id, filter.branchId) : undefined,
+          filter?.status ? eq(conversionOrders.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(conversionOrders.created_at));
     const orders: ConversionOrder[] = [];
     for (const row of rows) orders.push(this.toDomain(row, await this.loadInputLines(row.id)));
     return orders;
   }
 
-  private loadInputLines(conversionOrderId: string): Promise<Selectable<ConversionOrderInputLinesTable>[]> {
-    return this.db
-      .selectFrom("conversion_order_input_lines")
-      .selectAll()
-      .where("conversion_order_id", "=", conversionOrderId)
-      .execute();
+  private loadInputLines(conversionOrderId: string): Promise<(typeof conversionOrderInputLines.$inferSelect)[]> {
+    return this.db.select().from(conversionOrderInputLines).where(eq(conversionOrderInputLines.conversion_order_id, conversionOrderId));
   }
 
   private toDomain(
-    row: Selectable<ConversionOrdersTable>,
-    lineRows: Selectable<ConversionOrderInputLinesTable>[]
+    row: typeof conversionOrders.$inferSelect,
+    lineRows: (typeof conversionOrderInputLines.$inferSelect)[]
   ): ConversionOrder {
     return ConversionOrder.reconstitute(row.id, {
       branchId: row.branch_id,

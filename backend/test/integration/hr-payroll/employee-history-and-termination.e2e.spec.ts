@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لسجل تغييرات الموظف (employee_history) وتبعات إنهاء الخدمة (بنود معلّقة + تعطيل حساب الدخول) -
 // راجع تعليق set-employee-status.handler.ts وupdate-employee.handler.ts: نفس منطق
@@ -38,8 +39,7 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({

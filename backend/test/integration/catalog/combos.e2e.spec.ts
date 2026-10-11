@@ -2,9 +2,12 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray, like } from "drizzle-orm";
+import { comboItems, combos, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // e2e لإدارة العروض (combos/combo_items) - راجع تعليق combo.aggregate.ts للفلسفة (نفس مفهوم الريبو
 // القديم بالظبط: أكتر من حجم بسعر واحد)
@@ -23,11 +26,10 @@ describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () =
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-عروض-جست", email: "admin-combos@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -37,7 +39,7 @@ describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () =
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-combos@jest.test", password: "12345678" })
     ).body.token;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const itemA = MenuItem.register({ name: "برجر-عروض-جست" });
     const variantA = itemA.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(itemA);
@@ -50,12 +52,12 @@ describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () =
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM combo_items`.execute(db);
-    await sql`DELETE FROM combos WHERE name LIKE '%عروض-جست%'`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id IN (${variantAId}, ${variantBId})`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name LIKE '%عروض-جست%'`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-combos@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(comboItems);
+    await db.delete(combos).where(like(combos.name, "%عروض-جست%"));
+    await db.delete(menuItemVariants).where(inArray(menuItemVariants.id, [variantAId, variantBId]));
+    await db.delete(menuItems).where(like(menuItems.name, "%عروض-جست%"));
+    await db.delete(users).where(eq(users.email, "admin-combos@jest.test"));
     await app.close();
   });
 

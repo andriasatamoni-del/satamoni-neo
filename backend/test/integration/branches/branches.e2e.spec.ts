@@ -4,10 +4,11 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Branches - /branches (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -26,8 +27,7 @@ describe("Branches - /branches (e2e ضد تطبيق حقيقي كامل)", () =>
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const repo = new UserRepository(app.get(DATABASE));
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-فروع", email: "admin-branches@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -40,7 +40,7 @@ describe("Branches - /branches (e2e ضد تطبيق حقيقي كامل)", () =>
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     // POST /branches بينشر BranchRegisteredEvent دلوقتي، اللي Treasury context بيسمع له وبينشئ خزينة
     // رئيسية مربوطة بالفرع (treasuries.branch_id FK) - لازم تتشال قبل الفرع نفسه
     await db.delete(treasuries);

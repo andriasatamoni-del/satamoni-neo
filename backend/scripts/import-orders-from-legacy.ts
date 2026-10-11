@@ -12,7 +12,7 @@ import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
 import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
 import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES, type OrderSource } from "../src/contexts/orders/domain/order.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../src/shared/database/script-db";
@@ -39,7 +39,7 @@ export interface ImportCounts { created: number; updated: number; skipped: numbe
 export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
   const orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
   const branchRepo = new BranchRepository(neoDb);
-  const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
+  const menuItemRepo = new MenuItemRepository(neoDb);
   const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();

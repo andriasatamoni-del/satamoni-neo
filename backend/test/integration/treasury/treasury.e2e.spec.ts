@@ -3,13 +3,14 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { truncate } from "../helpers/db";
 import { eq, inArray, isNull, like, or } from "drizzle-orm";
 import { bankAccounts, banks, treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -33,8 +34,7 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-خزائن-جست", email: "admin-treasury@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -47,8 +47,7 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    const database = app.get(DATABASE);
+    const database = app.get<Database>(DATABASE);
     if (bankAccountId) await database.delete(bankAccounts).where(eq(bankAccounts.id, bankAccountId));
     if (bankId) await database.delete(banks).where(eq(banks.id, bankId));
     // قيود POSTED مش قابلة للحذف بـDELETE عادي (trigger المناعة) - TRUNCATE بس بيتخطى الـtriggers
@@ -152,8 +151,8 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(DATABASE);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const manager = User.register({

@@ -4,10 +4,11 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { eq, inArray } from "drizzle-orm";
 import { customerAddresses, customers } from "../../../src/contexts/customers/infrastructure/persistence/customers.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لبوابة الدخول الذاتي للعملاء (customer-auth) - راجع تعليق customer.aggregate.ts للفلسفة (نفس
 // مفهوم المرحلة 8.38 بالريبو القديم بالحرف: رقم تليفون + كلمة سر، منفصل تمامًا عن دخول الموظفين)
@@ -28,7 +29,7 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(customerAddresses).where(inArray(customerAddresses.customer_id, db.select({ id: customers.id }).from(customers).where(inArray(customers.phone, [phone, guestPhone]))));
     await db.delete(customers).where(inArray(customers.phone, [phone, guestPhone]));
     await app.close();
@@ -106,9 +107,8 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const db = app.get(KYSELY);
-    const database = app.get(DATABASE);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const database = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const staff = User.register({
       name: "موظف-كروس-توكن-جست", email: "staff-cross-token@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -125,7 +125,7 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
   });
 
   test("عميل ضيف (سجّل قبل كده من غير حساب) - register بيتحول لحساب حقيقي وبيحافظ على نقاط الولاء", async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     // عميل ضيف حقيقي بيتسجّل من غير باسورد خالص (password_hash=NULL) - نفس فلسفة الريبو القديم بالحرف
     await db.insert(customers).values({ id: randomUUID(), phone: guestPhone, name: "ضيف-جست", loyalty_points: 30, password_hash: null });
 

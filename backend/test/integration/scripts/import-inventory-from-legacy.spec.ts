@@ -2,8 +2,8 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importInventoryFromLegacy } from "../../../scripts/import-inventory-from-legacy";
-import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
-import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
+import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
+import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
@@ -14,8 +14,8 @@ const LEGACY_FIXTURE_URL =
 describe("importInventoryFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let itemRepo: KyselyInventoryItemRepository;
-  let movementRepo: KyselyStockMovementRepository;
+  let itemRepo: InventoryItemRepository;
+  let movementRepo: StockMovementRepository;
   let branchId: string;
 
   beforeAll(async () => {
@@ -34,8 +34,8 @@ describe("importInventoryFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    itemRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
-    movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
+    itemRepo = new InventoryItemRepository(neoDb);
+    movementRepo = new StockMovementRepository(neoDb);
     const branchRepo = new BranchRepository(neoDb);
 
     await sql`DELETE FROM branch_stock_balances`.execute(kyselyOn(neoDb));

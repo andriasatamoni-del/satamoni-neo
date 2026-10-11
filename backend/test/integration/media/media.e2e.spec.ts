@@ -3,10 +3,11 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { inArray, like } from "drizzle-orm";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { mediaImages } from "../../../src/contexts/media/infrastructure/persistence/media.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // صور المنيو والعروض (STORE-2): رفع بصلاحية إدارة المنيو، وخدمة عامة بكاش طويل
 describe("Media - صور المنيو (e2e)", () => {
@@ -20,12 +21,11 @@ describe("Media - صور المنيو (e2e)", () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
-    const db = app.get(KYSELY);
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const hash = await new BcryptPasswordHasher().hash("12345678");
-    const repo = new UserRepository(app.get(DATABASE));
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     await repo.save(User.register({ name: "أدمن-صور", email: "admin-media@jest.test", passwordHash: hash, role: "admin" }));
     await repo.save(User.register({ name: "كاشير-صور", email: "cashier-media@jest.test", passwordHash: hash, role: "cashier" }));
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-media@jest.test", password: "12345678" })).body.token;
@@ -33,7 +33,7 @@ describe("Media - صور المنيو (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(mediaImages).where(inArray(mediaImages.uploaded_by, db.select({ id: users.id }).from(users).where(like(users.email, "%-media@jest.test"))));
     await db.delete(users).where(like(users.email, "%-media@jest.test"));
     await app.close();

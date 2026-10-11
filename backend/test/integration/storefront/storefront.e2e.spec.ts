@@ -18,6 +18,7 @@ import { paymentMethods, payments } from "../../../src/contexts/payment-control/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // STORE-1/2: موقع الطلب أونلاين بحساب إلزامي - من المنيو العام، للتسجيل مرة واحدة بالعنوان، للطلب بضغطة،
 // لحد الكاشير والمطبخ والتتبّع ونقاط الولاء (كسب بعد التسليم + صرف في مكافأة)
@@ -83,25 +84,25 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository");
+    const { MenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-category.repository");
     const { MenuCategory } = await import("../../../src/contexts/catalog/domain/menu-category.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
-    const { KyselyComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-combo.repository");
+    const { ComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/combo.repository");
     const { Combo } = await import("../../../src/contexts/catalog/domain/combo.aggregate");
     const { KyselyPaymentMethodRepository } = await import("../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository");
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
-    const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
+    const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
-    await new UserRepository(app.get(DATABASE)).save(
+    await new UserRepository(app.get<Database>(DATABASE)).save(
       User.register({ name: "أدمن-موقع-جست", email: "admin-store@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-store@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-موقع-جست", phone: "0223456789", lat: 30.05, lng: 31.23, supportsDineIn: false });
     const dineIn = Branch.register({ name: "فرع-موقع-صالة-جست", supportsDineIn: true });
     await branchRepo.save(branch);
@@ -110,10 +111,10 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     dineInBranchId = dineIn.id;
 
     const category = MenuCategory.register({ name: "قسم-موقع-جست", displayOrder: -100 });
-    await new KyselyMenuCategoryRepository(db).save(category);
+    await new MenuCategoryRepository(app.get<Database>(DATABASE)).save(category);
     categoryId = category.id;
 
-    const itemRepo = new KyselyMenuItemRepository(db);
+    const itemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-موقع-جست", categoryId, description: "بالجبنة", isBest: true, imageUrl: "/media/images/pizza" });
     smallId = item.addVariant({ label: "صغير", price: 60 }).id;
     largeId = item.addVariant({ label: "كبير", price: 100 }).id;
@@ -131,15 +132,15 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     scarceVariantId = scarce.addVariant({ label: "عادي", price: 30 }).id;
     await itemRepo.save(scarce);
     const ingredient = InventoryItem.register({ name: "مكوّن-ناقص-موقع-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
-    await new KyselyInventoryItemRepository(db).save(ingredient);
+    await new InventoryItemRepository(app.get<Database>(DATABASE)).save(ingredient);
     ingredientId = ingredient.id;
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: scarceVariantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: ingredientId, quantity: 1 });
     recipe.activateVersion(version.id);
-    await new KyselyRecipeRepository(db).save(recipe);
+    await new RecipeRepository(app.get<Database>(DATABASE)).save(recipe);
 
-    const comboRepo = new KyselyComboRepository(db);
+    const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({ name: "عرض-موقع-جست", price: 150, items: [{ variantId: smallId, quantity: 2 }] });
     const exclusive = Combo.register({
       name: "عرض-حصري-موقع-جست", price: 99, items: [{ variantId: smallId, quantity: 1 }],
@@ -175,7 +176,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   });
 
   afterAll(async () => {
-    const database = app.get(DATABASE);
+    const database = app.get<Database>(DATABASE);
     await request(server()).patch("/pos-settings").set(staff()).send({ onlineOrderingEnabled: false });
     await database.update(posSettings).set({ updated_by: null });
     const phones = [phone, incompletePhone, blockedPhone];
@@ -265,7 +266,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   });
 
   test("حساب قديم ناقصه إيميل/رقم تاني/عنوان -> لازم يكمّل بياناته قبل أول طلب", async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     const id = randomUUID();
     await db.insert(customers).values({ id: id, phone: incompletePhone, name: "عميل قديم", loyalty_points: 0, password_hash: "x" });
     const token = app.get(CUSTOMER_TOKEN_SERVICE).sign({ sub: id });
@@ -321,7 +322,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     expect(poor.body.error).toContain("نقاطك مش كفاية");
     expect(await balance()).toBe(38);
 
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.update(customers).set({ loyalty_points: 100 }).where(eq(customers.phone, phone));
     const free = await place(order({ orderType: "takeaway", addressId: undefined, rewardId: rewardIds.bigDiscount, items: [{ variantId: smallId, quantity: 1 }] }));
     expect(free.status).toBe(201);
@@ -350,7 +351,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const dinein = await place(order({ branchId: dineInBranchId, orderType: "dinein", tableNumber: "3", addressId: undefined, items: [{ variantId: smallId, quantity: 1 }] }));
     expect(dinein.status).toBe(201);
 
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.update(customers).set({ is_blocked: true }).where(eq(customers.phone, phone));
     expect((await place(order())).status).toBe(403);
     await db.update(customers).set({ is_blocked: false }).where(eq(customers.phone, phone));

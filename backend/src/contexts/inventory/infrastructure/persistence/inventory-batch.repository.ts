@@ -1,19 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import { sql } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, eq, gt, isNotNull, lte, sql } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { InventoryBatch, type InventoryBatchSourceType, type InventoryBatchStatus } from "../../domain/inventory-batch.aggregate";
 import type { InventoryBatchRepositoryPort } from "../../domain/ports/inventory-batch-repository.port";
-import type { InventoryBatchesTable } from "./inventory-batch.schema";
+import { inventoryBatches } from "./inventory.tables";
 
 @Injectable()
-export class KyselyInventoryBatchRepository implements InventoryBatchRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class InventoryBatchRepository implements InventoryBatchRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(batch: InventoryBatch): Promise<void> {
     await this.db
-      .insertInto("inventory_batches")
+      .insert(inventoryBatches)
       .values({
         id: batch.id,
         batch_number: batch.batchNumber,
@@ -30,47 +28,55 @@ export class KyselyInventoryBatchRepository implements InventoryBatchRepositoryP
         created_by: batch.createdBy,
         created_at: batch.createdAt,
       })
-      .onConflict((oc) => oc.column("id").doUpdateSet({ remaining_quantity: batch.remainingQuantity, status: batch.status }))
-      .execute();
+      .onConflictDoUpdate({ target: inventoryBatches.id, set: { remaining_quantity: batch.remainingQuantity, status: batch.status } });
   }
 
   async findById(id: string): Promise<InventoryBatch | null> {
-    const row = await this.db.selectFrom("inventory_batches").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(inventoryBatches).where(eq(inventoryBatches.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async nextBatchNumber(): Promise<string> {
-    const { rows } = await sql<{ nextval: string }>`SELECT nextval('inventory_batch_number_seq')`.execute(this.db);
-    return `BATCH-${String(rows[0].nextval).padStart(6, "0")}`;
+    // nextval() has no builder method: select it as a fragment from a one-row VALUES list
+    const [row] = await this.db
+      .select({ nextval: sql<string>`nextval('inventory_batch_number_seq')` })
+      .from(sql`(VALUES (1)) AS seq`);
+    return `BATCH-${String(row.nextval).padStart(6, "0")}`;
   }
 
   async listActiveByItem(inventoryItemId: string, branchId: string): Promise<InventoryBatch[]> {
     const rows = await this.db
-      .selectFrom("inventory_batches")
-      .selectAll()
-      .where("inventory_item_id", "=", inventoryItemId)
-      .where("branch_id", "=", branchId)
-      .where("status", "=", "active")
-      .orderBy(sql`expiry_date IS NULL`)
-      .orderBy("expiry_date", "asc")
-      .execute();
+      .select()
+      .from(inventoryBatches)
+      .where(
+        and(
+          eq(inventoryBatches.inventory_item_id, inventoryItemId),
+          eq(inventoryBatches.branch_id, branchId),
+          eq(inventoryBatches.status, "active")
+        )
+      )
+      .orderBy(sql`${inventoryBatches.expiry_date} IS NULL`, asc(inventoryBatches.expiry_date));
     return rows.map((r) => this.toDomain(r));
   }
 
   async listExpiringSoon(input: { days: number; branchId: string | null }): Promise<InventoryBatch[]> {
-    let query = this.db
-      .selectFrom("inventory_batches")
-      .selectAll()
-      .where("status", "=", "active")
-      .where("remaining_quantity", ">", 0)
-      .where("expiry_date", "is not", null)
-      .where("expiry_date", "<=", sql<Date>`((now() AT TIME ZONE 'Africa/Cairo')::date + (${input.days} || ' days')::interval)`);
-    if (input.branchId) query = query.where("branch_id", "=", input.branchId);
-    const rows = await query.orderBy("expiry_date", "asc").execute();
+    const rows = await this.db
+      .select()
+      .from(inventoryBatches)
+      .where(
+        and(
+          eq(inventoryBatches.status, "active"),
+          gt(inventoryBatches.remaining_quantity, 0),
+          isNotNull(inventoryBatches.expiry_date),
+          lte(inventoryBatches.expiry_date, sql`((now() AT TIME ZONE 'Africa/Cairo')::date + (${input.days} || ' days')::interval)`),
+          input.branchId ? eq(inventoryBatches.branch_id, input.branchId) : undefined
+        )
+      )
+      .orderBy(asc(inventoryBatches.expiry_date));
     return rows.map((r) => this.toDomain(r));
   }
 
-  private toDomain(row: Selectable<InventoryBatchesTable>): InventoryBatch {
+  private toDomain(row: typeof inventoryBatches.$inferSelect): InventoryBatch {
     return InventoryBatch.reconstitute(row.id, {
       batchNumber: row.batch_number,
       inventoryItemId: row.inventory_item_id,

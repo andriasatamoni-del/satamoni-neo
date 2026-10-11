@@ -17,6 +17,7 @@ import { printJobs } from "../../../src/contexts/printing/infrastructure/persist
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import { whatsappConversations, whatsappMessages, whatsappPendingOrderLines, whatsappPendingOrders } from "../../../src/contexts/whatsapp/infrastructure/persistence/whatsapp.tables";
 import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -37,14 +38,13 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({ name: "أدمن-واتساب-جست", email: "admin-whatsapp@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-whatsapp@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع واتساب-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -57,7 +57,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(whatsappPendingOrderLines).where(inArray(whatsappPendingOrderLines.pending_order_id, db.select({ id: whatsappPendingOrders.id }).from(whatsappPendingOrders).where(eq(whatsappPendingOrders.branch_id, branchId))));
     await db.delete(whatsappPendingOrders).where(eq(whatsappPendingOrders.branch_id, branchId));
     await db.delete(whatsappMessages).where(eq(whatsappMessages.conversation_id, conversationId));
@@ -185,8 +185,8 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const db = app.get(DATABASE);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({ name: "كاشير-واتساب-جست", email: "cashier-whatsapp@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
     await userRepo.save(cashier);

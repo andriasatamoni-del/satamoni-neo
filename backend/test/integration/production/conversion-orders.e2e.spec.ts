@@ -2,9 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { conversionOrderInputLines, conversionOrders } from "../../../src/contexts/production/infrastructure/persistence/production.tables";
+import { truncate } from "../helpers/db";
 
 describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -28,24 +36,24 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
+    const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({ name: "أدمن-تصنيع-جست", email: "admin-production@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-production@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع تصنيع-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const flour = InventoryItem.register({ name: "دقيق-تصنيع-جست", unit: "كيلو", unitCost: 10 });
     await inventoryRepo.save(flour);
     flourId = flour.id;
@@ -81,19 +89,19 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM conversion_order_input_lines WHERE conversion_order_id IN (SELECT id FROM conversion_orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM conversion_orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${inventoryAccountId}, ${varianceAccountId})`.execute(db);
-    await sql`DELETE FROM recipe_ingredients WHERE recipe_version_id IN (SELECT id FROM recipe_versions WHERE recipe_id = ${recipeId})`.execute(db);
-    await sql`DELETE FROM recipe_versions WHERE recipe_id = ${recipeId}`.execute(db);
-    await sql`DELETE FROM recipes WHERE id = ${recipeId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${flourId}, ${sugarId}, ${cakeId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-production@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(conversionOrderInputLines).where(inArray(conversionOrderInputLines.conversion_order_id, db.select({ id: conversionOrders.id }).from(conversionOrders).where(eq(conversionOrders.branch_id, branchId))));
+    await db.delete(conversionOrders).where(eq(conversionOrders.branch_id, branchId));
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [inventoryAccountId, varianceAccountId]));
+    await db.delete(recipeIngredients).where(inArray(recipeIngredients.recipe_version_id, db.select({ id: recipeVersions.id }).from(recipeVersions).where(eq(recipeVersions.recipe_id, recipeId))));
+    await db.delete(recipeVersions).where(eq(recipeVersions.recipe_id, recipeId));
+    await db.delete(recipes).where(eq(recipes.id, recipeId));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [flourId, sugarId, cakeId]));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-production@jest.test"));
     await app.close();
   });
 
@@ -198,8 +206,8 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({ name: "كاشير-تصنيع-جست", email: "cashier-production@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
     await userRepo.save(cashier);
@@ -210,8 +218,8 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     const res = await request(app.getHttpServer()).post(`/production/${create.body.id}/approve`).set("Authorization", `Bearer ${loginRes.body.token}`);
     expect(res.status).toBe(403);
 
-    await sql`DELETE FROM conversion_order_input_lines WHERE conversion_order_id = ${create.body.id}`.execute(db);
-    await sql`DELETE FROM conversion_orders WHERE id = ${create.body.id}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'cashier-production@jest.test'`.execute(db);
+    await db.delete(conversionOrderInputLines).where(eq(conversionOrderInputLines.conversion_order_id, create.body.id));
+    await db.delete(conversionOrders).where(eq(conversionOrders.id, create.body.id));
+    await db.delete(users).where(eq(users.email, "cashier-production@jest.test"));
   });
 });

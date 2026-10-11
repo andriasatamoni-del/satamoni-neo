@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -34,13 +35,12 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقارير-مخزون-جست", email: "admin-invreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -73,7 +73,7 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
     await userRepo.save(branchManager);
     branchManagerToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "manager-invreports@jest.test", password: "12345678" })).body.token;
 
-    const itemRepo = new KyselyInventoryItemRepository(db);
+    const itemRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
 
     // صنف بتكلفة وحدة معروفة - 5 كيلو في فرع أ و8 كيلو في فرع ب (لتقييم المخزون + كارت الصنف + المقارنة)
     const costedItem = InventoryItem.register({ name: "صنف-متكلّف-تقارير-مخزون-جست", unit: "كيلو", unitCost: 10 });

@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لتسجيل طلب فيه سطر عرض (combo) - بيتأكد إن استهلاك المخزون بيتفكّ لأصناف العرض الأصلية عن طريق
 // وصفة كل حجم (نفس فلسفة combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
@@ -29,23 +30,22 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
-    const { KyselyStockMovementRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository"
+    const { StockMovementRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const { KyselyComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-combo.repository");
+    const { ComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/combo.repository");
     const { Combo } = await import("../../../src/contexts/catalog/domain/combo.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طلبات-عروض-جست", email: "admin-orders-combos@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -55,23 +55,23 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-orders-combos@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-طلبات-عروض-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "جبنة-طلبات-عروض-جست", unit: "كيلو" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
 
-    const movementRepo = new KyselyStockMovementRepository(db);
+    const movementRepo = new StockMovementRepository(app.get<Database>(DATABASE));
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 10 }),
       { allowNegativeBalance: true }
     );
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const pizza = MenuItem.register({ name: "بيتزا-طلبات-عروض-جست" });
     const pizzaVariant = pizza.addVariant({ label: "وسط", price: 100 });
     await menuItemRepo.save(pizza);
@@ -82,14 +82,14 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     await menuItemRepo.save(drink);
     drinkVariantId = drinkVariant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: pizzaVariantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو جبنة لكل بيتزا وسط
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    const comboRepo = new KyselyComboRepository(db);
+    const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({
       name: "عرض بيتزا+مشروب-طلبات-عروض-جست",
       price: 100, // أرخص من مجموع الأصناف (115) - نفس فكرة العروض

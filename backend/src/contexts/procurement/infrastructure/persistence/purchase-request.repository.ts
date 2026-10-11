@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PurchaseRequest, type PurchaseRequestStatus } from "../../domain/purchase-request.aggregate";
 import type { PurchaseRequestRepositoryPort } from "../../domain/ports/purchase-request-repository.port";
-import type { PurchaseRequestItemsTable, PurchaseRequestsTable } from "./procurement.schema";
+import { purchaseRequestItems, purchaseRequests } from "./procurement.tables";
 
 @Injectable()
-export class KyselyPurchaseRequestRepository implements PurchaseRequestRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PurchaseRequestRepository implements PurchaseRequestRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(request: PurchaseRequest): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("purchase_requests")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(purchaseRequests)
         .values({
           id: request.id,
           branch_id: request.branchId,
@@ -31,8 +30,9 @@ export class KyselyPurchaseRequestRepository implements PurchaseRequestRepositor
           created_at: request.createdAt,
           updated_at: request.updatedAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: purchaseRequests.id,
+          set: {
             required_date: request.requiredDate,
             reason: request.reason,
             status: request.status,
@@ -44,48 +44,53 @@ export class KyselyPurchaseRequestRepository implements PurchaseRequestRepositor
             cancelled_at: request.cancelledAt,
             converted_to_purchase_order_id: request.convertedToPurchaseOrderId,
             updated_at: request.updatedAt,
-          })
-        )
-        .execute();
+          },
+        });
 
-      await trx.deleteFrom("purchase_request_items").where("purchase_request_id", "=", request.id).execute();
+      await tx.delete(purchaseRequestItems).where(eq(purchaseRequestItems.purchase_request_id, request.id));
       for (const line of request.lines) {
-        await trx
-          .insertInto("purchase_request_items")
-          .values({
-            id: line.id,
-            purchase_request_id: request.id,
-            inventory_item_id: line.inventoryItemId,
-            requested_quantity: line.requestedQuantity,
-            unit: line.unit,
-            notes: line.notes,
-          })
-          .execute();
+        await tx.insert(purchaseRequestItems).values({
+          id: line.id,
+          purchase_request_id: request.id,
+          inventory_item_id: line.inventoryItemId,
+          requested_quantity: line.requestedQuantity,
+          unit: line.unit,
+          notes: line.notes,
+        });
       }
     });
   }
 
   async findById(id: string): Promise<PurchaseRequest | null> {
-    const row = await this.db.selectFrom("purchase_requests").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(purchaseRequests).where(eq(purchaseRequests.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async list(filter?: { branchId?: string; status?: string }): Promise<PurchaseRequest[]> {
-    let query = this.db.selectFrom("purchase_requests").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(purchaseRequests)
+      .where(
+        and(
+          filter?.branchId ? eq(purchaseRequests.branch_id, filter.branchId) : undefined,
+          filter?.status ? eq(purchaseRequests.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(purchaseRequests.created_at));
     const requests: PurchaseRequest[] = [];
     for (const row of rows) requests.push(this.toDomain(row, await this.loadLines(row.id)));
     return requests;
   }
 
-  private loadLines(requestId: string): Promise<Selectable<PurchaseRequestItemsTable>[]> {
-    return this.db.selectFrom("purchase_request_items").selectAll().where("purchase_request_id", "=", requestId).execute();
+  private loadLines(requestId: string): Promise<(typeof purchaseRequestItems.$inferSelect)[]> {
+    return this.db.select().from(purchaseRequestItems).where(eq(purchaseRequestItems.purchase_request_id, requestId));
   }
 
-  private toDomain(row: Selectable<PurchaseRequestsTable>, lineRows: Selectable<PurchaseRequestItemsTable>[]): PurchaseRequest {
+  private toDomain(
+    row: typeof purchaseRequests.$inferSelect,
+    lineRows: (typeof purchaseRequestItems.$inferSelect)[]
+  ): PurchaseRequest {
     return PurchaseRequest.reconstitute(row.id, {
       branchId: row.branch_id,
       requestedBy: row.requested_by,

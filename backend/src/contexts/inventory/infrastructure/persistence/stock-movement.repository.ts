@@ -1,18 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { StockMovement, type MovementType } from "../../domain/stock-movement.aggregate";
 import type {
   RecordMovementResult,
   StockMovementRepositoryPort,
 } from "../../domain/ports/stock-movement-repository.port";
 import { InsufficientStockError } from "../../domain/errors";
-import type { StockMovementsTable } from "./stock-movement.schema";
+import { branchStockBalances, stockMovements } from "./inventory.tables";
 
 @Injectable()
-export class KyselyStockMovementRepository implements StockMovementRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class StockMovementRepository implements StockMovementRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   // بيسجّل الحركة ويحدّث branch_stock_balances في معاملة واحدة ذرية. بنضمن وجود صف رصيد قبل القفل
   // عليه (INSERT ... ON CONFLICT DO NOTHING بكمية صفر) عشان أول حركة على (فرع، صنف) معينين تتقفل صح
@@ -22,20 +21,18 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
     movement: StockMovement,
     options: { allowNegativeBalance: boolean }
   ): Promise<RecordMovementResult> {
-    return this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("branch_stock_balances")
+    return this.db.transaction(async (tx) => {
+      await tx
+        .insert(branchStockBalances)
         .values({ branch_id: movement.branchId, inventory_item_id: movement.inventoryItemId, quantity: 0 })
-        .onConflict((oc) => oc.columns(["branch_id", "inventory_item_id"]).doNothing())
-        .execute();
+        .onConflictDoNothing({ target: [branchStockBalances.branch_id, branchStockBalances.inventory_item_id] });
 
-      const balanceRow = await trx
-        .selectFrom("branch_stock_balances")
-        .selectAll()
-        .where("branch_id", "=", movement.branchId)
-        .where("inventory_item_id", "=", movement.inventoryItemId)
-        .forUpdate()
-        .executeTakeFirstOrThrow();
+      const balanceWhere = and(
+        eq(branchStockBalances.branch_id, movement.branchId),
+        eq(branchStockBalances.inventory_item_id, movement.inventoryItemId)
+      );
+      const [balanceRow] = await tx.select().from(branchStockBalances).where(balanceWhere).for("update");
+      if (!balanceRow) throw new Error("branch_stock_balances row missing after upsert");
 
       const currentBalance = Number(balanceRow.quantity);
       const newBalance = currentBalance + movement.quantityDelta;
@@ -43,53 +40,47 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
         throw new InsufficientStockError();
       }
 
-      await trx.insertInto("stock_movements").values(this.toRow(movement)).execute();
-      await trx
-        .updateTable("branch_stock_balances")
-        .set({ quantity: newBalance })
-        .where("branch_id", "=", movement.branchId)
-        .where("inventory_item_id", "=", movement.inventoryItemId)
-        .execute();
+      await tx.insert(stockMovements).values(this.toRow(movement));
+      await tx.update(branchStockBalances).set({ quantity: newBalance }).where(balanceWhere);
 
       return { balanceAfter: newBalance };
     });
   }
 
   async getBalance(branchId: string, inventoryItemId: string): Promise<number> {
-    const row = await this.db
-      .selectFrom("branch_stock_balances")
-      .select("quantity")
-      .where("branch_id", "=", branchId)
-      .where("inventory_item_id", "=", inventoryItemId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select({ quantity: branchStockBalances.quantity })
+      .from(branchStockBalances)
+      .where(and(eq(branchStockBalances.branch_id, branchId), eq(branchStockBalances.inventory_item_id, inventoryItemId)))
+      .limit(1);
     return row ? Number(row.quantity) : 0;
   }
 
   async listMovements(filter?: { inventoryItemId?: string; branchId?: string }): Promise<StockMovement[]> {
-    let query = this.db.selectFrom("stock_movements").selectAll();
-    if (filter?.inventoryItemId) query = query.where("inventory_item_id", "=", filter.inventoryItemId);
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    const rows = await query.orderBy("occurred_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(stockMovements)
+      .where(
+        and(
+          filter?.inventoryItemId ? eq(stockMovements.inventory_item_id, filter.inventoryItemId) : undefined,
+          filter?.branchId ? eq(stockMovements.branch_id, filter.branchId) : undefined
+        )
+      )
+      .orderBy(desc(stockMovements.occurred_at));
     return rows.map((r) => this.toDomain(r));
   }
 
   async findByLegacyReferenceKey(key: string): Promise<StockMovement | null> {
-    const row = await this.db
-      .selectFrom("stock_movements")
-      .selectAll()
-      .where("legacy_reference_key", "=", key)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(stockMovements).where(eq(stockMovements.legacy_reference_key, key)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async listByReference(referenceType: string, referenceId: string): Promise<StockMovement[]> {
     const rows = await this.db
-      .selectFrom("stock_movements")
-      .selectAll()
-      .where("reference_type", "=", referenceType)
-      .where("reference_id", "=", referenceId)
-      .orderBy("occurred_at", "asc")
-      .execute();
+      .select()
+      .from(stockMovements)
+      .where(and(eq(stockMovements.reference_type, referenceType), eq(stockMovements.reference_id, referenceId)))
+      .orderBy(asc(stockMovements.occurred_at));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -111,7 +102,7 @@ export class KyselyStockMovementRepository implements StockMovementRepositoryPor
     };
   }
 
-  private toDomain(row: Selectable<StockMovementsTable>): StockMovement {
+  private toDomain(row: typeof stockMovements.$inferSelect): StockMovement {
     return StockMovement.reconstitute(row.id, {
       inventoryItemId: row.inventory_item_id,
       branchId: row.branch_id,

@@ -5,10 +5,10 @@ import { CATALOG_LAYOUT_REPOSITORY, MENU_CATEGORY_REPOSITORY } from "./domain/po
 import { MENU_ITEM_REPOSITORY } from "./domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY } from "./domain/ports/recipe-repository.port";
 import { COMBO_REPOSITORY } from "./domain/ports/combo-repository.port";
-import { KyselyCatalogLayoutRepository, KyselyMenuCategoryRepository } from "./infrastructure/persistence/kysely-menu-category.repository";
-import { KyselyMenuItemRepository } from "./infrastructure/persistence/kysely-menu-item.repository";
-import { KyselyRecipeRepository } from "./infrastructure/persistence/kysely-recipe.repository";
-import { KyselyComboRepository } from "./infrastructure/persistence/kysely-combo.repository";
+import { CatalogLayoutRepository, MenuCategoryRepository } from "./infrastructure/persistence/menu-category.repository";
+import { MenuItemRepository } from "./infrastructure/persistence/menu-item.repository";
+import { RecipeRepository } from "./infrastructure/persistence/recipe.repository";
+import { ComboRepository } from "./infrastructure/persistence/combo.repository";
 import { RegisterMenuCategoryHandler } from "./application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "./application/commands/register-menu-item.handler";
 import { AddVariantHandler } from "./application/commands/add-variant.handler";
@@ -40,11 +40,11 @@ import { CatalogController } from "./api/catalog.controller";
   imports: [IdentityAccessModule],
   controllers: [CatalogController],
   providers: [
-    { provide: MENU_CATEGORY_REPOSITORY, useClass: KyselyMenuCategoryRepository },
-    { provide: CATALOG_LAYOUT_REPOSITORY, useClass: KyselyCatalogLayoutRepository },
-    { provide: MENU_ITEM_REPOSITORY, useClass: KyselyMenuItemRepository },
-    { provide: RECIPE_REPOSITORY, useClass: KyselyRecipeRepository },
-    { provide: COMBO_REPOSITORY, useClass: KyselyComboRepository },
+    { provide: MENU_CATEGORY_REPOSITORY, useClass: MenuCategoryRepository },
+    { provide: CATALOG_LAYOUT_REPOSITORY, useClass: CatalogLayoutRepository },
+    { provide: MENU_ITEM_REPOSITORY, useClass: MenuItemRepository },
+    { provide: RECIPE_REPOSITORY, useClass: RecipeRepository },
+    { provide: COMBO_REPOSITORY, useClass: ComboRepository },
     RegisterMenuCategoryHandler,
     RegisterMenuItemHandler,
     AddVariantHandler,

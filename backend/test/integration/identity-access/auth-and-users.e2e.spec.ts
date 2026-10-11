@@ -3,6 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -45,7 +46,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
         "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
       );
       const { DATABASE } = await import("../../../src/shared/database/database.module");
-      const repo = new UserRepository(app.get(DATABASE));
+      const repo = new UserRepository(app.get<Database>(DATABASE));
       const hasher = new BcryptPasswordHasher();
 
       const admin = User.register({

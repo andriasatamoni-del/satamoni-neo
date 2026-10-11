@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Purchase, type PurchaseStatus } from "../../domain/purchase.aggregate";
 import type { PurchaseRepositoryPort } from "../../domain/ports/purchase-repository.port";
-import type { PurchaseLinesTable, PurchasesTable } from "./purchase.schema";
+import { purchaseLines, purchases } from "./purchases.tables";
 
 @Injectable()
-export class KyselyPurchaseRepository implements PurchaseRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class PurchaseRepository implements PurchaseRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(purchase: Purchase): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("purchases")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(purchases)
         .values({
           id: purchase.id,
           branch_id: purchase.branchId,
@@ -31,8 +30,9 @@ export class KyselyPurchaseRepository implements PurchaseRepositoryPort {
           posted_to_inventory: purchase.postedToInventory,
           created_at: purchase.createdAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: purchases.id,
+          set: {
             amount: purchase.amount,
             notes: purchase.notes,
             status: purchase.status,
@@ -40,49 +40,51 @@ export class KyselyPurchaseRepository implements PurchaseRepositoryPort {
             reviewed_at: purchase.reviewedAt,
             rejection_reason: purchase.rejectionReason,
             posted_to_inventory: purchase.postedToInventory,
-          })
-        )
-        .execute();
+          },
+        });
 
-      await trx.deleteFrom("purchase_lines").where("purchase_id", "=", purchase.id).execute();
+      await tx.delete(purchaseLines).where(eq(purchaseLines.purchase_id, purchase.id));
       for (const line of purchase.lines) {
-        await trx
-          .insertInto("purchase_lines")
-          .values({
-            id: line.id,
-            purchase_id: purchase.id,
-            inventory_item_id: line.inventoryItemId,
-            quantity: line.quantity,
-            unit: line.unit,
-            unit_price: line.unitPrice,
-            line_total: line.lineTotal,
-          })
-          .execute();
+        await tx.insert(purchaseLines).values({
+          id: line.id,
+          purchase_id: purchase.id,
+          inventory_item_id: line.inventoryItemId,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_price: line.unitPrice,
+          line_total: line.lineTotal,
+        });
       }
     });
   }
 
   async findById(id: string): Promise<Purchase | null> {
-    const row = await this.db.selectFrom("purchases").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(purchases).where(eq(purchases.id, id)).limit(1);
     return row ? this.toDomain(row, await this.loadLines(id)) : null;
   }
 
   async list(filter?: { branchId?: string; businessDate?: Date; status?: string }): Promise<Purchase[]> {
-    let query = this.db.selectFrom("purchases").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.businessDate) query = query.where("business_date", "=", filter.businessDate);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    const rows = await query.orderBy("business_date", "desc").orderBy("created_at", "desc").execute();
-    const purchases: Purchase[] = [];
-    for (const row of rows) purchases.push(this.toDomain(row, await this.loadLines(row.id)));
-    return purchases;
+    const rows = await this.db
+      .select()
+      .from(purchases)
+      .where(
+        and(
+          filter?.branchId ? eq(purchases.branch_id, filter.branchId) : undefined,
+          filter?.businessDate ? eq(purchases.business_date, filter.businessDate) : undefined,
+          filter?.status ? eq(purchases.status, filter.status) : undefined
+        )
+      )
+      .orderBy(desc(purchases.business_date), desc(purchases.created_at));
+    const result: Purchase[] = [];
+    for (const row of rows) result.push(this.toDomain(row, await this.loadLines(row.id)));
+    return result;
   }
 
-  private loadLines(purchaseId: string): Promise<Selectable<PurchaseLinesTable>[]> {
-    return this.db.selectFrom("purchase_lines").selectAll().where("purchase_id", "=", purchaseId).execute();
+  private loadLines(purchaseId: string): Promise<(typeof purchaseLines.$inferSelect)[]> {
+    return this.db.select().from(purchaseLines).where(eq(purchaseLines.purchase_id, purchaseId));
   }
 
-  private toDomain(row: Selectable<PurchasesTable>, lineRows: Selectable<PurchaseLinesTable>[]): Purchase {
+  private toDomain(row: typeof purchases.$inferSelect, lineRows: (typeof purchaseLines.$inferSelect)[]): Purchase {
     return Purchase.reconstitute(row.id, {
       branchId: row.branch_id,
       businessDate: row.business_date,

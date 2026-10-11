@@ -1,24 +1,23 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { BranchStockThreshold } from "../../domain/branch-stock-threshold.aggregate";
 import type {
   BranchStockBalanceWithThreshold,
   BranchStockThresholdRepositoryPort,
 } from "../../domain/ports/branch-stock-threshold-repository.port";
+import { branchStockBalances, branchStockThresholds, inventoryItems } from "./inventory.tables";
 
 @Injectable()
-export class KyselyBranchStockThresholdRepository implements BranchStockThresholdRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class BranchStockThresholdRepository implements BranchStockThresholdRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async get(branchId: string, inventoryItemId: string): Promise<BranchStockThreshold> {
-    const row = await this.db
-      .selectFrom("branch_stock_thresholds")
-      .selectAll()
-      .where("branch_id", "=", branchId)
-      .where("inventory_item_id", "=", inventoryItemId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(branchStockThresholds)
+      .where(and(eq(branchStockThresholds.branch_id, branchId), eq(branchStockThresholds.inventory_item_id, inventoryItemId)))
+      .limit(1);
 
     if (!row) return BranchStockThreshold.default(branchId, inventoryItemId);
     return BranchStockThreshold.reconstitute({
@@ -34,7 +33,7 @@ export class KyselyBranchStockThresholdRepository implements BranchStockThreshol
 
   async save(threshold: BranchStockThreshold): Promise<void> {
     await this.db
-      .insertInto("branch_stock_thresholds")
+      .insert(branchStockThresholds)
       .values({
         branch_id: threshold.branchId,
         inventory_item_id: threshold.inventoryItemId,
@@ -44,39 +43,40 @@ export class KyselyBranchStockThresholdRepository implements BranchStockThreshol
         updated_by: threshold.updatedBy,
         updated_at: threshold.updatedAt,
       })
-      .onConflict((oc) =>
-        oc.columns(["branch_id", "inventory_item_id"]).doUpdateSet({
+      .onConflictDoUpdate({
+        target: [branchStockThresholds.branch_id, branchStockThresholds.inventory_item_id],
+        set: {
           reorder_point: threshold.reorderPoint,
           min_stock: threshold.minStock,
           max_stock: threshold.maxStock,
           updated_by: threshold.updatedBy,
           updated_at: threshold.updatedAt,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async listBalancesWithThresholds(branchId?: string): Promise<BranchStockBalanceWithThreshold[]> {
-    let query = this.db
-      .selectFrom("branch_stock_balances")
-      .innerJoin("inventory_items", "inventory_items.id", "branch_stock_balances.inventory_item_id")
-      .leftJoin("branch_stock_thresholds", (join) =>
-        join
-          .onRef("branch_stock_thresholds.branch_id", "=", "branch_stock_balances.branch_id")
-          .onRef("branch_stock_thresholds.inventory_item_id", "=", "branch_stock_balances.inventory_item_id")
+    const rows = await this.db
+      .select({
+        branch_id: branchStockBalances.branch_id,
+        inventory_item_id: branchStockBalances.inventory_item_id,
+        item_name: inventoryItems.name,
+        unit: inventoryItems.unit,
+        quantity: branchStockBalances.quantity,
+        reorder_point: branchStockThresholds.reorder_point,
+        min_stock: branchStockThresholds.min_stock,
+        max_stock: branchStockThresholds.max_stock,
+      })
+      .from(branchStockBalances)
+      .innerJoin(inventoryItems, eq(inventoryItems.id, branchStockBalances.inventory_item_id))
+      .leftJoin(
+        branchStockThresholds,
+        and(
+          eq(branchStockThresholds.branch_id, branchStockBalances.branch_id),
+          eq(branchStockThresholds.inventory_item_id, branchStockBalances.inventory_item_id)
+        )
       )
-      .select([
-        "branch_stock_balances.branch_id as branch_id",
-        "branch_stock_balances.inventory_item_id as inventory_item_id",
-        "inventory_items.name as item_name",
-        "inventory_items.unit as unit",
-        "branch_stock_balances.quantity as quantity",
-        "branch_stock_thresholds.reorder_point as reorder_point",
-        "branch_stock_thresholds.min_stock as min_stock",
-        "branch_stock_thresholds.max_stock as max_stock",
-      ]);
-    if (branchId) query = query.where("branch_stock_balances.branch_id", "=", branchId);
-    const rows = await query.execute();
+      .where(branchId ? eq(branchStockBalances.branch_id, branchId) : undefined);
 
     return rows.map((r) => ({
       branchId: r.branch_id,

@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Stocktake } from "../../domain/stocktake.aggregate";
 import type { StocktakeRepositoryPort } from "../../domain/ports/stocktake-repository.port";
-import type { StocktakeLinesTable, StocktakesTable } from "./stocktake.schema";
+import { stocktakeLines, stocktakes } from "./inventory.tables";
 
 @Injectable()
-export class KyselyStocktakeRepository implements StocktakeRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class StocktakeRepository implements StocktakeRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(stocktake: Stocktake): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("stocktakes")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(stocktakes)
         .values({
           id: stocktake.id,
           branch_id: stocktake.branchId,
@@ -22,12 +21,11 @@ export class KyselyStocktakeRepository implements StocktakeRepositoryPort {
           total_variance_value: stocktake.totalVarianceValue,
           created_at: stocktake.createdAt,
         })
-        .onConflict((oc) => oc.column("id").doUpdateSet({ total_variance_value: stocktake.totalVarianceValue }))
-        .execute();
+        .onConflictDoUpdate({ target: stocktakes.id, set: { total_variance_value: stocktake.totalVarianceValue } });
 
       for (const line of stocktake.lines) {
-        await trx
-          .insertInto("stocktake_lines")
+        await tx
+          .insert(stocktakeLines)
           .values({
             id: line.id,
             stocktake_id: stocktake.id,
@@ -41,32 +39,33 @@ export class KyselyStocktakeRepository implements StocktakeRepositoryPort {
             charge_account_code: line.chargeAccountCode,
             inventory_movement_id: line.inventoryMovementId,
           })
-          .onConflict((oc) => oc.column("id").doUpdateSet({ inventory_movement_id: line.inventoryMovementId }))
-          .execute();
+          .onConflictDoUpdate({ target: stocktakeLines.id, set: { inventory_movement_id: line.inventoryMovementId } });
       }
     });
   }
 
   async findById(id: string): Promise<Stocktake | null> {
-    const row = await this.db.selectFrom("stocktakes").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(stocktakes).where(eq(stocktakes.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async list(filter?: { branchId?: string }): Promise<Stocktake[]> {
-    let query = this.db.selectFrom("stocktakes").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    const rows = await query.orderBy("created_at", "desc").execute();
-    const stocktakes: Stocktake[] = [];
-    for (const row of rows) stocktakes.push(this.toDomain(row, await this.loadLines(row.id)));
-    return stocktakes;
+    const rows = await this.db
+      .select()
+      .from(stocktakes)
+      .where(filter?.branchId ? eq(stocktakes.branch_id, filter.branchId) : undefined)
+      .orderBy(desc(stocktakes.created_at));
+    const result: Stocktake[] = [];
+    for (const row of rows) result.push(this.toDomain(row, await this.loadLines(row.id)));
+    return result;
   }
 
-  private loadLines(stocktakeId: string): Promise<Selectable<StocktakeLinesTable>[]> {
-    return this.db.selectFrom("stocktake_lines").selectAll().where("stocktake_id", "=", stocktakeId).execute();
+  private loadLines(stocktakeId: string): Promise<(typeof stocktakeLines.$inferSelect)[]> {
+    return this.db.select().from(stocktakeLines).where(eq(stocktakeLines.stocktake_id, stocktakeId));
   }
 
-  private toDomain(row: Selectable<StocktakesTable>, lineRows: Selectable<StocktakeLinesTable>[]): Stocktake {
+  private toDomain(row: typeof stocktakes.$inferSelect, lineRows: (typeof stocktakeLines.$inferSelect)[]): Stocktake {
     return Stocktake.reconstitute(row.id, {
       branchId: row.branch_id,
       createdBy: row.created_by,

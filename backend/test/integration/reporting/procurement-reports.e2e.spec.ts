@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -34,13 +35,12 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقارير-مشتريات-جست", email: "admin-procreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -54,12 +54,12 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
     await userRepo.save(cashier);
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-procreports@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-تقارير-مشتريات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const item = InventoryItem.register({ name: "دقيق-تقارير-مشتريات-جست", unit: "كيلو" });
     await inventoryRepo.save(item);
     inventoryItemId = item.id;

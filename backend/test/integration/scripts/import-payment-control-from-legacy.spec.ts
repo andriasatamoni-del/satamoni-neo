@@ -8,7 +8,7 @@ import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/
 import { KyselyReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
@@ -68,7 +68,7 @@ describe("importPaymentControlFromLegacy", () => {
     await new BranchRepository(neoDb).save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
+    const menuItemRepo = new MenuItemRepository(neoDb);
     const item = MenuItem.register({ name: "صنف استيراد-دفعات-جست" });
     const variant = item.addVariant({ label: "عادي", price: 80 });
     await menuItemRepo.save(item);

@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, like } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, branchStockThresholds, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Inventory - /inventory (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -29,8 +33,7 @@ describe("Inventory - /inventory (e2e ضد تطبيق حقيقي كامل)", () 
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مخزون", email: "admin-inventory@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -41,20 +44,20 @@ describe("Inventory - /inventory (e2e ضد تطبيق حقيقي كامل)", () 
       .send({ email: "admin-inventory@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع مخزون-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM branch_stock_thresholds WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances`.execute(db);
-    await sql`DELETE FROM stock_movements`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE name LIKE '%-e2e-جست'`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-inventory@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(branchStockThresholds).where(eq(branchStockThresholds.branch_id, branchId));
+    await db.delete(branchStockBalances);
+    await db.delete(stockMovements);
+    await db.delete(inventoryItems).where(like(inventoryItems.name, "%-e2e-جست"));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-inventory@jest.test"));
     await app.close();
   });
 

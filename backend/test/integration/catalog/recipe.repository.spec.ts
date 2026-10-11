@@ -1,53 +1,53 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyRecipeRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
-import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { RecipeRepository } from "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
+import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { Recipe } from "../../../src/contexts/catalog/domain/recipe.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
-describe("KyselyRecipeRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyRecipeRepository;
+describe("RecipeRepository", () => {
+  let db: Database;
+  let repo: RecipeRepository;
   let variantId: string;
   let ingredientItemId: string;
   let menuItemId: string;
 
   beforeAll(async () => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyRecipeRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new RecipeRepository(db);
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "بيتزا-وصفات-جست" });
     const variant = item.addVariant({ label: "وسط", price: 90 });
     await menuItemRepo.save(item);
     variantId = variant.id;
     menuItemId = item.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(db);
     const ingredient = InventoryItem.register({ name: "طحين-وصفات-جست", unit: "كيلو" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
   });
 
   afterAll(async () => {
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE item_id = ${menuItemId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE id = ${menuItemId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await closeScriptDb(database);
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.item_id, menuItemId));
+    await db.delete(menuItems).where(eq(menuItems.id, menuItemId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
   });
 
   test("save بيسجّل وصفة بنسخة ومكوّناتها مع بعض، وfindById بيرجّعهم بنفس البيانات", async () => {

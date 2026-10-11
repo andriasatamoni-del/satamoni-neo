@@ -9,6 +9,7 @@ import { branchDays } from "../../../src/contexts/branch-day/infrastructure/pers
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لقفل يوم الفرع - بيغطي: checklist أحمر (طلب مفتوح) بيمنع القفل، القفل بيرجع أخضر بعد ما يتحل،
 // قفل مزدوج لنفس اليوم -> 409 (نفس فلسفة الريبو القديم - UNIQUE(branch_id, business_date) هي الحماية
@@ -32,11 +33,10 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع قفل-يوم-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -61,7 +61,7 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(branchDays).where(eq(branchDays.branch_id, branchId));
     if (orderId) await db.delete(orders).where(eq(orders.id, orderId));
     await db.delete(branches).where(eq(branches.id, branchId));

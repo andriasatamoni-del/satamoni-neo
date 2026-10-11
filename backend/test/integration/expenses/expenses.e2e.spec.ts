@@ -10,6 +10,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { eq, inArray } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لتسجيل المصروفات (expenses/expense_categories) - راجع تعليق expense.aggregate.ts للفلسفة
 // (نسخة مبسّطة من دورة حياة الريبو القديم الرباعية). محاسب/مدير فرع بيقدروا يرحّلوا فورًا أو
@@ -38,7 +39,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مصروفات-جست", email: "admin-expenses@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -48,7 +49,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-expenses@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-مصروفات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -93,7 +94,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
   });
 
   afterAll(async () => {
-    const database = app.get(DATABASE);
+    const database = app.get<Database>(DATABASE);
     await database.delete(expenses).where(eq(expenses.branch_id, branchId));
     await truncate(database, journalEntryLines, journalEntries);
     await database.delete(expenseCategories).where(inArray(expenseCategories.id, [categoryId, categoryWithAccountId]));

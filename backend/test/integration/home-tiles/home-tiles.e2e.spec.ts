@@ -4,8 +4,9 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { inArray } from "drizzle-orm";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -23,8 +24,7 @@ describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تط�
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
@@ -41,7 +41,7 @@ describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تط�
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(users).where(inArray(users.email, ["admin-home-tiles@jest.test", "cashier-home-tiles@jest.test"]));
     await app.close();
   });

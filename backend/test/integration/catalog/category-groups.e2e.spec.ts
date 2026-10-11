@@ -2,9 +2,12 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { catalogLayout, menuCategories, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // POS category groups: user-defined order (with the "العروض" tab placed among the categories) and archiving a category
 // instead of deleting it. Real application, real PostgreSQL.
@@ -30,10 +33,10 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const db = app.get(KYSELY);
-    const repo = new UserRepository(app.get(DATABASE));
+    const db = app.get<Database>(DATABASE);
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
-    await sql`DELETE FROM catalog_layout`.execute(db);
+    await db.delete(catalogLayout);
     for (const [name, email, role] of [["أدمن-ترتيب", "admin-catgroups@jest.test", "admin"], ["كاشير-ترتيب", "cashier-catgroups@jest.test", "cashier"]] as const) {
       await repo.save(User.register({ name, email, passwordHash: await hasher.hash("12345678"), role }));
     }
@@ -43,12 +46,12 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM menu_item_variants WHERE item_id IN (SELECT id FROM menu_items WHERE name = 'صنف-قسم-مؤرشف-جست')`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-قسم-مؤرشف-جست'`.execute(db);
-    await sql`DELETE FROM menu_categories WHERE name IN (${sql.join(Object.values(names))})`.execute(db);
-    await sql`DELETE FROM catalog_layout`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-catgroups@jest.test', 'cashier-catgroups@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, db.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.name, "صنف-قسم-مؤرشف-جست"))));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-قسم-مؤرشف-جست"));
+    await db.delete(menuCategories).where(inArray(menuCategories.name, Object.values(names)));
+    await db.delete(catalogLayout);
+    await db.delete(users).where(inArray(users.email, ["admin-catgroups@jest.test", "cashier-catgroups@jest.test"]));
     await app.close();
   });
 

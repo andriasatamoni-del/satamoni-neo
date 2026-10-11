@@ -1,19 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { TransferRequest, type TransferRequestStatus } from "../../domain/transfer-request.aggregate";
 import type { TransferRequestRepositoryPort } from "../../domain/ports/transfer-request-repository.port";
-import type { TransferRequestLinesTable, TransferRequestsTable } from "./transfer-request.schema";
+import { transferRequestLines, transferRequests } from "./inventory.tables";
 
 @Injectable()
-export class KyselyTransferRequestRepository implements TransferRequestRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class TransferRequestRepository implements TransferRequestRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(request: TransferRequest): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("transfer_requests")
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(transferRequests)
         .values({
           id: request.id,
           from_branch_id: request.fromBranchId,
@@ -35,8 +34,9 @@ export class KyselyTransferRequestRepository implements TransferRequestRepositor
           cancellation_reason: request.cancellationReason,
           created_at: request.createdAt,
         })
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet({
+        .onConflictDoUpdate({
+          target: transferRequests.id,
+          set: {
             status: request.status,
             approved_by: request.approvedBy,
             approved_at: request.approvedAt,
@@ -49,13 +49,12 @@ export class KyselyTransferRequestRepository implements TransferRequestRepositor
             cancelled_by: request.cancelledBy,
             cancelled_at: request.cancelledAt,
             cancellation_reason: request.cancellationReason,
-          })
-        )
-        .execute();
+          },
+        });
 
       for (const line of request.lines) {
-        await trx
-          .insertInto("transfer_request_lines")
+        await tx
+          .insert(transferRequestLines)
           .values({
             id: line.id,
             transfer_request_id: request.id,
@@ -67,44 +66,53 @@ export class KyselyTransferRequestRepository implements TransferRequestRepositor
             dispatch_movement_id: line.dispatchMovementId,
             receive_movement_id: line.receiveMovementId,
           })
-          .onConflict((oc) =>
-            oc.column("id").doUpdateSet({
+          .onConflictDoUpdate({
+            target: transferRequestLines.id,
+            set: {
               approved_quantity: line.approvedQuantity,
               dispatched_quantity: line.dispatchedQuantity,
               received_quantity: line.receivedQuantity,
               dispatch_movement_id: line.dispatchMovementId,
               receive_movement_id: line.receiveMovementId,
-            })
-          )
-          .execute();
+            },
+          });
       }
     });
   }
 
   async findById(id: string): Promise<TransferRequest | null> {
-    const row = await this.db.selectFrom("transfer_requests").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(transferRequests).where(eq(transferRequests.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async list(filter?: { fromBranchId?: string; toBranchId?: string; status?: string; fromDate?: Date; toDate?: Date }): Promise<TransferRequest[]> {
-    let query = this.db.selectFrom("transfer_requests").selectAll();
-    if (filter?.fromBranchId) query = query.where("from_branch_id", "=", filter.fromBranchId);
-    if (filter?.toBranchId) query = query.where("to_branch_id", "=", filter.toBranchId);
-    if (filter?.status) query = query.where("status", "=", filter.status);
-    if (filter?.fromDate) query = query.where("required_date", ">=", filter.fromDate);
-    if (filter?.toDate) query = query.where("required_date", "<=", filter.toDate);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(transferRequests)
+      .where(
+        and(
+          filter?.fromBranchId ? eq(transferRequests.from_branch_id, filter.fromBranchId) : undefined,
+          filter?.toBranchId ? eq(transferRequests.to_branch_id, filter.toBranchId) : undefined,
+          filter?.status ? eq(transferRequests.status, filter.status) : undefined,
+          filter?.fromDate ? gte(transferRequests.required_date, filter.fromDate) : undefined,
+          filter?.toDate ? lte(transferRequests.required_date, filter.toDate) : undefined
+        )
+      )
+      .orderBy(desc(transferRequests.created_at));
     const requests: TransferRequest[] = [];
     for (const row of rows) requests.push(this.toDomain(row, await this.loadLines(row.id)));
     return requests;
   }
 
-  private loadLines(requestId: string): Promise<Selectable<TransferRequestLinesTable>[]> {
-    return this.db.selectFrom("transfer_request_lines").selectAll().where("transfer_request_id", "=", requestId).execute();
+  private loadLines(requestId: string): Promise<(typeof transferRequestLines.$inferSelect)[]> {
+    return this.db.select().from(transferRequestLines).where(eq(transferRequestLines.transfer_request_id, requestId));
   }
 
-  private toDomain(row: Selectable<TransferRequestsTable>, lineRows: Selectable<TransferRequestLinesTable>[]): TransferRequest {
+  private toDomain(
+    row: typeof transferRequests.$inferSelect,
+    lineRows: (typeof transferRequestLines.$inferSelect)[]
+  ): TransferRequest {
     return TransferRequest.reconstitute(row.id, {
       fromBranchId: row.from_branch_id,
       toBranchId: row.to_branch_id,

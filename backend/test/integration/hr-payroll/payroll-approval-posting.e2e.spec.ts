@@ -6,6 +6,7 @@ import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { createSecondUser } from "../helpers/second-user";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e حقيقي بيغطي تالت مسار event-driven في النظام: اعتماد قائمة رواتب (HR & Payroll) ->
 // PayrollRunApprovedEvent -> Accounting (subscriber) بيترحّل قيد رواتب تلقائي POSTED متزن على حسابي
@@ -32,7 +33,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-رواتب-e2e", email: "admin-payroll-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",

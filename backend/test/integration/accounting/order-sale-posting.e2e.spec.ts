@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e حقيقي بيثبت إن الـdomain event bus شغّال فعليًا عبر الـcontexts: تسجيل طلب (Orders) ->
 // OrderRegisteredEvent -> Accounting (subscriber) بيترحّل قيد بيع تلقائي POSTED على حسابي الكاش/مبيعات
@@ -28,13 +29,13 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-محاسبة", email: "admin-accounting-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -45,12 +46,12 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
       .send({ email: "admin-accounting-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع محاسبة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "ساندوتش-محاسبة-جست" });
     const variant = item.addVariant({ label: "عادي", price: 75 });
     await menuItemRepo.save(item);

@@ -1,53 +1,51 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq, isNotNull, isNull } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { MenuCategory, type MenuGroup } from "../../domain/menu-category.aggregate";
 import type { CatalogLayoutRepositoryPort, MenuCategoryRepositoryPort } from "../../domain/ports/menu-category-repository.port";
-import type { MenuCategoriesTable } from "./catalog.schema";
+import { catalogLayout, menuCategories } from "./catalog.tables";
 
 @Injectable()
-export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class MenuCategoryRepository implements MenuCategoryRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(category: MenuCategory): Promise<void> {
     const row = this.toRow(category);
     await this.db
-      .insertInto("menu_categories")
+      .insert(menuCategories)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: menuCategories.id,
+        set: {
           name: row.name,
           display_order: row.display_order,
           menu_group: row.menu_group,
           is_active: row.is_active,
           station_id: row.station_id,
           archived_at: row.archived_at,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<MenuCategory | null> {
-    const row = await this.db.selectFrom("menu_categories").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(menuCategories).where(eq(menuCategories.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacyCategoryId(legacyId: number): Promise<MenuCategory | null> {
-    const row = await this.db
-      .selectFrom("menu_categories")
-      .selectAll()
-      .where("legacy_category_id", "=", legacyId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(menuCategories).where(eq(menuCategories.legacy_category_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(opts: { archived?: boolean } = {}): Promise<MenuCategory[]> {
-    let query = this.db.selectFrom("menu_categories").selectAll();
-    if (opts.archived === true) query = query.where("archived_at", "is not", null);
-    if (opts.archived === false) query = query.where("archived_at", "is", null);
+    const archivedFilter =
+      opts.archived === true ? isNotNull(menuCategories.archived_at) : opts.archived === false ? isNull(menuCategories.archived_at) : undefined;
     // display_order ثم الاسم: ترتيب ثابت حتى لو فيه أقسام بنفس الرقم (الأقسام القديمة كلها 0)
-    const rows = await query.orderBy("display_order").orderBy("name").execute();
+    const rows = await this.db
+      .select()
+      .from(menuCategories)
+      .where(archivedFilter)
+      .orderBy(asc(menuCategories.display_order), asc(menuCategories.name));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -64,7 +62,7 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
     };
   }
 
-  private toDomain(row: Selectable<MenuCategoriesTable>): MenuCategory {
+  private toDomain(row: typeof menuCategories.$inferSelect): MenuCategory {
     return MenuCategory.reconstitute(row.id, {
       name: row.name,
       displayOrder: row.display_order,
@@ -80,19 +78,22 @@ export class KyselyMenuCategoryRepository implements MenuCategoryRepositoryPort 
 const COMBOS_POSITION_KEY = "combos_position";
 
 @Injectable()
-export class KyselyCatalogLayoutRepository implements CatalogLayoutRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class CatalogLayoutRepository implements CatalogLayoutRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async getCombosPosition(): Promise<number | null> {
-    const row = await this.db.selectFrom("catalog_layout").select("value").where("key", "=", COMBOS_POSITION_KEY).executeTakeFirst();
+    const [row] = await this.db
+      .select({ value: catalogLayout.value })
+      .from(catalogLayout)
+      .where(eq(catalogLayout.key, COMBOS_POSITION_KEY))
+      .limit(1);
     return row ? row.value : null;
   }
 
   async setCombosPosition(position: number): Promise<void> {
     await this.db
-      .insertInto("catalog_layout")
+      .insert(catalogLayout)
       .values({ key: COMBOS_POSITION_KEY, value: position })
-      .onConflict((oc) => oc.column("key").doUpdateSet({ value: position }))
-      .execute();
+      .onConflictDoUpdate({ target: catalogLayout.key, set: { value: position } });
   }
 }

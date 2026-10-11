@@ -3,9 +3,9 @@ import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importOrdersFromLegacy } from "../../../scripts/import-orders-from-legacy";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
+import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
@@ -17,7 +17,7 @@ describe("importOrdersFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
   let orderRepo: KyselyOrderRepository;
-  let movementRepo: KyselyStockMovementRepository;
+  let movementRepo: StockMovementRepository;
   let branchId: string;
   let menuItemId: string;
   let variantId: string;
@@ -44,14 +44,14 @@ describe("importOrdersFromLegacy", () => {
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
     orderRepo = new KyselyOrderRepository(kyselyOn(neoDb));
-    movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
+    movementRepo = new StockMovementRepository(neoDb);
 
     const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع طلبات-fixture", legacyBranchId: 800 });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
+    const menuItemRepo = new MenuItemRepository(neoDb);
     const item = MenuItem.register({ name: "بيتزا-طلبات-fixture", legacyMenuItemId: 850 });
     const variant = item.addVariant({ label: "وسط", price: 90, legacyVariantId: 851 });
     await menuItemRepo.save(item);

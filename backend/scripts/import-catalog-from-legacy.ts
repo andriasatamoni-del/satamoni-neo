@@ -9,10 +9,10 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
 import type { Database } from "../src/shared/database/database.token";
-import { KyselyMenuCategoryRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository";
-import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
-import { KyselyRecipeRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository";
-import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import { MenuCategoryRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-category.repository";
+import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
+import { RecipeRepository } from "../src/contexts/catalog/infrastructure/persistence/recipe.repository";
+import { InventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { MenuCategory, MENU_GROUPS } from "../src/contexts/catalog/domain/menu-category.aggregate";
 import { MenuItem } from "../src/contexts/catalog/domain/menu-item.aggregate";
 import { Recipe, type RecipeVersionStatus } from "../src/contexts/catalog/domain/recipe.aggregate";
@@ -52,10 +52,10 @@ function mapLegacyStatus(status: string): RecipeVersionStatus {
 }
 
 export async function importCatalogFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CatalogImportResult> {
-  const categoryRepo = new KyselyMenuCategoryRepository(kyselyOn(neoDb));
-  const itemRepo = new KyselyMenuItemRepository(kyselyOn(neoDb));
-  const recipeRepo = new KyselyRecipeRepository(kyselyOn(neoDb));
-  const inventoryRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
+  const categoryRepo = new MenuCategoryRepository(neoDb);
+  const itemRepo = new MenuItemRepository(neoDb);
+  const recipeRepo = new RecipeRepository(neoDb);
+  const inventoryRepo = new InventoryItemRepository(neoDb);
 
   const categories: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const categoryIdMap = new Map<number, string>();

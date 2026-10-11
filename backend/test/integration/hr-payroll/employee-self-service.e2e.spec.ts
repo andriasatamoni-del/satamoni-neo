@@ -6,6 +6,7 @@ import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -30,8 +31,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({ name: "أدمن-ذاتي-جست", email: "admin-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
@@ -51,7 +51,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     await userRepo.save(unlinkedUser);
     unlinkedUserToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-unlinked-self-service@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع خدمة ذاتية-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;

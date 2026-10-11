@@ -16,6 +16,7 @@ import { paymentMethods, payments } from "../../../src/contexts/payment-control/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { talabatIntegrationErrors, talabatOrders, talabatProductMapping, talabatWebhookEvents } from "../../../src/contexts/talabat/infrastructure/persistence/talabat.tables";
 import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 const WEBHOOK_SECRET = "neo_test_talabat_webhook_secret";
 
@@ -53,16 +54,16 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
-    const { KyselyStockMovementRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository"
+    const { StockMovementRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
     const { KyselyPaymentMethodRepository } = await import(
@@ -74,7 +75,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
 
     const db = app.get(KYSELY);
 
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-Talabat-جست", email: "admin-talabat@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -92,7 +93,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
       await request(app.getHttpServer()).post("/auth/login").send({ email: "bm-talabat@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع Talabat-جست" });
     branch.linkTalabatBranch(talabatBranchId);
     await branchRepo.save(branch);
@@ -104,25 +105,25 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     await methodRepo.save(method);
     paymentMethodId = method.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "جبنة-Talabat-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
 
-    const movementRepo = new KyselyStockMovementRepository(db);
+    const movementRepo = new StockMovementRepository(app.get<Database>(DATABASE));
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 10 }),
       { allowNegativeBalance: true }
     );
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-Talabat-جست" });
     const variant = item.addVariant({ label: "وسط", price: 100 });
     await menuItemRepo.save(item);
     menuItemId = item.id;
     variantId = variant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
@@ -145,7 +146,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await db.delete(talabatIntegrationErrors);
     await db.delete(talabatWebhookEvents);
     await db.delete(talabatProductMapping).where(eq(talabatProductMapping.branch_id, branchId));

@@ -5,7 +5,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { asc, eq, inArray } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
@@ -15,6 +15,7 @@ import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // CHAN-1: رسايل SMS للعميل (تأكيد + طلب تقييم) - بوابة SMS حقيقية بـHTTP (سيرفر محلي في الاختبار)
 describe("Notifications - رسايل العميل التلقائية (e2e)", () => {
@@ -40,7 +41,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
   }
 
   async function notificationsFor(orderId: string) {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     return db.select().from(orderNotifications).where(eq(orderNotifications.order_id, orderId)).orderBy(asc(orderNotifications.created_at));
   }
 
@@ -77,22 +78,21 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    await new UserRepository(app.get(DATABASE)).save(
+    await new UserRepository(app.get<Database>(DATABASE)).save(
       User.register({ name: "أدمن-رسايل-جست", email: "admin-notify@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-notify@jest.test", password: "12345678" })).body.token;
 
     const branch = Branch.register({ name: "فرع-رسايل-جست" });
-    await new BranchRepository(app.get(DATABASE)).save(branch);
+    await new BranchRepository(app.get<Database>(DATABASE)).save(branch);
     branchId = branch.id;
 
     const item = MenuItem.register({ name: "صنف-رسايل-جست" });
     variantId = item.addVariant({ label: "عادي", price: 75 }).id;
-    await new KyselyMenuItemRepository(db).save(item);
+    await new MenuItemRepository(app.get<Database>(DATABASE)).save(item);
   });
 
   afterEach(() => {
@@ -103,7 +103,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
   });
 
   afterAll(async () => {
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     await request(server()).patch("/pos-settings").set(auth()).send({ smsConfirmationsEnabled: false, smsRatingRequestsEnabled: false });
     await db.update(posSettings).set({ updated_by: null });
     await db.delete(orderNotifications).where(inArray(orderNotifications.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
@@ -175,7 +175,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     await request(server()).patch(`/orders/${delivery}/status`).set(auth()).send({ status: "completed" });
     const rows = await notificationsFor(delivery);
     expect(rows).toHaveLength(1);
-    const db = app.get(DATABASE);
+    const db = app.get<Database>(DATABASE);
     const [{ rating_token: token }] = await db.select({ rating_token: orders.rating_token }).from(orders).where(eq(orders.id, delivery));
     expect(rows[0].message).toContain(`https://app.satamoni.test/rate/${delivery}?token=${token}`);
     expect(rows[0].kind).toBe("rating_request");

@@ -1,62 +1,61 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { InventoryItem, type ItemType, type NegativeStockPolicy } from "../../domain/inventory-item.aggregate";
 import type { InventoryItemRepositoryPort } from "../../domain/ports/inventory-item-repository.port";
-import type { InventoryItemsTable } from "./inventory-item.schema";
+import { inventoryItems } from "./inventory.tables";
 
 @Injectable()
-export class KyselyInventoryItemRepository implements InventoryItemRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class InventoryItemRepository implements InventoryItemRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(item: InventoryItem): Promise<void> {
     const row = this.toRow(item);
     await this.db
-      .insertInto("inventory_items")
+      .insert(inventoryItems)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: inventoryItems.id,
+        set: {
           name: row.name,
           unit: row.unit,
           unit_cost: row.unit_cost,
           item_type: row.item_type,
           negative_stock_policy: row.negative_stock_policy,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<InventoryItem | null> {
-    const row = await this.db.selectFrom("inventory_items").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByName(name: string): Promise<InventoryItem | null> {
-    const row = await this.db.selectFrom("inventory_items").selectAll().where("name", "=", name.trim()).executeTakeFirst();
+    const [row] = await this.db.select().from(inventoryItems).where(eq(inventoryItems.name, name.trim())).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByName(name: string): Promise<boolean> {
-    const row = await this.db
-      .selectFrom("inventory_items")
-      .select("id")
-      .where("name", "=", name.trim())
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select({ id: inventoryItems.id })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.name, name.trim()))
+      .limit(1);
     return !!row;
   }
 
   async findByLegacyInventoryItemId(legacyId: number): Promise<InventoryItem | null> {
-    const row = await this.db
-      .selectFrom("inventory_items")
-      .selectAll()
-      .where("legacy_inventory_item_id", "=", legacyId)
-      .executeTakeFirst();
+    const [row] = await this.db
+      .select()
+      .from(inventoryItems)
+      .where(eq(inventoryItems.legacy_inventory_item_id, legacyId))
+      .limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(): Promise<InventoryItem[]> {
-    const rows = await this.db.selectFrom("inventory_items").selectAll().orderBy("name").execute();
+    const rows = await this.db.select().from(inventoryItems).orderBy(asc(inventoryItems.name));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -73,7 +72,7 @@ export class KyselyInventoryItemRepository implements InventoryItemRepositoryPor
     };
   }
 
-  private toDomain(row: Selectable<InventoryItemsTable>): InventoryItem {
+  private toDomain(row: typeof inventoryItems.$inferSelect): InventoryItem {
     return InventoryItem.reconstitute(row.id, {
       name: row.name,
       unit: row.unit,

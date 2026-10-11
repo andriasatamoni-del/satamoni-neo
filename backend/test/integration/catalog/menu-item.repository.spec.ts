@@ -1,27 +1,25 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 
-describe("KyselyMenuItemRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyMenuItemRepository;
+describe("MenuItemRepository", () => {
+  let db: Database;
+  let repo: MenuItemRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyMenuItemRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new MenuItemRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
   });
 
   test("save بيسجّل صنف وأحجامه مع بعض، وfindById بيرجّعهم بنفس البيانات", async () => {

@@ -2,7 +2,7 @@ import { Kysely, sql } from "kysely";
 
 // حدود إعادة الطلب لكل (فرع، صنف) - نفس مفهوم reorder_point/min_stock/max_stock في الريبو القديم، بس
 // في جدول منفصل بدل ما تتضاف كأعمدة على branch_stock_balances (الجدول ده read-model خالص بيتحدّث
-// تلقائيًا مع كل حركة مخزون - راجع KyselyStockMovementRepository.recordMovement - وحدود إعادة الطلب
+// تلقائيًا مع كل حركة مخزون - راجع StockMovementRepository.recordMovement - وحدود إعادة الطلب
 // حاجة تانية تمامًا: قيم بيضبطها مدير الفرع يدويًا ومش بتتغيّر مع كل حركة)
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema

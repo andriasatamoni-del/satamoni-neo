@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -29,15 +30,15 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
-    const { KyselyRecipeRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository"
+    const { RecipeRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
@@ -47,7 +48,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const { Complaint } = await import("../../../src/contexts/crm/domain/complaint.aggregate");
 
     const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مركز-تنبيهات-جست", email: "admin-actioncenter@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -65,7 +66,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     branchId = branchRes.body.id;
 
     // 1) رصيد سالب: صنف ALLOW_WITH_APPROVAL، استلام 5 ثم استهلاك 10 بموافقة صريحة
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const negItem = InventoryItem.register({ name: "صنف-سالب-جست", unit: "كيلو", negativeStockPolicy: "ALLOW_WITH_APPROVAL" });
     await inventoryRepo.save(negItem);
     negativeStockItemId = negItem.id;
@@ -82,11 +83,11 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const missingCostItem = InventoryItem.register({ name: "صنف-بدون-تكلفة-جست", unit: "كيلو" });
     await inventoryRepo.save(missingCostItem);
     missingCostItemId = missingCostItem.id;
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const menuItem = MenuItem.register({ name: "صنف-مركز-تنبيهات-جست" });
     const variant = menuItem.addVariant({ label: "عادي", price: 10 });
     await menuItemRepo.save(menuItem);
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: missingCostItemId, quantity: 1 });
@@ -104,7 +105,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
       .send({ branchId, businessDate: today, categoryId: categoryRes.body.id, amount: 150 });
 
     // 4) شكوى عميل فاضلة من زمان (backdated مباشرة في القاعدة - مفيش API لإنشاء شكوى مباشرة)
-    const complaintRepo = new ComplaintRepository(app.get(DATABASE));
+    const complaintRepo = new ComplaintRepository(app.get<Database>(DATABASE));
     const complaint = Complaint.register({
       channel: "phone_followup", branchId, customerPhone: "01000000000", category: "late_order", status: "open",
     });

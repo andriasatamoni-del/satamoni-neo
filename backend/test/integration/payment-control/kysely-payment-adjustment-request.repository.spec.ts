@@ -5,7 +5,7 @@ import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/i
 import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { PaymentMethod } from "../../../src/contexts/payment-control/domain/payment-method.aggregate";
 import { Payment } from "../../../src/contexts/payment-control/domain/payment.aggregate";
 import { PaymentAdjustmentRequest } from "../../../src/contexts/payment-control/domain/payment-adjustment-request.aggregate";
@@ -32,7 +32,7 @@ describe("KyselyPaymentAdjustmentRequestRepository", () => {
     await new BranchRepository(database).save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(database);
     const item = MenuItem.register({ name: "صنف تعديل-جست" });
     const variant = item.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(item);

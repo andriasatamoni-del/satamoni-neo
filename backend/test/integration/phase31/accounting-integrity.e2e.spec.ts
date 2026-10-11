@@ -107,11 +107,11 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     });
 
     test("a variant WITHOUT a recipe consumes nothing and posts no COGS journal (no invented cost)", async () => {
-      const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+      const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
       const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
       const item = MenuItem.register({ name: "صنف-بدون-وصفة-acct" });
       const variant = item.addVariant({ label: "عادي", price: 40 });
-      await new KyselyMenuItemRepository(w.db).save(item);
+      await new MenuItemRepository(w.database).save(item);
 
       const res = await request(w.http())
         .post("/orders")
@@ -123,30 +123,30 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     });
 
     test("two ingredients with different costs: COGS = sum(qty x unit cost) of the real movements", async () => {
-      const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
-      const { KyselyStockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository");
+      const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
+      const { StockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository");
       const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
       const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-      const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-      const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+      const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+      const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
       const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
       const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
       const second = InventoryItem.register({ name: "مكوّن2-acct", unit: "كيلو", unitCost: 3, negativeStockPolicy: "STRICT" });
-      await new KyselyInventoryItemRepository(w.db).save(second);
-      await new KyselyStockMovementRepository(w.db).recordMovement(
+      await new InventoryItemRepository(w.database).save(second);
+      await new StockMovementRepository(w.database).recordMovement(
         StockMovement.register({ inventoryItemId: second.id, branchId: w.branchA, movementType: "RECEIPT", quantityDelta: 100 }),
         { allowNegativeBalance: true }
       );
       const item = MenuItem.register({ name: "صنف-مركب-acct" });
       const variant = item.addVariant({ label: "عادي", price: 90 });
-      await new KyselyMenuItemRepository(w.db).save(item);
+      await new MenuItemRepository(w.database).save(item);
       const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
       const version = recipe.createDraftVersion({});
       recipe.addIngredient(version.id, { ingredientItemId: w.ingredientId, quantity: 1 }); // 1 x 5
       recipe.addIngredient(version.id, { ingredientItemId: second.id, quantity: 4 }); //      4 x 3
       recipe.activateVersion(version.id);
-      await new KyselyRecipeRepository(w.db).save(recipe);
+      await new RecipeRepository(w.database).save(recipe);
 
       const res = await request(w.http())
         .post("/orders")

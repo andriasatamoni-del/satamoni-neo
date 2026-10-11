@@ -6,6 +6,7 @@ import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
 // طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
@@ -31,11 +32,10 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-دفعات-e2e", email: "admin-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -44,7 +44,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payment-control-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع دفعات-e2e" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -57,7 +57,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
       await request(app.getHttpServer()).post("/auth/login").send({ email: "bm-payment-control-e2e@jest.test", password: "12345678" })
     ).body.token;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف دفعات-e2e" });
     const variant = item.addVariant({ label: "عادي", price: 100 });
     await menuItemRepo.save(item);

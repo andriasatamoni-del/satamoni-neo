@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - تقارير التوصيل والعملاء والمصروفات والمشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -36,8 +37,8 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { KyselyAccountRepository } = await import(
@@ -51,7 +52,7 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
     const expenseAccount = Account.register({ code: "6900", name: "مصروفات تشغيل أخرى", accountType: "EXPENSE", isSystemAccount: true });
     await accountRepo.save(cashAccount);
     await accountRepo.save(expenseAccount);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقارير-توصيل-جست", email: "admin-delcustreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -71,7 +72,7 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
       .send({ name: "فرع-تقارير-توصيل-جست" });
     branchId = branchRes.body.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-تقارير-توصيل-جست" });
     const variant = item.addVariant({ label: "عادي", price: 100 });
     await menuItemRepo.save(item);

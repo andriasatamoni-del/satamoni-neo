@@ -5,6 +5,7 @@ import request from "supertest";
 import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -32,21 +33,20 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
       "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
-    const { KyselyRecipeRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository"
+    const { RecipeRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تكلفة-طعام-جست", email: "admin-foodcost@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -57,13 +57,13 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
       .send({ email: "admin-foodcost@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع تكلفة-طعام-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
     // مكوّن بسعر وحدة معروف (10 جنيه/كيلو) - أساس التكلفة النظرية
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({
       name: "دقيق-تكلفة-طعام-جست", unit: "كيلو", negativeStockPolicy: "STRICT", unitCost: 10,
     });
@@ -75,13 +75,13 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 100 });
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "عيش-تكلفة-طعام-جست" });
     const variant = item.addVariant({ label: "رغيف", price: 20 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو دقيق لكل رغيف - تكلفة نظرية 20 جنيه

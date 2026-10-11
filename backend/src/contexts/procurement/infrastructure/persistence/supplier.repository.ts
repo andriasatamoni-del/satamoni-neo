@@ -1,22 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Supplier, type SupplierStatus } from "../../domain/supplier.aggregate";
 import type { SupplierRepositoryPort } from "../../domain/ports/supplier-repository.port";
-import type { SuppliersTable } from "./procurement.schema";
+import { suppliers } from "./procurement.tables";
 
 @Injectable()
-export class KyselySupplierRepository implements SupplierRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class SupplierRepository implements SupplierRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(supplier: Supplier): Promise<void> {
     const row = this.toRow(supplier);
     await this.db
-      .insertInto("suppliers")
+      .insert(suppliers)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: suppliers.id,
+        set: {
           name: row.name,
           contact_person: row.contact_person,
           phone: row.phone,
@@ -24,32 +24,27 @@ export class KyselySupplierRepository implements SupplierRepositoryPort {
           address: row.address,
           payment_terms: row.payment_terms,
           status: row.status,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Supplier | null> {
-    const row = await this.db.selectFrom("suppliers").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(suppliers).where(eq(suppliers.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByLegacySupplierId(legacyId: number): Promise<Supplier | null> {
-    const row = await this.db
-      .selectFrom("suppliers")
-      .selectAll()
-      .where("legacy_supplier_id", "=", legacyId)
-      .executeTakeFirst();
+    const [row] = await this.db.select().from(suppliers).where(eq(suppliers.legacy_supplier_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByName(name: string): Promise<boolean> {
-    const row = await this.db.selectFrom("suppliers").select("id").where("name", "=", name.trim()).executeTakeFirst();
+    const [row] = await this.db.select({ id: suppliers.id }).from(suppliers).where(eq(suppliers.name, name.trim())).limit(1);
     return !!row;
   }
 
   async list(): Promise<Supplier[]> {
-    const rows = await this.db.selectFrom("suppliers").selectAll().orderBy("name").execute();
+    const rows = await this.db.select().from(suppliers).orderBy(asc(suppliers.name));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -68,7 +63,7 @@ export class KyselySupplierRepository implements SupplierRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<SuppliersTable>): Supplier {
+  private toDomain(row: typeof suppliers.$inferSelect): Supplier {
     return Supplier.reconstitute(row.id, {
       name: row.name,
       contactPerson: row.contact_person,

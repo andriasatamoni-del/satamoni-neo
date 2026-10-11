@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemModifierVariantPrices, menuItemModifiers, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 // e2e لمرفقات الصنف (modifiers) - من ضبطها في المنيو لحد استخدامها فعليًا في طلب حقيقي: سعر افتراضي،
 // سعر مخصوص لحجم معيّن بيغلبه، والسعر النهائي بيتسجّل (snapshot) على سطر الطلب وقت البيع
@@ -28,8 +34,7 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new UserRepository(app.get(DATABASE));
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مرفقات-جست", email: "admin-modifiers@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -39,7 +44,7 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-modifiers@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new BranchRepository(app.get(DATABASE));
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع مرفقات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -64,17 +69,17 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE menu_item_id = ${itemId})`.execute(db);
-    await sql`DELETE FROM order_items WHERE menu_item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM print_jobs WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_modifier_variant_prices WHERE modifier_id IN (SELECT id FROM menu_item_modifiers WHERE item_id = ${itemId})`.execute(db);
-    await sql`DELETE FROM menu_item_modifiers WHERE item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE id = ${itemId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-modifiers@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.menu_item_id, itemId))));
+    await db.delete(orderItems).where(eq(orderItems.menu_item_id, itemId));
+    await db.delete(printJobs).where(inArray(printJobs.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(menuItemModifierVariantPrices).where(inArray(menuItemModifierVariantPrices.modifier_id, db.select({ id: menuItemModifiers.id }).from(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId))));
+    await db.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.item_id, itemId));
+    await db.delete(menuItems).where(eq(menuItems.id, itemId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-modifiers@jest.test"));
     await app.close();
   });
 

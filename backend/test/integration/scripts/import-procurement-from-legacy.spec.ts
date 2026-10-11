@@ -2,12 +2,12 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importProcurementFromLegacy } from "../../../scripts/import-procurement-from-legacy";
-import { KyselySupplierRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-supplier.repository";
-import { KyselyPurchaseOrderRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
-import { KyselyGoodsReceiptRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
-import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
+import { SupplierRepository } from "../../../src/contexts/procurement/infrastructure/persistence/supplier.repository";
+import { PurchaseOrderRepository } from "../../../src/contexts/procurement/infrastructure/persistence/purchase-order.repository";
+import { GoodsReceiptRepository } from "../../../src/contexts/procurement/infrastructure/persistence/goods-receipt.repository";
+import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
-import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
@@ -18,10 +18,10 @@ const LEGACY_FIXTURE_URL =
 describe("importProcurementFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let supplierRepo: KyselySupplierRepository;
-  let purchaseOrderRepo: KyselyPurchaseOrderRepository;
-  let goodsReceiptRepo: KyselyGoodsReceiptRepository;
-  let movementRepo: KyselyStockMovementRepository;
+  let supplierRepo: SupplierRepository;
+  let purchaseOrderRepo: PurchaseOrderRepository;
+  let goodsReceiptRepo: GoodsReceiptRepository;
+  let movementRepo: StockMovementRepository;
   let branchId: string;
   let inventoryItemId: string;
 
@@ -35,17 +35,17 @@ describe("importProcurementFromLegacy", () => {
     await legacyPool.query(`CREATE TABLE goods_receipt_items (id SERIAL PRIMARY KEY, goods_receipt_id INTEGER NOT NULL, inventory_item_id INTEGER NOT NULL, accepted_quantity NUMERIC NOT NULL, unit_price NUMERIC NOT NULL)`);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    supplierRepo = new KyselySupplierRepository(kyselyOn(neoDb));
-    purchaseOrderRepo = new KyselyPurchaseOrderRepository(kyselyOn(neoDb));
-    goodsReceiptRepo = new KyselyGoodsReceiptRepository(kyselyOn(neoDb));
-    movementRepo = new KyselyStockMovementRepository(kyselyOn(neoDb));
+    supplierRepo = new SupplierRepository(neoDb);
+    purchaseOrderRepo = new PurchaseOrderRepository(neoDb);
+    goodsReceiptRepo = new GoodsReceiptRepository(neoDb);
+    movementRepo = new StockMovementRepository(neoDb);
 
     const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع مشتريات-fixture", legacyBranchId: 900 });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(kyselyOn(neoDb));
+    const inventoryRepo = new InventoryItemRepository(neoDb);
     const item = InventoryItem.register({ name: "زيت-مشتريات-fixture", unit: "لتر", legacyInventoryItemId: 950 });
     await inventoryRepo.save(item);
     inventoryItemId = item.id;
