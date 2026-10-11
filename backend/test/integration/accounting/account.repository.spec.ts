@@ -1,26 +1,24 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyAccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
+import type { Database } from "../../../src/shared/database/database.token";
+import { AccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/account.repository";
 import { Account } from "../../../src/contexts/accounting/domain/account.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { accounts } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 
-describe("KyselyAccountRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let repo: KyselyAccountRepository;
+describe("AccountRepository", () => {
+  let db: Database;
+  let repo: AccountRepository;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new KyselyAccountRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new AccountRepository(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM accounts`.execute(db);
+    await db.delete(accounts);
   });
 
   test("save بيسجّل حساب جديد، وfindByCode بيرجّعه بنفس البيانات", async () => {

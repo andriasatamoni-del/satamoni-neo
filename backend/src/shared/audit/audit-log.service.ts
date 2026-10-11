@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../database/database.types";
-import { KYSELY } from "../database/database.module";
+import { and, desc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../database/database.token";
+import { auditLogs } from "../database/shared.tables";
 
 export interface AuditLogEntry {
   actorUserId?: string | null;
@@ -43,35 +43,39 @@ export interface AuditLogFilter {
 // migration 021_create_audit_logs_table.ts للفرق بينه وبين event_outbox
 @Injectable()
 export class AuditLogService {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async record(entry: AuditLogEntry): Promise<void> {
-    await this.db
-      .insertInto("audit_logs")
-      .values({
-        actor_user_id: entry.actorUserId ?? null,
-        action: entry.action,
-        entity_type: entry.entityType ?? null,
-        entity_id: entry.entityId ?? null,
-        branch_id: entry.branchId ?? null,
-        metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
-        outcome: entry.outcome ?? "SUCCESS",
-        http_status: entry.httpStatus ?? null,
-      })
-      .execute();
+    // metadata is jsonb: Drizzle serialises the object itself
+    await this.db.insert(auditLogs).values({
+      actor_user_id: entry.actorUserId ?? null,
+      action: entry.action,
+      entity_type: entry.entityType ?? null,
+      entity_id: entry.entityId ?? null,
+      branch_id: entry.branchId ?? null,
+      metadata: entry.metadata ?? null,
+      outcome: entry.outcome ?? "SUCCESS",
+      http_status: entry.httpStatus ?? null,
+    });
   }
 
   async list(filter?: AuditLogFilter): Promise<AuditLogRecord[]> {
-    let query = this.db.selectFrom("audit_logs").selectAll();
-    if (filter?.actorUserId) query = query.where("actor_user_id", "=", filter.actorUserId);
-    if (filter?.entityType) query = query.where("entity_type", "=", filter.entityType);
-    if (filter?.entityId) query = query.where("entity_id", "=", filter.entityId);
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.action) query = query.where("action", "=", filter.action);
-    if (filter?.outcome) query = query.where("outcome", "=", filter.outcome as "SUCCESS" | "DENIED" | "FAILED");
-
     const limit = Math.min(Math.max(filter?.limit ?? 100, 1), 500);
-    const rows = await query.orderBy("created_at", "desc").limit(limit).execute();
+    const rows = await this.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          filter?.actorUserId ? eq(auditLogs.actor_user_id, filter.actorUserId) : undefined,
+          filter?.entityType ? eq(auditLogs.entity_type, filter.entityType) : undefined,
+          filter?.entityId ? eq(auditLogs.entity_id, filter.entityId) : undefined,
+          filter?.branchId ? eq(auditLogs.branch_id, filter.branchId) : undefined,
+          filter?.action ? eq(auditLogs.action, filter.action) : undefined,
+          filter?.outcome ? eq(auditLogs.outcome, filter.outcome as "SUCCESS" | "DENIED" | "FAILED") : undefined
+        )
+      )
+      .orderBy(desc(auditLogs.created_at))
+      .limit(limit);
 
     return rows.map((r) => ({
       id: r.id,

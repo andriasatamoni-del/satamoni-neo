@@ -1,5 +1,4 @@
-import { Kysely } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
 import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
 import { PaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
@@ -12,7 +11,7 @@ import { PaymentAdjustmentRequest } from "../../../src/contexts/payment-control/
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
 import { eq, like } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
@@ -20,8 +19,7 @@ import { paymentAdjustmentRequests, paymentMethods, payments } from "../../../sr
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("PaymentAdjustmentRequestRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
+  let db: Database;
   let repo: PaymentAdjustmentRequestRepository;
   let paymentId: string;
   let visaMethodId: string;
@@ -29,23 +27,22 @@ describe("PaymentAdjustmentRequestRepository", () => {
   let orderId: string;
 
   beforeAll(async () => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new PaymentAdjustmentRequestRepository(database);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new PaymentAdjustmentRequestRepository(db);
 
     const branch = Branch.register({ name: "فرع تعديل-جست" });
-    await new BranchRepository(database).save(branch);
+    await new BranchRepository(db).save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new MenuItemRepository(database);
+    const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف تعديل-جست" });
     const variant = item.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(item);
     const order = Order.register({ branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 60 }] });
-    await new OrderRepository(database).save(order);
+    await new OrderRepository(db).save(order);
     orderId = order.id;
 
-    const methodRepo = new PaymentMethodRepository(database);
+    const methodRepo = new PaymentMethodRepository(db);
     const cash = PaymentMethod.register({ name: "كاش-تعديل-جست", kind: "cash" });
     const visa = PaymentMethod.register({ name: "فيزا-تعديل-جست", kind: "card_or_wallet", settlementChannel: "visa_pos" });
     await methodRepo.save(cash);
@@ -53,23 +50,23 @@ describe("PaymentAdjustmentRequestRepository", () => {
     visaMethodId = visa.id;
 
     const payment = Payment.lock({ orderId, branchId, paymentMethodId: cash.id, methodKind: "cash", settlementChannel: null, amount: 60 });
-    await new PaymentRepository(database).save(payment);
+    await new PaymentRepository(db).save(payment);
     paymentId = payment.id;
   });
 
   afterAll(async () => {
-    await database.delete(paymentAdjustmentRequests);
-    await database.delete(payments);
-    await database.delete(printJobs).where(eq(printJobs.order_id, orderId));
-    await database.delete(orderItems).where(eq(orderItems.order_id, orderId));
-    await database.delete(orders).where(eq(orders.id, orderId));
-    await database.delete(paymentMethods).where(like(paymentMethods.name, "%تعديل-جست%"));
-    await database.delete(branches).where(eq(branches.id, branchId));
-    await closeScriptDb(database);
+    await db.delete(paymentAdjustmentRequests);
+    await db.delete(payments);
+    await db.delete(printJobs).where(eq(printJobs.order_id, orderId));
+    await db.delete(orderItems).where(eq(orderItems.order_id, orderId));
+    await db.delete(orders).where(eq(orders.id, orderId));
+    await db.delete(paymentMethods).where(like(paymentMethods.name, "%تعديل-جست%"));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await database.delete(paymentAdjustmentRequests);
+    await db.delete(paymentAdjustmentRequests);
   });
 
   test("save بيسجّل طلب PENDING، وfindById بيرجّعه", async () => {

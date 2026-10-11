@@ -12,7 +12,7 @@ export interface ClosePeriodCommand {
   closedBy?: string | null;
 }
 
-// بعد القفل، مفيش أي قيد جديد أو عكسي يترحّل على الشهر ده (متحقق منه في KyselyJournalEntryRepository.save()
+// بعد القفل، مفيش أي قيد جديد أو عكسي يترحّل على الشهر ده (متحقق منه في JournalEntryRepository.save()
 // + تريجر القاعدة، مش هنا) - التصحيحات لازم تتسجل في الشهر المفتوح الحالي بقيد واضح السبب
 @Injectable()
 export class ClosePeriodHandler {

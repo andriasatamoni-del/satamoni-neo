@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { expenseCategories, expenses } from "../../../src/contexts/expenses/infrastructure/persistence/expenses.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
@@ -38,7 +38,6 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
@@ -65,9 +64,9 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     // حسابات النظام الحقيقية اللي الـhandler بيعتمد عليها كـfallback (1100 كاش، 6900 مصروفات تشغيل
     // أخرى) - نفس نمط order-sale-posting.e2e.spec.ts بالظبط: كل ملف اختبار محتاج الحسابات دي بيسجّلها
     // بنفسه في beforeAll وبيمسحها في afterAll
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET", isSystemAccount: true });
     const defaultExpense = Account.register({ code: "6900", name: "مصروفات تشغيل أخرى", accountType: "EXPENSE", isSystemAccount: true });
     await accountRepo.save(cash);

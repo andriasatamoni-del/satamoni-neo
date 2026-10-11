@@ -2,10 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { truncate } from "../helpers/db";
 
 // e2e حقيقي بيثبت إن الـdomain event bus شغّال فعليًا عبر الـcontexts: تسجيل طلب (Orders) ->
 // OrderRegisteredEvent -> Accounting (subscriber) بيترحّل قيد بيع تلقائي POSTED على حسابي الكاش/مبيعات
@@ -31,10 +38,9 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
@@ -57,7 +63,7 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
     await menuItemRepo.save(item);
     variantId = variant.id;
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET", isSystemAccount: true });
     const sales = Account.register({ code: "4100", name: "مبيعات الطعام", accountType: "REVENUE", isSystemAccount: true });
     await accountRepo.save(cash);
@@ -67,18 +73,18 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
+    const db = app.get<Database>(DATABASE);
     // TRUNCATE عمدًا (مش DELETE) - القيود اتسجّلت POSTED فعليًا، وDELETE هيترفض من الـtrigger اللي
     // بيمنع أي تعديل على سطور قيد POSTED (نفس السبب في kysely-journal-entry.repository.spec.ts)
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashAccountId, salesAccountId])})`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-accounting-e2e@jest.test'`.execute(db);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [cashAccountId, salesAccountId]));
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-accounting-e2e@jest.test"));
     await app.close();
   });
 

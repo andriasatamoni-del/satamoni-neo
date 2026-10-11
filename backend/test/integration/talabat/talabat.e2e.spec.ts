@@ -4,7 +4,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { eq, inArray } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
@@ -70,10 +70,9 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
       "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository"
     );
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
 
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
@@ -130,7 +129,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const existingCash = await accountRepo.findByCode("1100");
     if (!existingCash) {
       const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET" });

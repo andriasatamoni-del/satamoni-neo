@@ -2,10 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { truncate } from "../helpers/db";
 
 // e2e للتقارير المحاسبية الأساسية (ميزان المراجعة/دفتر الأستاذ/قائمة الدخل) - كلهم مشتقّين من نفس
 // دفتر الأستاذ (accounts + journal_entries + journal_entry_lines)، مفيش حسابات موازية منفصلة
@@ -83,10 +86,10 @@ describe("Accounting Reports - ميزان المراجعة/دفتر الأستا
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashId, salesId, cogsId, expenseId])})`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-financial-reports@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [cashId, salesId, cogsId, expenseId]));
+    await db.delete(users).where(eq(users.email, "admin-financial-reports@jest.test"));
     await app.close();
   });
 

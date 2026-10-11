@@ -1,9 +1,8 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { sql } from "kysely";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/kysely.token";
+import { and, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import type { OrderCancelledEvent } from "../../../orders/domain/events/order-cancelled.event";
+import { paymentAdjustmentRequests, payments } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
 import { AccountingPostingService } from "../services/accounting-posting.service";
 
 // بيعكس قيد البيع + قيد التكلفة (COGS) التلقائيين لما الطلب يتلغي - نفس آلية JournalEntry.reverse() بالظبط: القيد الأصلي
@@ -16,7 +15,7 @@ export class PostOrderCancellationJournalEntryHandler {
 
   constructor(
     private readonly posting: AccountingPostingService,
-    @Inject(KYSELY) private readonly db: Kysely<Database>
+    @Inject(DATABASE) private readonly db: Database
   ) {}
 
   async handle(event: OrderCancelledEvent): Promise<void> {
@@ -26,11 +25,12 @@ export class PostOrderCancellationJournalEntryHandler {
 
     // BL-06/BL-07: cash corrections posted for approved payment adjustments of this order are reversed together with the sale,
     // otherwise cash would stay misstated by the corrections after the sale itself was reversed.
-    const adjustments = await sql<{ id: string }>`
-      SELECT par.id FROM payment_adjustment_requests par
-        JOIN payments p ON p.id = par.payment_id
-       WHERE p.order_id = ${event.orderId} AND par.status = 'APPROVED'`.execute(this.db);
-    for (const row of adjustments.rows) {
+    const adjustments = await this.db
+      .select({ id: paymentAdjustmentRequests.id })
+      .from(paymentAdjustmentRequests)
+      .innerJoin(payments, eq(payments.id, paymentAdjustmentRequests.payment_id))
+      .where(and(eq(payments.order_id, event.orderId), eq(paymentAdjustmentRequests.status, "APPROVED")));
+    for (const row of adjustments) {
       await this.posting.reverseBySource("payment_adjustment", row.id, event.cancelledBy, reason);
     }
     if (sale === "nothing_to_reverse" && cogs === "nothing_to_reverse") {

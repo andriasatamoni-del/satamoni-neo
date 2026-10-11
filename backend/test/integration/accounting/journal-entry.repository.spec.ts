@@ -1,24 +1,24 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
-import { KyselyAccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
-import { KyselyJournalEntryRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-journal-entry.repository";
+import { AccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/account.repository";
+import { JournalEntryRepository } from "../../../src/contexts/accounting/infrastructure/persistence/journal-entry.repository";
 import { Account } from "../../../src/contexts/accounting/domain/account.aggregate";
 import { JournalEntry } from "../../../src/contexts/accounting/domain/journal-entry.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import type { Database } from "../../../src/shared/database/database.token";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { and, eq, gt, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { dbCause, truncate } from "../helpers/db";
 
-describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي)", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
-  let accountRepo: KyselyAccountRepository;
-  let entryRepo: KyselyJournalEntryRepository;
+describe("JournalEntryRepository + DB-level invariants (trigger حقيقي)", () => {
+  let db: Database;
+  let accountRepo: AccountRepository;
+  let entryRepo: JournalEntryRepository;
   let cashAccountId: string;
   let salesAccountId: string;
 
   beforeAll(async () => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    accountRepo = new KyselyAccountRepository(db);
-    entryRepo = new KyselyJournalEntryRepository(db);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    accountRepo = new AccountRepository(db);
+    entryRepo = new JournalEntryRepository(db);
 
     const cash = Account.register({ code: "1010-je-جست", name: "الصندوق", accountType: "ASSET" });
     const sales = Account.register({ code: "4010-je-جست", name: "إيراد المبيعات", accountType: "REVENUE" });
@@ -29,9 +29,9 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
   });
 
   afterAll(async () => {
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashAccountId, salesAccountId])})`.execute(db);
-    await closeScriptDb(database);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [cashAccountId, salesAccountId]));
+    await closeScriptDb(db);
   });
 
   // TRUNCATE (مش DELETE) عمدًا هنا - القيود بتتسجل POSTED فعليًا خلال التستات، والـtrigger اللي بيمنع
@@ -39,7 +39,7 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
   // (مش بس INSERT/UPDATE) بما إنه نفس فلسفة "غير قابل للتعديل إطلاقًا". TRUNCATE بيتخطى الـrow-level
   // triggers دي تمامًا (مش زي DELETE) فمناسب هنا كأداة تنظيف تستات فقط - مش استخدام حقيقي في التطبيق.
   afterEach(async () => {
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
+    await truncate(db, journalEntryLines, journalEntries);
   });
 
   test("save بيسجّل قيد بسطوره ويحدد entryNumber من الـsequence بصيغة JE-xxxxxx", async () => {
@@ -78,17 +78,18 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
     // الحالة هنا DRAFT عمدًا (مش POSTED) - عشان نعزل تحقق "الاتزان" لوحده، من غير ما يتقطع بتريجر
     // "منع تعديل قيد POSTED" اللي هيرفض أي INSERT على سطور قيد POSTED من الأساس قبل ما يوصل لتحقق الاتزان
     const entryId = crypto.randomUUID();
-    await sql`INSERT INTO journal_entries (id, entry_number, entry_date, source_type, status)
-               VALUES (${entryId}, 'JE-999999', now(), 'manual', 'DRAFT')`.execute(db);
+    await db.insert(journalEntries).values({ id: entryId, entry_number: "JE-999999", entry_date: new Date(), source_type: "manual", status: "DRAFT" });
 
     await expect(
-      db.transaction().execute(async (trx) => {
-        await trx.insertInto("journal_entry_lines").values({ journal_entry_id: entryId, account_id: cashAccountId, debit: 100, credit: 0 }).execute();
-        await trx.insertInto("journal_entry_lines").values({ journal_entry_id: entryId, account_id: salesAccountId, debit: 0, credit: 90 }).execute();
-      })
+      dbCause(
+        db.transaction(async (tx) => {
+          await tx.insert(journalEntryLines).values({ journal_entry_id: entryId, account_id: cashAccountId, debit: 100, credit: 0 });
+          await tx.insert(journalEntryLines).values({ journal_entry_id: entryId, account_id: salesAccountId, debit: 0, credit: 90 });
+        })
+      )
     ).rejects.toThrow(/غير متزن/);
 
-    await sql`DELETE FROM journal_entries WHERE id = ${entryId}`.execute(db);
+    await db.delete(journalEntries).where(eq(journalEntries.id, entryId));
   });
 
   test("الـDB trigger بيرفض فعليًا أي تعديل على سطور قيد POSTED", async () => {
@@ -105,11 +106,11 @@ describe("KyselyJournalEntryRepository + DB-level invariants (trigger حقيقي
     await entryRepo.save(entry);
 
     await expect(
-      sql`UPDATE journal_entry_lines SET debit = 999 WHERE journal_entry_id = ${entry.id} AND debit > 0`.execute(db)
+      dbCause(db.update(journalEntryLines).set({ debit: 999 }).where(and(eq(journalEntryLines.journal_entry_id, entry.id), gt(journalEntryLines.debit, 0))))
     ).rejects.toThrow(/POSTED بالفعل/);
 
     await expect(
-      sql`DELETE FROM journal_entry_lines WHERE journal_entry_id = ${entry.id}`.execute(db)
+      dbCause(db.delete(journalEntryLines).where(eq(journalEntryLines.journal_entry_id, entry.id)))
     ).rejects.toThrow(/POSTED بالفعل/);
   });
 

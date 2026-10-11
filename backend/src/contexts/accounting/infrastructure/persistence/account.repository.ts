@@ -1,55 +1,54 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { asc, eq } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Account, type AccountType } from "../../domain/account.aggregate";
 import type { AccountRepositoryPort } from "../../domain/ports/account-repository.port";
-import type { AccountsTable } from "./accounting.schema";
+import { accounts } from "./accounting.tables";
 
 @Injectable()
-export class KyselyAccountRepository implements AccountRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class AccountRepository implements AccountRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async save(account: Account): Promise<void> {
     const row = this.toRow(account);
     await this.db
-      .insertInto("accounts")
+      .insert(accounts)
       .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
+      .onConflictDoUpdate({
+        target: accounts.id,
+        set: {
           name: row.name,
           account_type: row.account_type,
           parent_account_id: row.parent_account_id,
           branch_id: row.branch_id,
           is_active: row.is_active,
           is_system_account: row.is_system_account,
-        })
-      )
-      .execute();
+        },
+      });
   }
 
   async findById(id: string): Promise<Account | null> {
-    const row = await this.db.selectFrom("accounts").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(accounts).where(eq(accounts.id, id)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async findByCode(code: string): Promise<Account | null> {
-    const row = await this.db.selectFrom("accounts").selectAll().where("code", "=", code.trim()).executeTakeFirst();
+    const [row] = await this.db.select().from(accounts).where(eq(accounts.code, code.trim())).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async existsByCode(code: string): Promise<boolean> {
-    const row = await this.db.selectFrom("accounts").select("id").where("code", "=", code.trim()).executeTakeFirst();
+    const [row] = await this.db.select({ id: accounts.id }).from(accounts).where(eq(accounts.code, code.trim())).limit(1);
     return !!row;
   }
 
   async findByLegacyAccountId(legacyId: number): Promise<Account | null> {
-    const row = await this.db.selectFrom("accounts").selectAll().where("legacy_account_id", "=", legacyId).executeTakeFirst();
+    const [row] = await this.db.select().from(accounts).where(eq(accounts.legacy_account_id, legacyId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
   async list(): Promise<Account[]> {
-    const rows = await this.db.selectFrom("accounts").selectAll().orderBy("code").execute();
+    const rows = await this.db.select().from(accounts).orderBy(asc(accounts.code));
     return rows.map((r) => this.toDomain(r));
   }
 
@@ -68,7 +67,7 @@ export class KyselyAccountRepository implements AccountRepositoryPort {
     };
   }
 
-  private toDomain(row: Selectable<AccountsTable>): Account {
+  private toDomain(row: typeof accounts.$inferSelect): Account {
     return Account.reconstitute(row.id, {
       code: row.code,
       name: row.name,

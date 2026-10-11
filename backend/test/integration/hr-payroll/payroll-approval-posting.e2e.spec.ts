@@ -4,7 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
 import { createSecondUser } from "../helpers/second-user";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
 import { eq, inArray } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
@@ -33,10 +33,9 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
@@ -47,7 +46,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     adminToken = loginRes.body.token;
     approverToken = (await createSecondUser(app, "approver-payroll-e2e@jest.test")).token;
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const expenseAccount = Account.register({ code: "6100", name: "الرواتب", accountType: "EXPENSE", isSystemAccount: true });
     const payableAccount = Account.register({ code: "2400", name: "رواتب مستحقة", accountType: "LIABILITY", isSystemAccount: true });
     await accountRepo.save(expenseAccount);

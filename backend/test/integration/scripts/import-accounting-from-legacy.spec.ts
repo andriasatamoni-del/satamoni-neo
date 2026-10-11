@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { sql } from "kysely";
 import type { Database } from "../../../src/shared/database/database.token";
 import { importAccountingFromLegacy } from "../../../scripts/import-accounting-from-legacy";
-import { KyselyAccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository";
+import { AccountRepository } from "../../../src/contexts/accounting/infrastructure/persistence/account.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { createScriptDb, closeScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
@@ -13,7 +13,7 @@ const LEGACY_FIXTURE_URL =
 describe("importAccountingFromLegacy", () => {
   let legacyPool: Pool;
   let neoDb: Database;
-  let accountRepo: KyselyAccountRepository;
+  let accountRepo: AccountRepository;
   let branchRepo: BranchRepository;
   let branchId: string;
 
@@ -29,7 +29,7 @@ describe("importAccountingFromLegacy", () => {
     `);
 
     neoDb = createScriptDb(process.env.DATABASE_URL as string);
-    accountRepo = new KyselyAccountRepository(kyselyOn(neoDb));
+    accountRepo = new AccountRepository(neoDb);
     branchRepo = new BranchRepository(neoDb);
     await sql`DELETE FROM accounts`.execute(kyselyOn(neoDb));
 

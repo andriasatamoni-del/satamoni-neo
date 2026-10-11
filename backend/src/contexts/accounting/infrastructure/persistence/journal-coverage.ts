@@ -1,7 +1,13 @@
-import { sql } from "kysely";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, notExists, sql, sum, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import type { Executor } from "../../../../shared/database/database.token";
 import { businessDateString } from "../../../../shared/time/business-date";
+import { goodsReceiptItems, goodsReceipts } from "../../../procurement/infrastructure/persistence/procurement.tables";
+import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
+import { stockMovements } from "../../../inventory/infrastructure/persistence/inventory.tables";
+import { payrollRuns } from "../../../hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { paymentAdjustmentRequests, payments } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
+import { accounts, journalEntries } from "./accounting.tables";
 
 // Phase 3.1 (BL-08) - reconciliation of business transactions against their mandatory journals.
 //
@@ -43,8 +49,18 @@ export const ALL_GAP_KINDS: GapKind[] = [
   "payment_adjustment",
 ];
 
+// "no journal with this source exists" - the business id is uuid, journal_entries.source_id is text
+function notJournaled(db: Executor, sourceType: string, sourceId: AnyPgColumn): SQL {
+  return notExists(
+    db
+      .select({ one: sql`1` })
+      .from(journalEntries)
+      .where(and(eq(journalEntries.source_type, sourceType), eq(journalEntries.source_id, sql`${sourceId}::text`)))
+  );
+}
+
 export async function findJournalGaps(
-  db: Kysely<Database>,
+  db: Executor,
   filter: { branchId?: string | null; kinds?: GapKind[]; limit?: number } = {}
 ): Promise<JournalGap[]> {
   const kinds = new Set(filter.kinds ?? ALL_GAP_KINDS);
@@ -64,85 +80,154 @@ export async function findJournalGaps(
     });
 
   if (kinds.has("order_sale")) {
-    const { rows } = await sql<{ id: string; branch_id: string | null; at: Date; amount: string }>`
-      SELECT o.id::text AS id, o.branch_id::text AS branch_id, o.created_at AS at, o.total AS amount
-        FROM orders o
-       WHERE o.status <> 'cancelled' AND o.total > 0 AND o.legacy_order_id IS NULL
-         AND NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.source_type = 'order_sale' AND j.source_id = o.id::text)
-         AND (${branch}::uuid IS NULL OR o.branch_id = ${branch}::uuid)
-       ORDER BY o.created_at LIMIT ${limit}`.execute(db);
+    const rows = await db
+      .select({ id: orders.id, branch_id: orders.branch_id, at: orders.created_at, amount: orders.total })
+      .from(orders)
+      .where(
+        and(
+          ne(orders.status, "cancelled"),
+          gt(orders.total, 0),
+          isNull(orders.legacy_order_id),
+          notJournaled(db, "order_sale", orders.id),
+          branch ? eq(orders.branch_id, branch) : undefined
+        )
+      )
+      .orderBy(asc(orders.created_at))
+      .limit(limit);
     for (const r of rows) push("order_sale", "order_sale", r, "الطلب مفيهوش قيد بيع");
   }
 
   if (kinds.has("order_cogs")) {
-    const { rows } = await sql<{ id: string; branch_id: string | null; at: Date; amount: string }>`
-      SELECT o.id::text AS id, o.branch_id::text AS branch_id, o.created_at AS at, SUM(m.total_cost) AS amount
-        FROM orders o
-        JOIN stock_movements m ON m.reference_type = 'order' AND m.reference_id = o.id::text AND m.movement_type = 'CONSUMPTION'
-       WHERE o.status <> 'cancelled' AND o.legacy_order_id IS NULL
-         AND NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.source_type = 'order_cogs' AND j.source_id = o.id::text)
-         AND (${branch}::uuid IS NULL OR o.branch_id = ${branch}::uuid)
-       GROUP BY o.id, o.branch_id, o.created_at
-      HAVING COALESCE(SUM(m.total_cost), 0) > 0
-       ORDER BY o.created_at LIMIT ${limit}`.execute(db);
+    const rows = await db
+      .select({ id: orders.id, branch_id: orders.branch_id, at: orders.created_at, amount: sum(stockMovements.total_cost) })
+      .from(orders)
+      .innerJoin(
+        stockMovements,
+        and(
+          eq(stockMovements.reference_type, "order"),
+          eq(stockMovements.reference_id, sql`${orders.id}::text`),
+          eq(stockMovements.movement_type, "CONSUMPTION")
+        )
+      )
+      .where(
+        and(
+          ne(orders.status, "cancelled"),
+          isNull(orders.legacy_order_id),
+          notJournaled(db, "order_cogs", orders.id),
+          branch ? eq(orders.branch_id, branch) : undefined
+        )
+      )
+      .groupBy(orders.id, orders.branch_id, orders.created_at)
+      .having(gt(sql`COALESCE(SUM(${stockMovements.total_cost}), 0)`, 0))
+      .orderBy(asc(orders.created_at))
+      .limit(limit);
     for (const r of rows) push("order_cogs", "order_cogs", r, "الطلب استهلك مخزون بتكلفة ومفيهوش قيد تكلفة (COGS)");
   }
 
   if (kinds.has("order_cancellation_unreversed")) {
-    const { rows } = await sql<{ id: string; branch_id: string | null; at: Date; amount: string; source_type: string }>`
-      SELECT o.id::text AS id, o.branch_id::text AS branch_id, o.created_at AS at, o.total AS amount, j.source_type
-        FROM orders o
-        JOIN journal_entries j ON j.source_id = o.id::text AND j.source_type IN ('order_sale', 'order_cogs') AND j.status = 'POSTED'
-       WHERE o.status = 'cancelled'
-         AND (${branch}::uuid IS NULL OR o.branch_id = ${branch}::uuid)
-       ORDER BY o.created_at LIMIT ${limit}`.execute(db);
+    const rows = await db
+      .select({
+        id: orders.id,
+        branch_id: orders.branch_id,
+        at: orders.created_at,
+        amount: orders.total,
+        source_type: journalEntries.source_type,
+      })
+      .from(orders)
+      .innerJoin(
+        journalEntries,
+        and(
+          eq(journalEntries.source_id, sql`${orders.id}::text`),
+          inArray(journalEntries.source_type, ["order_sale", "order_cogs"]),
+          eq(journalEntries.status, "POSTED")
+        )
+      )
+      .where(and(eq(orders.status, "cancelled"), branch ? eq(orders.branch_id, branch) : undefined))
+      .orderBy(asc(orders.created_at))
+      .limit(limit);
     for (const r of rows) push("order_cancellation_unreversed", r.source_type, r, "الطلب ملغي والقيد بتاعه لسه مش معكوس");
   }
 
   if (kinds.has("goods_receipt_ap")) {
-    const { rows } = await sql<{ id: string; branch_id: string | null; at: Date; amount: string }>`
-      SELECT g.id::text AS id, g.branch_id::text AS branch_id, COALESCE(g.confirmed_at, g.created_at) AS at, SUM(i.quantity * i.unit_cost) AS amount
-        FROM goods_receipts g
-        JOIN goods_receipt_items i ON i.goods_receipt_id = g.id
-       WHERE g.status = 'CONFIRMED' AND g.supplier_id IS NOT NULL AND g.legacy_goods_receipt_id IS NULL
-         AND NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.source_type = 'goods_receipt' AND j.source_id = g.id::text)
-         AND (${branch}::uuid IS NULL OR g.branch_id = ${branch}::uuid)
-       GROUP BY g.id, g.branch_id, g.confirmed_at, g.created_at
-      HAVING SUM(i.quantity * i.unit_cost) > 0
-       ORDER BY 3 LIMIT ${limit}`.execute(db);
+    const at = sql<Date>`COALESCE(${goodsReceipts.confirmed_at}, ${goodsReceipts.created_at})`.mapWith(goodsReceipts.created_at);
+    const value = sql`SUM(${goodsReceiptItems.quantity} * ${goodsReceiptItems.unit_cost})`;
+    const rows = await db
+      .select({ id: goodsReceipts.id, branch_id: goodsReceipts.branch_id, at, amount: sql<string>`${value}` })
+      .from(goodsReceipts)
+      .innerJoin(goodsReceiptItems, eq(goodsReceiptItems.goods_receipt_id, goodsReceipts.id))
+      .where(
+        and(
+          eq(goodsReceipts.status, "CONFIRMED"),
+          isNotNull(goodsReceipts.supplier_id),
+          isNull(goodsReceipts.legacy_goods_receipt_id),
+          notJournaled(db, "goods_receipt", goodsReceipts.id),
+          branch ? eq(goodsReceipts.branch_id, branch) : undefined
+        )
+      )
+      .groupBy(goodsReceipts.id, goodsReceipts.branch_id, goodsReceipts.confirmed_at, goodsReceipts.created_at)
+      .having(gt(value, 0))
+      .orderBy(at)
+      .limit(limit);
     for (const r of rows) push("goods_receipt_ap", "goods_receipt", r, "استلام مؤكد لمورد ومفيهوش قيد مخزون/دائنون");
   }
 
   if (kinds.has("payroll_posting") && !branch) {
-    const { rows } = await sql<{ id: string; branch_id: null; at: Date; amount: string }>`
-      SELECT p.id::text AS id, NULL AS branch_id, COALESCE(p.approved_at, p.created_at) AS at, p.total_net_pay AS amount
-        FROM payroll_runs p
-       WHERE p.status = 'APPROVED' AND p.legacy_payroll_run_id IS NULL AND p.total_net_pay > 0
-         AND NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.source_type = 'payroll_run' AND j.source_id = p.id::text)
-       ORDER BY 3 LIMIT ${limit}`.execute(db);
-    for (const r of rows) push("payroll_posting", "payroll_run", r, "قائمة رواتب معتمدة ومفيهاش قيد رواتب");
+    const at = sql<Date>`COALESCE(${payrollRuns.approved_at}, ${payrollRuns.created_at})`.mapWith(payrollRuns.created_at);
+    const rows = await db
+      .select({ id: payrollRuns.id, at, amount: payrollRuns.total_net_pay })
+      .from(payrollRuns)
+      .where(
+        and(
+          eq(payrollRuns.status, "APPROVED"),
+          isNull(payrollRuns.legacy_payroll_run_id),
+          gt(payrollRuns.total_net_pay, 0),
+          notJournaled(db, "payroll_run", payrollRuns.id)
+        )
+      )
+      .orderBy(at)
+      .limit(limit);
+    for (const r of rows) push("payroll_posting", "payroll_run", { ...r, branch_id: null }, "قائمة رواتب معتمدة ومفيهاش قيد رواتب");
   }
 
   if (kinds.has("payroll_cancellation_unreversed") && !branch) {
-    const { rows } = await sql<{ id: string; branch_id: null; at: Date; amount: string }>`
-      SELECT p.id::text AS id, NULL AS branch_id, COALESCE(p.cancelled_at, p.created_at) AS at, p.total_net_pay AS amount
-        FROM payroll_runs p
-        JOIN journal_entries j ON j.source_type = 'payroll_run' AND j.source_id = p.id::text AND j.status = 'POSTED'
-       WHERE p.status = 'CANCELLED'
-       ORDER BY 3 LIMIT ${limit}`.execute(db);
-    for (const r of rows) push("payroll_cancellation_unreversed", "payroll_run", r, "قائمة رواتب ملغاة وقيدها لسه مش معكوس");
+    const at = sql<Date>`COALESCE(${payrollRuns.cancelled_at}, ${payrollRuns.created_at})`.mapWith(payrollRuns.created_at);
+    const rows = await db
+      .select({ id: payrollRuns.id, at, amount: payrollRuns.total_net_pay })
+      .from(payrollRuns)
+      .innerJoin(
+        journalEntries,
+        and(
+          eq(journalEntries.source_type, "payroll_run"),
+          eq(journalEntries.source_id, sql`${payrollRuns.id}::text`),
+          eq(journalEntries.status, "POSTED")
+        )
+      )
+      .where(eq(payrollRuns.status, "CANCELLED"))
+      .orderBy(at)
+      .limit(limit);
+    for (const r of rows) push("payroll_cancellation_unreversed", "payroll_run", { ...r, branch_id: null }, "قائمة رواتب ملغاة وقيدها لسه مش معكوس");
   }
 
   if (kinds.has("payment_adjustment")) {
-    const { rows } = await sql<{ id: string; branch_id: string | null; at: Date; amount: string }>`
-      SELECT par.id::text AS id, p.branch_id::text AS branch_id, COALESCE(par.decided_at, par.requested_at) AS at, (par.proposed_amount - par.previous_amount) AS amount
-        FROM payment_adjustment_requests par
-        JOIN payments p ON p.id = par.payment_id
-       WHERE par.status = 'APPROVED' AND par.previous_amount IS NOT NULL
-         AND ABS(par.proposed_amount - par.previous_amount) >= 0.005
-         AND NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.source_type = 'payment_adjustment' AND j.source_id = par.id::text)
-         AND (${branch}::uuid IS NULL OR p.branch_id = ${branch}::uuid)
-       ORDER BY 3 LIMIT ${limit}`.execute(db);
+    const at = sql<Date>`COALESCE(${paymentAdjustmentRequests.decided_at}, ${paymentAdjustmentRequests.requested_at})`.mapWith(
+      paymentAdjustmentRequests.requested_at
+    );
+    const delta = sql<string>`(${paymentAdjustmentRequests.proposed_amount} - ${paymentAdjustmentRequests.previous_amount})`;
+    const rows = await db
+      .select({ id: paymentAdjustmentRequests.id, branch_id: payments.branch_id, at, amount: delta })
+      .from(paymentAdjustmentRequests)
+      .innerJoin(payments, eq(payments.id, paymentAdjustmentRequests.payment_id))
+      .where(
+        and(
+          eq(paymentAdjustmentRequests.status, "APPROVED"),
+          isNotNull(paymentAdjustmentRequests.previous_amount),
+          gte(sql`ABS(${delta})`, 0.005),
+          notJournaled(db, "payment_adjustment", paymentAdjustmentRequests.id),
+          branch ? eq(payments.branch_id, branch) : undefined
+        )
+      )
+      .orderBy(at)
+      .limit(limit);
     for (const r of rows) push("payment_adjustment", "payment_adjustment", r, "تعديل دفع معتمد بفرق مبلغ ومفيهوش قيد تصحيح");
   }
 
@@ -161,8 +246,16 @@ export const REQUIRED_ACCOUNTS: { code: string; purpose: string }[] = [
   { code: "6950", purpose: "فروق كاش - تصحيح الدفع وفروق الشيفت والسائقين" },
 ];
 
-export async function checkChartOfAccounts(db: Kysely<Database>): Promise<{ code: string; purpose: string; present: boolean }[]> {
-  const { rows } = await sql<{ code: string }>`SELECT code FROM accounts WHERE code = ANY(${REQUIRED_ACCOUNTS.map((a) => a.code)}::text[])`.execute(db);
+export async function checkChartOfAccounts(db: Executor): Promise<{ code: string; purpose: string; present: boolean }[]> {
+  const rows = await db
+    .select({ code: accounts.code })
+    .from(accounts)
+    .where(
+      inArray(
+        accounts.code,
+        REQUIRED_ACCOUNTS.map((a) => a.code)
+      )
+    );
   const present = new Set(rows.map((r) => r.code));
   return REQUIRED_ACCOUNTS.map((a) => ({ ...a, present: present.has(a.code) }));
 }

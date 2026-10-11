@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../database/database.types";
-import { KYSELY } from "../database/database.module";
+import { DATABASE, type Database } from "../database/database.token";
+import { eventOutbox } from "../database/shared.tables";
 import type { DomainEvent } from "./domain-event";
 import { afterCommit, isInTransaction } from "../database/transaction-context";
 
@@ -34,7 +33,7 @@ export class EventBusService {
   private readonly logger = new Logger(EventBusService.name);
   private readonly handlers = new Map<string, Subscription[]>();
 
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   subscribe<E extends DomainEvent>(eventName: string, handler: Handler<E>, options: SubscribeOptions = {}): void {
     const existing = this.handlers.get(eventName) || [];
@@ -48,14 +47,12 @@ export class EventBusService {
   // asynchronous delivery; missing financial effects are detected and repaired by the accounting reconciliation
   // (journal coverage report + repost), not by replaying events.
   async publish(event: DomainEvent): Promise<void> {
-    await this.db
-      .insertInto("event_outbox")
-      .values({
-        event_name: event.eventName,
-        payload: JSON.stringify(event),
-        occurred_at: event.occurredAt,
-      })
-      .execute();
+    // payload is jsonb: Drizzle serialises the event itself (JSON.stringify, same document as before)
+    await this.db.insert(eventOutbox).values({
+      event_name: event.eventName,
+      payload: event as unknown as Record<string, unknown>,
+      occurred_at: event.occurredAt,
+    });
 
     const subscribers = this.handlers.get(event.eventName) || [];
     for (const sub of subscribers) {

@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
 import { eq, inArray } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
@@ -53,13 +53,12 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
       "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
-    const { KyselyAccountRepository } = await import(
-      "../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository"
+    const { AccountRepository } = await import(
+      "../../../src/contexts/accounting/infrastructure/persistence/account.repository"
     );
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const cashAccount = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET", isSystemAccount: true });
     const expenseAccount = Account.register({ code: "6900", name: "مصروفات تشغيل أخرى", accountType: "EXPENSE", isSystemAccount: true });
     await accountRepo.save(cashAccount);

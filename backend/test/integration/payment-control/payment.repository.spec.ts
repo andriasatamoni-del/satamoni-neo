@@ -1,5 +1,4 @@
-import { Kysely } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
 import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
 import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
@@ -10,7 +9,7 @@ import { Payment } from "../../../src/contexts/payment-control/domain/payment.ag
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
 import { eq, inArray } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
@@ -18,8 +17,7 @@ import { paymentMethods, payments } from "../../../src/contexts/payment-control/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 describe("PaymentRepository", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
+  let db: Database;
   let repo: PaymentRepository;
   let branchId: string;
   let orderId: string;
@@ -27,24 +25,23 @@ describe("PaymentRepository", () => {
   let visaMethodId: string;
 
   beforeAll(async () => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
-    repo = new PaymentRepository(database);
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new PaymentRepository(db);
 
     const branch = Branch.register({ name: "فرع دفعات-جست" });
-    await new BranchRepository(database).save(branch);
+    await new BranchRepository(db).save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new MenuItemRepository(database);
+    const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف دفعات-جست" });
     const variant = item.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(item);
 
     const order = Order.register({ branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 60 }] });
-    await new OrderRepository(database).save(order);
+    await new OrderRepository(db).save(order);
     orderId = order.id;
 
-    const methodRepo = new PaymentMethodRepository(database);
+    const methodRepo = new PaymentMethodRepository(db);
     const cash = PaymentMethod.register({ name: "كاش-دفعات-جست", kind: "cash" });
     const visa = PaymentMethod.register({ name: "فيزا-دفعات-جست", kind: "card_or_wallet", settlementChannel: "visa_pos" });
     await methodRepo.save(cash);
@@ -54,17 +51,17 @@ describe("PaymentRepository", () => {
   });
 
   afterAll(async () => {
-    await database.delete(payments);
-    await database.delete(printJobs).where(eq(printJobs.order_id, orderId));
-    await database.delete(orderItems).where(eq(orderItems.order_id, orderId));
-    await database.delete(orders).where(eq(orders.id, orderId));
-    await database.delete(paymentMethods).where(inArray(paymentMethods.id, [cashMethodId, visaMethodId]));
-    await database.delete(branches).where(eq(branches.id, branchId));
-    await closeScriptDb(database);
+    await db.delete(payments);
+    await db.delete(printJobs).where(eq(printJobs.order_id, orderId));
+    await db.delete(orderItems).where(eq(orderItems.order_id, orderId));
+    await db.delete(orders).where(eq(orders.id, orderId));
+    await db.delete(paymentMethods).where(inArray(paymentMethods.id, [cashMethodId, visaMethodId]));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await database.delete(payments);
+    await db.delete(payments);
   });
 
   test("save بيقفل دفعة جديدة، وfindByOrderId بيرجّعها", async () => {

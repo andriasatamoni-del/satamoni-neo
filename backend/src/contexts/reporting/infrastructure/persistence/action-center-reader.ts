@@ -1,9 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
 import { and, asc, count, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
-import type { Database as KyselyDatabase } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
 import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
 import { recipeIngredients, recipeVersions } from "../../../catalog/infrastructure/persistence/catalog.tables";
 import { complaints } from "../../../crm/infrastructure/persistence/crm.tables";
@@ -28,8 +25,6 @@ const OVERDUE_INVOICE_STATUSES = ["MATCHED", "VARIANCE_PENDING", "APPROVED", "PA
 export class ActionCenterReader implements ActionCenterReaderPort {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
-    // Temporary: the accounting journal-coverage checks still take a Kysely handle until accounting is ported.
-    @Inject(KYSELY) private readonly kysely: Kysely<KyselyDatabase>,
     private readonly listExceptions: ListExceptionsHandler,
     private readonly getPosSettings: GetPosSettingsHandler,
     @Inject(FOOD_COST_READER) private readonly foodCostReader: FoodCostReaderPort
@@ -79,7 +74,7 @@ export class ActionCenterReader implements ActionCenterReaderPort {
   // Phase 3.1 (BL-08): required chart-of-accounts mappings missing -> automatic postings are blocked (strict) or deferred
   private async findAccountingNotConfiguredAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
     if (branchId) return []; // company-level configuration issue
-    const missing = (await checkChartOfAccounts(this.kysely)).filter((a) => !a.present);
+    const missing = (await checkChartOfAccounts(this.db)).filter((a) => !a.present);
     if (missing.length === 0) return [];
     return [
       {
@@ -95,7 +90,7 @@ export class ActionCenterReader implements ActionCenterReaderPort {
 
   // Phase 3.1 (BL-08): business transactions (sales, COGS, GRN payables, payroll, adjustments, unreversed cancellations) without their journal
   private async findMissingJournalAlerts(branchId: string | null): Promise<ActionCenterAlert[]> {
-    const gaps = await findJournalGaps(this.kysely, { branchId, limit: 5000 });
+    const gaps = await findJournalGaps(this.db, { branchId, limit: 5000 });
     if (gaps.length === 0) return [];
     const byBranch = new Map<string | null, typeof gaps>();
     for (const gap of gaps) byBranch.set(gap.branchId, [...(byBranch.get(gap.branchId) ?? []), gap]);

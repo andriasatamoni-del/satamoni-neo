@@ -1,26 +1,27 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { sql } from "kysely";
-import type { Kysely, Selectable } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { DATABASE, type Database, type DatabaseTx } from "../../../../shared/database/database.token";
 import { JournalEntry, type JournalEntryStatus } from "../../domain/journal-entry.aggregate";
 import type { JournalEntryRepositoryPort } from "../../domain/ports/journal-entry-repository.port";
-import type { JournalEntriesTable, JournalEntryLinesTable } from "./accounting.schema";
 import { AccountingPeriodClosedError } from "../../domain/errors";
+import { accountingPeriods, journalEntries, journalEntryLines } from "./accounting.tables";
 
 @Injectable()
-export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class JournalEntryRepository implements JournalEntryRepositoryPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   // القيود append-only بمجرد ما تتسجّل (POSTED) - مفيش onConflict/update هنا عمدًا، أي محاولة تعديل
   // حقيقية هتترفض من الـDB trigger نفسه (block_posted_journal_entry_line_changes) - نفس فلسفة الريبو
   // القديم بالظبط، الحماية مش بس "التطبيق مبيحاولش يعدّل"
   async save(entry: JournalEntry): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
+    await this.db.transaction(async (tx) => {
       let entryNumber = entry.entryNumber;
       if (!entryNumber) {
-        const { rows } = await sql<{ nextval: string }>`SELECT nextval('journal_entry_number_seq')`.execute(trx);
-        entryNumber = `JE-${String(rows[0].nextval).padStart(6, "0")}`;
+        // nextval() has no builder method: select it as a fragment from a one-row VALUES list
+        const [row] = await tx
+          .select({ nextval: sql<string>`nextval('journal_entry_number_seq')` })
+          .from(sql`(VALUES (1)) AS seq`);
+        entryNumber = `JE-${String(row.nextval).padStart(6, "0")}`;
         entry.assignEntryNumber(entryNumber);
       }
 
@@ -29,61 +30,46 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
       // الإنشاء نفسه - لو اتسجّل بحالته النهائية من الأول، الـtrigger هيرفض حتى أول إدخال للسطور. الحالة
       // بتتحدّث لحالتها الحقيقية (POSTED غالبًا) بعد ما كل السطور تتسجّل، فبعد كده أي محاولة تعديل فعلية
       // هترفض زي ما المفروض بالظبط.
-      await trx
-        .insertInto("journal_entries")
-        .values({
-          id: entry.id,
-          entry_number: entryNumber,
-          entry_date: entry.entryDate,
-          description: entry.description,
-          source_type: entry.sourceType,
-          source_id: entry.sourceId,
-          branch_id: entry.branchId,
-          status: "DRAFT",
-          created_by: entry.createdBy,
-          posted_by: null,
-          posted_at: null,
-          reversed_at: null,
-          reversal_of_entry_id: entry.reversalOfEntryId,
-          reversal_reason: entry.reversalReason,
-          created_at: entry.createdAt,
-        })
-        .execute();
+      await tx.insert(journalEntries).values({
+        id: entry.id,
+        entry_number: entryNumber,
+        entry_date: entry.entryDate,
+        description: entry.description,
+        source_type: entry.sourceType,
+        source_id: entry.sourceId,
+        branch_id: entry.branchId,
+        status: "DRAFT",
+        created_by: entry.createdBy,
+        posted_by: null,
+        posted_at: null,
+        reversed_at: null,
+        reversal_of_entry_id: entry.reversalOfEntryId,
+        reversal_reason: entry.reversalReason,
+        created_at: entry.createdAt,
+      });
 
       for (const line of entry.lines) {
-        await trx
-          .insertInto("journal_entry_lines")
-          .values({
-            id: line.id,
-            journal_entry_id: entry.id,
-            account_id: line.accountId,
-            debit: line.debit,
-            credit: line.credit,
-            description: line.description,
-            reference_type: line.referenceType,
-            reference_id: line.referenceId,
-          })
-          .execute();
+        await tx.insert(journalEntryLines).values({
+          id: line.id,
+          journal_entry_id: entry.id,
+          account_id: line.accountId,
+          debit: line.debit,
+          credit: line.credit,
+          description: line.description,
+          reference_type: line.referenceType,
+          reference_id: line.referenceId,
+        });
       }
 
       if (entry.status !== "DRAFT") {
         // تحقق تطبيقي (رسالة خطأ واضحة) قبل ما نوصل لتريجر القاعدة (trg_prevent_posting_to_closed_period
         // في migration 035) اللي هو الدفاع الحقيقي - نفس فلسفة اتزان القيد (تحقق في الدومين + تريجر مزدوج)
-        const year = entry.entryDate.getUTCFullYear();
-        const month = entry.entryDate.getUTCMonth() + 1;
-        const period = await trx
-          .selectFrom("accounting_periods")
-          .select("status")
-          .where("year", "=", year)
-          .where("month", "=", month)
-          .executeTakeFirst();
-        if (period?.status === "CLOSED") throw new AccountingPeriodClosedError(year, month);
+        await this.assertPeriodOpen(tx, entry.entryDate);
 
-        await trx
-          .updateTable("journal_entries")
+        await tx
+          .update(journalEntries)
           .set({ status: entry.status, posted_by: entry.postedBy, posted_at: entry.postedAt, reversed_at: entry.reversedAt })
-          .where("id", "=", entry.id)
-          .execute();
+          .where(eq(journalEntries.id, entry.id));
       }
     });
   }
@@ -92,23 +78,15 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
   // markReversed تمامًا). الـtrigger trg_prevent_posting_to_closed_period (migration 035) هو الدفاع
   // الحقيقي التاني - هنا دفاع تطبيقي أول برسالة خطأ واضحة، نفس فلسفة save() بالظبط
   async postEntry(entryId: string, postedAt: Date, postedBy: string | null): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      const row = await trx.selectFrom("journal_entries").select("entry_date").where("id", "=", entryId).executeTakeFirstOrThrow();
-      const year = row.entry_date.getUTCFullYear();
-      const month = row.entry_date.getUTCMonth() + 1;
-      const period = await trx
-        .selectFrom("accounting_periods")
-        .select("status")
-        .where("year", "=", year)
-        .where("month", "=", month)
-        .executeTakeFirst();
-      if (period?.status === "CLOSED") throw new AccountingPeriodClosedError(year, month);
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select({ entry_date: journalEntries.entry_date }).from(journalEntries).where(eq(journalEntries.id, entryId)).limit(1);
+      if (!row) throw new Error(`journal entry ${entryId} not found`);
+      await this.assertPeriodOpen(tx, row.entry_date);
 
-      await trx
-        .updateTable("journal_entries")
+      await tx
+        .update(journalEntries)
         .set({ status: "POSTED", posted_by: postedBy, posted_at: postedAt })
-        .where("id", "=", entryId)
-        .execute();
+        .where(eq(journalEntries.id, entryId));
     });
   }
 
@@ -116,24 +94,26 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
   // entries نفسه (مش journal_entry_lines) هو status/reversed_at، مسموح بيه صراحة (مش القيد اللي بيتغيّر
   // جوهريًا، مجرد علامة "اترجع منه قيد تاني")
   async markReversed(entryId: string, reversedAt: Date): Promise<void> {
-    await this.db
-      .updateTable("journal_entries")
-      .set({ status: "REVERSED", reversed_at: reversedAt })
-      .where("id", "=", entryId)
-      .execute();
+    await this.db.update(journalEntries).set({ status: "REVERSED", reversed_at: reversedAt }).where(eq(journalEntries.id, entryId));
   }
 
   async findById(id: string): Promise<JournalEntry | null> {
-    const row = await this.db.selectFrom("journal_entries").selectAll().where("id", "=", id).executeTakeFirst();
+    const [row] = await this.db.select().from(journalEntries).where(eq(journalEntries.id, id)).limit(1);
     if (!row) return null;
     return this.toDomain(row, await this.loadLines(id));
   }
 
   async list(filter?: { branchId?: string; sourceType?: string }): Promise<JournalEntry[]> {
-    let query = this.db.selectFrom("journal_entries").selectAll();
-    if (filter?.branchId) query = query.where("branch_id", "=", filter.branchId);
-    if (filter?.sourceType) query = query.where("source_type", "=", filter.sourceType);
-    const rows = await query.orderBy("created_at", "desc").execute();
+    const rows = await this.db
+      .select()
+      .from(journalEntries)
+      .where(
+        and(
+          filter?.branchId ? eq(journalEntries.branch_id, filter.branchId) : undefined,
+          filter?.sourceType ? eq(journalEntries.source_type, filter.sourceType) : undefined
+        )
+      )
+      .orderBy(desc(journalEntries.created_at));
     const entries: JournalEntry[] = [];
     for (const row of rows) entries.push(this.toDomain(row, await this.loadLines(row.id)));
     return entries;
@@ -141,22 +121,31 @@ export class KyselyJournalEntryRepository implements JournalEntryRepositoryPort 
 
   async findBySource(sourceType: string, sourceId: string): Promise<JournalEntry[]> {
     const rows = await this.db
-      .selectFrom("journal_entries")
-      .selectAll()
-      .where("source_type", "=", sourceType)
-      .where("source_id", "=", sourceId)
-      .orderBy("created_at", "asc")
-      .execute();
+      .select()
+      .from(journalEntries)
+      .where(and(eq(journalEntries.source_type, sourceType), eq(journalEntries.source_id, sourceId)))
+      .orderBy(asc(journalEntries.created_at));
     const entries: JournalEntry[] = [];
     for (const row of rows) entries.push(this.toDomain(row, await this.loadLines(row.id)));
     return entries;
   }
 
-  private loadLines(entryId: string): Promise<Selectable<JournalEntryLinesTable>[]> {
-    return this.db.selectFrom("journal_entry_lines").selectAll().where("journal_entry_id", "=", entryId).execute();
+  private async assertPeriodOpen(tx: DatabaseTx, entryDate: Date): Promise<void> {
+    const year = entryDate.getUTCFullYear();
+    const month = entryDate.getUTCMonth() + 1;
+    const [period] = await tx
+      .select({ status: accountingPeriods.status })
+      .from(accountingPeriods)
+      .where(and(eq(accountingPeriods.year, year), eq(accountingPeriods.month, month)))
+      .limit(1);
+    if (period?.status === "CLOSED") throw new AccountingPeriodClosedError(year, month);
   }
 
-  private toDomain(row: Selectable<JournalEntriesTable>, lineRows: Selectable<JournalEntryLinesTable>[]): JournalEntry {
+  private loadLines(entryId: string): Promise<(typeof journalEntryLines.$inferSelect)[]> {
+    return this.db.select().from(journalEntryLines).where(eq(journalEntryLines.journal_entry_id, entryId));
+  }
+
+  private toDomain(row: typeof journalEntries.$inferSelect, lineRows: (typeof journalEntryLines.$inferSelect)[]): JournalEntry {
     return JournalEntry.reconstitute(row.id, {
       entryNumber: row.entry_number,
       entryDate: row.entry_date,

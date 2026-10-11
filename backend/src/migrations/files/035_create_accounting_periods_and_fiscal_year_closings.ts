@@ -4,7 +4,7 @@ import { Kysely, sql } from "kysely";
 // - مفيش orchestration لإقفال شهر لسه محتاجه فعليًا"، الوقت جه). شهر مفقول من الجدول = مفتوح ضمنيًا
 // (نفس فلسفة ensurePeriodOpen في الريبو القديم - أول قيد في شهر جديد بيسجّله OPEN تلقائيًا، مفيش داعي
 // نمليء كل الشهور مقدّمًا). التحقق هنا defense مزدوج: تريجر حقيقي على مستوى القاعدة (زي اتزان القيد
-// وعدم قابلية التعديل بعد الترحيل بالظبط) + تحقق تطبيقي في KyselyJournalEntryRepository.save() لرسالة
+// وعدم قابلية التعديل بعد الترحيل بالظبط) + تحقق تطبيقي في JournalEntryRepository.save() لرسالة
 // خطأ واضحة بدل استثناء Postgres خام.
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -30,7 +30,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .execute();
 
   // بيتفعّل بس وقت انتقال القيد من DRAFT للحالة الحقيقية (POSTED عادةً) - نفس اللحظة اللي
-  // KyselyJournalEntryRepository.save() بيعمل فيها الـUPDATE التاني بعد إدخال كل السطور. شهر مفقود من
+  // JournalEntryRepository.save() بيعمل فيها الـUPDATE التاني بعد إدخال كل السطور. شهر مفقود من
   // accounting_periods = مفتوح ضمنيًا (مفيش صف يترجعه SELECT، الشرط IF FOUND بيتخطّى)
   await sql`
     CREATE OR REPLACE FUNCTION prevent_posting_to_closed_period() RETURNS TRIGGER AS $$

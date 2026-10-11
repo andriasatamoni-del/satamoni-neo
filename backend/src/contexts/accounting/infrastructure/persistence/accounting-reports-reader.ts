@@ -1,7 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/database.module";
+import { and, asc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import type { AccountType } from "../../domain/account.aggregate";
 import { computeAccountBalance, isCreditNormalAccount } from "../../domain/accounting-reports";
 import type {
@@ -12,21 +11,21 @@ import type {
   TrialBalanceResult,
   TrialBalanceRow,
 } from "../../domain/ports/accounting-reports-reader.port";
+import { accounts, journalEntries, journalEntryLines } from "./accounting.tables";
+
+// a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
+const IN_LEDGER = inArray(journalEntries.status, ["POSTED", "REVERSED"]);
 
 @Injectable()
-export class KyselyAccountingReportsReader implements AccountingReportsReaderPort {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+export class AccountingReportsReader implements AccountingReportsReaderPort {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async trialBalance(asOf: Date, branchId?: string | null): Promise<TrialBalanceResult> {
-    let query = this.db
-      .selectFrom("journal_entry_lines")
-      .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
-      .select(["journal_entry_lines.account_id as account_id", "journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
-      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
-      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
-      .where("journal_entries.entry_date", "<=", asOf);
-    if (branchId) query = query.where("journal_entries.branch_id", "=", branchId);
-    const lines = await query.execute();
+    const lines = await this.db
+      .select({ account_id: journalEntryLines.account_id, debit: journalEntryLines.debit, credit: journalEntryLines.credit })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .where(and(IN_LEDGER, lte(journalEntries.entry_date, asOf), branchId ? eq(journalEntries.branch_id, branchId) : undefined));
 
     const sumsByAccount = new Map<string, { debit: number; credit: number }>();
     for (const l of lines) {
@@ -37,11 +36,9 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
     }
 
     const accountIds = [...sumsByAccount.keys()];
-    const accounts = accountIds.length > 0
-      ? await this.db.selectFrom("accounts").selectAll().where("id", "in", accountIds).execute()
-      : [];
+    const accountRows = accountIds.length > 0 ? await this.db.select().from(accounts).where(inArray(accounts.id, accountIds)) : [];
 
-    const rows: TrialBalanceRow[] = accounts
+    const rows: TrialBalanceRow[] = accountRows
       .map((a) => {
         const sums = sumsByAccount.get(a.id)!;
         const accountType = a.account_type as AccountType;
@@ -67,45 +64,41 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
   }
 
   async generalLedger(accountId: string, from: Date, to: Date): Promise<GeneralLedgerResult | null> {
-    const accountRow = await this.db.selectFrom("accounts").selectAll().where("id", "=", accountId).executeTakeFirst();
+    const [accountRow] = await this.db.select().from(accounts).where(eq(accounts.id, accountId)).limit(1);
     if (!accountRow) return null;
     const accountType = accountRow.account_type as AccountType;
 
     const openingRows = await this.db
-      .selectFrom("journal_entry_lines")
-      .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
-      .select(["journal_entry_lines.debit as debit", "journal_entry_lines.credit as credit"])
-      .where("journal_entry_lines.account_id", "=", accountId)
-      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
-      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
-      .where("journal_entries.entry_date", "<", from)
-      .execute();
+      .select({ debit: journalEntryLines.debit, credit: journalEntryLines.credit })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .where(and(eq(journalEntryLines.account_id, accountId), IN_LEDGER, lt(journalEntries.entry_date, from)));
     const openingDebit = openingRows.reduce((s, r) => s + Number(r.debit), 0);
     const openingCredit = openingRows.reduce((s, r) => s + Number(r.credit), 0);
     const openingBalance = computeAccountBalance(accountType, openingDebit, openingCredit);
 
     const lineRows = await this.db
-      .selectFrom("journal_entry_lines")
-      .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
-      .select([
-        "journal_entries.id as journal_entry_id",
-        "journal_entries.entry_number as entry_number",
-        "journal_entries.entry_date as entry_date",
-        "journal_entries.description as entry_description",
-        "journal_entry_lines.id as line_id",
-        "journal_entry_lines.description as line_description",
-        "journal_entry_lines.debit as debit",
-        "journal_entry_lines.credit as credit",
-      ])
-      .where("journal_entry_lines.account_id", "=", accountId)
-      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
-      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
-      .where("journal_entries.entry_date", ">=", from)
-      .where("journal_entries.entry_date", "<=", to)
-      .orderBy("journal_entries.entry_date")
-      .orderBy("journal_entries.id")
-      .orderBy("journal_entry_lines.id")
-      .execute();
+      .select({
+        journal_entry_id: journalEntries.id,
+        entry_number: journalEntries.entry_number,
+        entry_date: journalEntries.entry_date,
+        entry_description: journalEntries.description,
+        line_id: journalEntryLines.id,
+        line_description: journalEntryLines.description,
+        debit: journalEntryLines.debit,
+        credit: journalEntryLines.credit,
+      })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .where(
+        and(
+          eq(journalEntryLines.account_id, accountId),
+          IN_LEDGER,
+          gte(journalEntries.entry_date, from),
+          lte(journalEntries.entry_date, to)
+        )
+      )
+      .orderBy(asc(journalEntries.entry_date), asc(journalEntries.id), asc(journalEntryLines.id));
 
     const creditNormal = isCreditNormalAccount(accountType);
     let running = openingBalance;
@@ -135,25 +128,27 @@ export class KyselyAccountingReportsReader implements AccountingReportsReaderPor
   }
 
   async incomeStatement(from: Date, to: Date, branchId?: string | null): Promise<IncomeStatementResult> {
-    let query = this.db
-      .selectFrom("journal_entry_lines")
-      .innerJoin("journal_entries", "journal_entries.id", "journal_entry_lines.journal_entry_id")
-      .innerJoin("accounts", "accounts.id", "journal_entry_lines.account_id")
-      .select([
-        "accounts.id as account_id",
-        "accounts.code as code",
-        "accounts.name as name",
-        "accounts.account_type as account_type",
-        "journal_entry_lines.debit as debit",
-        "journal_entry_lines.credit as credit",
-      ])
-      // a REVERSED original stays in the ledger and its (POSTED) mirror entry cancels it - excluding REVERSED would count the reversal twice
-      .where("journal_entries.status", "in", ["POSTED", "REVERSED"])
-      .where("journal_entries.entry_date", ">=", from)
-      .where("journal_entries.entry_date", "<=", to)
-      .where("accounts.account_type", "in", ["REVENUE", "COGS", "EXPENSE"]);
-    if (branchId) query = query.where("journal_entries.branch_id", "=", branchId);
-    const rows = await query.execute();
+    const rows = await this.db
+      .select({
+        account_id: accounts.id,
+        code: accounts.code,
+        name: accounts.name,
+        account_type: accounts.account_type,
+        debit: journalEntryLines.debit,
+        credit: journalEntryLines.credit,
+      })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .innerJoin(accounts, eq(accounts.id, journalEntryLines.account_id))
+      .where(
+        and(
+          IN_LEDGER,
+          gte(journalEntries.entry_date, from),
+          lte(journalEntries.entry_date, to),
+          inArray(accounts.account_type, ["REVENUE", "COGS", "EXPENSE"]),
+          branchId ? eq(journalEntries.branch_id, branchId) : undefined
+        )
+      );
 
     const byAccount = new Map<string, { code: string; name: string; accountType: AccountType; debit: number; credit: number }>();
     for (const r of rows) {

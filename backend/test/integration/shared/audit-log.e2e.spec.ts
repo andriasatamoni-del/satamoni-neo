@@ -2,11 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { deleteAuditLogsForTest } from "../helpers/audit";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
+import { and, count, eq, inArray, or, sql } from "drizzle-orm";
+import { auditLogs } from "../../../src/shared/database/shared.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -40,16 +44,20 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await deleteAuditLogsForTest(db, sql`actor_user_id IN (${adminId}, ${sql.raw(
-      "(SELECT id FROM users WHERE email = 'cashier-audit@jest.test')"
-    )})`);
-    await deleteAuditLogsForTest(db, sql`entity_type = 'users' AND metadata->>'email' = 'not-found@jest.test'`);
-    if (branchId) await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    if (branchId) await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    if (createdUserId) await deleteAuditLogsForTest(db, sql`actor_user_id = ${createdUserId} OR entity_id = ${createdUserId}`);
-    if (createdUserId) await sql`DELETE FROM users WHERE id = ${createdUserId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-audit@jest.test','cashier-audit@jest.test')`.execute(db);
+    const database = app.get<Database>(DATABASE);
+    await deleteAuditLogsForTest(
+      database,
+      or(
+        eq(auditLogs.actor_user_id, adminId),
+        inArray(auditLogs.actor_user_id, database.select({ id: users.id }).from(users).where(eq(users.email, "cashier-audit@jest.test")))
+      )
+    );
+    await deleteAuditLogsForTest(database, and(eq(auditLogs.entity_type, "users"), sql`${auditLogs.metadata}->>'email' = 'not-found@jest.test'`));
+    if (branchId) await database.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    if (branchId) await database.delete(branches).where(eq(branches.id, branchId));
+    if (createdUserId) await deleteAuditLogsForTest(database, or(eq(auditLogs.actor_user_id, createdUserId), eq(auditLogs.entity_id, createdUserId)));
+    if (createdUserId) await database.delete(users).where(eq(users.id, createdUserId));
+    await database.delete(users).where(inArray(users.email, ["admin-audit@jest.test", "cashier-audit@jest.test"]));
     await app.close();
   });
 
@@ -64,8 +72,8 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
 
     await new Promise((r) => setTimeout(r, 100)); // الكتابة async/fire-and-forget
 
-    const db = app.get(KYSELY);
-    const row = await db.selectFrom("audit_logs").selectAll().where("entity_id", "=", branchId).executeTakeFirst();
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db.select().from(auditLogs).where(eq(auditLogs.entity_id, branchId)).limit(1);
     expect(row).toBeTruthy();
     expect(row?.actor_user_id).toBe(adminId);
     expect(row?.action).toContain("POST");
@@ -73,13 +81,13 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
   });
 
   test("GET مش بيتسجّل في سجل التدقيق خالص", async () => {
-    const db = app.get(KYSELY);
-    const before = (await db.selectFrom("audit_logs").select(db.fn.countAll().as("c")).executeTakeFirst()) as { c: string };
+    const db = app.get<Database>(DATABASE);
+    const [before] = await db.select({ c: count() }).from(auditLogs);
 
     await request(app.getHttpServer()).get("/branches").set("Authorization", `Bearer ${adminToken}`);
     await new Promise((r) => setTimeout(r, 100));
 
-    const after = (await db.selectFrom("audit_logs").select(db.fn.countAll().as("c")).executeTakeFirst()) as { c: string };
+    const [after] = await db.select({ c: count() }).from(auditLogs);
     expect(Number(after.c)).toBe(Number(before.c));
   });
 
@@ -87,26 +95,24 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
     await request(app.getHttpServer()).post("/auth/login").send({ email: "not-found@jest.test", password: "wrong" });
     await new Promise((r) => setTimeout(r, 100));
 
-    const db = app.get(KYSELY);
-    const row = await db
-      .selectFrom("audit_logs")
-      .selectAll()
-      .where("action", "=", "LOGIN_FAILED")
-      .where(sql<boolean>`metadata->>'email' = 'not-found@jest.test'`)
-      .executeTakeFirst();
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.action, "LOGIN_FAILED"), sql`${auditLogs.metadata}->>'email' = 'not-found@jest.test'`))
+      .limit(1);
     expect(row).toBeTruthy();
     expect(row?.actor_user_id).toBeNull();
   });
 
   test("دخول ناجح بيتسجل LOGIN_SUCCEEDED مع الـuser id الصح", async () => {
     await new Promise((r) => setTimeout(r, 100));
-    const db = app.get(KYSELY);
-    const row = await db
-      .selectFrom("audit_logs")
-      .selectAll()
-      .where("action", "=", "LOGIN_SUCCEEDED")
-      .where("actor_user_id", "=", adminId)
-      .executeTakeFirst();
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.action, "LOGIN_SUCCEEDED"), eq(auditLogs.actor_user_id, adminId)))
+      .limit(1);
     expect(row).toBeTruthy();
   });
 
@@ -119,8 +125,8 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
     createdUserId = res.body.id;
 
     await new Promise((r) => setTimeout(r, 100));
-    const db = app.get(KYSELY);
-    const row = await db.selectFrom("audit_logs").selectAll().where("entity_id", "=", createdUserId).executeTakeFirst();
+    const db = app.get<Database>(DATABASE);
+    const [row] = await db.select().from(auditLogs).where(eq(auditLogs.entity_id, createdUserId)).limit(1);
     expect(row).toBeTruthy();
     const metadata = row?.metadata as { password?: string } | null;
     expect(metadata?.password).toBe("***");

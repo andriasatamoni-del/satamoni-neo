@@ -1,8 +1,9 @@
-import { Kysely, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import { eq } from "drizzle-orm";
 import { EventBusService } from "../../../src/shared/events/event-bus.service";
 import { DomainEvent } from "../../../src/shared/events/domain-event";
-import { closeScriptDb, createScriptDb, kyselyOn } from "../../../src/shared/database/script-db";
+import type { Database } from "../../../src/shared/database/database.token";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { eventOutbox } from "../../../src/shared/database/shared.tables";
 
 class TestEvent extends DomainEvent {
   readonly eventName = "TestEvent";
@@ -12,22 +13,20 @@ class TestEvent extends DomainEvent {
 }
 
 describe("EventBusService", () => {
-  let database: ReturnType<typeof createScriptDb>;
-  let db: Kysely<Database>;
+  let db: Database;
   let bus: EventBusService;
 
   beforeAll(() => {
-    database = createScriptDb(process.env.DATABASE_URL as string);
-    db = kyselyOn(database);
+    db = createScriptDb(process.env.DATABASE_URL as string);
     bus = new EventBusService(db);
   });
 
   afterAll(async () => {
-    await closeScriptDb(database);
+    await closeScriptDb(db);
   });
 
   afterEach(async () => {
-    await sql`DELETE FROM event_outbox`.execute(db);
+    await db.delete(eventOutbox);
   });
 
   test("بينشر الحدث ويسجّله في event_outbox، وبينادي كل الـsubscribers", async () => {
@@ -39,7 +38,7 @@ describe("EventBusService", () => {
     await bus.publish(new TestEvent(42));
     expect(received).toEqual([42]);
 
-    const row = await db.selectFrom("event_outbox").selectAll().where("event_name", "=", "TestEvent").executeTakeFirst();
+    const [row] = await db.select().from(eventOutbox).where(eq(eventOutbox.event_name, "TestEvent")).limit(1);
     expect(row).toBeDefined();
   });
 

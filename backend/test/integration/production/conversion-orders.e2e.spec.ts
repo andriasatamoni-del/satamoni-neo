@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
-import { DATABASE, KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
 import { eq, inArray } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
@@ -38,10 +38,9 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({ name: "أدمن-تصنيع-جست", email: "admin-production@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
@@ -64,7 +63,7 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     await inventoryRepo.save(cake);
     cakeId = cake.id;
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const inventoryAccount = Account.register({ code: "1400", name: "المخزون", accountType: "ASSET", isSystemAccount: true });
     const varianceAccount = Account.register({ code: "5300", name: "تكلفة بضاعة مباعة أخرى", accountType: "COGS", isSystemAccount: true });
     await accountRepo.save(inventoryAccount);
