@@ -10,12 +10,12 @@ import {
   SetMetadata,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { sql } from "kysely";
-import type { Kysely } from "kysely";
+import { eq, getTableColumns } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { Request } from "express";
 import { map, type Observable } from "rxjs";
-import type { Database } from "../database/database.types";
-import { KYSELY } from "../database/kysely.token";
+import { DATABASE, type Database } from "../database/database.token";
+import { pgErrorCode, tableByName } from "../database/transaction-context";
 import { AuditLogService } from "../audit/audit-log.service";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
 
@@ -97,11 +97,23 @@ export const BranchFilteredList = (field = "branchId") => SetMetadata(BRANCH_LIS
 
 type ScopedRequest = Request & { user?: AuthenticatedUser; branchScope?: BranchScope };
 
+// BranchResource names a table and columns by their SQL names; only names defined in the schema resolve, anything else throws
+function tableOf(name: string): PgTable {
+  const table = tableByName(name);
+  if (!table) throw new Error(`invalid BranchResource table: ${name}`);
+  return table;
+}
+function columnOf(table: PgTable, name: string): PgColumn {
+  const column = Object.values(getTableColumns(table)).find((c) => c.name === name);
+  if (!column) throw new Error(`invalid BranchResource column: ${name}`);
+  return column;
+}
+
 @Injectable()
 export class BranchScopeGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @Inject(KYSELY) private readonly db: Kysely<Database>,
+    @Inject(DATABASE) private readonly db: Database,
     private readonly audit: AuditLogService
   ) {}
 
@@ -148,21 +160,32 @@ export class BranchScopeGuard implements CanActivate {
         let alsoBranches: unknown[] = [];
         let found = false;
         try {
-          // to_jsonb(row): identifiers were validated above; reading the columns in JS keeps the SQL free of dynamic fragments
-          const res = resource.through
-            ? await sql<{ row: Record<string, unknown> }>`
-                SELECT to_jsonb(p) AS row
-                  FROM ${sql.table(resource.table)} c JOIN ${sql.table(resource.through.table)} p ON p.id = c.${sql.ref(resource.through.column)}
-                 WHERE c.${sql.ref(resource.idColumn)} = ${id} LIMIT 1`.execute(this.db)
-            : await sql<{ row: Record<string, unknown> }>`
-                SELECT to_jsonb(t) AS row FROM ${sql.table(resource.table)} t WHERE t.${sql.ref(resource.idColumn)} = ${id} LIMIT 1`.execute(this.db);
-          found = res.rows.length > 0;
-          const row = res.rows[0]?.row ?? {};
-          branchOfResource = resource.through ? row[resource.through.branchColumn ?? "branch_id"] : row[resource.column];
-          alsoBranches = (resource.alsoColumns ?? []).map((c) => row[c]);
+          const table = tableOf(resource.table);
+          const idColumn = columnOf(table, resource.idColumn);
+          let rows: Array<Record<string, unknown>>;
+          if (resource.through) {
+            const parent = tableOf(resource.through.table);
+            rows = await this.db
+              .select({ branch: columnOf(parent, resource.through.branchColumn ?? "branch_id") })
+              .from(table)
+              .innerJoin(parent, eq(columnOf(parent, "id"), columnOf(table, resource.through.column)))
+              .where(eq(idColumn, id))
+              .limit(1);
+          } else {
+            const also = Object.fromEntries((resource.alsoColumns ?? []).map((c, i) => [`also${i}`, columnOf(table, c)]));
+            rows = await this.db
+              .select({ branch: columnOf(table, resource.column), ...also })
+              .from(table)
+              .where(eq(idColumn, id))
+              .limit(1);
+          }
+          found = rows.length > 0;
+          const row = rows[0] ?? {};
+          branchOfResource = row.branch;
+          alsoBranches = (resource.alsoColumns ?? []).map((_, i) => row[`also${i}`]);
         } catch (err) {
           // a malformed id (22P02) is answered 400/404 by the handler/DB layer - nothing to leak; ANY other failure fails closed
-          if ((err as { code?: string }).code !== "22P02") throw err;
+          if (pgErrorCode(err) !== "22P02") throw err;
           found = false;
         }
         if (found && branchOfResource !== scope.branchId && !alsoBranches.includes(scope.branchId)) {

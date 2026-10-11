@@ -117,6 +117,11 @@ const tablesByName = new Map<string, PgTable>(
   (Object.values(schema) as unknown[]).filter((t): t is PgTable => is(t, PgTable)).map((t) => [getTableName(t), t])
 );
 
+/** A schema table by its SQL name (undefined for unknown names): for code that addresses tables by name from metadata. */
+export function tableByName(name: string): PgTable | undefined {
+  return tablesByName.get(name);
+}
+
 @Injectable()
 export class TransactionService {
   private readonly logger = new Logger(TransactionService.name);
