@@ -79,6 +79,14 @@ export function pgErrorCode(err: unknown): string | undefined {
   return pgError(err)?.code;
 }
 
+// The message to log, store or show for any error. DrizzleQueryError's own message is the full SQL plus its bound
+// parameters (password hashes, customer phones, addresses ...), so for a database error this is PostgreSQL's message.
+export function dbErrorMessage(err: unknown): string {
+  const pg = pgError(err);
+  if (pg?.message) return pg.message;
+  return err instanceof Error ? err.message : String(err);
+}
+
 const tablesByName = new Map<string, PgTable>(
   (Object.values(schema) as unknown[]).filter((t): t is PgTable => is(t, PgTable)).map((t) => [getTableName(t), t])
 );
@@ -121,7 +129,7 @@ export class TransactionService {
           await cb();
         } catch (err) {
           // post-commit work is best-effort by definition (the business transaction already committed)
-          this.logger.error(`post-commit callback failed: ${err instanceof Error ? err.message : err}`);
+          this.logger.error(`post-commit callback failed: ${dbErrorMessage(err)}`);
         }
       }
       return result;

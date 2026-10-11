@@ -2,7 +2,7 @@ import { ArgumentsHost, Catch, ForbiddenException, HttpException, Logger } from 
 import { BaseExceptionFilter } from "@nestjs/core";
 import type { Response } from "express";
 import { recordDenied } from "../audit/audit-denial";
-import { pgError } from "../database/transaction-context";
+import { dbErrorMessage, pgError } from "../database/transaction-context";
 
 // Phase 3.1: last-resort filter (controller-level DomainError filters still take precedence).
 //  * Unexpected PostgreSQL constraint/data errors become meaningful 4xx answers instead of "500 Internal server error":
@@ -34,8 +34,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       return;
     }
 
-    this.logger.error(exception instanceof Error ? `${exception.name}: ${exception.message}` : String(exception));
-    super.catch(exception, host);
+    this.logger.error(exception instanceof Error ? `${exception.name}: ${dbErrorMessage(exception)}` : String(exception));
+    // Nest logs the message and stack of what it is given; a DrizzleQueryError's carry the SQL and its parameters.
+    super.catch(pg ?? exception, host);
   }
 
   private mapPgError(code: string, err: { message?: string; constraint?: string }): { status: number; message: string } | null {

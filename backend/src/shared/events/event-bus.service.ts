@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { DATABASE, type Database } from "../database/database.token";
 import { eventOutbox } from "../database/shared.tables";
 import type { DomainEvent } from "./domain-event";
-import { afterCommit, isInTransaction } from "../database/transaction-context";
+import { afterCommit, dbErrorMessage, isInTransaction } from "../database/transaction-context";
 
 type Handler<E extends DomainEvent = DomainEvent> = (event: E) => Promise<void> | void;
 
@@ -64,7 +64,7 @@ export class EventBusService {
         try {
           await sub.handler(event);
         } catch (err) {
-          this.logger.error(`non-critical subscriber failed for ${event.eventName}: ${err instanceof Error ? err.message : err}`);
+          this.logger.error(`non-critical subscriber failed for ${event.eventName}: ${dbErrorMessage(err)}`);
         }
       };
       if (isInTransaction()) await afterCommit(runSafely);

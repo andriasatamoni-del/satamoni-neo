@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { AiChatClientPort, AiToolDefinition, RunToolLoopInput } from "../../domain/ports/ai-chat-client.port";
+import { dbErrorMessage } from "../../../../shared/database/transaction-context";
 
 const MAX_TOOL_TURNS = 6;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -78,7 +79,7 @@ export class GeminiChatClient implements AiChatClientPort {
         try {
           result = await input.executeTool(call.name, call.args ?? {});
         } catch (err) {
-          result = `خطأ: ${err instanceof Error ? err.message : String(err)}`;
+          result = `خطأ: ${dbErrorMessage(err)}`;
         }
         responses.push({ functionResponse: { name: call.name, response: { result } } });
       }

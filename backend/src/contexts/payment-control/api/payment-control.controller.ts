@@ -160,7 +160,7 @@ export class PaymentControlController {
   }
 
   @BranchScoped()
-  @BranchResource("reconciliation_records")
+  @BranchResource("payment_reconciliation_records")
   @Patch("reconciliation-records/:id/match")
   @RequirePermission("payment_control.reconciliation.enter")
   async matchRecord(@Param("id") id: string, @Body() dto: MatchReconciliationRecordDto) {
@@ -168,7 +168,7 @@ export class PaymentControlController {
   }
 
   @BranchScoped()
-  @BranchResource("reconciliation_records")
+  @BranchResource("payment_reconciliation_records")
   @Post("reconciliation-records/:id/ignore")
   @RequirePermission("payment_control.reconciliation.enter")
   async ignoreRecord(@Param("id") id: string) {
@@ -195,7 +195,7 @@ export class PaymentControlController {
   }
 
   @BranchScoped()
-  @BranchResource("reconciliation_records", { param: "batchId", idColumn: "import_batch_id" })
+  @BranchResource("payment_reconciliation_records", { param: "batchId", idColumn: "import_batch_id" })
   @Delete("reconciliation-records/import-batches/:batchId")
   @RequirePermission("payment_control.reconciliation.enter")
   async cancelImportBatch(@Param("batchId") batchId: string) {

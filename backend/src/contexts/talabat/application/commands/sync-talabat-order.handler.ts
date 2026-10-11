@@ -11,6 +11,7 @@ import {
   type TalabatIntegrationErrorRepositoryPort,
 } from "../../domain/ports/talabat-integration-error-repository.port";
 import { TALABAT_SYSTEM_USER_EMAIL } from "../../domain/system-user";
+import { dbErrorMessage } from "../../../../shared/database/transaction-context";
 import { BRANCH_REPOSITORY, type BranchRepositoryPort } from "../../../branches/domain/ports/branch-repository.port";
 import {
   PAYMENT_METHOD_REPOSITORY,
@@ -106,7 +107,7 @@ export class SyncTalabatOrderHandler {
       await this.talabatOrders.save(talabatOrder);
       return { talabatOrder };
     } catch (err) {
-      return this.fail(talabatOrder, branch.id, "SYNC", "TALABAT_ORDER_FAILED", { message: (err as Error).message }, true);
+      return this.fail(talabatOrder, branch.id, "SYNC", "TALABAT_ORDER_FAILED", { message: dbErrorMessage(err) }, true);
     }
   }
 

@@ -3,7 +3,7 @@ import type { Request } from "express";
 import { from, lastValueFrom, Observable } from "rxjs";
 import { AuditLogService } from "./audit-log.service";
 import { auditStorage, type AuditDetail } from "./audit-context";
-import { TransactionService } from "../database/transaction-context";
+import { dbErrorMessage, TransactionService } from "../database/transaction-context";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -60,7 +60,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             });
           } catch (err) {
             // eslint-disable-next-line no-console
-            console.error("audit write failed (non-transactional route):", err instanceof Error ? err.message : err);
+            console.error("audit write failed (non-transactional route):", dbErrorMessage(err));
           }
           return body;
         })()

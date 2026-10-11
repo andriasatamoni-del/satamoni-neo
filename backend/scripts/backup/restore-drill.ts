@@ -3,10 +3,8 @@ import { promisify } from "node:util";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Client, Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { adoptKyselyDatabase, MIGRATIONS_FOLDER } from "../../src/migrations/run-migrations";
+import { migrateDatabase, MIGRATIONS_FOLDER } from "../../src/migrations/run-migrations";
 import { parseBackupFiles } from "./retention";
 import { backupDirFromEnv, verifyBackupFile } from "./backup-verify";
 import { compareDatabases } from "./compare-databases";
@@ -183,8 +181,7 @@ async function migrateRestoredCopy(scratchUrl: string, record: (step: string, ok
     };
     const pending = total - (await applied());
     // a backup taken before the switch to Drizzle carries the Kysely history: adopt it (records the baseline), then migrate
-    const adopted = await adoptKyselyDatabase(pool, MIGRATIONS_FOLDER);
-    await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER });
+    const { adopted } = await migrateDatabase(pool, MIGRATIONS_FOLDER);
     return record(
       "تحديث النسخة المسترجعة لآخر migration",
       true,

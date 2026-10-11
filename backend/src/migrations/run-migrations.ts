@@ -1,6 +1,7 @@
 import { config as loadEnv } from "dotenv";
+import * as fs from "node:fs";
 import * as path from "node:path";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -46,13 +47,15 @@ async function waitForDatabase(connectionString: string): Promise<void> {
   }
 }
 
+// Held for the whole run (adoption, order check, migrate): Render runs `migrate` on every instance start, and two
+// overlapping starts must not apply the same pending migration twice. Drizzle's migrate() takes no lock of its own.
+const MIGRATION_LOCK_KEY = "satamoni-neo:migrations";
+
 // Returns true when it recorded the baseline as applied on a database the Kysely migrator had already built.
-export async function adoptKyselyDatabase(pool: Pool, migrationsFolder = MIGRATIONS_FOLDER): Promise<boolean> {
-  const client = await pool.connect();
+// The caller holds the migration lock.
+async function adoptKyselyDatabase(client: PoolClient, migrationsFolder: string): Promise<boolean> {
   try {
     await client.query("BEGIN");
-    // Two deploys starting at once must not both adopt.
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('satamoni-neo:migrations', 0))");
     const { rows: kysely } = await client.query<{ present: boolean }>(
       "SELECT to_regclass('public.kysely_migration') IS NOT NULL AS present"
     );
@@ -87,6 +90,60 @@ export async function adoptKyselyDatabase(pool: Pool, migrationsFolder = MIGRATI
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw err;
+  }
+}
+
+// Drizzle applies a migration only when its timestamp is newer than the newest one already applied. A migration that
+// lands out of order (two branches generated one each, the newer deployed first) would be skipped without an error,
+// so refuse that instead: a journal whose timestamps do not increase, or a migration older than the newest applied one
+// that was never applied.
+async function assertMigrationOrder(client: PoolClient, migrationsFolder: string): Promise<void> {
+  const files = readMigrationFiles({ migrationsFolder });
+  const tags = journalTags(migrationsFolder);
+  for (let i = 1; i < files.length; i++) {
+    if (files[i].folderMillis <= files[i - 1].folderMillis) {
+      throw new Error(
+        `Migration "${tags[i]}" is not newer than "${tags[i - 1]}" in drizzle/meta/_journal.json, so Drizzle would skip it. ` +
+          `Regenerate it on top of the current migrations (pnpm db:generate).`
+      );
+    }
+  }
+  const { rows: journal } = await client.query<{ present: boolean }>(
+    "SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present"
+  );
+  if (!journal[0].present) return;
+  const { rows } = await client.query<{ created_at: string }>("SELECT created_at FROM drizzle.__drizzle_migrations");
+  const applied = new Set(rows.map((r) => Number(r.created_at)));
+  const newestApplied = Math.max(0, ...applied);
+  files.forEach((file, i) => {
+    if (file.folderMillis <= newestApplied && !applied.has(file.folderMillis)) {
+      throw new Error(
+        `Migration "${tags[i]}" was never applied but is older than the newest applied migration, so Drizzle would skip it. ` +
+          `Regenerate it with a new timestamp on top of the current migrations.`
+      );
+    }
+  });
+}
+
+function journalTags(migrationsFolder: string): string[] {
+  const journal = JSON.parse(fs.readFileSync(path.join(migrationsFolder, "meta/_journal.json"), "utf8")) as { entries: { tag: string }[] };
+  return journal.entries.map((e) => e.tag);
+}
+
+// Adopts a Kysely-built database, checks the migration order and applies the pending migrations, all under one
+// session-level advisory lock on a single connection. Returns whether the database was adopted.
+export async function migrateDatabase(pool: Pool, migrationsFolder = MIGRATIONS_FOLDER): Promise<{ adopted: boolean }> {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [MIGRATION_LOCK_KEY]);
+    try {
+      const adopted = await adoptKyselyDatabase(client, migrationsFolder);
+      await assertMigrationOrder(client, migrationsFolder);
+      await migrate(drizzle(client), { migrationsFolder });
+      return { adopted };
+    } finally {
+      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [MIGRATION_LOCK_KEY]).catch(() => undefined);
+    }
   } finally {
     client.release();
   }
@@ -95,10 +152,10 @@ export async function adoptKyselyDatabase(pool: Pool, migrationsFolder = MIGRATI
 export async function runMigrations(connectionString: string, migrationsFolder = MIGRATIONS_FOLDER): Promise<void> {
   const pool = new Pool({ connectionString, ssl: pgSslOption(), connectionTimeoutMillis: 10_000 });
   try {
-    if (await adoptKyselyDatabase(pool, migrationsFolder)) {
+    const { adopted } = await migrateDatabase(pool, migrationsFolder);
+    if (adopted) {
       console.log(`✅ Existing Kysely database (at ${LAST_KYSELY_MIGRATION}) adopted: 0000_baseline recorded as applied`);
     }
-    await migrate(drizzle(pool), { migrationsFolder });
   } finally {
     await pool.end();
   }

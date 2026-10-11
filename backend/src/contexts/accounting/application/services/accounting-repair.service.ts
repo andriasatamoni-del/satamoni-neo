@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, count, desc, eq, exists, inArray, isNull, ne, sql } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
-import { TransactionService } from "../../../../shared/database/transaction-context";
+import { dbErrorMessage, TransactionService } from "../../../../shared/database/transaction-context";
 import { AuditLogService } from "../../../../shared/audit/audit-log.service";
 import { businessDate } from "../../../../shared/time/business-date";
 import { goodsReceiptItems, goodsReceipts } from "../../../procurement/infrastructure/persistence/procurement.tables";
@@ -108,7 +108,7 @@ export class AccountingRepairService {
           return r;
         });
       } catch (err) {
-        result = { kind: gap.kind, sourceId: gap.sourceId, outcome: "FAILED", reason: err instanceof Error ? err.message : String(err) };
+        result = { kind: gap.kind, sourceId: gap.sourceId, outcome: "FAILED", reason: dbErrorMessage(err) };
         // the failed attempt is recorded too (its own writes were rolled back to the savepoint)
         await this.recordAudit(gap, result, input.actorUserId).catch(() => undefined);
       }
