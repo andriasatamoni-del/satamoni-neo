@@ -2,9 +2,12 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, like } from "drizzle-orm";
+import { departments, employees, positions } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 // e2e للهيكل التنظيمي (departments/positions) - نفس فلسفة HRF-6 بالريبو القديم بالحرف: أقسام ومسميات
 // وظيفية حقيقية بدل نص حر على employees.department/job_title، وربط الموظف بيهم عن طريق
@@ -21,12 +24,11 @@ describe("HR & Payroll - الهيكل التنظيمي (e2e ضد تطبيق حق
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تنظيمي-جست", email: "admin-organization@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -38,11 +40,11 @@ describe("HR & Payroll - الهيكل التنظيمي (e2e ضد تطبيق حق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM employees WHERE name LIKE '%تنظيمي-جست%'`.execute(db);
-    await sql`DELETE FROM positions WHERE code LIKE '%TEST-ORG-JEST%'`.execute(db);
-    await sql`DELETE FROM departments WHERE code LIKE '%TEST-ORG-JEST%'`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-organization@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(employees).where(like(employees.name, "%تنظيمي-جست%"));
+    await db.delete(positions).where(like(positions.code, "%TEST-ORG-JEST%"));
+    await db.delete(departments).where(like(departments.code, "%TEST-ORG-JEST%"));
+    await db.delete(users).where(eq(users.email, "admin-organization@jest.test"));
     await app.close();
   });
 

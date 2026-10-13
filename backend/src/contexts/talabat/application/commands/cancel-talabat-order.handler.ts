@@ -7,6 +7,7 @@ import {
   type TalabatIntegrationErrorRepositoryPort,
 } from "../../domain/ports/talabat-integration-error-repository.port";
 import { TALABAT_SYSTEM_USER_EMAIL } from "../../domain/system-user";
+import { dbErrorMessage } from "../../../../shared/database/transaction-context";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../../identity-access/domain/ports/user-repository.port";
 import { CancelOrderHandler } from "../../../orders/application/commands/cancel-order.handler";
 
@@ -48,7 +49,7 @@ export class CancelTalabatOrderHandler {
         const error = TalabatIntegrationError.register({
           stage: "CANCELLATION",
           talabatOrderId: talabatOrder.talabatOrderId,
-          message: (err as Error).message,
+          message: dbErrorMessage(err),
         });
         await this.integrationErrors.save(error);
         return talabatOrder;

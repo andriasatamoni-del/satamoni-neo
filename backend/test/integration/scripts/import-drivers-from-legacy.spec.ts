@@ -1,18 +1,21 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importDriversFromLegacy } from "../../../scripts/import-drivers-from-legacy";
-import { KyselyDriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/kysely-driver.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { DriverRepository } from "../../../src/contexts/delivery/infrastructure/persistence/driver.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importDriversFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
-  let driverRepo: KyselyDriverRepository;
+  let neoDb: Database;
+  let driverRepo: DriverRepository;
   let branchId: string;
 
   beforeAll(async () => {
@@ -20,12 +23,10 @@ describe("importDriversFromLegacy", () => {
     await legacyPool.query("DROP TABLE IF EXISTS drivers");
     await legacyPool.query(`CREATE TABLE drivers (id SERIAL PRIMARY KEY, branch_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT, status TEXT NOT NULL DEFAULT 'AVAILABLE')`);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    driverRepo = new KyselyDriverRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    driverRepo = new DriverRepository(neoDb);
 
-    const branchRepo = new KyselyBranchRepository(neoDb);
+    const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع سائقين-fixture", legacyBranchId: 600 });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -33,13 +34,13 @@ describe("importDriversFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM drivers");
-    await sql`DELETE FROM drivers`.execute(neoDb);
+    await neoDb.delete(drivers);
   });
 
   test("بيستورد سائق جديد صح", async () => {

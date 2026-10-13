@@ -9,13 +9,13 @@ import { PAYROLL_RUN_REPOSITORY } from "./domain/ports/payroll-run-repository.po
 import { LEAVE_REQUEST_REPOSITORY } from "./domain/ports/leave-request-repository.port";
 import { EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY } from "./domain/ports/employee-attendance-shift-repository.port";
 import { PAYROLL_ADJUSTMENT_REPOSITORY } from "./domain/ports/payroll-adjustment-repository.port";
-import { KyselyEmployeeRepository } from "./infrastructure/persistence/kysely-employee.repository";
-import { KyselyDepartmentRepository } from "./infrastructure/persistence/kysely-department.repository";
-import { KyselyPositionRepository } from "./infrastructure/persistence/kysely-position.repository";
-import { KyselyPayrollRunRepository } from "./infrastructure/persistence/kysely-payroll-run.repository";
-import { KyselyLeaveRequestRepository } from "./infrastructure/persistence/kysely-leave-request.repository";
-import { KyselyEmployeeAttendanceShiftRepository } from "./infrastructure/persistence/kysely-employee-attendance-shift.repository";
-import { KyselyPayrollAdjustmentRepository } from "./infrastructure/persistence/kysely-payroll-adjustment.repository";
+import { EmployeeRepository } from "./infrastructure/persistence/employee.repository";
+import { DepartmentRepository } from "./infrastructure/persistence/department.repository";
+import { PositionRepository } from "./infrastructure/persistence/position.repository";
+import { PayrollRunRepository } from "./infrastructure/persistence/payroll-run.repository";
+import { LeaveRequestRepository } from "./infrastructure/persistence/leave-request.repository";
+import { EmployeeAttendanceShiftRepository } from "./infrastructure/persistence/employee-attendance-shift.repository";
+import { PayrollAdjustmentRepository } from "./infrastructure/persistence/payroll-adjustment.repository";
 import { RegisterEmployeeHandler } from "./application/commands/register-employee.handler";
 import { UpdateEmployeeHandler } from "./application/commands/update-employee.handler";
 import { SetEmployeeStatusHandler } from "./application/commands/set-employee-status.handler";
@@ -52,13 +52,13 @@ import { HrPayrollController } from "./api/hr-payroll.controller";
   imports: [IdentityAccessModule],
   controllers: [HrPayrollController],
   providers: [
-    { provide: EMPLOYEE_REPOSITORY, useClass: KyselyEmployeeRepository },
-    { provide: DEPARTMENT_REPOSITORY, useClass: KyselyDepartmentRepository },
-    { provide: POSITION_REPOSITORY, useClass: KyselyPositionRepository },
-    { provide: PAYROLL_RUN_REPOSITORY, useClass: KyselyPayrollRunRepository },
-    { provide: LEAVE_REQUEST_REPOSITORY, useClass: KyselyLeaveRequestRepository },
-    { provide: EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY, useClass: KyselyEmployeeAttendanceShiftRepository },
-    { provide: PAYROLL_ADJUSTMENT_REPOSITORY, useClass: KyselyPayrollAdjustmentRepository },
+    { provide: EMPLOYEE_REPOSITORY, useClass: EmployeeRepository },
+    { provide: DEPARTMENT_REPOSITORY, useClass: DepartmentRepository },
+    { provide: POSITION_REPOSITORY, useClass: PositionRepository },
+    { provide: PAYROLL_RUN_REPOSITORY, useClass: PayrollRunRepository },
+    { provide: LEAVE_REQUEST_REPOSITORY, useClass: LeaveRequestRepository },
+    { provide: EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY, useClass: EmployeeAttendanceShiftRepository },
+    { provide: PAYROLL_ADJUSTMENT_REPOSITORY, useClass: PayrollAdjustmentRepository },
     RegisterEmployeeHandler,
     UpdateEmployeeHandler,
     SetEmployeeStatusHandler,

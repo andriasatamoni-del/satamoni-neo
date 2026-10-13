@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { expenseCategories, expenses } from "../../../src/contexts/expenses/infrastructure/persistence/expenses.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لتسجيل المصروفات (expenses/expense_categories) - راجع تعليق expense.aggregate.ts للفلسفة
 // (نسخة مبسّطة من دورة حياة الريبو القديم الرباعية). محاسب/مدير فرع بيقدروا يرحّلوا فورًا أو
@@ -26,14 +32,13 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مصروفات-جست", email: "admin-expenses@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -43,7 +48,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-expenses@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-مصروفات-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -59,9 +64,9 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     // حسابات النظام الحقيقية اللي الـhandler بيعتمد عليها كـfallback (1100 كاش، 6900 مصروفات تشغيل
     // أخرى) - نفس نمط order-sale-posting.e2e.spec.ts بالظبط: كل ملف اختبار محتاج الحسابات دي بيسجّلها
     // بنفسه في beforeAll وبيمسحها في afterAll
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET", isSystemAccount: true });
     const defaultExpense = Account.register({ code: "6900", name: "مصروفات تشغيل أخرى", accountType: "EXPENSE", isSystemAccount: true });
     await accountRepo.save(cash);
@@ -88,13 +93,13 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM expenses WHERE branch_id = ${branchId}`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM expense_categories WHERE id IN (${categoryId}, ${categoryWithAccountId})`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${linkedAccountId}, ${cashAccountId}, ${defaultExpenseAccountId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-expenses@jest.test', 'cashier-expenses@jest.test')`.execute(db);
+    const database = app.get<Database>(DATABASE);
+    await database.delete(expenses).where(eq(expenses.branch_id, branchId));
+    await truncate(database, journalEntryLines, journalEntries);
+    await database.delete(expenseCategories).where(inArray(expenseCategories.id, [categoryId, categoryWithAccountId]));
+    await database.delete(accounts).where(inArray(accounts.id, [linkedAccountId, cashAccountId, defaultExpenseAccountId]));
+    await database.delete(branches).where(eq(branches.id, branchId));
+    await database.delete(users).where(inArray(users.email, ["admin-expenses@jest.test", "cashier-expenses@jest.test"]));
     await app.close();
   });
 

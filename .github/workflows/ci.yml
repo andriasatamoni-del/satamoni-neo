@@ -66,6 +66,19 @@ jobs:
         working-directory: backend
         run: pnpm exec tsc --noEmit -p tsconfig.json
 
+      # The Drizzle tables (*.tables.ts) and the SQL migrations in backend/drizzle must describe the same schema: a table
+      # change committed without its generated migration makes `drizzle-kit generate` write a new file here and fails CI.
+      - name: Schema drift (Drizzle tables vs migrations)
+        working-directory: backend
+        run: |
+          pnpm exec drizzle-kit check
+          pnpm exec drizzle-kit generate
+          if [ -n "$(git status --porcelain -- drizzle)" ]; then
+            echo "::error::The Drizzle tables changed without a migration. Run 'pnpm db:generate' in backend/, review the SQL and commit it."
+            git status --porcelain -- drizzle
+            exit 1
+          fi
+
       - name: Unit tests
         working-directory: backend
         run: pnpm run test:unit

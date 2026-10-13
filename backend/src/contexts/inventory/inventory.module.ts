@@ -7,12 +7,12 @@ import { STOCKTAKE_REPOSITORY } from "./domain/ports/stocktake-repository.port";
 import { BRANCH_STOCK_THRESHOLD_REPOSITORY } from "./domain/ports/branch-stock-threshold-repository.port";
 import { TRANSFER_REQUEST_REPOSITORY } from "./domain/ports/transfer-request-repository.port";
 import { INVENTORY_BATCH_REPOSITORY } from "./domain/ports/inventory-batch-repository.port";
-import { KyselyInventoryItemRepository } from "./infrastructure/persistence/kysely-inventory-item.repository";
-import { KyselyStockMovementRepository } from "./infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyStocktakeRepository } from "./infrastructure/persistence/kysely-stocktake.repository";
-import { KyselyBranchStockThresholdRepository } from "./infrastructure/persistence/kysely-branch-stock-threshold.repository";
-import { KyselyTransferRequestRepository } from "./infrastructure/persistence/kysely-transfer-request.repository";
-import { KyselyInventoryBatchRepository } from "./infrastructure/persistence/kysely-inventory-batch.repository";
+import { InventoryItemRepository } from "./infrastructure/persistence/inventory-item.repository";
+import { StockMovementRepository } from "./infrastructure/persistence/stock-movement.repository";
+import { StocktakeRepository } from "./infrastructure/persistence/stocktake.repository";
+import { BranchStockThresholdRepository } from "./infrastructure/persistence/branch-stock-threshold.repository";
+import { TransferRequestRepository } from "./infrastructure/persistence/transfer-request.repository";
+import { InventoryBatchRepository } from "./infrastructure/persistence/inventory-batch.repository";
 import { RegisterInventoryItemHandler } from "./application/commands/register-inventory-item.handler";
 import { RecordStockMovementHandler } from "./application/commands/record-stock-movement.handler";
 import { RegisterStocktakeHandler } from "./application/commands/register-stocktake.handler";
@@ -35,20 +35,20 @@ import { ListTransferRequestsHandler } from "./application/queries/list-transfer
 import { ListInventoryBatchesHandler } from "./application/queries/list-inventory-batches.handler";
 import { GetRequisitionSuggestionHandler } from "./application/queries/get-requisition-suggestion.handler";
 import { REQUISITION_SUGGESTION_READER } from "./domain/ports/requisition-suggestion-reader.port";
-import { KyselyRequisitionSuggestionReader } from "./infrastructure/persistence/kysely-requisition-suggestion.reader";
+import { RequisitionSuggestionReader } from "./infrastructure/persistence/requisition-suggestion.reader";
 import { InventoryController } from "./api/inventory.controller";
 
 @Module({
   imports: [IdentityAccessModule],
   controllers: [InventoryController],
   providers: [
-    { provide: INVENTORY_ITEM_REPOSITORY, useClass: KyselyInventoryItemRepository },
-    { provide: STOCK_MOVEMENT_REPOSITORY, useClass: KyselyStockMovementRepository },
-    { provide: STOCKTAKE_REPOSITORY, useClass: KyselyStocktakeRepository },
-    { provide: BRANCH_STOCK_THRESHOLD_REPOSITORY, useClass: KyselyBranchStockThresholdRepository },
-    { provide: TRANSFER_REQUEST_REPOSITORY, useClass: KyselyTransferRequestRepository },
-    { provide: INVENTORY_BATCH_REPOSITORY, useClass: KyselyInventoryBatchRepository },
-    { provide: REQUISITION_SUGGESTION_READER, useClass: KyselyRequisitionSuggestionReader },
+    { provide: INVENTORY_ITEM_REPOSITORY, useClass: InventoryItemRepository },
+    { provide: STOCK_MOVEMENT_REPOSITORY, useClass: StockMovementRepository },
+    { provide: STOCKTAKE_REPOSITORY, useClass: StocktakeRepository },
+    { provide: BRANCH_STOCK_THRESHOLD_REPOSITORY, useClass: BranchStockThresholdRepository },
+    { provide: TRANSFER_REQUEST_REPOSITORY, useClass: TransferRequestRepository },
+    { provide: INVENTORY_BATCH_REPOSITORY, useClass: InventoryBatchRepository },
+    { provide: REQUISITION_SUGGESTION_READER, useClass: RequisitionSuggestionReader },
     GetRequisitionSuggestionHandler,
     RegisterInventoryItemHandler,
     RecordStockMovementHandler,

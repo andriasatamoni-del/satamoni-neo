@@ -1,6 +1,11 @@
 import request from "supertest";
-import { sql } from "kysely";
 import { auth, bootstrap, count, journalsFor, stockOf, teardown, type World } from "./harness";
+import { and, count as dbCount, eq, ne } from "drizzle-orm";
+import { auditLogs } from "../../../src/shared/database/shared.tables";
+import { paymentAdjustmentRequests } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 
 // BL-09 (goods receipt vs purchase order), BL-05 (segregation of duties - admins included) and the GRN supplier requirement.
 describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
@@ -35,10 +40,10 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
     const grn = (body: Record<string, unknown>) => post("/procurement/goods-receipts", w.tokens.admin, { branchId: w.branchA, purchaseOrderId: poId, ...body });
 
     test("over-receipt is rejected at REGISTRATION (409) and writes nothing", async () => {
-      const before = await count(w, "goods_receipts");
+      const before = await count(w, goodsReceipts);
       const res = await grn({ lines: [{ inventoryItemId: w.ingredientId, quantity: 60, unitCost: 8 }] });
       expect(res.status).toBe(409);
-      expect(await count(w, "goods_receipts")).toBe(before);
+      expect(await count(w, goodsReceipts)).toBe(before);
     });
 
     test("a PO-linked GRN inherits the PO supplier; an explicitly different supplier, branch or item is rejected", async () => {
@@ -48,7 +53,7 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
 
       expect((await grn({ supplierId: otherSupplierId, lines: [{ inventoryItemId: w.ingredientId, quantity: 1, unitCost: 8 }] })).status).toBe(400);
       expect((await post("/procurement/goods-receipts", w.tokens.admin, { branchId: w.branchB, purchaseOrderId: poId, lines: [{ inventoryItemId: w.ingredientId, quantity: 1, unitCost: 8 }] })).status).toBe(400);
-      const strangerItem = (await sql<{ id: string }>`SELECT id::text FROM inventory_items WHERE id <> ${w.ingredientId} LIMIT 1`.execute(w.db)).rows[0];
+      const strangerItem = (await w.db.select({ id: inventoryItems.id }).from(inventoryItems).where(ne(inventoryItems.id, w.ingredientId)).limit(1))[0];
       if (strangerItem) {
         expect((await grn({ lines: [{ inventoryItemId: strangerItem.id, quantity: 1, unitCost: 8 }] })).status).toBe(400);
       }
@@ -68,7 +73,7 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
       expect(refused.status).toBe(409);
 
       expect(await stockOf(w, w.branchA)).toBe(stock + 30);
-      expect((await sql<{ status: string }>`SELECT status FROM goods_receipts WHERE id = ${second.body.id}`.execute(w.db)).rows[0].status).toBe("DRAFT");
+      expect((await w.db.select({ status: goodsReceipts.status }).from(goodsReceipts).where(eq(goodsReceipts.id, second.body.id)))[0].status).toBe("DRAFT");
       expect((await journalsFor(w, "goods_receipt", second.body.id)).length).toBe(0);
       // accounts payable recognised once, for the confirmed receipt only
       expect(await balance(supplierId)).toBe(supplierBalance + 30 * 8);
@@ -88,7 +93,7 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
       const self = await post(`/hr/payroll-runs/${run.body.id}/approve`, w.tokens.admin);
       expect(self.status).toBe(403);
       expect(String(self.body.error)).toContain("مستخدم تاني");
-      expect((await sql<{ status: string }>`SELECT status FROM payroll_runs WHERE id = ${run.body.id}`.execute(w.db)).rows[0].status).toBe("DRAFT");
+      expect((await w.db.select({ status: payrollRuns.status }).from(payrollRuns).where(eq(payrollRuns.id, run.body.id)))[0].status).toBe("DRAFT");
       expect((await journalsFor(w, "payroll_run", run.body.id)).length).toBe(0);
       expect((await post(`/hr/payroll-runs/${run.body.id}/approve`, w.tokens.admin2)).status).toBe(201);
     });
@@ -105,7 +110,7 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
       expect(adj.status).toBe(201);
       const self = await post(`/payment-control/adjustment-requests/${adj.body.id}/approve`, w.tokens.admin);
       expect(self.status).toBe(403);
-      expect((await sql<{ status: string }>`SELECT status FROM payment_adjustment_requests WHERE id = ${adj.body.id}`.execute(w.db)).rows[0].status).toBe("PENDING");
+      expect((await w.db.select({ status: paymentAdjustmentRequests.status }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, adj.body.id)))[0].status).toBe("PENDING");
       expect((await post(`/payment-control/adjustment-requests/${adj.body.id}/approve`, w.tokens.admin2)).status).toBe(201);
     });
 
@@ -124,9 +129,8 @@ describe("Phase 3.1 - procurement integrity & segregation of duties", () => {
       expect(self.status).toBe(403);
       expect((await post(`/procurement/supplier-invoices/${invoice.body.id}/approve`, w.tokens.accountant)).status).toBe(201);
 
-      const denied = await sql<{ n: string }>`
-        SELECT count(*)::text AS n FROM audit_logs WHERE outcome = 'DENIED' AND actor_user_id = ${w.userIds.admin} AND http_status = 403`.execute(w.db);
-      expect(Number(denied.rows[0].n)).toBeGreaterThanOrEqual(3); // payroll, adjustment and invoice attempts
+      const denied = await w.db.select({ n: dbCount() }).from(auditLogs).where(and(eq(auditLogs.outcome, "DENIED"), eq(auditLogs.actor_user_id, w.userIds.admin), eq(auditLogs.http_status, 403)));
+      expect(Number(denied[0].n)).toBeGreaterThanOrEqual(3); // payroll, adjustment and invoice attempts
     });
   });
 });

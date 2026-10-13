@@ -9,18 +9,18 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyEmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
-import { KyselyDepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
-import { KyselyPositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
-import { KyselyPayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { EmployeeRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
+import { DepartmentRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/department.repository";
+import { PositionRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/position.repository";
+import { PayrollRunRepository } from "../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Employee } from "../src/contexts/hr-payroll/domain/employee.aggregate";
 import { Department } from "../src/contexts/hr-payroll/domain/department.aggregate";
 import { Position } from "../src/contexts/hr-payroll/domain/position.aggregate";
 import { PayrollRun, type PayrollRunStatus } from "../src/contexts/hr-payroll/domain/payroll-run.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyDepartmentRow {
   id: number; code: string; name: string; description: string | null; status: string;
@@ -53,13 +53,13 @@ export interface HrPayrollImportResult {
   payrollRuns: ImportCounts;
 }
 
-export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<HrPayrollImportResult> {
-  const employeeRepo = new KyselyEmployeeRepository(neoDb);
-  const departmentRepo = new KyselyDepartmentRepository(neoDb);
-  const positionRepo = new KyselyPositionRepository(neoDb);
-  const payrollRunRepo = new KyselyPayrollRunRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const userRepo = new KyselyUserRepository(neoDb);
+export async function importHrPayrollFromLegacy(legacyPool: Pool, neoDb: Database): Promise<HrPayrollImportResult> {
+  const employeeRepo = new EmployeeRepository(neoDb);
+  const departmentRepo = new DepartmentRepository(neoDb);
+  const positionRepo = new PositionRepository(neoDb);
+  const payrollRunRepo = new PayrollRunRepository(neoDb);
+  const branchRepo = new BranchRepository(neoDb);
+  const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number | null): Promise<string | null> {
@@ -264,7 +264,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importHrPayrollFromLegacy(legacyPool, neoDb);
   console.log("✅ الاستيراد خلص:");
@@ -274,7 +274,7 @@ async function main() {
   console.log(`  قوائم الرواتب: ${result.payrollRuns.created} جديد، ${result.payrollRuns.updated} اتحدّث، ${result.payrollRuns.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

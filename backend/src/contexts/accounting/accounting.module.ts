@@ -7,11 +7,11 @@ import { JOURNAL_ENTRY_REPOSITORY } from "./domain/ports/journal-entry-repositor
 import { ACCOUNTING_REPORTS_READER } from "./domain/ports/accounting-reports-reader.port";
 import { ACCOUNTING_PERIOD_REPOSITORY } from "./domain/ports/accounting-period-repository.port";
 import { FISCAL_YEAR_CLOSING_REPOSITORY } from "./domain/ports/fiscal-year-closing-repository.port";
-import { KyselyAccountRepository } from "./infrastructure/persistence/kysely-account.repository";
-import { KyselyJournalEntryRepository } from "./infrastructure/persistence/kysely-journal-entry.repository";
-import { KyselyAccountingReportsReader } from "./infrastructure/persistence/kysely-accounting-reports-reader";
-import { KyselyAccountingPeriodRepository } from "./infrastructure/persistence/kysely-accounting-period.repository";
-import { KyselyFiscalYearClosingRepository } from "./infrastructure/persistence/kysely-fiscal-year-closing.repository";
+import { AccountRepository } from "./infrastructure/persistence/account.repository";
+import { JournalEntryRepository } from "./infrastructure/persistence/journal-entry.repository";
+import { AccountingReportsReader } from "./infrastructure/persistence/accounting-reports-reader";
+import { AccountingPeriodRepository } from "./infrastructure/persistence/accounting-period.repository";
+import { FiscalYearClosingRepository } from "./infrastructure/persistence/fiscal-year-closing.repository";
 import { RegisterAccountHandler } from "./application/commands/register-account.handler";
 import { RegisterJournalEntryHandler } from "./application/commands/register-journal-entry.handler";
 import { PostJournalEntryHandler } from "./application/commands/post-journal-entry.handler";
@@ -60,11 +60,11 @@ import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase
   imports: [IdentityAccessModule],
   controllers: [AccountingController],
   providers: [
-    { provide: ACCOUNT_REPOSITORY, useClass: KyselyAccountRepository },
-    { provide: JOURNAL_ENTRY_REPOSITORY, useClass: KyselyJournalEntryRepository },
-    { provide: ACCOUNTING_REPORTS_READER, useClass: KyselyAccountingReportsReader },
-    { provide: ACCOUNTING_PERIOD_REPOSITORY, useClass: KyselyAccountingPeriodRepository },
-    { provide: FISCAL_YEAR_CLOSING_REPOSITORY, useClass: KyselyFiscalYearClosingRepository },
+    { provide: ACCOUNT_REPOSITORY, useClass: AccountRepository },
+    { provide: JOURNAL_ENTRY_REPOSITORY, useClass: JournalEntryRepository },
+    { provide: ACCOUNTING_REPORTS_READER, useClass: AccountingReportsReader },
+    { provide: ACCOUNTING_PERIOD_REPOSITORY, useClass: AccountingPeriodRepository },
+    { provide: FISCAL_YEAR_CLOSING_REPOSITORY, useClass: FiscalYearClosingRepository },
     RegisterAccountHandler,
     RegisterJournalEntryHandler,
     PostJournalEntryHandler,

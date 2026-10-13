@@ -6,6 +6,7 @@ import { WHATSAPP_MESSAGE_PORT, type WhatsappMessagePort } from "../../domain/po
 import type { WhatsappConversation } from "../../domain/whatsapp-conversation.aggregate";
 import { buildSystemPrompt } from "./persona";
 import { BOT_TOOL_DEFINITIONS, WhatsappBotTools } from "./bot-tools";
+import { dbErrorMessage } from "../../../../shared/database/transaction-context";
 
 const HISTORY_LIMIT = 20;
 
@@ -75,7 +76,7 @@ export class WhatsappBotService {
       if (!sent.sent && sent.reason === "failed") this.logger.warn(`bot reply not delivered (${conversation.channel}): ${sent.error}`);
       return { replied: true, delivered: sent.sent };
     } catch (err) {
-      this.logger.error(`bot error (${conversation.channel}, ${conversation.id}): ${err instanceof Error ? err.message : err}`);
+      this.logger.error(`bot error (${conversation.channel}, ${conversation.id}): ${dbErrorMessage(err)}`);
       return { replied: false, reason: "error" };
     }
   }

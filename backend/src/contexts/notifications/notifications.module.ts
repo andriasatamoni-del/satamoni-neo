@@ -8,7 +8,7 @@ import type { KitchenStatusAdvancedEvent } from "../orders/domain/events/kitchen
 import { SMS_GATEWAY } from "./domain/ports/sms-gateway.port";
 import { ORDER_NOTIFICATION_STORE } from "./domain/ports/order-notification-store.port";
 import { WebhookSmsGateway } from "./infrastructure/sms/webhook-sms.gateway";
-import { KyselyOrderNotificationStore } from "./infrastructure/persistence/kysely-order-notification.store";
+import { OrderNotificationStore } from "./infrastructure/persistence/order-notification.store";
 import { OrderNotificationsService } from "./application/order-notifications.service";
 import { OrderNotificationsController } from "./api/order-notifications.controller";
 
@@ -18,7 +18,7 @@ import { OrderNotificationsController } from "./api/order-notifications.controll
   controllers: [OrderNotificationsController],
   providers: [
     { provide: SMS_GATEWAY, useClass: WebhookSmsGateway },
-    { provide: ORDER_NOTIFICATION_STORE, useClass: KyselyOrderNotificationStore },
+    { provide: ORDER_NOTIFICATION_STORE, useClass: OrderNotificationStore },
     OrderNotificationsService,
   ],
 })

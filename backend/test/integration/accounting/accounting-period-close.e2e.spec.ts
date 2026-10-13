@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accountingPeriods, accounts, fiscalYearClosings, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { truncate } from "../helpers/db";
 
 // e2e لإقفال الشهر المحاسبي والسنة المالية - راجع تعليق migration 035 وCloseFiscalYearHandler لفلسفة
 // القواعد (قفل شهر يمنع أي قيد جديد عليه، قفل سنة يتطلب كل شهورها CLOSED الأول وبيصفّر حسابات
@@ -25,12 +29,11 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-إقفال-محاسبي-جست", email: "admin-period-close@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -69,12 +72,12 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM fiscal_year_closings WHERE year = 2021`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounting_periods WHERE year = 2021`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashId, salesId, expenseId, retainedEarningsId])})`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-period-close@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(fiscalYearClosings).where(eq(fiscalYearClosings.year, 2021));
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accountingPeriods).where(eq(accountingPeriods.year, 2021));
+    await db.delete(accounts).where(inArray(accounts.id, [cashId, salesId, expenseId, retainedEarningsId]));
+    await db.delete(users).where(eq(users.email, "admin-period-close@jest.test"));
     await app.close();
   });
 

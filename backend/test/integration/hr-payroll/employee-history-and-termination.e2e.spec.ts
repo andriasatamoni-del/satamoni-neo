@@ -2,9 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { departments, employeeHistory, employees, payrollRunEmployees, payrollRuns, positions } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { cashDrawerEntries, cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { truncate } from "../helpers/db";
 
 // e2e لسجل تغييرات الموظف (employee_history) وتبعات إنهاء الخدمة (بنود معلّقة + تعطيل حساب الدخول) -
 // راجع تعليق set-employee-status.handler.ts وupdate-employee.handler.ts: نفس منطق
@@ -30,16 +38,15 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
@@ -94,18 +101,18 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM employee_history WHERE employee_id IN (${employeeWithUserId}, ${employeeNoUserId})`.execute(db);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    if (payrollRunId) await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
-    if (shiftId) await sql`DELETE FROM cash_drawer_entries WHERE shift_id = ${shiftId}`.execute(db);
-    if (shiftId) await sql`DELETE FROM cashier_shifts WHERE id = ${shiftId}`.execute(db);
-    await sql`DELETE FROM employees WHERE id IN (${employeeWithUserId}, ${employeeNoUserId})`.execute(db);
-    await sql`DELETE FROM positions WHERE id = ${positionId}`.execute(db);
-    await sql`DELETE FROM departments WHERE id = ${departmentId}`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-emphist@jest.test', 'accountant-emphist@jest.test', 'cashier-emphist@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(employeeHistory).where(inArray(employeeHistory.employee_id, [employeeWithUserId, employeeNoUserId]));
+    await truncate(db, journalEntryLines, journalEntries);
+    if (payrollRunId) await truncate(db, payrollRunEmployees, payrollRuns);
+    if (shiftId) await db.delete(cashDrawerEntries).where(eq(cashDrawerEntries.shift_id, shiftId));
+    if (shiftId) await db.delete(cashierShifts).where(eq(cashierShifts.id, shiftId));
+    await db.delete(employees).where(inArray(employees.id, [employeeWithUserId, employeeNoUserId]));
+    await db.delete(positions).where(eq(positions.id, positionId));
+    await db.delete(departments).where(eq(departments.id, departmentId));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-emphist@jest.test", "accountant-emphist@jest.test", "cashier-emphist@jest.test"]));
     await app.close();
   });
 

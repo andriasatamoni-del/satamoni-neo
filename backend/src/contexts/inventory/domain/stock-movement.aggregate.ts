@@ -37,7 +37,7 @@ export interface StockMovementProps {
 // الحقيقة الوحيد لأي تغيير في الرصيد، مش جدول رصيد بيتحدّث مباشرة من غير أثر). كل حركة إما بتزوّد
 // الرصيد (quantityDelta موجب: RECEIPT/TRANSFER_IN/OPENING_BALANCE) أو بتنقصه (سالب: CONSUMPTION/
 // TRANSFER_OUT، أو ADJUSTMENT ممكن تكون أي اتجاه). الرصيد الفعلي بيتحسب/يتحدّث ذريًا مع كل حركة في
-// نفس المعاملة (راجع KyselyStockMovementRepository.recordMovement) - مفيش تحديث رصيد منفصل عن تسجيل
+// نفس المعاملة (راجع StockMovementRepository.recordMovement) - مفيش تحديث رصيد منفصل عن تسجيل
 // الحركة، عشان الرصيد يفضل دايمًا = مجموع الحركات بالظبط (نفس المبدأ اللي inventory_discrepancies في
 // الريبو القديم بيتأكد منه).
 export class StockMovement {

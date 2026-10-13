@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { truncate } from "../helpers/db";
+import { eq, inArray, isNull, like, or } from "drizzle-orm";
+import { bankAccounts, banks, treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -21,15 +27,14 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-خزائن-جست", email: "admin-treasury@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -42,17 +47,17 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    if (bankAccountId) await sql`DELETE FROM bank_accounts WHERE id = ${bankAccountId}`.execute(db);
-    if (bankId) await sql`DELETE FROM banks WHERE id = ${bankId}`.execute(db);
+    const database = app.get<Database>(DATABASE);
+    if (bankAccountId) await database.delete(bankAccounts).where(eq(bankAccounts.id, bankAccountId));
+    if (bankId) await database.delete(banks).where(eq(banks.id, bankId));
     // قيود POSTED مش قابلة للحذف بـDELETE عادي (trigger المناعة) - TRUNCATE بس بيتخطى الـtriggers
     // دي، نفس اتفاقية باقي تستات المحاسبة بالظبط (order-sale-posting/payroll-approval-posting)
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId} OR branch_id IS NULL`.execute(db);
-    if (bankTreasuryId) await sql`DELETE FROM accounts WHERE code LIKE 'BANK-%'`.execute(db);
-    await sql`DELETE FROM accounts WHERE code LIKE 'TRSY-%'`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-treasury@jest.test'`.execute(db);
+    await truncate(database, journalEntryLines, journalEntries);
+    await database.delete(treasuries).where(or(eq(treasuries.branch_id, branchId), isNull(treasuries.branch_id)));
+    if (bankTreasuryId) await database.delete(accounts).where(like(accounts.code, "BANK-%"));
+    await database.delete(accounts).where(like(accounts.code, "TRSY-%"));
+    await database.delete(branches).where(eq(branches.id, branchId));
+    await database.delete(users).where(eq(users.email, "admin-treasury@jest.test"));
     await app.close();
   });
 
@@ -139,15 +144,15 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
   });
 
   test("مدير الفرع مقفول على فرعه، وكاشير معندوش treasuries.view -> 403", async () => {
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const db = app.get<Database>(DATABASE);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const manager = User.register({
@@ -182,6 +187,6 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
       .set("Authorization", `Bearer ${cashierLogin.body.token}`);
     expect(cashierRes.status).toBe(403);
 
-    await sql`DELETE FROM users WHERE email IN ('manager-treasury@jest.test', 'cashier-treasury@jest.test')`.execute(db);
+    await db.delete(users).where(inArray(users.email, ["manager-treasury@jest.test", "cashier-treasury@jest.test"]));
   });
 });

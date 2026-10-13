@@ -2,9 +2,18 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -21,28 +30,27 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyMenuItemRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository"
+    const { MenuItemRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository"
     );
-    const { KyselyRecipeRepository } = await import(
-      "../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository"
+    const { RecipeRepository } = await import(
+      "../../../src/contexts/catalog/infrastructure/persistence/recipe.repository"
     );
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-مبيعات-تشغيل-جست", email: "admin-salesops@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -56,7 +64,7 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
       .send({ name: "فرع مبيعات-تشغيل-جست" });
     branchId = branchRes.body.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "مكوّن-مبيعات-تشغيل-جست", unit: "كيلو", unitCost: 5 });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
@@ -65,13 +73,13 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 100 });
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-مبيعات-تشغيل-جست" });
     const variant = item.addVariant({ label: "عادي", price: 50 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // تكلفة وحدة = 2×5 = 10
@@ -101,23 +109,23 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM payments WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE name = 'كاش-مبيعات-تشغيل-جست'`.execute(db);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'صنف-مبيعات-تشغيل-جست'`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-salesops@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(printJobs);
+    await db.delete(payments).where(eq(payments.branch_id, branchId));
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(paymentMethods).where(eq(paymentMethods.name, "كاش-مبيعات-تشغيل-جست"));
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(eq(menuItems.name, "صنف-مبيعات-تشغيل-جست"));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(treasuries).where(eq(treasuries.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-salesops@jest.test"));
     await app.close();
   });
 

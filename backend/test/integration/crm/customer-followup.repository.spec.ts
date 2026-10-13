@@ -1,0 +1,95 @@
+import type { Database } from "../../../src/shared/database/database.token";
+import { CustomerFollowupRepository } from "../../../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
+import { CustomerFollowup } from "../../../src/contexts/crm/domain/customer-followup.aggregate";
+import { closeScriptDb, createScriptDb } from "../../../src/shared/database/script-db";
+import { complaints, customerFollowups } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
+
+describe("CustomerFollowupRepository", () => {
+  let db: Database;
+  let repo: CustomerFollowupRepository;
+
+  beforeAll(() => {
+    db = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new CustomerFollowupRepository(db);
+  });
+
+  afterAll(async () => {
+    await closeScriptDb(db);
+  });
+
+  afterEach(async () => {
+    await db.delete(complaints);
+    await db.delete(customerFollowups);
+  });
+
+  test("save بيسجّل متابعة جديدة، وfindById بيرجّعها بنفس البيانات", async () => {
+    const followup = CustomerFollowup.register({
+      legacyOrderId: 101,
+      customerPhone: "01000000001",
+      callResult: "answered",
+      satisfactionRating: "good",
+    });
+    await repo.save(followup);
+
+    const found = await repo.findById(followup.id);
+    expect(found).not.toBeNull();
+    expect(found!.legacyOrderId).toBe(101);
+    expect(found!.callResult).toBe("answered");
+    expect(found!.satisfactionRating).toBe("good");
+    expect(found!.hasComplaint).toBe(false);
+  });
+
+  test("findByLegacyOrderId بيلاقي المتابعة بالأوردر القديم بتاعها", async () => {
+    const followup = CustomerFollowup.register({ legacyOrderId: 202, customerPhone: "01000000002", callResult: "no_answer" });
+    await repo.save(followup);
+
+    const found = await repo.findByLegacyOrderId(202);
+    expect(found?.id).toBe(followup.id);
+    expect(await repo.findByLegacyOrderId(999)).toBeNull();
+  });
+
+  test("findByLegacyFollowupId بيلاقي المتابعة المستوردة بكود الريبو القديم", () =>
+    (async () => {
+      const followup = CustomerFollowup.register({ customerPhone: "01000000003", callResult: "answered", legacyFollowupId: 7 });
+      await repo.save(followup);
+      const found = await repo.findByLegacyFollowupId(7);
+      expect(found?.id).toBe(followup.id);
+    })());
+
+  test("save تاني على نفس الـid بيعمل update مش صف جديد", async () => {
+    const followup = CustomerFollowup.register({ legacyOrderId: 303, customerPhone: "01000000004", callResult: "no_answer" });
+    await repo.save(followup);
+
+    followup.recordCall({ callResult: "answered", satisfactionRating: "bad", hasComplaint: true });
+    await repo.save(followup);
+
+    const found = await repo.findById(followup.id);
+    expect(found!.callResult).toBe("answered");
+    expect(found!.hasComplaint).toBe(true);
+  });
+
+  // كان فيه باج فعلي هنا: doUpdateSet كان ناقصه branch_id (وlegacy_order_id/customer_phone) - يعني
+  // إعادة استيراد نفس الصف بعد ما الفرع يتربط (Branches context) كانت بتفشل تحدّث branch_id بصمت
+  test("save بيحدّث branch_id على صف موجود (مش بس وقت الإنشاء الأول)", async () => {
+    const followup = CustomerFollowup.register({ legacyOrderId: 404, customerPhone: "01000000099", callResult: "answered" });
+    await repo.save(followup);
+    expect((await repo.findById(followup.id))!.branchId).toBeNull();
+
+    const withBranch = CustomerFollowup.reconstitute(followup.id, {
+      orderId: followup.orderId,
+      legacyOrderId: followup.legacyOrderId,
+      branchId: "11111111-1111-1111-1111-111111111111",
+      customerPhone: followup.customerPhone,
+      callResult: followup.callResult,
+      satisfactionRating: followup.satisfactionRating,
+      notes: followup.notes,
+      hasComplaint: followup.hasComplaint,
+      calledBy: followup.calledBy,
+      calledAt: followup.calledAt,
+      legacyFollowupId: followup.legacyFollowupId,
+    });
+    await repo.save(withBranch);
+
+    expect((await repo.findById(followup.id))!.branchId).toBe("11111111-1111-1111-1111-111111111111");
+  });
+});

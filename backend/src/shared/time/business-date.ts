@@ -1,4 +1,4 @@
-import { sql, type RawBuilder } from "kysely";
+import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 
 // Phase 3.1 (BL-12): ONE definition of "business date" for the whole system = the calendar date in Africa/Cairo.
 //
@@ -90,8 +90,8 @@ export function businessRangeUtc(fromDate: string, toDate: string): { from: Date
 }
 
 // SQL expression: the Cairo business date of a timestamptz column/expression, e.g.
-//   .select(businessDateSql(sql.ref("orders.created_at")).as("d"))   or   sql`${businessDateSql(sql.ref("created_at"))} = ${d}`
-export function businessDateSql(column: RawBuilder<unknown>): RawBuilder<string> {
+//   .select({ d: businessDateSql(orders.created_at) })   or   .where(sql`${businessDateSql(orders.created_at)} = ${d}`)
+export function businessDateSql(column: SQLWrapper): SQL<string> {
   return sql<string>`((${column} AT TIME ZONE 'Africa/Cairo')::date)`;
 }
 

@@ -180,7 +180,7 @@ Use an admin token (`$TOKEN`) and your backend URL (`$API`).
 **Rollback:**
 
 - Cheapest option: redeploy the **previous build** in Render. Migration `057` is additive, but a previous build against the new schema has **not been tested**, so try it on a copy first.
-- `pnpm migrate:down` reverts migration `057` only. It was tested on sample data only; confirm it does not lose data written after the migration before using it in production.
+- There is no down migration: `pnpm migrate` is forward-only (Drizzle). Undoing a schema change means a new forward migration, reviewed and tested on a copy, or a restore from the backup.
 - The real safety net is the **backup taken in section 2**.
 - Keep the old system (`satamoni-backend`) running as the fallback until you are confident (see `DEPLOYMENT.md`, sections 6 and 7).
 

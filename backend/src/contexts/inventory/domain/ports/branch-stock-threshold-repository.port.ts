@@ -13,7 +13,7 @@ export interface BranchStockBalanceWithThreshold {
 
 export interface BranchStockThresholdRepositoryPort {
   // بيرجّع حدود افتراضية (كله null) لو مفيش صف متسجّل لسه - مفيش إدراج فعلي في القاعدة إلا وقت save()
-  // الأول (نفس فلسفة get() في KyselyPosSettingsRepository، بس هنا من غير lazy-insert لأن المفتاح مركّب
+  // الأول (نفس فلسفة get() في PosSettingsRepository، بس هنا من غير lazy-insert لأن المفتاح مركّب
   // (فرع+صنف) مش صف واحد ثابت)
   get(branchId: string, inventoryItemId: string): Promise<BranchStockThreshold>;
   save(threshold: BranchStockThreshold): Promise<void>;

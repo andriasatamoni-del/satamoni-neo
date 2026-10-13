@@ -3,10 +3,22 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { CUSTOMER_TOKEN_SERVICE } from "../../../src/contexts/customers/domain/ports/customer-token.service.port";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { comboItems, combos, menuCategories, menuItemModifierVariantPrices, menuItemModifiers, menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { customers } from "../../../src/contexts/customers/infrastructure/persistence/customers.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { loyaltyRewards } from "../../../src/contexts/loyalty/infrastructure/persistence/loyalty.tables";
+import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // STORE-1/2: موقع الطلب أونلاين بحساب إلزامي - من المنيو العام، للتسجيل مرة واحدة بالعنوان، للطلب بضغطة،
 // لحد الكاشير والمطبخ والتتبّع ونقاط الولاء (كسب بعد التسليم + صرف في مكافأة)
@@ -65,32 +77,31 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
-    const db = app.get(KYSELY);
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository");
+    const { MenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-category.repository");
     const { MenuCategory } = await import("../../../src/contexts/catalog/domain/menu-category.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
-    const { KyselyComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-combo.repository");
+    const { ComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/combo.repository");
     const { Combo } = await import("../../../src/contexts/catalog/domain/combo.aggregate");
-    const { KyselyPaymentMethodRepository } = await import("../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository");
+    const { PaymentMethodRepository } = await import("../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository");
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
-    const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
+    const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
-    await new KyselyUserRepository(db).save(
+    await new UserRepository(app.get<Database>(DATABASE)).save(
       User.register({ name: "أدمن-موقع-جست", email: "admin-store@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-store@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-موقع-جست", phone: "0223456789", lat: 30.05, lng: 31.23, supportsDineIn: false });
     const dineIn = Branch.register({ name: "فرع-موقع-صالة-جست", supportsDineIn: true });
     await branchRepo.save(branch);
@@ -99,10 +110,10 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     dineInBranchId = dineIn.id;
 
     const category = MenuCategory.register({ name: "قسم-موقع-جست", displayOrder: -100 });
-    await new KyselyMenuCategoryRepository(db).save(category);
+    await new MenuCategoryRepository(app.get<Database>(DATABASE)).save(category);
     categoryId = category.id;
 
-    const itemRepo = new KyselyMenuItemRepository(db);
+    const itemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-موقع-جست", categoryId, description: "بالجبنة", isBest: true, imageUrl: "/media/images/pizza" });
     smallId = item.addVariant({ label: "صغير", price: 60 }).id;
     largeId = item.addVariant({ label: "كبير", price: 100 }).id;
@@ -120,15 +131,15 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     scarceVariantId = scarce.addVariant({ label: "عادي", price: 30 }).id;
     await itemRepo.save(scarce);
     const ingredient = InventoryItem.register({ name: "مكوّن-ناقص-موقع-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
-    await new KyselyInventoryItemRepository(db).save(ingredient);
+    await new InventoryItemRepository(app.get<Database>(DATABASE)).save(ingredient);
     ingredientId = ingredient.id;
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: scarceVariantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: ingredientId, quantity: 1 });
     recipe.activateVersion(version.id);
-    await new KyselyRecipeRepository(db).save(recipe);
+    await new RecipeRepository(app.get<Database>(DATABASE)).save(recipe);
 
-    const comboRepo = new KyselyComboRepository(db);
+    const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({ name: "عرض-موقع-جست", price: 150, items: [{ variantId: smallId, quantity: 2 }] });
     const exclusive = Combo.register({
       name: "عرض-حصري-موقع-جست", price: 99, items: [{ variantId: smallId, quantity: 1 }],
@@ -140,7 +151,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     exclusiveComboId = exclusive.id;
 
     const cash = PaymentMethod.register({ name: "كاش-موقع-جست", kind: "cash", settlementChannel: null });
-    await new KyselyPaymentMethodRepository(db).save(cash);
+    await new PaymentMethodRepository(app.get<Database>(DATABASE)).save(cash);
     cashMethodId = cash.id;
 
     const reg = await request(server())
@@ -164,36 +175,36 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
+    const database = app.get<Database>(DATABASE);
     await request(server()).patch("/pos-settings").set(staff()).send({ onlineOrderingEnabled: false });
-    await sql`UPDATE pos_settings SET updated_by = NULL`.execute(db);
+    await database.update(posSettings).set({ updated_by: null });
     const phones = [phone, incompletePhone, blockedPhone];
-    await sql`DELETE FROM customers WHERE phone IN (${sql.join(phones)})`.execute(db);
-    await sql`DELETE FROM loyalty_rewards WHERE id IN (${sql.join(Object.values(rewardIds))})`.execute(db);
+    await database.delete(customers).where(inArray(customers.phone, phones));
+    await database.delete(loyaltyRewards).where(inArray(loyaltyRewards.id, Object.values(rewardIds)));
     for (const b of [branchId, dineInBranchId]) {
-      await sql`DELETE FROM payments WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM print_jobs WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT oi.id FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.branch_id = ${b})`.execute(db);
-      await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${b})`.execute(db);
-      await sql`DELETE FROM stock_movements WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM orders WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM treasuries WHERE branch_id = ${b}`.execute(db);
-      await sql`DELETE FROM branches WHERE id = ${b}`.execute(db);
+      await database.delete(payments).where(eq(payments.branch_id, b));
+      await database.delete(printJobs).where(eq(printJobs.branch_id, b));
+      await database.delete(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, database.select({ id: orderItems.id }).from(orderItems).innerJoin(orders, eq(orders.id, orderItems.order_id)).where(eq(orders.branch_id, b))));
+      await database.delete(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, b))));
+      await database.delete(stockMovements).where(eq(stockMovements.branch_id, b));
+      await database.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, b));
+      await database.delete(orders).where(eq(orders.branch_id, b));
+      await database.delete(treasuries).where(eq(treasuries.branch_id, b));
+      await database.delete(branches).where(eq(branches.id, b));
     }
-    await sql`DELETE FROM payment_methods WHERE id = ${cashMethodId}`.execute(db);
-    await sql`DELETE FROM combo_items WHERE combo_id IN (${comboId}, ${exclusiveComboId})`.execute(db);
-    await sql`DELETE FROM combos WHERE id IN (${comboId}, ${exclusiveComboId})`.execute(db);
-    await sql`DELETE FROM recipe_ingredients WHERE ingredient_item_id = ${ingredientId}`.execute(db);
-    await sql`DELETE FROM recipe_versions WHERE recipe_id IN (SELECT id FROM recipes WHERE variant_id = ${scarceVariantId})`.execute(db);
-    await sql`DELETE FROM recipes WHERE variant_id = ${scarceVariantId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientId}`.execute(db);
-    await sql`DELETE FROM menu_item_modifier_variant_prices WHERE modifier_id = ${modifierId}`.execute(db);
-    await sql`DELETE FROM menu_item_modifiers WHERE item_id = ${itemId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE item_id IN (SELECT id FROM menu_items WHERE category_id = ${categoryId})`.execute(db);
-    await sql`DELETE FROM menu_items WHERE category_id = ${categoryId}`.execute(db);
-    await sql`DELETE FROM menu_categories WHERE id = ${categoryId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-store@jest.test'`.execute(db);
+    await database.delete(paymentMethods).where(eq(paymentMethods.id, cashMethodId));
+    await database.delete(comboItems).where(inArray(comboItems.combo_id, [comboId, exclusiveComboId]));
+    await database.delete(combos).where(inArray(combos.id, [comboId, exclusiveComboId]));
+    await database.delete(recipeIngredients).where(eq(recipeIngredients.ingredient_item_id, ingredientId));
+    await database.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, database.select({ id: recipes.id }).from(recipes).where(eq(recipes.variant_id, scarceVariantId))));
+    await database.delete(recipes).where(eq(recipes.variant_id, scarceVariantId));
+    await database.delete(inventoryItems).where(eq(inventoryItems.id, ingredientId));
+    await database.delete(menuItemModifierVariantPrices).where(eq(menuItemModifierVariantPrices.modifier_id, modifierId));
+    await database.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
+    await database.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, database.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.category_id, categoryId))));
+    await database.delete(menuItems).where(eq(menuItems.category_id, categoryId));
+    await database.delete(menuCategories).where(eq(menuCategories.id, categoryId));
+    await database.delete(users).where(eq(users.email, "admin-store@jest.test"));
     await app.close();
   });
 
@@ -254,9 +265,9 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   });
 
   test("حساب قديم ناقصه إيميل/رقم تاني/عنوان -> لازم يكمّل بياناته قبل أول طلب", async () => {
-    const db = app.get(KYSELY);
+    const db = app.get<Database>(DATABASE);
     const id = randomUUID();
-    await sql`INSERT INTO customers (id, phone, name, loyalty_points, password_hash) VALUES (${id}, ${incompletePhone}, 'عميل قديم', 0, 'x')`.execute(db);
+    await db.insert(customers).values({ id: id, phone: incompletePhone, name: "عميل قديم", loyalty_points: 0, password_hash: "x" });
     const token = app.get(CUSTOMER_TOKEN_SERVICE).sign({ sub: id });
     const me = await request(server()).get("/customer-auth/me").set({ Authorization: `Bearer ${token}` });
     expect(me.body.missingProfileFields).toEqual(["email", "phone2", "address"]);
@@ -310,8 +321,8 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     expect(poor.body.error).toContain("نقاطك مش كفاية");
     expect(await balance()).toBe(38);
 
-    const db = app.get(KYSELY);
-    await sql`UPDATE customers SET loyalty_points = 100 WHERE phone = ${phone}`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.update(customers).set({ loyalty_points: 100 }).where(eq(customers.phone, phone));
     const free = await place(order({ orderType: "takeaway", addressId: undefined, rewardId: rewardIds.bigDiscount, items: [{ variantId: smallId, quantity: 1 }] }));
     expect(free.status).toBe(201);
     expect(free.body).toMatchObject({ total: 0, discount: 60 });
@@ -339,10 +350,10 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const dinein = await place(order({ branchId: dineInBranchId, orderType: "dinein", tableNumber: "3", addressId: undefined, items: [{ variantId: smallId, quantity: 1 }] }));
     expect(dinein.status).toBe(201);
 
-    const db = app.get(KYSELY);
-    await sql`UPDATE customers SET is_blocked = true WHERE phone = ${phone}`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.update(customers).set({ is_blocked: true }).where(eq(customers.phone, phone));
     expect((await place(order())).status).toBe(403);
-    await sql`UPDATE customers SET is_blocked = false WHERE phone = ${phone}`.execute(db);
+    await db.update(customers).set({ is_blocked: false }).where(eq(customers.phone, phone));
   });
 
   test("التتبّع بالتوكن، و'طلباتي' بطلبات الحساب بس", async () => {

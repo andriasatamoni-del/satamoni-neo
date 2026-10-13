@@ -2,10 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
 import { createSecondUser } from "../helpers/second-user";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { employees, payrollRunEmployees, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { truncate } from "../helpers/db";
 
 // e2e حقيقي بيغطي تالت مسار event-driven في النظام: اعتماد قائمة رواتب (HR & Payroll) ->
 // PayrollRunApprovedEvent -> Accounting (subscriber) بيترحّل قيد رواتب تلقائي POSTED متزن على حسابي
@@ -25,14 +30,13 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-رواتب-e2e", email: "admin-payroll-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -42,7 +46,7 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
     adminToken = loginRes.body.token;
     approverToken = (await createSecondUser(app, "approver-payroll-e2e@jest.test")).token;
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const expenseAccount = Account.register({ code: "6100", name: "الرواتب", accountType: "EXPENSE", isSystemAccount: true });
     const payableAccount = Account.register({ code: "2400", name: "رواتب مستحقة", accountType: "LIABILITY", isSystemAccount: true });
     await accountRepo.save(expenseAccount);
@@ -58,12 +62,12 @@ describe("HR & Payroll - اعتماد قائمة رواتب (e2e ضد تطبيق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([salariesExpenseAccountId, salariesPayableAccountId])})`.execute(db);
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
-    await sql`DELETE FROM employees WHERE id = ${employeeId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-payroll-e2e@jest.test', 'approver-payroll-e2e@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [salariesExpenseAccountId, salariesPayableAccountId]));
+    await truncate(db, payrollRunEmployees, payrollRuns);
+    await db.delete(employees).where(eq(employees.id, employeeId));
+    await db.delete(users).where(inArray(users.email, ["admin-payroll-e2e@jest.test", "approver-payroll-e2e@jest.test"]));
     await app.close();
   });
 

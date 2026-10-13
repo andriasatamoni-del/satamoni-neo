@@ -23,7 +23,7 @@ export interface JournalEntryLine {
 }
 
 export interface JournalEntryProps {
-  entryNumber: string | null; // بيتحدد وقت الحفظ الأول بس (sequence، راجع KyselyJournalEntryRepository) - نفس فلسفة id المولّد من القاعدة
+  entryNumber: string | null; // بيتحدد وقت الحفظ الأول بس (sequence، راجع JournalEntryRepository) - نفس فلسفة id المولّد من القاعدة
   entryDate: Date;
   description: string | null;
   sourceType: string;

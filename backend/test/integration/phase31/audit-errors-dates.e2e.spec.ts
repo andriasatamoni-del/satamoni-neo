@@ -1,7 +1,15 @@
 import request from "supertest";
-import { sql } from "kysely";
-import { auth, bootstrap, createOrder, journalsFor, teardown, type World } from "./harness";
+import { auth, bootstrap, createOrder, journalsFor, teardown, testDdl, type World } from "./harness";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { auditLogs } from "../../../src/shared/database/shared.tables";
+import { dbCause } from "../helpers/db";
 import { deleteAuditLogsForTest } from "../helpers/audit";
+import { and, count, desc, eq, inArray, like, sql } from "drizzle-orm";
+import { accountingPeriods, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+
+// audit_logs.metadata is free-form jsonb: the assertions below read the documented before/after evidence shape
+const metadata = sql<Record<string, any>>`${auditLogs.metadata}`;
 
 // Audit-trail integrity, safe error mapping (400 for malformed ids, 409 for conflicts - never 500) and the Cairo business date (BL-12).
 describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () => {
@@ -22,8 +30,7 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
       const target = w.userIds.cashierB;
       const res = await patch(`/users/${target}`, w.tokens.admin, { role: "branch_manager", branchId: w.branchB, password: "Zx9!secretPass" });
       expect(res.status).toBe(200);
-      const { rows } = await sql<{ entity_type: string; entity_id: string; outcome: string; actor_user_id: string; metadata: Record<string, any> }>`
-        SELECT entity_type, entity_id, outcome, actor_user_id, metadata FROM audit_logs WHERE action LIKE 'PATCH /users/%' ORDER BY created_at DESC LIMIT 1`.execute(w.db);
+      const rows = await w.db.select({ entity_type: auditLogs.entity_type, entity_id: auditLogs.entity_id, outcome: auditLogs.outcome, actor_user_id: auditLogs.actor_user_id, metadata }).from(auditLogs).where(like(auditLogs.action, "PATCH /users/%")).orderBy(desc(auditLogs.created_at)).limit(1);
       expect(rows[0].outcome).toBe("SUCCESS");
       expect(rows[0].entity_type).toBe("users");
       expect(rows[0].entity_id).toBe(target);
@@ -38,7 +45,7 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
     test("salary changes carry before/after pay values", async () => {
       const employee = (await post("/hr/employees", w.tokens.admin, { name: "موظف-aud", baseSalary: 3000, wageType: "fixed_monthly" })).body.id;
       expect((await patch(`/hr/employees/${employee}`, w.tokens.admin, { baseSalary: 3500 })).status).toBe(200);
-      const { rows } = await sql<{ metadata: Record<string, any> }>`SELECT metadata FROM audit_logs WHERE entity_id = ${employee} AND action LIKE 'PATCH /hr/employees%' LIMIT 1`.execute(w.db);
+      const rows = await w.db.select({ metadata }).from(auditLogs).where(and(eq(auditLogs.entity_id, employee), like(auditLogs.action, "PATCH /hr/employees%"))).limit(1);
       expect(rows[0].metadata.before.baseSalary).toBe(3000);
       expect(rows[0].metadata.after.baseSalary).toBe(3500);
     });
@@ -47,10 +54,10 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
       const employee = (await post("/hr/employees", w.tokens.admin, { name: "موظف-aud2", baseSalary: 1000, wageType: "fixed_monthly" })).body.id;
       const run = await post("/hr/payroll-runs", w.tokens.admin, { year: 2036, month: 3, employees: [{ employeeId: employee, grossPay: 1000 }] });
       expect((await post(`/hr/payroll-runs/${run.body.id}/approve`, w.tokens.admin2)).status).toBe(201);
-      const approved = await sql<{ metadata: Record<string, any>; actor_user_id: string }>`SELECT metadata, actor_user_id FROM audit_logs WHERE action LIKE 'POST /hr/payroll-runs/%/approve' ORDER BY created_at DESC LIMIT 1`.execute(w.db);
-      expect(approved.rows[0].actor_user_id).toBe(w.userIds.admin2);
-      expect(approved.rows[0].metadata.before.status).toBe("DRAFT");
-      expect(approved.rows[0].metadata.after.status).toBe("APPROVED");
+      const approved = await w.db.select({ metadata, actor_user_id: auditLogs.actor_user_id }).from(auditLogs).where(like(auditLogs.action, "POST /hr/payroll-runs/%/approve")).orderBy(desc(auditLogs.created_at)).limit(1);
+      expect(approved[0].actor_user_id).toBe(w.userIds.admin2);
+      expect(approved[0].metadata.before.status).toBe("DRAFT");
+      expect(approved[0].metadata.after.status).toBe("APPROVED");
 
       const draft = await post("/accounting/journal-entries", w.tokens.accountant, {
         description: "قيد يدوي aud",
@@ -60,49 +67,48 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
       expect(draft.status).toBe(201);
       expect((await post(`/accounting/journal-entries/${draft.body.id}/post`, w.tokens.accountant)).status).toBe(201);
       expect((await post(`/accounting/journal-entries/${draft.body.id}/reverse`, w.tokens.accountant, { reason: "تصحيح" })).status).toBe(201);
-      const reversed = await sql<{ metadata: Record<string, any> }>`SELECT metadata FROM audit_logs WHERE entity_id = ${draft.body.id} AND action LIKE '%/reverse' LIMIT 1`.execute(w.db);
-      expect(reversed.rows[0].metadata.before.status).toBe("POSTED");
-      expect(reversed.rows[0].metadata.after.status).toBe("REVERSED");
+      const reversed = await w.db.select({ metadata }).from(auditLogs).where(and(eq(auditLogs.entity_id, draft.body.id), like(auditLogs.action, "%/reverse"))).limit(1);
+      expect(reversed[0].metadata.before.status).toBe("POSTED");
+      expect(reversed[0].metadata.after.status).toBe("REVERSED");
       // a second reversal is a 409 and writes no second reversal
       expect((await post(`/accounting/journal-entries/${draft.body.id}/reverse`, w.tokens.accountant, { reason: "تاني" })).status).toBe(409);
-      expect(Number((await sql<{ n: string }>`SELECT count(*)::text AS n FROM journal_entries WHERE reversal_of_entry_id = ${draft.body.id}`.execute(w.db)).rows[0].n)).toBe(1);
+      expect(Number((await w.db.select({ n: count() }).from(journalEntries).where(eq(journalEntries.reversal_of_entry_id, draft.body.id)))[0].n)).toBe(1);
 
       expect((await post("/accounting/periods/2036/1/close", w.tokens.accountant)).status).toBe(201);
-      const closed = await sql<{ metadata: Record<string, any> }>`SELECT metadata FROM audit_logs WHERE action LIKE 'POST /accounting/periods/%/close' ORDER BY created_at DESC LIMIT 1`.execute(w.db);
-      expect(closed.rows[0].metadata.before.status).toBe("OPEN");
-      expect(closed.rows[0].metadata.after.status).toBe("CLOSED");
-      await sql`DELETE FROM accounting_periods WHERE year = 2036 AND month = 1`.execute(w.db).catch(() => undefined);
+      const closed = await w.db.select({ metadata }).from(auditLogs).where(like(auditLogs.action, "POST /accounting/periods/%/close")).orderBy(desc(auditLogs.created_at)).limit(1);
+      expect(closed[0].metadata.before.status).toBe("OPEN");
+      expect(closed[0].metadata.after.status).toBe("CLOSED");
+      await w.db.delete(accountingPeriods).where(and(eq(accountingPeriods.year, 2036), eq(accountingPeriods.month, 1))).catch(() => undefined);
     });
 
     test("a denied request is recorded with outcome DENIED (actor, route, reason) and 403", async () => {
       const res = await get(`/reports/dashboard?branchId=${w.branchB}`, w.tokens.managerA);
       expect(res.status).toBe(403);
-      const { rows } = await sql<{ outcome: string; http_status: number; metadata: Record<string, any> }>`
-        SELECT outcome, http_status, metadata FROM audit_logs WHERE actor_user_id = ${w.userIds.managerA} AND outcome = 'DENIED' ORDER BY created_at DESC LIMIT 1`.execute(w.db);
+      const rows = await w.db.select({ outcome: auditLogs.outcome, http_status: auditLogs.http_status, metadata }).from(auditLogs).where(and(eq(auditLogs.actor_user_id, w.userIds.managerA), eq(auditLogs.outcome, "DENIED"))).orderBy(desc(auditLogs.created_at)).limit(1);
       expect(rows[0].outcome).toBe("DENIED");
       expect(rows[0].http_status).toBe(403);
     });
 
     test("audit rows are immutable: UPDATE, DELETE and TRUNCATE are rejected by the database", async () => {
-      const { rows } = await sql<{ id: string }>`SELECT id::text FROM audit_logs LIMIT 1`.execute(w.db);
-      await expect(sql`UPDATE audit_logs SET action = 'tampered' WHERE id = ${rows[0].id}`.execute(w.db)).rejects.toThrow(/append-only/);
-      await expect(sql`UPDATE audit_logs SET metadata = '{}'::jsonb WHERE id = ${rows[0].id}`.execute(w.db)).rejects.toThrow(/append-only/);
-      await expect(sql`DELETE FROM audit_logs WHERE id = ${rows[0].id}`.execute(w.db)).rejects.toThrow(/append-only/);
-      await expect(sql`TRUNCATE audit_logs`.execute(w.db)).rejects.toThrow(/append-only/);
-      expect(Number((await sql<{ n: string }>`SELECT count(*)::text AS n FROM audit_logs WHERE id = ${rows[0].id}`.execute(w.db)).rows[0].n)).toBe(1);
+      const rows = await w.db.select({ id: auditLogs.id }).from(auditLogs).limit(1);
+      await expect(dbCause(w.db.update(auditLogs).set({ action: "tampered" }).where(eq(auditLogs.id, rows[0].id)))).rejects.toThrow(/append-only/);
+      await expect(dbCause(w.db.update(auditLogs).set({ metadata: {} }).where(eq(auditLogs.id, rows[0].id)))).rejects.toThrow(/append-only/);
+      await expect(dbCause(w.db.delete(auditLogs).where(eq(auditLogs.id, rows[0].id)))).rejects.toThrow(/append-only/);
+      await expect(dbCause(testDdl(w, sql`TRUNCATE audit_logs`))).rejects.toThrow(/append-only/);
+      expect(Number((await w.db.select({ n: count() }).from(auditLogs).where(eq(auditLogs.id, rows[0].id)))[0].n)).toBe(1);
     });
 
     test("deleting a user (FK ON DELETE SET NULL) is the only tolerated update of an audit row and keeps the evidence", async () => {
-      const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+      const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
       const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
       const user = User.register({ name: "مؤقت-aud", email: "temp-aud@p31.jest.test", passwordHash: "x".repeat(60), role: "cashier", branchId: w.branchA });
-      await new KyselyUserRepository(w.db).save(user);
-      await sql`INSERT INTO audit_logs (actor_user_id, action) VALUES (${user.id}, 'TEMP ACTION')`.execute(w.db);
-      await sql`DELETE FROM users WHERE id = ${user.id}`.execute(w.db);
-      const row = await sql<{ actor_user_id: string | null; action: string }>`SELECT actor_user_id, action FROM audit_logs WHERE action = 'TEMP ACTION'`.execute(w.db);
-      expect(row.rows[0].actor_user_id).toBeNull();
-      expect(row.rows[0].action).toBe("TEMP ACTION");
-      await deleteAuditLogsForTest(w.db, sql`action = 'TEMP ACTION'`);
+      await new UserRepository(w.db).save(user);
+      await w.db.insert(auditLogs).values({ actor_user_id: user.id, action: "TEMP ACTION" });
+      await w.db.delete(users).where(eq(users.id, user.id));
+      const row = await w.db.select({ actor_user_id: auditLogs.actor_user_id, action: auditLogs.action }).from(auditLogs).where(eq(auditLogs.action, "TEMP ACTION"));
+      expect(row[0].actor_user_id).toBeNull();
+      expect(row[0].action).toBe("TEMP ACTION");
+      await deleteAuditLogsForTest(w.db, eq(auditLogs.action, "TEMP ACTION"));
     });
   });
 
@@ -145,7 +151,7 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
     const place = async (iso: string) => {
       const res = await createOrder(w, w.tokens.cashierA, { quantity: 1 });
       expect(res.status).toBe(201);
-      await sql`UPDATE orders SET created_at = ${iso}::timestamptz WHERE id = ${res.body.id}`.execute(w.db);
+      await w.db.update(orders).set({ created_at: new Date(iso) }).where(eq(orders.id, res.body.id));
       return res.body.id as string;
     };
     const daily = async (from: string, to: string) => {
@@ -158,7 +164,7 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
 
     let midnightOrder: string;
     beforeAll(async () => {
-      await sql`DELETE FROM orders`.execute(w.db).catch(() => undefined);
+      await w.db.delete(orders).catch(() => undefined);
       // summer (UTC+3): 23:59:59 / 00:00:00 / 00:01:00 Cairo around 16 June; winter (UTC+2): 23:59:59 / 00:00:00 around 16 January
       await place("2031-06-15T20:59:59Z");
       midnightOrder = await place("2031-06-15T21:00:00Z");
@@ -206,9 +212,9 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
 });
 
 async function deleteJournalsForTest(w: World, orderId: string): Promise<void> {
-  await w.db.transaction().execute(async (trx) => {
-    await sql`SET LOCAL session_replication_role = replica`.execute(trx);
-    await sql`DELETE FROM journal_entry_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE source_id = ${orderId})`.execute(trx);
-    await sql`DELETE FROM journal_entries WHERE source_id = ${orderId}`.execute(trx);
+  await w.db.transaction(async (tx) => {
+    await tx.select({ role: sql`set_config('session_replication_role', 'replica', true)` }).from(sql`(VALUES (1)) AS cfg`);
+    await tx.delete(journalEntryLines).where(inArray(journalEntryLines.journal_entry_id, tx.select({ id: journalEntries.id }).from(journalEntries).where(eq(journalEntries.source_id, orderId))));
+    await tx.delete(journalEntries).where(eq(journalEntries.source_id, orderId));
   });
 }

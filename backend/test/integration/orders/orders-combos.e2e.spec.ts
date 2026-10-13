@@ -2,9 +2,16 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray, like } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { comboItems, combos, menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 // e2e لتسجيل طلب فيه سطر عرض (combo) - بيتأكد إن استهلاك المخزون بيتفكّ لأصناف العرض الأصلية عن طريق
 // وصفة كل حجم (نفس فلسفة combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
@@ -24,28 +31,27 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
-    const { KyselyStockMovementRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository"
+    const { StockMovementRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const { KyselyComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-combo.repository");
+    const { ComboRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/combo.repository");
     const { Combo } = await import("../../../src/contexts/catalog/domain/combo.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طلبات-عروض-جست", email: "admin-orders-combos@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -55,23 +61,23 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-orders-combos@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-طلبات-عروض-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "جبنة-طلبات-عروض-جست", unit: "كيلو" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
 
-    const movementRepo = new KyselyStockMovementRepository(db);
+    const movementRepo = new StockMovementRepository(app.get<Database>(DATABASE));
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 10 }),
       { allowNegativeBalance: true }
     );
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const pizza = MenuItem.register({ name: "بيتزا-طلبات-عروض-جست" });
     const pizzaVariant = pizza.addVariant({ label: "وسط", price: 100 });
     await menuItemRepo.save(pizza);
@@ -82,14 +88,14 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     await menuItemRepo.save(drink);
     drinkVariantId = drinkVariant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: pizzaVariantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو جبنة لكل بيتزا وسط
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    const comboRepo = new KyselyComboRepository(db);
+    const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({
       name: "عرض بيتزا+مشروب-طلبات-عروض-جست",
       price: 100, // أرخص من مجموع الأصناف (115) - نفس فكرة العروض
@@ -108,22 +114,22 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders`.execute(db);
-    await sql`DELETE FROM combo_items`.execute(db);
-    await sql`DELETE FROM combos WHERE name LIKE '%طلبات-عروض-جست%'`.execute(db);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id IN (${pizzaVariantId}, ${drinkVariantId})`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name LIKE '%طلبات-عروض-جست%'`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-orders-combos@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders);
+    await db.delete(comboItems);
+    await db.delete(combos).where(like(combos.name, "%طلبات-عروض-جست%"));
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants).where(inArray(menuItemVariants.id, [pizzaVariantId, drinkVariantId]));
+    await db.delete(menuItems).where(like(menuItems.name, "%طلبات-عروض-جست%"));
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-orders-combos@jest.test"));
     await app.close();
   });
 

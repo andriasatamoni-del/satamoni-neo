@@ -1,4 +1,6 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Logger, NotFoundException } from "@nestjs/common";
+import { DrizzleQueryError } from "drizzle-orm/errors";
+import { dbErrorMessage } from "../../../src/shared/database/transaction-context";
 import { GlobalExceptionFilter } from "../../../src/shared/http/global-exception.filter";
 import { ConflictDomainError, DomainError, ForbiddenDomainError, SegregationOfDutiesError, statusOf } from "../../../src/shared/domain/domain-error";
 
@@ -49,6 +51,36 @@ describe("GlobalExceptionFilter", () => {
     expect(run(pg("57014")).status).not.toBe(409); // statement_timeout stays 5xx
     expect(new NotFoundException().getStatus()).toBe(404);
     expect(new ForbiddenException().getStatus()).toBe(403);
+  });
+});
+
+// Drizzle wraps driver errors; its message is the full SQL plus the bound parameters (password hashes, phones ...).
+describe("database error messages", () => {
+  const wrapped = (code: string, message: string) =>
+    new DrizzleQueryError("insert into \"users\" (\"email\", \"password_hash\") values ($1, $2)", ["a@b.c", "$2b$10$secret-hash"], pg(code, message) as never);
+
+  test("dbErrorMessage returns PostgreSQL's own message, never the query or its parameters", () => {
+    expect(dbErrorMessage(wrapped("23514", "new row violates check constraint"))).toBe("new row violates check constraint");
+    expect(dbErrorMessage(new Error("plain"))).toBe("plain");
+    expect(dbErrorMessage("text")).toBe("text");
+  });
+
+  test("an unmapped database error is logged without the query or its parameters", () => {
+    const logged: string[] = [];
+    const spy = jest.spyOn(Logger.prototype, "error").mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" ")));
+    // a minimal adapter, so Nest's own handling (which logs the message and stack of what it is given) runs too
+    const adapter = { isHeadersSent: () => false, reply: () => undefined, end: () => undefined };
+    const host = { switchToHttp: () => ({ getResponse: () => ({}), getRequest: () => ({}) }), getArgByIndex: () => ({}) };
+    try {
+      new GlobalExceptionFilter(adapter as never).catch(wrapped("XX000", "internal error"), host as never);
+    } finally {
+      spy.mockRestore();
+    }
+    const output = logged.join("\n");
+    expect(logged.length).toBeGreaterThanOrEqual(2); // the filter's line and Nest's
+    expect(output).toContain("internal error");
+    expect(output).not.toContain("secret-hash");
+    expect(output).not.toContain("insert into");
   });
 });
 

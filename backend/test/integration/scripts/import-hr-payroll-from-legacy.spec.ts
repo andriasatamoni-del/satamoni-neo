@@ -1,22 +1,24 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importHrPayrollFromLegacy } from "../../../scripts/import-hr-payroll-from-legacy";
-import { KyselyEmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-employee.repository";
-import { KyselyDepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-department.repository";
-import { KyselyPositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-position.repository";
-import { KyselyPayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/kysely-payroll-run.repository";
+import { EmployeeRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/employee.repository";
+import { DepartmentRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/department.repository";
+import { PositionRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/position.repository";
+import { PayrollRunRepository } from "../../../src/contexts/hr-payroll/infrastructure/persistence/payroll-run.repository";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { departments, employees, payrollRunEmployees, payrollRuns, positions } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { truncate } from "../helpers/db";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importHrPayrollFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
-  let employeeRepo: KyselyEmployeeRepository;
-  let departmentRepo: KyselyDepartmentRepository;
-  let positionRepo: KyselyPositionRepository;
-  let payrollRunRepo: KyselyPayrollRunRepository;
+  let neoDb: Database;
+  let employeeRepo: EmployeeRepository;
+  let departmentRepo: DepartmentRepository;
+  let positionRepo: PositionRepository;
+  let payrollRunRepo: PayrollRunRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -56,21 +58,21 @@ describe("importHrPayrollFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
-    employeeRepo = new KyselyEmployeeRepository(neoDb);
-    departmentRepo = new KyselyDepartmentRepository(neoDb);
-    positionRepo = new KyselyPositionRepository(neoDb);
-    payrollRunRepo = new KyselyPayrollRunRepository(neoDb);
-    await sql`DELETE FROM employees`.execute(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    employeeRepo = new EmployeeRepository(neoDb);
+    departmentRepo = new DepartmentRepository(neoDb);
+    positionRepo = new PositionRepository(neoDb);
+    payrollRunRepo = new PayrollRunRepository(neoDb);
+    await neoDb.delete(employees);
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(neoDb);
-    await sql`DELETE FROM employees`.execute(neoDb);
-    await sql`DELETE FROM positions`.execute(neoDb);
-    await sql`DELETE FROM departments`.execute(neoDb);
-    await neoDb.destroy();
+    await truncate(neoDb, payrollRunEmployees, payrollRuns);
+    await neoDb.delete(employees);
+    await neoDb.delete(positions);
+    await neoDb.delete(departments);
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
@@ -79,10 +81,10 @@ describe("importHrPayrollFromLegacy", () => {
     await legacyPool.query("DELETE FROM employees");
     await legacyPool.query("DELETE FROM positions");
     await legacyPool.query("DELETE FROM departments");
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(neoDb);
-    await sql`DELETE FROM employees`.execute(neoDb);
-    await sql`DELETE FROM positions`.execute(neoDb);
-    await sql`DELETE FROM departments`.execute(neoDb);
+    await truncate(neoDb, payrollRunEmployees, payrollRuns);
+    await neoDb.delete(employees);
+    await neoDb.delete(positions);
+    await neoDb.delete(departments);
   });
 
   test("بيستورد موظف + قائمة رواتب APPROVED بحالتها التاريخية النهائية بسطرها", async () => {

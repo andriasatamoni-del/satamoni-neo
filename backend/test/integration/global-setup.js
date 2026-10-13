@@ -12,7 +12,9 @@ module.exports = async () => {
   assertDisposableDatabase(TEST_DATABASE_URL);
   const client = new Client({ connectionString: TEST_DATABASE_URL });
   await client.connect();
-  await client.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+  // سجلّ الـmigrations بتاع Drizzle في schema اسمها drizzle مش public - لازم تتمسح هي كمان، وإلا الـrunner
+  // يفتكر إن الـbaseline اتطبّق ومايعملش أي جدول
+  await client.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;");
   await client.end();
 
   execSync("npx ts-node src/migrations/run-migrations.ts", {

@@ -1,28 +1,33 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importPaymentControlFromLegacy } from "../../../scripts/import-payment-control-from-legacy";
-import { KyselyPaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
-import { KyselyPaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyOrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyMenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
+import { PaymentMethodRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment.repository";
+import { PaymentAdjustmentRequestRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
+import { ReconciliationRecordRepository } from "../../../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { OrderRepository } from "../../../src/contexts/orders/infrastructure/persistence/order.repository";
+import { MenuItemRepository } from "../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { Order } from "../../../src/contexts/orders/domain/order.aggregate";
 import { MenuItem } from "../../../src/contexts/catalog/domain/menu-item.aggregate";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq, like } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importPaymentControlFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
-  let methodRepo: KyselyPaymentMethodRepository;
-  let paymentRepo: KyselyPaymentRepository;
-  let adjustmentRepo: KyselyPaymentAdjustmentRequestRepository;
-  let reconciliationRepo: KyselyReconciliationRecordRepository;
+  let neoDb: Database;
+  let methodRepo: PaymentMethodRepository;
+  let paymentRepo: PaymentRepository;
+  let adjustmentRepo: PaymentAdjustmentRequestRepository;
+  let reconciliationRepo: ReconciliationRecordRepository;
   let branchId: string;
   let orderId: string;
 
@@ -57,38 +62,38 @@ describe("importPaymentControlFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
-    methodRepo = new KyselyPaymentMethodRepository(neoDb);
-    paymentRepo = new KyselyPaymentRepository(neoDb);
-    adjustmentRepo = new KyselyPaymentAdjustmentRequestRepository(neoDb);
-    reconciliationRepo = new KyselyReconciliationRecordRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    methodRepo = new PaymentMethodRepository(neoDb);
+    paymentRepo = new PaymentRepository(neoDb);
+    adjustmentRepo = new PaymentAdjustmentRequestRepository(neoDb);
+    reconciliationRepo = new ReconciliationRecordRepository(neoDb);
 
     const branch = Branch.register({ name: "فرع استيراد-دفعات-جست", legacyBranchId: 501 });
-    await new KyselyBranchRepository(neoDb).save(branch);
+    await new BranchRepository(neoDb).save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(neoDb);
+    const menuItemRepo = new MenuItemRepository(neoDb);
     const item = MenuItem.register({ name: "صنف استيراد-دفعات-جست" });
     const variant = item.addVariant({ label: "عادي", price: 80 });
     await menuItemRepo.save(item);
     const order = Order.register({
       branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 80 }], legacyOrderId: 901,
     });
-    await new KyselyOrderRepository(neoDb).save(order);
+    await new OrderRepository(neoDb).save(order);
     orderId = order.id;
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM payment_reconciliation_records`.execute(neoDb);
-    await sql`DELETE FROM payment_adjustment_requests`.execute(neoDb);
-    await sql`DELETE FROM payments`.execute(neoDb);
-    await sql`DELETE FROM print_jobs WHERE order_id = ${orderId}`.execute(neoDb);
-    await sql`DELETE FROM order_items WHERE order_id = ${orderId}`.execute(neoDb);
-    await sql`DELETE FROM orders WHERE id = ${orderId}`.execute(neoDb);
-    await sql`DELETE FROM payment_methods WHERE name LIKE '%استيراد-دفعات-جست%'`.execute(neoDb);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await neoDb.delete(paymentReconciliationRecords);
+    await neoDb.delete(paymentAdjustmentRequests);
+    await neoDb.delete(payments);
+    await neoDb.delete(printJobs).where(eq(printJobs.order_id, orderId));
+    await neoDb.delete(orderItems).where(eq(orderItems.order_id, orderId));
+    await neoDb.delete(orders).where(eq(orders.id, orderId));
+    await neoDb.delete(paymentMethods).where(like(paymentMethods.name, "%استيراد-دفعات-جست%"));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
@@ -96,10 +101,10 @@ describe("importPaymentControlFromLegacy", () => {
     await legacyPool.query("DELETE FROM payment_adjustment_requests");
     await legacyPool.query("DELETE FROM payments");
     await legacyPool.query("DELETE FROM payment_methods");
-    await sql`DELETE FROM payment_reconciliation_records`.execute(neoDb);
-    await sql`DELETE FROM payment_adjustment_requests`.execute(neoDb);
-    await sql`DELETE FROM payments`.execute(neoDb);
-    await sql`DELETE FROM payment_methods WHERE name LIKE '%استيراد-دفعات-جست%'`.execute(neoDb);
+    await neoDb.delete(paymentReconciliationRecords);
+    await neoDb.delete(paymentAdjustmentRequests);
+    await neoDb.delete(payments);
+    await neoDb.delete(paymentMethods).where(like(paymentMethods.name, "%استيراد-دفعات-جست%"));
   });
 
   test("بيستورد طريقة دفع + دفعة مقفولة (بحالتها النهائية) + طلب تعديل + سطر مطابقة", async () => {

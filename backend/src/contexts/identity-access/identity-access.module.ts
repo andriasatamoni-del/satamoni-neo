@@ -4,7 +4,7 @@ import { PermissionRegistry } from "../../shared/permissions/permission-registry
 import { USER_REPOSITORY } from "./domain/ports/user-repository.port";
 import { PASSWORD_HASHER } from "./domain/ports/password-hasher.port";
 import { TOKEN_SERVICE } from "./domain/ports/token.service.port";
-import { KyselyUserRepository } from "./infrastructure/persistence/kysely-user.repository";
+import { UserRepository } from "./infrastructure/persistence/user.repository";
 import { BcryptPasswordHasher } from "./infrastructure/security/bcrypt-password-hasher";
 import { JwtTokenService } from "./infrastructure/security/jwt-token.service";
 import { RegisterUserHandler } from "./application/commands/register-user.handler";
@@ -26,7 +26,7 @@ import { PermissionsGuard } from "./api/guards/permissions.guard";
   ],
   controllers: [AuthController, UsersController],
   providers: [
-    { provide: USER_REPOSITORY, useClass: KyselyUserRepository },
+    { provide: USER_REPOSITORY, useClass: UserRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SERVICE, useClass: JwtTokenService },
     RegisterUserHandler,

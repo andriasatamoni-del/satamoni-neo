@@ -11,17 +11,17 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselySupplierRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-supplier.repository";
-import { KyselyPurchaseOrderRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
-import { KyselyGoodsReceiptRepository } from "../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { SupplierRepository } from "../src/contexts/procurement/infrastructure/persistence/supplier.repository";
+import { PurchaseOrderRepository } from "../src/contexts/procurement/infrastructure/persistence/purchase-order.repository";
+import { GoodsReceiptRepository } from "../src/contexts/procurement/infrastructure/persistence/goods-receipt.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { InventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Supplier, SUPPLIER_STATUSES } from "../src/contexts/procurement/domain/supplier.aggregate";
 import { PurchaseOrder } from "../src/contexts/procurement/domain/purchase-order.aggregate";
 import { GoodsReceipt } from "../src/contexts/procurement/domain/goods-receipt.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacySupplierRow {
   id: number; name: string; contact_person: string | null; phone: string | null; email: string | null;
@@ -42,13 +42,13 @@ export interface ProcurementImportResult {
   goodsReceipts: ImportCounts;
 }
 
-export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ProcurementImportResult> {
-  const supplierRepo = new KyselySupplierRepository(neoDb);
-  const purchaseOrderRepo = new KyselyPurchaseOrderRepository(neoDb);
-  const goodsReceiptRepo = new KyselyGoodsReceiptRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const inventoryRepo = new KyselyInventoryItemRepository(neoDb);
-  const userRepo = new KyselyUserRepository(neoDb);
+export async function importProcurementFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ProcurementImportResult> {
+  const supplierRepo = new SupplierRepository(neoDb);
+  const purchaseOrderRepo = new PurchaseOrderRepository(neoDb);
+  const goodsReceiptRepo = new GoodsReceiptRepository(neoDb);
+  const branchRepo = new BranchRepository(neoDb);
+  const inventoryRepo = new InventoryItemRepository(neoDb);
+  const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number): Promise<string | null> {
@@ -228,7 +228,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importProcurementFromLegacy(legacyPool, neoDb);
   console.log(
@@ -239,7 +239,7 @@ async function main() {
   );
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

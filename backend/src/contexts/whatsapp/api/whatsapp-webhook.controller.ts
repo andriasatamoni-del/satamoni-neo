@@ -4,6 +4,7 @@ import type { Request } from "express";
 import { ReceiveWhatsappMessageHandler } from "../application/commands/receive-whatsapp-message.handler";
 import { WhatsappBotService } from "../application/bot/whatsapp-bot.service";
 import { parseMetaWebhook, verifyMetaHandshake, verifyMetaSignature } from "../infrastructure/meta/meta-webhook";
+import { dbErrorMessage } from "../../../shared/database/transaction-context";
 
 // webhook Meta العام (واتساب + ماسنجر + إنستجرام - نفس التطبيق ونفس الرابط). مفيش JWT (Meta مستحيل
 // تبعته) - الحماية هي توقيع X-Hub-Signature-256، fail-closed لو META_APP_SECRET مش متضاف.
@@ -47,7 +48,7 @@ export class WhatsappWebhookController {
       if (!result.isNewMessage) continue;
       received++;
       void this.bot.respond(result.conversation, result.isNewConversation).catch((err) => {
-        this.logger.error(`bot respond failed: ${err instanceof Error ? err.message : err}`);
+        this.logger.error(`bot respond failed: ${dbErrorMessage(err)}`);
       });
     }
     return { received };

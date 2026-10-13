@@ -2,7 +2,7 @@ import { Module, OnModuleInit } from "@nestjs/common";
 import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { POS_SETTINGS_REPOSITORY } from "./domain/ports/pos-settings-repository.port";
-import { KyselyPosSettingsRepository } from "./infrastructure/persistence/kysely-pos-settings.repository";
+import { PosSettingsRepository } from "./infrastructure/persistence/pos-settings.repository";
 import { GetPosSettingsHandler } from "./application/queries/get-pos-settings.handler";
 import { UpdatePosSettingsHandler } from "./application/commands/update-pos-settings.handler";
 import { PosSettingsController } from "./api/pos-settings.controller";
@@ -15,7 +15,7 @@ import { PosSettingsController } from "./api/pos-settings.controller";
   imports: [IdentityAccessModule],
   controllers: [PosSettingsController],
   providers: [
-    { provide: POS_SETTINGS_REPOSITORY, useClass: KyselyPosSettingsRepository },
+    { provide: POS_SETTINGS_REPOSITORY, useClass: PosSettingsRepository },
     GetPosSettingsHandler,
     UpdatePosSettingsHandler,
   ],

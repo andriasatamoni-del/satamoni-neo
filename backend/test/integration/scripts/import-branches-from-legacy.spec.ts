@@ -1,16 +1,17 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importBranchesFromLegacy } from "../../../scripts/import-branches-from-legacy";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importBranchesFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
-  let repo: KyselyBranchRepository;
+  let neoDb: Database;
+  let repo: BranchRepository;
 
   beforeAll(async () => {
     legacyPool = new Pool({ connectionString: LEGACY_FIXTURE_URL });
@@ -23,21 +24,19 @@ describe("importBranchesFromLegacy", () => {
       )
     `);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    repo = new KyselyBranchRepository(neoDb);
-    await sql`DELETE FROM branches`.execute(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    repo = new BranchRepository(neoDb);
+    await neoDb.delete(branches);
   });
 
   afterAll(async () => {
     await legacyPool.end();
-    await neoDb.destroy();
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM branches");
-    await sql`DELETE FROM branches`.execute(neoDb);
+    await neoDb.delete(branches);
   });
 
   test("بيستورد فرع جديد صح", async () => {

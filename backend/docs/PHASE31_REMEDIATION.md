@@ -6,7 +6,7 @@ guarantees, how to operate it, and which decisions were taken where the approved
 
 ## 1. Transaction & idempotency foundation (BL-01, 02, 03, 04, 09)
 
-* Every protected business command is **one PostgreSQL transaction** (`TransactionService.run`). The `KYSELY` provider is a thin proxy
+* Every protected business command is **one PostgreSQL transaction** (`TransactionService.run`). The `DATABASE` provider (Drizzle) is a thin proxy
   that routes every repository query of the current request to that transaction, so existing repositories/ports are unchanged.
 * Concurrency control: `SELECT … FOR UPDATE` on the aggregate row first (`lockRow`), state validation second; ingredient rows are locked in
   sorted order; client idempotency keys are serialised with `pg_advisory_xact_lock`. Deadlocks/serialization failures are retried (max 3).

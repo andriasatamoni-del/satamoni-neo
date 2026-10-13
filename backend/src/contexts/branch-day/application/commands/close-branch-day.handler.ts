@@ -32,7 +32,7 @@ export class CloseBranchDayHandler {
 
     // نفس فلسفة الريبو القديم: نعيد فحص الـchecklist هنا مباشرة قبل الإدراج (مش قفل صفوف SQL -
     // مفيش استخدام لـtransactions صريحة في الـpattern المتبع هنا)، وUNIQUE(branch_id, business_date)
-    // في الـmigration هي الحماية الحقيقية ضد قفل مزدوج متزامن (راجع KyselyBranchDayRepository.save)
+    // في الـmigration هي الحماية الحقيقية ضد قفل مزدوج متزامن (راجع BranchDayRepository.save)
     const [redItems, yellowItems, summary, cashVarianceTotal] = await Promise.all([
       this.checklistReader.buildRedItems(input.branchId),
       this.checklistReader.buildYellowItems(input.branchId),

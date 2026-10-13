@@ -1,5 +1,4 @@
 import request from "supertest";
-import { sql } from "kysely";
 import {
   accountBalance,
   auth,
@@ -17,6 +16,13 @@ import {
   VARIANT_PRICE,
   type World,
 } from "./harness";
+import { cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { goodsReceiptItems, goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { branchStockBalances, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 
 // BL-01 / BL-02 / BL-03 / BL-04 / BL-09: every protected command is ONE transaction with row locks / an idempotency lock.
 // Each scenario fires >= 5 concurrent HTTP attempts at the real application against the disposable PostgreSQL database and
@@ -43,9 +49,9 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     expect(new Set(responses.map((r) => r.body.id)).size).toBe(1);
     const orderId = responses[0].body.id as string;
 
-    expect(await count(w, "orders", sql`id = ${orderId}`)).toBe(1);
-    expect(await count(w, "payments", sql`order_id = ${orderId}`)).toBe(1);
-    expect(await count(w, "stock_movements", sql`reference_type = 'order' AND reference_id = ${orderId}`)).toBe(1);
+    expect(await count(w, orders, eq(orders.id, orderId))).toBe(1);
+    expect(await count(w, payments, eq(payments.order_id, orderId))).toBe(1);
+    expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "order"), eq(stockMovements.reference_id, orderId)))).toBe(1);
     expect(await stockOf(w, w.branchA)).toBe(stockBefore - RECIPE_QTY);
     expect((await journalsFor(w, "order_sale", orderId)).length).toBe(1);
     expect((await journalsFor(w, "order_cogs", orderId)).length).toBe(1);
@@ -53,8 +59,8 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
 
   test("BL-01: stock for 5 orders, 8 concurrent attempts -> exactly 5 succeed, 3 get 409, balance never negative, no partial writes", async () => {
     // reset the branch to a known balance: 100 units, each order needs 2 x 10 = 20
-    await sql`UPDATE branch_stock_balances SET quantity = 100 WHERE branch_id = ${w.branchB} AND inventory_item_id = ${w.ingredientId}`.execute(w.db);
-    const ordersBefore = await count(w, "orders", sql`branch_id = ${w.branchB}`);
+    await w.db.update(branchStockBalances).set({ quantity: 100 }).where(and(eq(branchStockBalances.branch_id, w.branchB), eq(branchStockBalances.inventory_item_id, w.ingredientId)));
+    const ordersBefore = await count(w, orders, eq(orders.branch_id, w.branchB));
 
     const responses = await fireConcurrently(8, () => createOrder(w, w.tokens.cashierB, { branchId: w.branchB, quantity: 10 }));
     const ok = responses.filter((r) => r.status === 201);
@@ -65,11 +71,11 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     expect(rejected.every((r) => r.status === 409)).toBe(true);
     expect(await stockOf(w, w.branchB)).toBe(0);
     // rejected attempts wrote nothing: only the 5 winners exist, each with exactly its movement + payment
-    expect(await count(w, "orders", sql`branch_id = ${w.branchB}`)).toBe(ordersBefore + 5);
+    expect(await count(w, orders, eq(orders.branch_id, w.branchB))).toBe(ordersBefore + 5);
     const ids = ok.map((r) => r.body.id as string);
     for (const id of ids) {
-      expect(await count(w, "payments", sql`order_id = ${id}`)).toBe(1);
-      expect(await count(w, "stock_movements", sql`reference_type = 'order' AND reference_id = ${id}`)).toBe(1);
+      expect(await count(w, payments, eq(payments.order_id, id))).toBe(1);
+      expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "order"), eq(stockMovements.reference_id, id)))).toBe(1);
       expect((await journalsFor(w, "order_sale", id)).length).toBe(1);
       expect((await journalsFor(w, "order_cogs", id)).length).toBe(1);
     }
@@ -89,7 +95,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     expect(responses.some((r) => r.status >= 500)).toBe(false);
 
     expect(await stockOf(w, w.branchA)).toBe(stockBefore); // restored exactly once
-    expect(await count(w, "stock_movements", sql`reference_type = 'order_cancellation' AND reference_id = ${orderId}`)).toBe(1);
+    expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "order_cancellation"), eq(stockMovements.reference_id, orderId)))).toBe(1);
     // original + exactly one reversal for the sale and for the COGS journal
     expect((await journalsFor(w, "order_sale", orderId)).length).toBe(1);
     expect((await journalsFor(w, "order_cogs", orderId)).length).toBe(1);
@@ -126,7 +132,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
 
       expect(await stockOf(w, w.branchA)).toBe(stockBefore + 10);
       expect((await journalsFor(w, "goods_receipt", grn.body.id)).length).toBe(1);
-      expect(await count(w, "stock_movements", sql`reference_type = 'goods_receipt' AND reference_id = ${grn.body.id}`)).toBe(1);
+      expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "goods_receipt"), eq(stockMovements.reference_id, grn.body.id)))).toBe(1);
       const balance = (await request(w.http()).get(`/procurement/suppliers/${supplierId}/balance`).set(auth(w.tokens.admin))).body.balance;
       expect(balance).toBe(70);
     });
@@ -146,9 +152,11 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
       expect(confirmed).toBeLessThanOrEqual(3);
       expect(responses.some((r) => r.status >= 500)).toBe(false);
 
-      const { rows } = await sql<{ qty: string }>`
-        SELECT COALESCE(SUM(i.quantity), 0)::text AS qty FROM goods_receipt_items i JOIN goods_receipts g ON g.id = i.goods_receipt_id
-         WHERE g.purchase_order_id = ${poId} AND g.status = 'CONFIRMED'`.execute(w.db);
+      const rows = await w.db
+        .select({ qty: sql<string>`COALESCE(SUM(${goodsReceiptItems.quantity}), 0)::text` })
+        .from(goodsReceiptItems)
+        .innerJoin(goodsReceipts, eq(goodsReceipts.id, goodsReceiptItems.goods_receipt_id))
+        .where(and(eq(goodsReceipts.purchase_order_id, poId), eq(goodsReceipts.status, "CONFIRMED")));
       expect(Number(rows[0].qty)).toBeLessThanOrEqual(50);
     });
   });
@@ -161,9 +169,9 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     let recipeId: string;
 
     beforeAll(async () => {
-      const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
+      const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
       const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
-      const repo = new KyselyInventoryItemRepository(w.db);
+      const repo = new InventoryItemRepository(w.db);
       const mk = async (name: string, unitCost: number) => {
         const item = InventoryItem.register({ name: `${name}-prod`, unit: "كيلو", unitCost, negativeStockPolicy: "STRICT" });
         await repo.save(item);
@@ -199,7 +207,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
       expect(responses.filter((r) => r.status !== 201).every((r) => r.status === 409)).toBe(true);
       expect(await stockOf(w, w.branchA, flourId)).toBe(flour - 10);
       expect(await stockOf(w, w.branchA, sugarId)).toBe(sugar - 5);
-      expect(await count(w, "stock_movements", sql`reference_type = 'conversion_order' AND reference_id = ${id} AND movement_type = 'PRODUCTION_OUT'`)).toBe(2);
+      expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "conversion_order"), eq(stockMovements.reference_id, id), eq(stockMovements.movement_type, "PRODUCTION_OUT")))).toBe(2);
 
       // complete x6: output received ONCE
       const cake = await stockOf(w, w.branchA, cakeId);
@@ -207,7 +215,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
       expect(done.filter((r) => r.status === 201)).toHaveLength(1);
       expect(done.filter((r) => r.status !== 201).every((r) => r.status === 409)).toBe(true);
       expect(await stockOf(w, w.branchA, cakeId)).toBe(cake + 5);
-      expect(await count(w, "stock_movements", sql`reference_type = 'conversion_order' AND reference_id = ${id} AND movement_type = 'PRODUCTION_IN'`)).toBe(1);
+      expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "conversion_order"), eq(stockMovements.reference_id, id), eq(stockMovements.movement_type, "PRODUCTION_IN")))).toBe(1);
     });
 
     test("BL-03: start with insufficient ingredients is rejected (409) and consumes NOTHING (no partial consumption of the first ingredient)", async () => {
@@ -219,7 +227,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
       expect(res.status).toBeLessThan(500);
       expect(await stockOf(w, w.branchA, flourId)).toBe(flour);
       expect(await stockOf(w, w.branchA, sugarId)).toBe(sugar);
-      expect(await count(w, "stock_movements", sql`reference_type = 'conversion_order' AND reference_id = ${id}`)).toBe(0);
+      expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "conversion_order"), eq(stockMovements.reference_id, id)))).toBe(0);
     });
 
     test("BL-03: cancel an in-progress order x6 concurrently -> ingredients returned ONCE", async () => {
@@ -245,7 +253,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     );
     expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
     expect(responses.filter((r) => r.status !== 201).every((r) => r.status === 409)).toBe(true);
-    expect((await sql<{ status: string }>`SELECT status FROM cashier_shifts WHERE id = ${shift.body.id}`.execute(w.db)).rows[0].status).not.toBe("OPEN");
+    expect((await w.db.select({ status: cashierShifts.status }).from(cashierShifts).where(eq(cashierShifts.id, shift.body.id)))[0].status).not.toBe("OPEN");
     expect((await journalsFor(w, "shift_variance", shift.body.id)).length).toBeLessThanOrEqual(1);
     expect(await ledgerImbalance(w)).toBe(0);
   });
@@ -279,7 +287,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     );
     expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
     expect(responses.some((r) => r.status >= 500)).toBe(false);
-    expect(await count(w, "payroll_runs", sql`year = 2031 AND month = 4 AND status <> 'CANCELLED'`)).toBe(1);
+    expect(await count(w, payrollRuns, and(eq(payrollRuns.year, 2031), eq(payrollRuns.month, 4), ne(payrollRuns.status, "CANCELLED")))).toBe(1);
   });
 
   test("BL-06: approve the same payment adjustment x6 concurrently -> ONE approval, ONE adjustment journal, order method synced once", async () => {
@@ -299,7 +307,7 @@ describe("Phase 3.1 - concurrency (real HTTP, real PostgreSQL, strict accounting
     expect(responses.some((r) => r.status >= 500)).toBe(false);
 
     expect((await journalsFor(w, "payment_adjustment", adj.body.id)).length).toBe(1);
-    const { rows } = await sql<{ payment_method_id: string }>`SELECT payment_method_id FROM orders WHERE id = ${order.body.id}`.execute(w.db);
+    const rows = await w.db.select({ payment_method_id: orders.payment_method_id }).from(orders).where(eq(orders.id, order.body.id));
     expect(rows[0].payment_method_id).toBe(w.visaMethodId);
     expect(await ledgerImbalance(w)).toBe(0);
     // sale (+100 cash) and the 20 variance correction: net cash for this order = 80

@@ -1,26 +1,30 @@
 import { Pool } from "pg";
-import { Kysely, PostgresDialect, sql } from "kysely";
-import type { Database } from "../../../src/shared/database/database.types";
+import type { Database } from "../../../src/shared/database/database.token";
 import { importProcurementFromLegacy } from "../../../scripts/import-procurement-from-legacy";
-import { KyselySupplierRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-supplier.repository";
-import { KyselyPurchaseOrderRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-purchase-order.repository";
-import { KyselyGoodsReceiptRepository } from "../../../src/contexts/procurement/infrastructure/persistence/kysely-goods-receipt.repository";
-import { KyselyStockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository";
-import { KyselyBranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyInventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import { SupplierRepository } from "../../../src/contexts/procurement/infrastructure/persistence/supplier.repository";
+import { PurchaseOrderRepository } from "../../../src/contexts/procurement/infrastructure/persistence/purchase-order.repository";
+import { GoodsReceiptRepository } from "../../../src/contexts/procurement/infrastructure/persistence/goods-receipt.repository";
+import { StockMovementRepository } from "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository";
+import { BranchRepository } from "../../../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { InventoryItemRepository } from "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { Branch } from "../../../src/contexts/branches/domain/branch.aggregate";
 import { InventoryItem } from "../../../src/contexts/inventory/domain/inventory-item.aggregate";
+import { createScriptDb, closeScriptDb } from "../../../src/shared/database/script-db";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 
 const LEGACY_FIXTURE_URL =
   process.env.LEGACY_FIXTURE_DATABASE_URL || "postgresql://postgres:test123@localhost:5432/satamoni_legacy_fixture_test";
 
 describe("importProcurementFromLegacy", () => {
   let legacyPool: Pool;
-  let neoDb: Kysely<Database>;
-  let supplierRepo: KyselySupplierRepository;
-  let purchaseOrderRepo: KyselyPurchaseOrderRepository;
-  let goodsReceiptRepo: KyselyGoodsReceiptRepository;
-  let movementRepo: KyselyStockMovementRepository;
+  let neoDb: Database;
+  let supplierRepo: SupplierRepository;
+  let purchaseOrderRepo: PurchaseOrderRepository;
+  let goodsReceiptRepo: GoodsReceiptRepository;
+  let movementRepo: StockMovementRepository;
   let branchId: string;
   let inventoryItemId: string;
 
@@ -33,20 +37,18 @@ describe("importProcurementFromLegacy", () => {
     await legacyPool.query(`CREATE TABLE goods_receipts (id SERIAL PRIMARY KEY, purchase_order_id INTEGER, supplier_id INTEGER NOT NULL, supplier_document_number TEXT, branch_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'DRAFT', received_by INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), posted_at TIMESTAMPTZ)`);
     await legacyPool.query(`CREATE TABLE goods_receipt_items (id SERIAL PRIMARY KEY, goods_receipt_id INTEGER NOT NULL, inventory_item_id INTEGER NOT NULL, accepted_quantity NUMERIC NOT NULL, unit_price NUMERIC NOT NULL)`);
 
-    neoDb = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }),
-    });
-    supplierRepo = new KyselySupplierRepository(neoDb);
-    purchaseOrderRepo = new KyselyPurchaseOrderRepository(neoDb);
-    goodsReceiptRepo = new KyselyGoodsReceiptRepository(neoDb);
-    movementRepo = new KyselyStockMovementRepository(neoDb);
+    neoDb = createScriptDb(process.env.DATABASE_URL as string);
+    supplierRepo = new SupplierRepository(neoDb);
+    purchaseOrderRepo = new PurchaseOrderRepository(neoDb);
+    goodsReceiptRepo = new GoodsReceiptRepository(neoDb);
+    movementRepo = new StockMovementRepository(neoDb);
 
-    const branchRepo = new KyselyBranchRepository(neoDb);
+    const branchRepo = new BranchRepository(neoDb);
     const branch = Branch.register({ name: "فرع مشتريات-fixture", legacyBranchId: 900 });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(neoDb);
+    const inventoryRepo = new InventoryItemRepository(neoDb);
     const item = InventoryItem.register({ name: "زيت-مشتريات-fixture", unit: "لتر", legacyInventoryItemId: 950 });
     await inventoryRepo.save(item);
     inventoryItemId = item.id;
@@ -54,18 +56,18 @@ describe("importProcurementFromLegacy", () => {
 
   afterAll(async () => {
     await legacyPool.end();
-    await sql`DELETE FROM inventory_items WHERE id = ${inventoryItemId}`.execute(neoDb);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(neoDb);
-    await neoDb.destroy();
+    await neoDb.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+    await neoDb.delete(branches).where(eq(branches.id, branchId));
+    await closeScriptDb(neoDb);
   });
 
   afterEach(async () => {
     await legacyPool.query("DELETE FROM goods_receipt_items; DELETE FROM goods_receipts; DELETE FROM purchase_order_items; DELETE FROM purchase_orders; DELETE FROM suppliers");
-    await sql`DELETE FROM goods_receipt_items`.execute(neoDb);
-    await sql`DELETE FROM goods_receipts`.execute(neoDb);
-    await sql`DELETE FROM purchase_order_items`.execute(neoDb);
-    await sql`DELETE FROM purchase_orders`.execute(neoDb);
-    await sql`DELETE FROM suppliers`.execute(neoDb);
+    await neoDb.delete(goodsReceiptItems);
+    await neoDb.delete(goodsReceipts);
+    await neoDb.delete(purchaseOrderItems);
+    await neoDb.delete(purchaseOrders);
+    await neoDb.delete(suppliers);
   });
 
   test("بيستورد مورد وأمر شراء وإذن استلام POSTED مرتبط ببعض", async () => {

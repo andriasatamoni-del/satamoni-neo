@@ -9,9 +9,9 @@ import { PaymentControlModule } from "../payment-control/payment-control.module"
 import { PRINTER_REPOSITORY } from "./domain/ports/printer-repository.port";
 import { KITCHEN_STATION_REPOSITORY } from "./domain/ports/kitchen-station-repository.port";
 import { PRINT_JOB_REPOSITORY } from "./domain/ports/print-job-repository.port";
-import { KyselyPrinterRepository } from "./infrastructure/persistence/kysely-printer.repository";
-import { KyselyKitchenStationRepository } from "./infrastructure/persistence/kysely-kitchen-station.repository";
-import { KyselyPrintJobRepository } from "./infrastructure/persistence/kysely-print-job.repository";
+import { PrinterRepository } from "./infrastructure/persistence/printer.repository";
+import { KitchenStationRepository } from "./infrastructure/persistence/kitchen-station.repository";
+import { PrintJobRepository } from "./infrastructure/persistence/print-job.repository";
 import { OrderPrintDataBuilder } from "./application/services/order-print-data.builder";
 import { PrintJobQueuer } from "./application/services/print-job-queuer.service";
 import { KitchenTicketDispatcher } from "./application/services/kitchen-ticket-dispatcher.service";
@@ -46,9 +46,9 @@ import type { KitchenStatusAdvancedEvent } from "../orders/domain/events/kitchen
   imports: [IdentityAccessModule, BranchesModule, CatalogModule, OrdersModule, PaymentControlModule],
   controllers: [PrintersController, KitchenStationsController, PrintJobsController],
   providers: [
-    { provide: PRINTER_REPOSITORY, useClass: KyselyPrinterRepository },
-    { provide: KITCHEN_STATION_REPOSITORY, useClass: KyselyKitchenStationRepository },
-    { provide: PRINT_JOB_REPOSITORY, useClass: KyselyPrintJobRepository },
+    { provide: PRINTER_REPOSITORY, useClass: PrinterRepository },
+    { provide: KITCHEN_STATION_REPOSITORY, useClass: KitchenStationRepository },
+    { provide: PRINT_JOB_REPOSITORY, useClass: PrintJobRepository },
     OrderPrintDataBuilder,
     PrintJobQueuer,
     KitchenTicketDispatcher,

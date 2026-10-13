@@ -3,9 +3,20 @@ import { createHmac } from "node:crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { talabatIntegrationErrors, talabatOrders, talabatProductMapping, talabatWebhookEvents } from "../../../src/contexts/talabat/infrastructure/persistence/talabat.tables";
+import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 const WEBHOOK_SECRET = "neo_test_talabat_webhook_secret";
 
@@ -38,33 +49,32 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
-    const { KyselyStockMovementRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository"
+    const { StockMovementRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
     const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-    const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const { KyselyPaymentMethodRepository } = await import(
-      "../../../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository"
+    const { PaymentMethodRepository } = await import(
+      "../../../src/contexts/payment-control/infrastructure/persistence/payment-method.repository"
     );
     const { PaymentMethod } = await import("../../../src/contexts/payment-control/domain/payment-method.aggregate");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
 
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-Talabat-جست", email: "admin-talabat@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -82,44 +92,44 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
       await request(app.getHttpServer()).post("/auth/login").send({ email: "bm-talabat@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع Talabat-جست" });
     branch.linkTalabatBranch(talabatBranchId);
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const methodRepo = new KyselyPaymentMethodRepository(db);
+    const methodRepo = new PaymentMethodRepository(app.get<Database>(DATABASE));
     const method = PaymentMethod.register({ name: "Talabat - دفع آجل-جست", kind: "credit" });
     method.linkTalabatCode(talabatPaymentCode);
     await methodRepo.save(method);
     paymentMethodId = method.id;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "جبنة-Talabat-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
 
-    const movementRepo = new KyselyStockMovementRepository(db);
+    const movementRepo = new StockMovementRepository(app.get<Database>(DATABASE));
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 10 }),
       { allowNegativeBalance: true }
     );
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-Talabat-جست" });
     const variant = item.addVariant({ label: "وسط", price: 100 });
     await menuItemRepo.save(item);
     menuItemId = item.id;
     variantId = variant.id;
 
-    const recipeRepo = new KyselyRecipeRepository(db);
+    const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const existingCash = await accountRepo.findByCode("1100");
     if (!existingCash) {
       const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET" });
@@ -135,32 +145,32 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM talabat_integration_errors`.execute(db);
-    await sql`DELETE FROM talabat_webhook_events`.execute(db);
-    await sql`DELETE FROM talabat_product_mapping WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM talabat_orders`.execute(db);
-    await sql`DELETE FROM payments WHERE payment_method_id = ${paymentMethodId}`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(talabatIntegrationErrors);
+    await db.delete(talabatWebhookEvents);
+    await db.delete(talabatProductMapping).where(eq(talabatProductMapping.branch_id, branchId));
+    await db.delete(talabatOrders);
+    await db.delete(payments).where(eq(payments.payment_method_id, paymentMethodId));
     // القيود POSTED/REVERSED غير قابلة للحذف/التعديل بـDELETE عادي (trigger حقيقي على مستوى القاعدة -
     // نفس فلسفة عدم قابلية التعديل بالحرف) - TRUNCATE بيتخطّى الـtrigger زي باقي اختبارات المحاسبة
     // بالظبط (راجع order-sale-posting.e2e.spec.ts)
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    if (createdCashAccountId) await sql`DELETE FROM accounts WHERE id = ${createdCashAccountId}`.execute(db);
-    if (createdSalesAccountId) await sql`DELETE FROM accounts WHERE id = ${createdSalesAccountId}`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM payment_methods WHERE id = ${paymentMethodId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-talabat@jest.test', 'bm-talabat@jest.test')`.execute(db);
+    await truncate(db, journalEntryLines, journalEntries);
+    if (createdCashAccountId) await db.delete(accounts).where(eq(accounts.id, createdCashAccountId));
+    if (createdSalesAccountId) await db.delete(accounts).where(eq(accounts.id, createdSalesAccountId));
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(stockMovements).where(eq(stockMovements.branch_id, branchId));
+    await db.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, branchId));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(paymentMethods).where(eq(paymentMethods.id, paymentMethodId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-talabat@jest.test", "bm-talabat@jest.test"]));
     await app.close();
   });
 

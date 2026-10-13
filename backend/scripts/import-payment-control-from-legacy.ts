@@ -10,19 +10,19 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyPaymentMethodRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment-method.repository";
-import { KyselyPaymentRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment.repository";
-import { KyselyPaymentAdjustmentRequestRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-payment-adjustment-request.repository";
-import { KyselyReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/kysely-reconciliation-record.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { PaymentMethodRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment-method.repository";
+import { PaymentRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment.repository";
+import { PaymentAdjustmentRequestRepository } from "../src/contexts/payment-control/infrastructure/persistence/payment-adjustment-request.repository";
+import { ReconciliationRecordRepository } from "../src/contexts/payment-control/infrastructure/persistence/reconciliation-record.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { OrderRepository } from "../src/contexts/orders/infrastructure/persistence/order.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { PaymentMethod, type PaymentMethodKind, type SettlementChannel } from "../src/contexts/payment-control/domain/payment-method.aggregate";
 import { Payment } from "../src/contexts/payment-control/domain/payment.aggregate";
 import { PaymentAdjustmentRequest, type AdjustmentRequestStatus } from "../src/contexts/payment-control/domain/payment-adjustment-request.aggregate";
 import { ReconciliationRecord, type MatchStatus, type ReconciliationSource } from "../src/contexts/payment-control/domain/reconciliation-record.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyPaymentMethodRow { id: number; name: string; kind: string; enabled: boolean; settlement_channel: string | null; }
 interface LegacyPaymentRow {
@@ -48,14 +48,14 @@ export interface PaymentControlImportResult {
   reconciliationRecords: ImportCounts;
 }
 
-export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<PaymentControlImportResult> {
-  const methodRepo = new KyselyPaymentMethodRepository(neoDb);
-  const paymentRepo = new KyselyPaymentRepository(neoDb);
-  const adjustmentRepo = new KyselyPaymentAdjustmentRequestRepository(neoDb);
-  const reconciliationRepo = new KyselyReconciliationRecordRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const orderRepo = new KyselyOrderRepository(neoDb);
-  const userRepo = new KyselyUserRepository(neoDb);
+export async function importPaymentControlFromLegacy(legacyPool: Pool, neoDb: Database): Promise<PaymentControlImportResult> {
+  const methodRepo = new PaymentMethodRepository(neoDb);
+  const paymentRepo = new PaymentRepository(neoDb);
+  const adjustmentRepo = new PaymentAdjustmentRequestRepository(neoDb);
+  const reconciliationRepo = new ReconciliationRecordRepository(neoDb);
+  const branchRepo = new BranchRepository(neoDb);
+  const orderRepo = new OrderRepository(neoDb);
+  const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number): Promise<string | null> {
@@ -214,7 +214,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importPaymentControlFromLegacy(legacyPool, neoDb);
   console.log("✅ الاستيراد خلص:");
@@ -224,7 +224,7 @@ async function main() {
   console.log(`  سطور المطابقة: ${result.reconciliationRecords.created} جديد، ${result.reconciliationRecords.updated} اتحدّث، ${result.reconciliationRecords.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

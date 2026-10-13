@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { sql } from "kysely";
 import {
   accountBalance,
   auth,
@@ -15,6 +14,14 @@ import {
   teardown,
   type World,
 } from "./harness";
+import { accounts, journalEntries } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { paymentAdjustmentRequests } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
+import { businessDateSql } from "../../../src/shared/time/business-date";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
 // BL-01 / BL-03 / BL-04 / BL-06 / BL-08: a failure in ANY step of a business command (stock movement, payment lock, journal posting,
 // missing chart of accounts) rolls back the WHOLE command - no order without payment/stock/journal, no journal without its business
@@ -55,7 +62,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
       const again = await createOrder(w, w.tokens.cashierA, { quantity: 2, clientRequestId });
       expect(again.status).toBe(201);
       expect(again.body.id).toBe(retry.body.id);
-      expect(await count(w, "orders", sql`id = ${retry.body.id}`)).toBe(1);
+      expect(await count(w, orders, eq(orders.id, retry.body.id))).toBe(1);
       expect((await journalsFor(w, "order_sale", retry.body.id)).length).toBe(1);
       expect((await journalsFor(w, "order_cogs", retry.body.id)).length).toBe(1);
       expect(await stockOf(w, w.branchA)).toBe(before.stockA - 4);
@@ -79,9 +86,9 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
     }
     expect(failed.status).toBeGreaterThanOrEqual(500);
     expect(await stockOf(w, w.branchA)).toBe(stock);
-    expect(await count(w, "stock_movements", sql`reference_type = 'goods_receipt' AND reference_id = ${grn.body.id}`)).toBe(0);
-    const status = await sql<{ status: string }>`SELECT status FROM goods_receipts WHERE id = ${grn.body.id}`.execute(w.db);
-    expect(status.rows[0].status).toBe("DRAFT");
+    expect(await count(w, stockMovements, and(eq(stockMovements.reference_type, "goods_receipt"), eq(stockMovements.reference_id, grn.body.id)))).toBe(0);
+    const status = await w.db.select({ status: goodsReceipts.status }).from(goodsReceipts).where(eq(goodsReceipts.id, grn.body.id));
+    expect(status[0].status).toBe("DRAFT");
 
     const ok = await request(w.http()).post(`/procurement/goods-receipts/${grn.body.id}/confirm`).set(auth(w.tokens.admin));
     expect(ok.status).toBe(201);
@@ -102,7 +109,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
       await remove();
     }
     expect(failed.status).toBeGreaterThanOrEqual(500);
-    expect((await sql<{ status: string }>`SELECT status FROM payroll_runs WHERE id = ${run.body.id}`.execute(w.db)).rows[0].status).toBe("DRAFT");
+    expect((await w.db.select({ status: payrollRuns.status }).from(payrollRuns).where(eq(payrollRuns.id, run.body.id)))[0].status).toBe("DRAFT");
     expect((await journalsFor(w, "payroll_run", run.body.id)).length).toBe(0);
 
     const ok = await request(w.http()).post(`/hr/payroll-runs/${run.body.id}/approve`).set(auth(w.tokens.admin2));
@@ -129,8 +136,8 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
       await remove();
     }
     expect(failed.status).toBeGreaterThanOrEqual(500);
-    expect((await sql<{ status: string }>`SELECT status FROM payment_adjustment_requests WHERE id = ${adj.body.id}`.execute(w.db)).rows[0].status).toBe("PENDING");
-    expect((await sql<{ payment_method_id: string }>`SELECT payment_method_id FROM orders WHERE id = ${order.body.id}`.execute(w.db)).rows[0].payment_method_id).toBe(w.cashMethodId);
+    expect((await w.db.select({ status: paymentAdjustmentRequests.status }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, adj.body.id)))[0].status).toBe("PENDING");
+    expect((await w.db.select({ payment_method_id: orders.payment_method_id }).from(orders).where(eq(orders.id, order.body.id)))[0].payment_method_id).toBe(w.cashMethodId);
 
     const ok = await request(w.http()).post(`/payment-control/adjustment-requests/${adj.body.id}/approve`).set(auth(w.tokens.admin));
     expect(ok.status).toBe(201);
@@ -152,7 +159,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
 
   describe("missing chart of accounts", () => {
     test("STRICT: the order is rejected with 503 + a clear message, nothing is written, readiness reports the missing code; restoring the account fixes it", async () => {
-      await sql`UPDATE accounts SET code = '5100-off' WHERE code = '5100'`.execute(w.db);
+      await w.db.update(accounts).set({ code: "5100-off" }).where(eq(accounts.code, "5100"));
       try {
         const before = await orderWriteFootprint(w);
         const res = await createOrder(w, w.tokens.cashierA);
@@ -166,7 +173,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
         expect(readiness.body.ready).toBe(false);
         expect(readiness.body.missing).toContain("5100");
       } finally {
-        await sql`UPDATE accounts SET code = '5100' WHERE code = '5100-off'`.execute(w.db);
+        await w.db.update(accounts).set({ code: "5100" }).where(eq(accounts.code, "5100-off"));
       }
       const ok = await createOrder(w, w.tokens.cashierA);
       expect(ok.status).toBe(201);
@@ -175,7 +182,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
     test("DEFERRED (explicit, reported): the order is accepted, the missing journals are listed, alerted in the Action Center, and an idempotent repair posts them with the ORIGINAL Cairo business date", async () => {
       process.env.ACCOUNTING_ENFORCEMENT = "deferred";
       let orderId: string;
-      await sql`UPDATE accounts SET code = code || '-off' WHERE code IN ('4100','5100')`.execute(w.db);
+      await w.db.update(accounts).set({ code: sql`${accounts.code} || '-off'` }).where(inArray(accounts.code, ["4100", "5100"]));
       try {
         const res = await createOrder(w, w.tokens.cashierA, { quantity: 2 });
         expect(res.status).toBe(201);
@@ -193,7 +200,7 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
         expect(types).toContain("MISSING_JOURNALS");
         expect(types).toContain("ACCOUNTING_NOT_CONFIGURED");
       } finally {
-        await sql`UPDATE accounts SET code = replace(code, '-off', '') WHERE code LIKE '%-off'`.execute(w.db);
+        await w.db.update(accounts).set({ code: sql`replace(${accounts.code}, '-off', '')` }).where(like(accounts.code, "%-off"));
         process.env.ACCOUNTING_ENFORCEMENT = "strict";
       }
 
@@ -205,9 +212,12 @@ describe("Phase 3.1 - failure injection & recovery (strict accounting)", () => {
       expect((await journalsFor(w, "order_cogs", orderId!)).length).toBe(1);
 
       // the repost keeps the original Cairo business date of the order
-      const orderRow = await sql<{ d: Date }>`SELECT (created_at AT TIME ZONE 'Africa/Cairo')::date AS d FROM orders WHERE id = ${orderId!}`.execute(w.db);
+      const orderRow = await w.db
+        .select({ d: businessDateSql(orders.created_at).mapWith(journalEntries.entry_date) })
+        .from(orders)
+        .where(eq(orders.id, orderId!));
       const journal = await journalsFor(w, "order_sale", orderId!);
-      expect(journal[0].entry_date.toISOString().slice(0, 10)).toBe(orderRow.rows[0].d.toISOString().slice(0, 10));
+      expect(journal[0].entry_date.toISOString().slice(0, 10)).toBe(orderRow[0].d.toISOString().slice(0, 10));
 
       // idempotent: running it again changes nothing
       const again = await request(w.http()).post("/accounting/repair/journals").set(auth(w.tokens.accountant)).send({ sourceIds: [orderId!] });

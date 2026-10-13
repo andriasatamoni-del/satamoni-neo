@@ -22,7 +22,14 @@ $guard$;
 
 \echo == 1 schema (expect: the same table / migration counts as production)
 SELECT count(*) AS public_tables FROM information_schema.tables WHERE table_schema = 'public';
-SELECT count(*) AS migrations_applied, max(name) AS last_migration FROM kysely_migration;
+-- Drizzle migrations; a copy restored from a backup taken before the switch to Drizzle still has only the Kysely history
+-- (expect kysely_last_migration = 058_menu_category_archive_and_layout there). query_to_xml reads whichever table exists.
+SELECT CASE WHEN to_regclass('drizzle.__drizzle_migrations') IS NOT NULL
+            THEN (xpath('/row/n/text()', query_to_xml('SELECT count(*) AS n FROM drizzle.__drizzle_migrations', false, true, '')))[1]::text::int
+       END AS drizzle_migrations_applied,
+       CASE WHEN to_regclass('public.kysely_migration') IS NOT NULL
+            THEN (xpath('/row/n/text()', query_to_xml('SELECT max(name) AS n FROM public.kysely_migration', false, true, '')))[1]::text
+       END AS kysely_last_migration;
 
 \echo == 2 row counts (compare with production; the restored copy may only have FEWER rows if it is older)
 SELECT 'users' AS table_name, count(*) FROM users

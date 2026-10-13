@@ -3,6 +3,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../../../src/app.module";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -37,16 +38,15 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
     let cashierId: string;
 
     beforeAll(async () => {
-      const { KyselyUserRepository } = await import(
-        "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+      const { UserRepository } = await import(
+        "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
       );
       const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
       const { BcryptPasswordHasher } = await import(
         "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
       );
-      const { KYSELY } = await import("../../../src/shared/database/database.module");
-      const db = app.get(KYSELY);
-      const repo = new KyselyUserRepository(db);
+      const { DATABASE } = await import("../../../src/shared/database/database.module");
+      const repo = new UserRepository(app.get<Database>(DATABASE));
       const hasher = new BcryptPasswordHasher();
 
       const admin = User.register({

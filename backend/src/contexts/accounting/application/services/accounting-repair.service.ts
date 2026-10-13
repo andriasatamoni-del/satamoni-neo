@@ -1,11 +1,15 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { sql } from "kysely";
-import type { Kysely } from "kysely";
-import type { Database } from "../../../../shared/database/database.types";
-import { KYSELY } from "../../../../shared/database/kysely.token";
-import { TransactionService } from "../../../../shared/database/transaction-context";
+import { and, count, desc, eq, exists, inArray, isNull, ne, sql } from "drizzle-orm";
+import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { dbErrorMessage, TransactionService } from "../../../../shared/database/transaction-context";
 import { AuditLogService } from "../../../../shared/audit/audit-log.service";
 import { businessDate } from "../../../../shared/time/business-date";
+import { goodsReceiptItems, goodsReceipts } from "../../../procurement/infrastructure/persistence/procurement.tables";
+import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
+import { stockMovements } from "../../../inventory/infrastructure/persistence/inventory.tables";
+import { payrollRuns } from "../../../hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { paymentAdjustmentRequests, payments } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
+import { journalEntries } from "../../infrastructure/persistence/accounting.tables";
 import { findJournalGaps, checkChartOfAccounts, ALL_GAP_KINDS, type GapKind, type JournalGap } from "../../infrastructure/persistence/journal-coverage";
 import { AccountingPostingService, accountingEnforcement } from "./accounting-posting.service";
 import { PostOrderSaleJournalEntryHandler } from "../commands/post-order-sale-journal-entry.handler";
@@ -26,6 +30,8 @@ export interface RepairResult {
   reason?: string;
 }
 
+const AUTO_SOURCE_TYPES = ["order_sale", "order_cogs", "goods_receipt", "payroll_run", "payment_adjustment", "purchase", "cash_drawer_entry", "shift_variance"];
+
 // Phase 3.1 (BL-08): safe, authorised, idempotent repair of missing journals for eligible historical transactions.
 //  * Idempotent: every posting goes through AccountingPostingService.postOnce / reverseBySource (one journal per source; DB unique index
 //    as the last line of defence), so running it twice - or racing with the normal flow - can never double post.
@@ -36,7 +42,7 @@ export interface RepairResult {
 @Injectable()
 export class AccountingRepairService {
   constructor(
-    @Inject(KYSELY) private readonly db: Kysely<Database>,
+    @Inject(DATABASE) private readonly db: Database,
     private readonly tx: TransactionService,
     private readonly audit: AuditLogService,
     private readonly posting: AccountingPostingService,
@@ -62,12 +68,21 @@ export class AccountingRepairService {
 
   // Dated duplicates / UTC-vs-Cairo date drift of automatically posted journals (historical records are reported, never rewritten)
   async businessDateDrift(limit = 200) {
-    const { rows } = await sql<{ id: string; entry_number: string; source_type: string; source_id: string; entry_date: Date; cairo_date: Date }>`
-      SELECT id::text, entry_number, source_type, source_id, entry_date, (created_at AT TIME ZONE 'Africa/Cairo')::date AS cairo_date
-        FROM journal_entries
-       WHERE source_type IN ('order_sale','order_cogs','goods_receipt','payroll_run','payment_adjustment','purchase','cash_drawer_entry','shift_variance')
-         AND entry_date <> (created_at AT TIME ZONE 'Africa/Cairo')::date
-       ORDER BY created_at DESC LIMIT ${limit}`.execute(this.db);
+    // mapped through entry_date so the Cairo date comes back exactly like the column does
+    const cairoDate = sql<Date>`(${journalEntries.created_at} AT TIME ZONE 'Africa/Cairo')::date`.mapWith(journalEntries.entry_date);
+    const rows = await this.db
+      .select({
+        id: journalEntries.id,
+        entry_number: journalEntries.entry_number,
+        source_type: journalEntries.source_type,
+        source_id: journalEntries.source_id,
+        entry_date: journalEntries.entry_date,
+        cairo_date: cairoDate,
+      })
+      .from(journalEntries)
+      .where(and(inArray(journalEntries.source_type, AUTO_SOURCE_TYPES), ne(journalEntries.entry_date, cairoDate)))
+      .orderBy(desc(journalEntries.created_at))
+      .limit(limit);
     return rows.map((r) => ({
       journalEntryId: r.id,
       entryNumber: r.entry_number,
@@ -93,14 +108,21 @@ export class AccountingRepairService {
           return r;
         });
       } catch (err) {
-        result = { kind: gap.kind, sourceId: gap.sourceId, outcome: "FAILED", reason: err instanceof Error ? err.message : String(err) };
+        result = { kind: gap.kind, sourceId: gap.sourceId, outcome: "FAILED", reason: dbErrorMessage(err) };
         // the failed attempt is recorded too (its own writes were rolled back to the savepoint)
         await this.recordAudit(gap, result, input.actorUserId).catch(() => undefined);
       }
       results.push(result);
     }
-    const count = (o: RepairOutcome) => results.filter((r) => r.outcome === o).length;
-    return { attempted: results.length, posted: count("POSTED"), reversed: count("REVERSED"), skipped: count("SKIPPED"), failed: count("FAILED"), results };
+    const countOf = (o: RepairOutcome) => results.filter((r) => r.outcome === o).length;
+    return {
+      attempted: results.length,
+      posted: countOf("POSTED"),
+      reversed: countOf("REVERSED"),
+      skipped: countOf("SKIPPED"),
+      failed: countOf("FAILED"),
+      results,
+    };
   }
 
   private async recordAudit(gap: JournalGap, r: RepairResult, actor: string | null): Promise<void> {
@@ -123,14 +145,34 @@ export class AccountingRepairService {
       case "order_sale":
       case "order_cogs": {
         await this.tx.lockRow("orders", gap.sourceId);
-        const { rows } = await sql<{ id: string; branch_id: string; total: string; created_by: string | null; payment_method_id: string | null; status: string; cost: string | null; incomplete: boolean }>`
-          SELECT o.id::text, o.branch_id::text, o.total, o.created_by::text, o.payment_method_id::text, o.status,
-                 (SELECT SUM(m.total_cost) FROM stock_movements m WHERE m.reference_type='order' AND m.reference_id=o.id::text AND m.movement_type='CONSUMPTION') AS cost,
-                 EXISTS (SELECT 1 FROM stock_movements m WHERE m.reference_type='order' AND m.reference_id=o.id::text AND m.movement_type='CONSUMPTION' AND m.total_cost IS NULL) AS incomplete
-            FROM orders o WHERE o.id = ${gap.sourceId}::uuid`.execute(this.db);
-        const o = rows[0];
+        const consumption = and(
+          eq(stockMovements.reference_type, "order"),
+          eq(stockMovements.reference_id, sql`${orders.id}::text`),
+          eq(stockMovements.movement_type, "CONSUMPTION")
+        );
+        const [o] = await this.db
+          .select({
+            id: orders.id,
+            branch_id: orders.branch_id,
+            total: orders.total,
+            created_by: orders.created_by,
+            payment_method_id: orders.payment_method_id,
+            status: orders.status,
+            cost: sql<string | null>`(${this.db.select({ total: sql`SUM(${stockMovements.total_cost})` }).from(stockMovements).where(consumption)})`,
+            incomplete: exists(this.db.select({ one: sql`1` }).from(stockMovements).where(and(consumption, isNull(stockMovements.total_cost)))).mapWith(Boolean),
+          })
+          .from(orders)
+          .where(eq(orders.id, gap.sourceId));
         if (!o || o.status === "cancelled") return { ...base, outcome: "SKIPPED", reason: "الطلب مش موجود أو ملغي" };
-        const event = new OrderRegisteredEvent(o.id, o.branch_id, Number(o.total), o.created_by, o.payment_method_id, Math.round(Number(o.cost ?? 0) * 100) / 100, o.incomplete);
+        const event = new OrderRegisteredEvent(
+          o.id,
+          o.branch_id,
+          Number(o.total),
+          o.created_by,
+          o.payment_method_id,
+          Math.round(Number(o.cost ?? 0) * 100) / 100,
+          o.incomplete
+        );
         if (gap.kind === "order_sale") await this.postSale.handle(event, { entryDate });
         else await this.postCogs.handle(event, { entryDate });
         return this.verifyPosted(base, gap.sourceType, gap.sourceId);
@@ -142,19 +184,35 @@ export class AccountingRepairService {
       }
       case "goods_receipt_ap": {
         await this.tx.lockRow("goods_receipts", gap.sourceId);
-        const { rows } = await sql<{ id: string; branch_id: string; supplier_id: string; received_by: string | null; total: string }>`
-          SELECT g.id::text, g.branch_id::text, g.supplier_id::text, g.received_by::text, (SELECT SUM(i.quantity*i.unit_cost) FROM goods_receipt_items i WHERE i.goods_receipt_id=g.id) AS total
-            FROM goods_receipts g WHERE g.id = ${gap.sourceId}::uuid AND g.status='CONFIRMED'`.execute(this.db);
-        const g = rows[0];
+        const [g] = await this.db
+          .select({
+            id: goodsReceipts.id,
+            branch_id: goodsReceipts.branch_id,
+            supplier_id: goodsReceipts.supplier_id,
+            received_by: goodsReceipts.received_by,
+            total: sql<string>`(${this.db
+              .select({ total: sql`SUM(${goodsReceiptItems.quantity} * ${goodsReceiptItems.unit_cost})` })
+              .from(goodsReceiptItems)
+              .where(eq(goodsReceiptItems.goods_receipt_id, goodsReceipts.id))})`,
+          })
+          .from(goodsReceipts)
+          .where(and(eq(goodsReceipts.id, gap.sourceId), eq(goodsReceipts.status, "CONFIRMED")));
         if (!g) return { ...base, outcome: "SKIPPED", reason: "الاستلام مش مؤكد أو مش موجود" };
-        await this.postGrn.handle(new GoodsReceiptConfirmedEvent(g.id, g.branch_id, g.supplier_id, Number(g.total), g.received_by), { entryDate });
+        await this.postGrn.handle(new GoodsReceiptConfirmedEvent(g.id, g.branch_id, g.supplier_id!, Number(g.total), g.received_by), { entryDate });
         return this.verifyPosted(base, "goods_receipt", gap.sourceId);
       }
       case "payroll_posting": {
         await this.tx.lockRow("payroll_runs", gap.sourceId);
-        const { rows } = await sql<{ id: string; year: number; month: number; total_net_pay: string; approved_by: string | null }>`
-          SELECT id::text, year, month, total_net_pay, approved_by::text FROM payroll_runs WHERE id = ${gap.sourceId}::uuid AND status = 'APPROVED'`.execute(this.db);
-        const p = rows[0];
+        const [p] = await this.db
+          .select({
+            id: payrollRuns.id,
+            year: payrollRuns.year,
+            month: payrollRuns.month,
+            total_net_pay: payrollRuns.total_net_pay,
+            approved_by: payrollRuns.approved_by,
+          })
+          .from(payrollRuns)
+          .where(and(eq(payrollRuns.id, gap.sourceId), eq(payrollRuns.status, "APPROVED")));
         if (!p) return { ...base, outcome: "SKIPPED", reason: "القائمة مش معتمدة" };
         await this.postPayroll.handle(new PayrollRunApprovedEvent(p.id, p.year, p.month, Number(p.total_net_pay), p.approved_by), { entryDate });
         return this.verifyPosted(base, "payroll_run", gap.sourceId);
@@ -166,15 +224,34 @@ export class AccountingRepairService {
       }
       case "payment_adjustment": {
         await this.tx.lockRow("payment_adjustment_requests", gap.sourceId);
-        const { rows } = await sql<{ id: string; payment_id: string; order_id: string; branch_id: string; prev_amount: string; new_amount: string; prev_method: string; new_method: string; decided_by: string | null }>`
-          SELECT par.id::text, par.payment_id::text, p.order_id::text, p.branch_id::text, par.previous_amount AS prev_amount, par.proposed_amount AS new_amount,
-                 COALESCE(par.previous_payment_method_id, p.payment_method_id)::text AS prev_method, p.payment_method_id::text AS new_method, par.decided_by::text
-            FROM payment_adjustment_requests par JOIN payments p ON p.id = par.payment_id
-           WHERE par.id = ${gap.sourceId}::uuid AND par.status = 'APPROVED'`.execute(this.db);
-        const a = rows[0];
+        const [a] = await this.db
+          .select({
+            id: paymentAdjustmentRequests.id,
+            payment_id: paymentAdjustmentRequests.payment_id,
+            order_id: payments.order_id,
+            branch_id: payments.branch_id,
+            prev_amount: paymentAdjustmentRequests.previous_amount,
+            new_amount: paymentAdjustmentRequests.proposed_amount,
+            prev_method: sql<string>`COALESCE(${paymentAdjustmentRequests.previous_payment_method_id}, ${payments.payment_method_id})::text`,
+            new_method: payments.payment_method_id,
+            decided_by: paymentAdjustmentRequests.decided_by,
+          })
+          .from(paymentAdjustmentRequests)
+          .innerJoin(payments, eq(payments.id, paymentAdjustmentRequests.payment_id))
+          .where(and(eq(paymentAdjustmentRequests.id, gap.sourceId), eq(paymentAdjustmentRequests.status, "APPROVED")));
         if (!a) return { ...base, outcome: "SKIPPED", reason: "التعديل مش معتمد" };
         await this.postAdjustment.handle(
-          new PaymentAdjustmentApprovedEvent(a.id, a.payment_id, a.order_id, a.branch_id, Number(a.prev_amount), Number(a.new_amount), a.prev_method, a.new_method, a.decided_by),
+          new PaymentAdjustmentApprovedEvent(
+            a.id,
+            a.payment_id,
+            a.order_id,
+            a.branch_id,
+            Number(a.prev_amount),
+            Number(a.new_amount),
+            a.prev_method,
+            a.new_method,
+            a.decided_by
+          ),
           { entryDate }
         );
         return this.verifyPosted(base, "payment_adjustment", gap.sourceId);
@@ -184,8 +261,11 @@ export class AccountingRepairService {
 
   // The handlers are no-ops in deferred mode when accounts are missing: confirm the journal really exists before claiming success
   private async verifyPosted(base: { kind: GapKind; sourceId: string }, sourceType: string, sourceId: string): Promise<RepairResult> {
-    const { rows } = await sql<{ n: string }>`SELECT count(*)::text AS n FROM journal_entries WHERE source_type = ${sourceType} AND source_id = ${sourceId}`.execute(this.db);
-    if (Number(rows[0].n) > 0) return { ...base, outcome: "POSTED" };
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(journalEntries)
+      .where(and(eq(journalEntries.source_type, sourceType), eq(journalEntries.source_id, sourceId)));
+    if (row.n > 0) return { ...base, outcome: "POSTED" };
     return { ...base, outcome: "FAILED", reason: "لسه فيه حسابات ناقصة في دليل الحسابات - اضبط الدليل الأول (راجع /accounting/readiness)" };
   }
 }

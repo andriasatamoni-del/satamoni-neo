@@ -14,14 +14,14 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyCustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-customer-followup.repository";
-import { KyselyComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/kysely-complaint.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { CustomerFollowupRepository } from "../src/contexts/crm/infrastructure/persistence/customer-followup.repository";
+import { ComplaintRepository } from "../src/contexts/crm/infrastructure/persistence/complaint.repository";
 import { CustomerFollowup, CALL_RESULTS, SATISFACTION_RATINGS } from "../src/contexts/crm/domain/customer-followup.aggregate";
 import { Complaint, CATEGORIES, STATUSES } from "../src/contexts/crm/domain/complaint.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyFollowupRow {
   id: number;
@@ -78,11 +78,11 @@ export interface CrmImportResult {
   whatsappComplaints: ImportCounts;
 }
 
-export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<CrmImportResult> {
-  const userRepo = new KyselyUserRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const followupRepo = new KyselyCustomerFollowupRepository(neoDb);
-  const complaintRepo = new KyselyComplaintRepository(neoDb);
+export async function importCrmFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CrmImportResult> {
+  const userRepo = new UserRepository(neoDb);
+  const branchRepo = new BranchRepository(neoDb);
+  const followupRepo = new CustomerFollowupRepository(neoDb);
+  const complaintRepo = new ComplaintRepository(neoDb);
 
   const userIdCache = new Map<number, string | null>();
   async function resolveUserId(legacyUserId: number | null): Promise<string | null> {
@@ -251,7 +251,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importCrmFromLegacy(legacyPool, neoDb);
   console.log(
@@ -262,7 +262,7 @@ async function main() {
   );
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

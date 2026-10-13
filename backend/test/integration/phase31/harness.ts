@@ -2,10 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql, type Kysely } from "kysely";
+import { and, count as drizzleCount, eq, getTableColumns, getTableName, inArray, is, notInArray, sql, type SQL } from "drizzle-orm";
+import { getTableConfig, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database, DatabaseTx } from "../../../src/shared/database/database.token";
+import * as schema from "../../../src/shared/database/schema";
+import { tableByName } from "../../../src/shared/database/transaction-context";
 import { deleteAuditLogsForTest } from "../helpers/audit";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { payrollAdjustments, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { branchStockBalances } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
 // Phase 3.1 regression harness: boots the REAL application against the disposable integration database (guarded by
 // test/safety/assert-disposable-db.js), in STRICT accounting mode (the production default), with a small but complete world:
@@ -14,7 +21,7 @@ import { deleteAuditLogsForTest } from "../helpers/audit";
 
 export interface World {
   app: INestApplication;
-  db: Kysely<any>;
+  db: Database;
   http: () => ReturnType<INestApplication["getHttpServer"]>;
   tag: string;
   branchA: string;
@@ -38,6 +45,7 @@ export const REQUIRED_ACCOUNT_DEFS: Array<[string, string, "ASSET" | "LIABILITY"
   ["6100", "مصروف الرواتب", "EXPENSE"],
   ["6950", "فروق كاش", "EXPENSE"],
 ];
+const REQUIRED_ACCOUNT_CODES = REQUIRED_ACCOUNT_DEFS.map(([code]) => code);
 
 export const INGREDIENT_UNIT_COST = 5;
 export const RECIPE_QTY = 2;
@@ -50,31 +58,31 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const app = moduleRef.createNestApplication();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
-  const db = app.get<Kysely<any>>(KYSELY);
+  const db = app.get<Database>(DATABASE);
 
-  const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+  const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
   const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
   const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-  const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+  const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
   const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-  const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
-  const { KyselyStockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository");
+  const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
+  const { StockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository");
   const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
   const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-  const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-  const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+  const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+  const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
   const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
   const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-  const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+  const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
   const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-  const branchRepo = new KyselyBranchRepository(db);
+  const branchRepo = new BranchRepository(db);
   const bA = Branch.register({ name: `فرع-A-${tag}` });
   const bB = Branch.register({ name: `فرع-B-${tag}` });
   await branchRepo.save(bA);
   await branchRepo.save(bB);
 
-  const userRepo = new KyselyUserRepository(db);
+  const userRepo = new UserRepository(db);
   const hasher = new BcryptPasswordHasher();
   const passwordHash = await hasher.hash("12345678");
   const defs: Array<[keyof World["tokens"], "admin" | "accountant" | "branch_manager" | "cashier", string | null]> = [
@@ -97,7 +105,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
     tokens[key] = res.body.token as string;
   }
 
-  const accountRepo = new KyselyAccountRepository(db);
+  const accountRepo = new AccountRepository(db);
   const accountIds: Record<string, string> = {};
   if (options.accounts !== false) {
     for (const [code, name, accountType] of REQUIRED_ACCOUNT_DEFS) {
@@ -107,10 +115,10 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
     }
   }
 
-  const inventoryRepo = new KyselyInventoryItemRepository(db);
+  const inventoryRepo = new InventoryItemRepository(db);
   const ingredient = InventoryItem.register({ name: `مكوّن-${tag}`, unit: "كيلو", unitCost: INGREDIENT_UNIT_COST, negativeStockPolicy: "STRICT" });
   await inventoryRepo.save(ingredient);
-  const movementRepo = new KyselyStockMovementRepository(db);
+  const movementRepo = new StockMovementRepository(db);
   for (const branchId of [bA.id, bB.id]) {
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredient.id, branchId, movementType: "RECEIPT", quantityDelta: options.stock ?? 100 }),
@@ -118,11 +126,11 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
     );
   }
 
-  const menuRepo = new KyselyMenuItemRepository(db);
+  const menuRepo = new MenuItemRepository(db);
   const item = MenuItem.register({ name: `صنف-${tag}` });
   const variant = item.addVariant({ label: "عادي", price: VARIANT_PRICE });
   await menuRepo.save(item);
-  const recipeRepo = new KyselyRecipeRepository(db);
+  const recipeRepo = new RecipeRepository(db);
   const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
   const version = recipe.createDraftVersion({});
   recipe.addIngredient(version.id, { ingredientItemId: ingredient.id, quantity: RECIPE_QTY });
@@ -156,64 +164,72 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
 export async function teardown(world: World): Promise<void> {
   const { db } = world;
   const userIds = Object.values(world.userIds);
-  for (const table of INJECTED_TABLES) await sql.raw(`DROP TRIGGER IF EXISTS p31_fail_trigger ON ${table}`).execute(db).catch(() => undefined);
-  await deleteAuditLogsForTest(db, sql`TRUE`);
-  for (const stmt of [
-    sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`,
-    sql`DELETE FROM payment_adjustment_requests`,
-    sql`DELETE FROM payment_reconciliation_records`,
-    sql`DELETE FROM supplier_payments`,
-    sql`DELETE FROM supplier_invoice_lines`,
-    sql`DELETE FROM supplier_invoices`,
-    sql`DELETE FROM payments`,
-    sql`DELETE FROM print_jobs`,
-    sql`DELETE FROM order_items`,
-    sql`DELETE FROM delivery_assignments`,
-    sql`DELETE FROM orders`,
-    sql`DELETE FROM purchase_order_items`,
-    sql`DELETE FROM goods_receipt_items`,
-    sql`DELETE FROM goods_receipts`,
-    sql`DELETE FROM purchase_orders`,
-    sql`DELETE FROM suppliers`,
-    sql`DELETE FROM inventory_batches`,
-    sql`DELETE FROM conversion_order_input_lines`,
-    sql`DELETE FROM conversion_orders`,
-    sql`UPDATE payroll_adjustments SET payroll_run_id = NULL`,
-    sql`DELETE FROM payroll_adjustments`,
-    sql`UPDATE payroll_runs SET status = 'DRAFT'`,
-    sql`DELETE FROM payroll_run_employees`,
-    sql`DELETE FROM payroll_runs`,
-    sql`DELETE FROM employee_history`,
-    sql`DELETE FROM employees`,
-    sql`DELETE FROM expenses`,
-    sql`DELETE FROM purchase_lines`,
-    sql`DELETE FROM purchases`,
-    sql`DELETE FROM cash_drawer_entries`,
-    sql`DELETE FROM cashier_shifts`,
-    sql`DELETE FROM drivers`,
-    sql`DELETE FROM treasuries`,
-    sql`DELETE FROM stock_movements`,
-    sql`DELETE FROM branch_stock_balances`,
-    sql`DELETE FROM transfer_requests`,
-    sql`DELETE FROM recipe_ingredients`,
-    sql`DELETE FROM recipe_versions`,
-    sql`DELETE FROM recipes`,
-    sql`DELETE FROM menu_item_variants`,
-    sql`DELETE FROM menu_items`,
-    sql`DELETE FROM payment_methods`,
-    sql`DELETE FROM accounts WHERE code IN ('1100','1400','2100','2400','4100','5100','6100','6950')`,
-    sql`DELETE FROM inventory_items`,
+  for (const table of INJECTED_TABLES) await testDdl(world, sql`DROP TRIGGER IF EXISTS p31_fail_trigger ON ${sql.identifier(table)}`).catch(() => undefined);
+  await deleteAuditLogsForTest(db);
+  // the ledger is immutable for normal roles: empty it - and, like TRUNCATE ... CASCADE, every table referencing it - with triggers off
+  await asReplica(db, async (tx) => {
+    for (const table of referencingClosure([journalEntryLines, journalEntries])) await tx.delete(table);
+  }).catch(() => undefined);
+  const wipe = (name: string) => () => db.delete(tableOf(name));
+  for (const step of [
+    wipe("payment_adjustment_requests"),
+    wipe("payment_reconciliation_records"),
+    wipe("supplier_payments"),
+    wipe("supplier_invoice_lines"),
+    wipe("supplier_invoices"),
+    wipe("payments"),
+    wipe("print_jobs"),
+    wipe("order_items"),
+    wipe("delivery_assignments"),
+    wipe("orders"),
+    wipe("purchase_order_items"),
+    wipe("goods_receipt_items"),
+    wipe("goods_receipts"),
+    wipe("purchase_orders"),
+    wipe("suppliers"),
+    wipe("inventory_batches"),
+    wipe("conversion_order_input_lines"),
+    wipe("conversion_orders"),
+    () => db.update(payrollAdjustments).set({ payroll_run_id: null }),
+    wipe("payroll_adjustments"),
+    () => db.update(payrollRuns).set({ status: "DRAFT" }),
+    wipe("payroll_run_employees"),
+    wipe("payroll_runs"),
+    wipe("employee_history"),
+    wipe("employees"),
+    wipe("expenses"),
+    wipe("purchase_lines"),
+    wipe("purchases"),
+    wipe("cash_drawer_entries"),
+    wipe("cashier_shifts"),
+    wipe("drivers"),
+    wipe("treasuries"),
+    wipe("stock_movements"),
+    wipe("branch_stock_balances"),
+    wipe("transfer_requests"),
+    wipe("recipe_ingredients"),
+    wipe("recipe_versions"),
+    wipe("recipes"),
+    wipe("menu_item_variants"),
+    wipe("menu_items"),
+    wipe("payment_methods"),
+    () => db.delete(accounts).where(inArray(accounts.code, REQUIRED_ACCOUNT_CODES)),
+    wipe("inventory_items"),
   ]) {
-    await stmt.execute(db).catch(() => undefined);
+    await step().catch(() => undefined);
   }
   // whatever the individual specs created on top of the world (stocktakes, shifts, categories, transfers ...): cascade by the FK graph
   await purge(db, "branches", [world.branchA, world.branchB]);
   await purge(db, "users", userIds);
-  for (const table of ["inventory_items", "menu_items", "suppliers", "payment_methods", "expense_categories"]) {
-    const { rows } = await sql<{ id: string }>`SELECT id::text FROM ${sql.table(table)}`.execute(db).catch(() => ({ rows: [] as { id: string }[] }));
-    await purge(db, table, rows.map((r) => r.id));
+  for (const name of ["inventory_items", "menu_items", "suppliers", "payment_methods", "expense_categories"]) {
+    const table = tableOf(name);
+    const rows = await db
+      .select({ id: columnOf(table, "id") })
+      .from(table)
+      .catch(() => [] as Array<{ id: unknown }>);
+    await purge(db, name, rows.map((r) => String(r.id)));
   }
-  await sql`DELETE FROM accounts WHERE code IN ('1100','1400','2100','2400','4100','5100','6100','6950')`.execute(db).catch(() => undefined);
+  await db.delete(accounts).where(inArray(accounts.code, REQUIRED_ACCOUNT_CODES)).catch(() => undefined);
   await world.app.close();
 }
 
@@ -237,35 +253,50 @@ export async function createOrder(
 }
 
 export async function stockOf(world: World, branchId: string, itemId = world.ingredientId): Promise<number> {
-  const { rows } = await sql<{ quantity: string }>`SELECT quantity FROM branch_stock_balances WHERE branch_id = ${branchId} AND inventory_item_id = ${itemId}`.execute(world.db);
+  const rows = await world.db
+    .select({ quantity: branchStockBalances.quantity })
+    .from(branchStockBalances)
+    .where(and(eq(branchStockBalances.branch_id, branchId), eq(branchStockBalances.inventory_item_id, itemId)));
   return Number(rows[0]?.quantity ?? 0);
 }
 
-export async function count(world: World, table: string, where = sql`TRUE`): Promise<number> {
-  const { rows } = await sql<{ n: string }>`SELECT count(*)::text AS n FROM ${sql.table(table)} WHERE ${where}`.execute(world.db);
-  return Number(rows[0].n);
+export async function count(world: World, table: PgTable, where?: SQL): Promise<number> {
+  const [row] = await world.db.select({ n: drizzleCount() }).from(table).where(where);
+  return Number(row.n);
 }
 
 export async function journalsFor(world: World, sourceType: string, sourceId: string) {
-  const { rows } = await sql<{ id: string; status: string; reversal_of_entry_id: string | null; entry_date: Date }>`
-    SELECT id, status, reversal_of_entry_id, entry_date FROM journal_entries WHERE source_type = ${sourceType} AND source_id = ${sourceId} ORDER BY created_at`.execute(world.db);
-  return rows;
+  return world.db
+    .select({
+      id: journalEntries.id,
+      status: journalEntries.status,
+      reversal_of_entry_id: journalEntries.reversal_of_entry_id,
+      entry_date: journalEntries.entry_date,
+    })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.source_type, sourceType), eq(journalEntries.source_id, sourceId)))
+    .orderBy(journalEntries.created_at);
 }
 
 /** Net debit - credit of an account code over POSTED entries (reversals are POSTED entries of their own). */
 export async function accountBalance(world: World, code: string): Promise<number> {
-  const { rows } = await sql<{ bal: string | null }>`
-    SELECT COALESCE(SUM(l.debit - l.credit), 0)::text AS bal
-      FROM journal_entry_lines l JOIN journal_entries j ON j.id = l.journal_entry_id JOIN accounts a ON a.id = l.account_id
-     WHERE a.code = ${code} AND j.status IN ('POSTED','REVERSED')`.execute(world.db);
-  return Number(rows[0].bal ?? 0);
+  const [row] = await world.db
+    .select({ bal: sql<string | null>`COALESCE(SUM(${journalEntryLines.debit} - ${journalEntryLines.credit}), 0)::text` })
+    .from(journalEntryLines)
+    .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+    .innerJoin(accounts, eq(accounts.id, journalEntryLines.account_id))
+    .where(and(eq(accounts.code, code), inArray(journalEntries.status, ["POSTED", "REVERSED"])));
+  return Number(row.bal ?? 0);
 }
 
 /** The whole ledger must always balance (debits == credits) - the accounting reconciliation invariant. */
 export async function ledgerImbalance(world: World): Promise<number> {
-  const { rows } = await sql<{ d: string | null }>`
-    SELECT COALESCE(SUM(l.debit) - SUM(l.credit), 0)::text AS d FROM journal_entry_lines l JOIN journal_entries j ON j.id = l.journal_entry_id WHERE j.status IN ('POSTED','REVERSED')`.execute(world.db);
-  return Number(rows[0].d ?? 0);
+  const [row] = await world.db
+    .select({ d: sql<string | null>`COALESCE(SUM(${journalEntryLines.debit}) - SUM(${journalEntryLines.credit}), 0)::text` })
+    .from(journalEntryLines)
+    .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+    .where(inArray(journalEntries.status, ["POSTED", "REVERSED"]));
+  return Number(row.d ?? 0);
 }
 
 /** Fires `n` identical requests at the same instant and returns their status codes (the concurrency primitive). */
@@ -275,10 +306,19 @@ export async function fireConcurrently<T>(n: number, make: (i: number) => Promis
 
 /** Number of REVERSAL entries that reverse the journal(s) of a business transaction. */
 export async function reversalsOf(world: World, sourceType: string, sourceId: string): Promise<number> {
-  const { rows } = await sql<{ n: string }>`
-    SELECT count(*)::text AS n FROM journal_entries r
-     WHERE r.reversal_of_entry_id IN (SELECT id FROM journal_entries WHERE source_type = ${sourceType} AND source_id = ${sourceId})`.execute(world.db);
-  return Number(rows[0].n);
+  const originals = world.db
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.source_type, sourceType), eq(journalEntries.source_id, sourceId)));
+  return count(world, journalEntries, inArray(journalEntries.reversal_of_entry_id, originals));
+}
+
+/**
+ * Test-database-only statements the query builder has no form for: the failure-injection trigger DDL below and the TRUNCATE that
+ * the append-only check asserts is refused. Application code never issues raw statements.
+ */
+export async function testDdl(world: World, statement: SQL): Promise<void> {
+  await world.db.execute(statement);
 }
 
 // ---- failure injection (test database only): a trigger that makes every INSERT into `table` raise ----
@@ -286,19 +326,69 @@ const INJECTED_TABLES = ["journal_entries", "stock_movements", "payments", "audi
 
 export async function injectInsertFailure(world: World, table: (typeof INJECTED_TABLES)[number]): Promise<() => Promise<void>> {
   if (!INJECTED_TABLES.includes(table)) throw new Error("table not allowed for failure injection");
-  await sql`CREATE OR REPLACE FUNCTION p31_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'p31 injected failure' USING ERRCODE = 'XX000'; END $$`.execute(world.db);
-  await sql.raw(`CREATE TRIGGER p31_fail_trigger BEFORE INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION p31_fail()`).execute(world.db);
+  await testDdl(
+    world,
+    sql`CREATE OR REPLACE FUNCTION p31_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'p31 injected failure' USING ERRCODE = 'XX000'; END $$`
+  );
+  await testDdl(world, sql`CREATE TRIGGER p31_fail_trigger BEFORE INSERT ON ${sql.identifier(table)} FOR EACH ROW EXECUTE FUNCTION p31_fail()`);
   return async () => {
-    await sql.raw(`DROP TRIGGER IF EXISTS p31_fail_trigger ON ${table}`).execute(world.db);
+    await testDdl(world, sql`DROP TRIGGER IF EXISTS p31_fail_trigger ON ${sql.identifier(table)}`);
   };
 }
 
 /** Snapshot of every business table an order touches - used to prove a rejected command wrote NOTHING. */
 export async function orderWriteFootprint(world: World): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  for (const t of ["orders", "order_items", "payments", "stock_movements", "journal_entries", "journal_entry_lines", "print_jobs"]) out[t] = await count(world, t);
+  for (const t of ["orders", "order_items", "payments", "stock_movements", "journal_entries", "journal_entry_lines", "print_jobs"]) out[t] = await count(world, tableOf(t));
   out.stockA = await stockOf(world, world.branchA);
   return out;
+}
+
+// ---- the foreign-key graph, read from the Drizzle schema (it mirrors the database; the drizzle-kit drift check keeps it so) ----
+const ALL_TABLES = (Object.values(schema) as unknown[]).filter((t): t is PgTable => is(t, PgTable));
+
+function tableOf(name: string): PgTable {
+  const table = tableByName(name);
+  if (!table) throw new Error(`unknown table: ${name}`);
+  return table;
+}
+
+function columnOf(table: PgTable, name: string): PgColumn {
+  const column = Object.values(getTableColumns(table)).find((c) => c.name === name);
+  if (!column) throw new Error(`unknown column: ${getTableName(table)}.${name}`);
+  return column;
+}
+
+/** Single-column foreign keys pointing at `parent`, as [child table, referencing column]. */
+function foreignKeysTo(parent: PgTable): Array<{ child: PgTable; column: PgColumn }> {
+  return ALL_TABLES.flatMap((child) =>
+    getTableConfig(child)
+      .foreignKeys.map((fk) => fk.reference())
+      .filter((ref) => ref.foreignTable === parent && ref.columns.length === 1)
+      .map((ref) => ({ child, column: ref.columns[0] }))
+  );
+}
+
+/** `roots` plus every table that (transitively) references one of them: what TRUNCATE ... CASCADE would empty. */
+function referencingClosure(roots: PgTable[]): PgTable[] {
+  const out = new Set<PgTable>(roots);
+  const queue = [...roots];
+  while (queue.length > 0) {
+    for (const { child } of foreignKeysTo(queue.shift() as PgTable)) {
+      if (out.has(child)) continue;
+      out.add(child);
+      queue.push(child);
+    }
+  }
+  return [...out];
+}
+
+/** Runs `fn` in a transaction with triggers and FK checks off (superuser-only session_replication_role; test database only). */
+async function asReplica(db: Database, fn: (tx: DatabaseTx) => Promise<void>): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.select({ role: sql`set_config('session_replication_role', 'replica', true)` }).from(sql`(VALUES (1)) AS cfg`);
+    await fn(tx);
+  });
 }
 
 /**
@@ -306,37 +396,30 @@ export async function orderWriteFootprint(world: World): Promise<Record<string, 
  * triggers/constraints disabled via session_replication_role so immutable ledgers can be cleaned). Used by specs to leave the shared
  * disposable database exactly as they found it.
  */
-export async function purge(db: Kysely<any>, table: string, ids: string[]): Promise<void> {
+export async function purge(db: Database, table: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await db.transaction().execute(async (trx) => {
-    await sql`SET LOCAL session_replication_role = replica`.execute(trx);
+  await asReplica(db, async (tx) => {
     const seen = new Set<string>();
-    const walk = async (parent: string, parentIds: string[]): Promise<void> => {
+    const walk = async (parent: PgTable, parentIds: string[]): Promise<void> => {
       if (parentIds.length === 0) return;
-      const { rows: fks } = await sql<{ child: string; col: string; parent_col: string }>`
-        SELECT c.conrelid::regclass::text AS child, a.attname AS col, pa.attname AS parent_col
-          FROM pg_constraint c
-          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
-          JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
-         WHERE c.contype = 'f' AND c.confrelid = ${parent}::regclass AND array_length(c.conkey, 1) = 1`.execute(trx);
-      for (const fk of fks) {
-        const key = `${fk.child}.${fk.col}<-${parent}:${parentIds.join(",")}`;
+      for (const { child, column } of foreignKeysTo(parent)) {
+        const key = `${getTableName(child)}.${column.name}<-${getTableName(parent)}:${parentIds.join(",")}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const childTable = fk.child.replace(/"/g, "");
-        const hasId = (await sql<{ n: string }>`SELECT count(*)::text AS n FROM information_schema.columns WHERE table_name = ${childTable} AND column_name = 'id'`.execute(trx)).rows[0].n !== "0";
-        const parentKey = fk.parent_col;
-        const inList = sql.join(parentIds.map((i) => sql`${i}::uuid`));
-        if (hasId) {
-          const { rows } = await sql<{ id: string }>`SELECT id::text FROM ${sql.table(childTable)} WHERE ${sql.ref(fk.col)} IN (${inList}) AND ${sql.table(childTable)}.id::text <> ALL(${parentIds}::text[])`.execute(trx).catch(() => ({ rows: [] as { id: string }[] }));
-          await walk(childTable, rows.map((r) => r.id));
+        // ids are compared as text: a child id is not necessarily a uuid (audit_logs.id is a bigint)
+        const childId = (getTableColumns(child) as Record<string, PgColumn | undefined>).id;
+        if (childId) {
+          const rows = await tx
+            .select({ id: childId })
+            .from(child)
+            .where(and(inArray(column, parentIds), notInArray(sql`${childId}::text`, parentIds)));
+          await walk(child, rows.map((r) => String(r.id)));
         }
-        await sql`DELETE FROM ${sql.table(childTable)} WHERE ${sql.ref(fk.col)} IN (${inList})`.execute(trx).catch(() => undefined);
-        void parentKey;
+        await tx.delete(child).where(inArray(column, parentIds));
       }
     };
-    await walk(table, ids);
-    const inList = sql.join(ids.map((i) => sql`${i}::uuid`));
-    await sql`DELETE FROM ${sql.table(table)} WHERE id IN (${inList})`.execute(trx);
+    const root = tableOf(table);
+    await walk(root, ids);
+    await tx.delete(root).where(inArray(columnOf(root, "id"), ids));
   });
 }

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 satamoni-neo is a restaurant ERP. It rebuilds the legacy `satamoni-backend` system and covers POS/orders, kitchen display, inventory, procurement, accounting, payroll, delivery, CRM, an online storefront and a WhatsApp/Meta bot. It is a pnpm workspace with two packages, `backend` and `frontend`:
 
-- `backend/`: NestJS 10 + Kysely + PostgreSQL. A DDD **modular monolith**.
+- `backend/`: NestJS 10 + Drizzle ORM + PostgreSQL. A DDD **modular monolith**.
 - `frontend/`: React 18 + Vite 6 + React Router 7 + TanStack Query + Tailwind 4. An SPA.
 
 Code comments and docs are mostly in Egyptian Arabic. Newer Phase 3.1 code is commented in English. Match the language of the file you edit. User-facing strings and permission labels are in Arabic.
@@ -24,7 +24,9 @@ Also `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `p
 ### Backend
 ```bash
 pnpm start:dev                    # watch mode, port 4100 (PORT); needs backend/.env (copy .env.example)
-pnpm migrate                      # apply Kysely migrations (src/migrations/files); `migrate:down` reverts one
+pnpm migrate                      # apply the Drizzle SQL migrations (backend/drizzle); forward-only, there is no down
+pnpm db:generate                  # after changing a *.tables.ts: write its SQL migration to backend/drizzle (review, then commit)
+pnpm db:check                     # drizzle-kit consistency check of the migrations folder
 pnpm build                        # nest build -> dist/
 pnpm exec tsc --noEmit -p tsconfig.json # typecheck (CI gate; there is no linter configured)
 
@@ -56,19 +58,22 @@ Every folder in `backend/src/contexts/<name>/` is a Nest module with the same la
 
 - `domain/`: aggregates, domain errors, events (`events/*.event.ts`) and repository **ports**. A port is an interface plus a DI token such as `ORDER_REPOSITORY`.
 - `application/commands|queries/`: one handler class per use case, with an `execute()` method.
-- `infrastructure/persistence/`: Kysely repositories that implement the ports, and `*.schema.ts` table types.
+- `infrastructure/persistence/`: the Drizzle repositories and readers that implement the ports, named by business role (`order.repository.ts`, `OrderRepository`), and the context's Drizzle tables in `<ctx>.tables.ts`.
 - `api/`: controllers, DTOs (class-validator; the global `ValidationPipe` uses `whitelist` + `transform`) and per-context domain-error filters.
 - `<name>.module.ts`: binds ports to implementations. In `onModuleInit()` it also **registers its permission group and role defaults** with `PermissionRegistry` and **subscribes to other contexts' events**.
 
 Contexts talk to each other through domain events on `EventBusService`, or by importing another module's exported handlers and ports. New contexts must be added to `app.module.ts`.
 
 ### Database
-- Kysely only, with no ORM. This is deliberate: integrity lives in real Postgres constraints and triggers.
-- Each table type in a context's `*.schema.ts` must be composed into the `Database` interface in `src/shared/database/database.types.ts` by hand.
-- Migrations are numbered files in `src/migrations/files/` (`NNN_description.ts`, with `up`/`down`). They are forward-only and additive. Kysely runs each one in a transaction. Production runs `pnpm run migrate` before every start.
+- Drizzle ORM, used as a typed query builder (`db.select / insert / update / delete`). Integrity still lives in real Postgres constraints and triggers.
+- The Drizzle tables in each context's `<ctx>.tables.ts` are the only source of row types. `src/shared/database/schema.ts` re-exports them all. Inject the database with `@Inject(DATABASE) private readonly db: Database` (`src/shared/database/database.token.ts`).
+- Every query goes through the builder. `sql` fragments are allowed only inside a builder query, for Postgres functions, `AT TIME ZONE` and window functions. Values in them are still parameterized. There is no raw-statement helper.
+- `numeric` columns are typed `number` but arrive as strings at runtime, so convert with `Number()`. Pass `jsonb` values as objects; Drizzle serializes them. A computed `sql` date or timestamp needs `.mapWith(column)` to come back as a `Date`.
+- Migrations are SQL files in `backend/drizzle/`. Generate them with `pnpm db:generate` from the table definitions and review them before committing. Triggers and functions go into a `pnpm db:generate --custom` file. Migrations are forward-only and additive. CI fails if the tables and the migrations disagree. `run-migrations.ts` holds an advisory lock for the whole run and refuses a migration whose timestamp is out of order (Drizzle would skip it silently): after merging another branch's migration, regenerate yours on top. Production runs `pnpm run migrate` before every start.
+- `0000_baseline.sql` is the schema the old Kysely migrations (001..058) produced. A database that ran those migrations (production, older dev databases) has `kysely_migration` at 058. For such a database, `run-migrations.ts` records the baseline as applied instead of running it, and it refuses a database that stopped before 058.
 
 ### Transactions (`src/shared/database/transaction-context.ts`)
-- The injected `KYSELY` instance is a Proxy backed by `AsyncLocalStorage`. Inside `TransactionService.run(fn)`, *every* repository query automatically joins that single transaction, and nested `db.transaction()` calls join it too. **One business command = one transaction.**
+- The injected `DATABASE` instance is a Proxy backed by `AsyncLocalStorage`. Inside `TransactionService.run(fn)`, *every* repository query automatically joins that single transaction, and nested `db.transaction()` calls join it too. **One business command = one transaction.**
 - Command handlers wrap their body in `tx.run(...)`. Deadlocks and serialization failures are retried up to 3 times.
 - `tx.lockRow(table, id)`: `SELECT … FOR UPDATE`. Take the lock first, then read the aggregate.
 - `tx.advisoryLock(key)`: serializes work on idempotency keys.
@@ -101,7 +106,7 @@ Every new branch-owned endpoint needs these decorators. `test/integration/phase3
 `audit_logs` is append-only and enforced by a DB trigger.
 
 ### Time
-The business day is the **Africa/Cairo calendar date**. The process and DB sessions run in UTC, and `main.ts` pins `TZ=UTC`. Always use `src/shared/time/business-date.ts` (`businessDate()`, `businessDateString()`) or `businessDateSql()` in SQL. Never use `toISOString().slice(0,10)` or `::date` on a timestamp, because that puts late-night sales on the wrong day or month.
+The business day is the **Africa/Cairo calendar date**. The process and DB sessions run in UTC, and `main.ts` pins `TZ=UTC`. Always use `src/shared/time/business-date.ts` (`businessDate()`, `businessDateString()`) or `businessDateSql(column)` inside a query. Never use `toISOString().slice(0,10)` or `::date` on a timestamp, because that puts late-night sales on the wrong day or month.
 
 ### Other backend notes
 - `main.ts` enables `rawBody` for Talabat webhook HMAC verification. It sets CORS from `FRONTEND_ORIGIN` (comma-separated, default `http://localhost:5173`).

@@ -11,7 +11,18 @@ export interface Metric { name: string; sql: string; appendOnly?: boolean; mustM
 
 export const CRITICAL_METRICS: Metric[] = [
   { name: "tables", sql: "SELECT count(*)::text v FROM information_schema.tables WHERE table_schema='public'", mustMatchAlways: true },
-  { name: "migrations", sql: "SELECT count(*)::text v FROM kysely_migration", mustMatchAlways: true },
+  // applied migrations: the Drizzle journal, or the Kysely history of a database from before the switch to Drizzle
+  // (query_to_xml only runs the query of the branch whose table exists)
+  {
+    name: "migrations",
+    sql: `SELECT CASE
+        WHEN to_regclass('drizzle.__drizzle_migrations') IS NOT NULL
+          THEN 'drizzle:' || (xpath('/row/n/text()', query_to_xml('SELECT count(*) AS n FROM drizzle.__drizzle_migrations', false, true, '')))[1]::text
+        WHEN to_regclass('public.kysely_migration') IS NOT NULL
+          THEN 'kysely:' || (xpath('/row/n/text()', query_to_xml('SELECT count(*) AS n FROM public.kysely_migration', false, true, '')))[1]::text
+        ELSE 'none' END v`,
+    mustMatchAlways: true,
+  },
   { name: "users", sql: "SELECT count(*)::text v FROM users", appendOnly: true },
   { name: "user_roles", sql: "SELECT coalesce(string_agg(DISTINCT role, ',' ORDER BY role),'') v FROM users", mustMatchAlways: false },
   { name: "branches", sql: "SELECT count(*)::text v FROM branches", appendOnly: true },

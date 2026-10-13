@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements, transferRequestLines, transferRequests } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لطلبات التحويل بين الفروع (transfer_requests) - نفس مفهوم kitchen_orders بالريبو القديم بس معمّم.
 // راجع تعليق transfer-request.aggregate.ts للتفاصيل الكاملة
@@ -21,18 +25,17 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تحويل-جست", email: "admin-transfer@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -42,7 +45,7 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-transfer@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const ck = Branch.register({ name: "سنتر كيتشن-تحويل-جست", isCentralKitchen: true });
     await branchRepo.save(ck);
     ckBranchId = ck.id;
@@ -50,7 +53,7 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const itemRepo = new KyselyInventoryItemRepository(db);
+    const itemRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const flour = InventoryItem.register({ name: "دقيق-تحويل-جست", unit: "كيلو", unitCost: 10 });
     await itemRepo.save(flour);
     flourItemId = flour.id;
@@ -63,14 +66,14 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM transfer_request_lines WHERE transfer_request_id IN (SELECT id FROM transfer_requests WHERE from_branch_id = ${ckBranchId})`.execute(db);
-    await sql`DELETE FROM transfer_requests WHERE from_branch_id = ${ckBranchId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id IN (${ckBranchId}, ${branchId})`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id IN (${ckBranchId}, ${branchId})`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${flourItemId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id IN (${ckBranchId}, ${branchId})`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-transfer@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(transferRequestLines).where(inArray(transferRequestLines.transfer_request_id, db.select({ id: transferRequests.id }).from(transferRequests).where(eq(transferRequests.from_branch_id, ckBranchId))));
+    await db.delete(transferRequests).where(eq(transferRequests.from_branch_id, ckBranchId));
+    await db.delete(stockMovements).where(inArray(stockMovements.branch_id, [ckBranchId, branchId]));
+    await db.delete(branchStockBalances).where(inArray(branchStockBalances.branch_id, [ckBranchId, branchId]));
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, flourItemId));
+    await db.delete(branches).where(inArray(branches.id, [ckBranchId, branchId]));
+    await db.delete(users).where(eq(users.email, "admin-transfer@jest.test"));
     await app.close();
   });
 

@@ -8,10 +8,10 @@ import { TALABAT_ORDER_REPOSITORY } from "./domain/ports/talabat-order-repositor
 import { TALABAT_PRODUCT_MAPPING_REPOSITORY } from "./domain/ports/talabat-product-mapping-repository.port";
 import { TALABAT_INTEGRATION_ERROR_REPOSITORY } from "./domain/ports/talabat-integration-error-repository.port";
 import { TALABAT_WEBHOOK_EVENT_REPOSITORY } from "./domain/ports/talabat-webhook-event-repository.port";
-import { KyselyTalabatOrderRepository } from "./infrastructure/persistence/kysely-talabat-order.repository";
-import { KyselyTalabatProductMappingRepository } from "./infrastructure/persistence/kysely-talabat-product-mapping.repository";
-import { KyselyTalabatIntegrationErrorRepository } from "./infrastructure/persistence/kysely-talabat-integration-error.repository";
-import { KyselyTalabatWebhookEventRepository } from "./infrastructure/persistence/kysely-talabat-webhook-event.repository";
+import { TalabatOrderRepository } from "./infrastructure/persistence/talabat-order.repository";
+import { TalabatProductMappingRepository } from "./infrastructure/persistence/talabat-product-mapping.repository";
+import { TalabatIntegrationErrorRepository } from "./infrastructure/persistence/talabat-integration-error.repository";
+import { TalabatWebhookEventRepository } from "./infrastructure/persistence/talabat-webhook-event.repository";
 import { TalabatWebhookAuthService } from "./infrastructure/security/talabat-webhook-auth.service";
 import { TalabatClientStub } from "./infrastructure/talabat-client.stub";
 import { ReceiveTalabatWebhookHandler } from "./application/commands/receive-talabat-webhook.handler";
@@ -36,10 +36,10 @@ import { TalabatController } from "./api/talabat.controller";
   imports: [IdentityAccessModule, BranchesModule, OrdersModule, PaymentControlModule],
   controllers: [TalabatWebhookController, TalabatController],
   providers: [
-    { provide: TALABAT_ORDER_REPOSITORY, useClass: KyselyTalabatOrderRepository },
-    { provide: TALABAT_PRODUCT_MAPPING_REPOSITORY, useClass: KyselyTalabatProductMappingRepository },
-    { provide: TALABAT_INTEGRATION_ERROR_REPOSITORY, useClass: KyselyTalabatIntegrationErrorRepository },
-    { provide: TALABAT_WEBHOOK_EVENT_REPOSITORY, useClass: KyselyTalabatWebhookEventRepository },
+    { provide: TALABAT_ORDER_REPOSITORY, useClass: TalabatOrderRepository },
+    { provide: TALABAT_PRODUCT_MAPPING_REPOSITORY, useClass: TalabatProductMappingRepository },
+    { provide: TALABAT_INTEGRATION_ERROR_REPOSITORY, useClass: TalabatIntegrationErrorRepository },
+    { provide: TALABAT_WEBHOOK_EVENT_REPOSITORY, useClass: TalabatWebhookEventRepository },
     TalabatWebhookAuthService,
     TalabatClientStub,
     ReceiveTalabatWebhookHandler,

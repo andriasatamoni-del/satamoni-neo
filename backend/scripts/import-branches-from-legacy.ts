@@ -3,10 +3,10 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { Branch } from "../src/contexts/branches/domain/branch.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyBranchRow {
   id: number;
@@ -25,8 +25,8 @@ export interface ImportCounts {
   updated: number;
 }
 
-export async function importBranchesFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportCounts> {
-  const repo = new KyselyBranchRepository(neoDb);
+export async function importBranchesFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
+  const repo = new BranchRepository(neoDb);
   const { rows } = await legacyPool.query<LegacyBranchRow>(
     `SELECT id, name, address, phone, hours, lat, lng, is_central_kitchen, supports_dine_in
      FROM branches ORDER BY id`
@@ -69,13 +69,13 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importBranchesFromLegacy(legacyPool, neoDb);
   console.log(`✅ الاستيراد خلص: ${result.created} جديد، ${result.updated} اتحدّث`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

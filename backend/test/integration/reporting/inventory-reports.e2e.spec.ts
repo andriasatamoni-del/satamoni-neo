@@ -2,9 +2,14 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, inventoryItems, stockMovements, transferRequestLines, transferRequests } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 
 describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -27,20 +32,19 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-تقارير-مخزون-جست", email: "admin-invreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -73,7 +77,7 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
     await userRepo.save(branchManager);
     branchManagerToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "manager-invreports@jest.test", password: "12345678" })).body.token;
 
-    const itemRepo = new KyselyInventoryItemRepository(db);
+    const itemRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
 
     // صنف بتكلفة وحدة معروفة - 5 كيلو في فرع أ و8 كيلو في فرع ب (لتقييم المخزون + كارت الصنف + المقارنة)
     const costedItem = InventoryItem.register({ name: "صنف-متكلّف-تقارير-مخزون-جست", unit: "كيلو", unitCost: 10 });
@@ -144,15 +148,15 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM transfer_request_lines WHERE transfer_request_id = ${transferRequestId}`.execute(db);
-    await sql`DELETE FROM transfer_requests WHERE id = ${transferRequestId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${costedItemId}, ${uncostedItemId}, ${negItemId}, ${transferItemId})`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id IN (${ckBranchId}, ${branchAId}, ${branchBId})`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-invreports@jest.test', 'manager-invreports@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(transferRequestLines).where(eq(transferRequestLines.transfer_request_id, transferRequestId));
+    await db.delete(transferRequests).where(eq(transferRequests.id, transferRequestId));
+    await db.delete(stockMovements).where(inArray(stockMovements.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(branchStockBalances).where(inArray(branchStockBalances.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [costedItemId, uncostedItemId, negItemId, transferItemId]));
+    await db.delete(treasuries).where(inArray(treasuries.branch_id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(branches).where(inArray(branches.id, [ckBranchId, branchAId, branchBId]));
+    await db.delete(users).where(inArray(users.email, ["admin-invreports@jest.test", "manager-invreports@jest.test"]));
     await app.close();
   });
 

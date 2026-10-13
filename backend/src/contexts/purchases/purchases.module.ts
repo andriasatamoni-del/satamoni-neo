@@ -4,7 +4,7 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { InventoryModule } from "../inventory/inventory.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { PURCHASE_REPOSITORY } from "./domain/ports/purchase-repository.port";
-import { KyselyPurchaseRepository } from "./infrastructure/persistence/kysely-purchase.repository";
+import { PurchaseRepository } from "./infrastructure/persistence/purchase.repository";
 import { RegisterPurchaseHandler } from "./application/commands/register-purchase.handler";
 import { EditPurchaseHandler } from "./application/commands/edit-purchase.handler";
 import { ConfirmPurchaseHandler } from "./application/commands/confirm-purchase.handler";
@@ -18,7 +18,7 @@ import { PurchasesController } from "./api/purchases.controller";
   imports: [IdentityAccessModule, InventoryModule, ProcurementModule],
   controllers: [PurchasesController],
   providers: [
-    { provide: PURCHASE_REPOSITORY, useClass: KyselyPurchaseRepository },
+    { provide: PURCHASE_REPOSITORY, useClass: PurchaseRepository },
     PurchaseDuplicateCheckService,
     RegisterPurchaseHandler,
     EditPurchaseHandler,

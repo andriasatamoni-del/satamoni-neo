@@ -2,9 +2,13 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq } from "drizzle-orm";
+import { menuCategories, menuItemVariants, menuItems, menuPriceHistory, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { inventoryItems } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
 describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -17,20 +21,19 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-كتالوج", email: "admin-catalog@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -41,23 +44,23 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
       .send({ email: "admin-catalog@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const inventoryRepo = new KyselyInventoryItemRepository(db);
+    const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "جبنة-كتالوج-e2e-جست", unit: "كيلو" });
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM recipe_ingredients`.execute(db);
-    await sql`DELETE FROM recipe_versions`.execute(db);
-    await sql`DELETE FROM recipes`.execute(db);
-    await sql`DELETE FROM menu_price_history`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items`.execute(db);
-    await sql`DELETE FROM menu_categories`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id = ${ingredientItemId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-catalog@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(recipeIngredients);
+    await db.delete(recipeVersions);
+    await db.delete(recipes);
+    await db.delete(menuPriceHistory);
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems);
+    await db.delete(menuCategories);
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, ingredientItemId));
+    await db.delete(users).where(eq(users.email, "admin-catalog@jest.test"));
     await app.close();
   });
 
@@ -187,15 +190,15 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
   });
 
   test("POST /catalog/items بدون صلاحية catalog.items.manage -> 403", async () => {
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const db = app.get(KYSELY);
-    const repo = new KyselyUserRepository(db);
+    const db = app.get<Database>(DATABASE);
+    const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
       name: "كاشير-كتالوج", email: "cashier-catalog@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
@@ -211,6 +214,6 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
       .send({ name: "ممنوع-جست" });
     expect(res.status).toBe(403);
 
-    await sql`DELETE FROM users WHERE email = 'cashier-catalog@jest.test'`.execute(db);
+    await db.delete(users).where(eq(users.email, "cashier-catalog@jest.test"));
   });
 });

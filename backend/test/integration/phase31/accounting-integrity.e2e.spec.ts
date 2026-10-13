@@ -1,5 +1,4 @@
 import request from "supertest";
-import { sql } from "kysely";
 import {
   accountBalance,
   auth,
@@ -17,6 +16,13 @@ import {
   RECIPE_QTY,
   type World,
 } from "./harness";
+import { auditLogs } from "../../../src/shared/database/shared.tables";
+import { paymentAdjustmentRequests, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { payrollAdjustments, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { and, count as dbCount, desc, eq, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 
 // BL-06 (payment adjustments), BL-07 (COGS), BL-10 (payroll cancellation + adjustments <-> runs) and the accounting reconciliation
 // invariants: every business fact has exactly the journal(s) it should, reversals mirror originals, the ledger always balances.
@@ -25,12 +31,22 @@ import {
 async function netFor(w: World, code: string, sources: Array<[string, string]>): Promise<number> {
   let total = 0;
   for (const [type, id] of sources) {
-    const { rows } = await sql<{ n: string | null }>`
-      SELECT COALESCE(SUM(l.debit - l.credit), 0)::text AS n
-        FROM journal_entry_lines l JOIN journal_entries j ON j.id = l.journal_entry_id JOIN accounts a ON a.id = l.account_id
-       WHERE a.code = ${code} AND j.status IN ('POSTED','REVERSED')
-         AND (j.id IN (SELECT id FROM journal_entries WHERE source_type = ${type} AND source_id = ${id})
-              OR j.reversal_of_entry_id IN (SELECT id FROM journal_entries WHERE source_type = ${type} AND source_id = ${id}))`.execute(w.db);
+    const sourceEntries = w.db
+      .select({ id: journalEntries.id })
+      .from(journalEntries)
+      .where(and(eq(journalEntries.source_type, type), eq(journalEntries.source_id, id)));
+    const rows = await w.db
+      .select({ n: sql<string | null>`COALESCE(SUM(${journalEntryLines.debit} - ${journalEntryLines.credit}), 0)::text` })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.journal_entry_id))
+      .innerJoin(accounts, eq(accounts.id, journalEntryLines.account_id))
+      .where(
+        and(
+          eq(accounts.code, code),
+          inArray(journalEntries.status, ["POSTED", "REVERSED"]),
+          or(inArray(journalEntries.id, sourceEntries), inArray(journalEntries.reversal_of_entry_id, sourceEntries))
+        )
+      );
     total += Number(rows[0].n ?? 0);
   }
   return total;
@@ -70,15 +86,14 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const id = res.body.id as string;
       const cogsBefore = await accountBalance(w, "5100");
 
-      await sql`UPDATE inventory_items SET unit_cost = ${INGREDIENT_UNIT_COST + 4} WHERE id = ${w.ingredientId}`.execute(w.db); // 9 now
+      await w.db.update(inventoryItems).set({ unit_cost: INGREDIENT_UNIT_COST + 4 }).where(eq(inventoryItems.id, w.ingredientId)); // 9 now
       const cancelled = await request(w.http()).patch(`/orders/${id}/cancel`).set(auth(w.tokens.managerA));
       expect(cancelled.status).toBe(200);
-      await sql`UPDATE inventory_items SET unit_cost = ${INGREDIENT_UNIT_COST} WHERE id = ${w.ingredientId}`.execute(w.db);
+      await w.db.update(inventoryItems).set({ unit_cost: INGREDIENT_UNIT_COST }).where(eq(inventoryItems.id, w.ingredientId));
 
       expect(await stockOf(w, w.branchA)).toBe(stock);
-      const restore = await sql<{ unit_cost: string; total_cost: string }>`
-        SELECT unit_cost, total_cost FROM stock_movements WHERE reference_type = 'order_cancellation' AND reference_id = ${id}`.execute(w.db);
-      expect(Number(restore.rows[0].unit_cost)).toBe(INGREDIENT_UNIT_COST); // original cost, not 9
+      const restore = await w.db.select({ unit_cost: stockMovements.unit_cost, total_cost: stockMovements.total_cost }).from(stockMovements).where(and(eq(stockMovements.reference_type, "order_cancellation"), eq(stockMovements.reference_id, id)));
+      expect(Number(restore[0].unit_cost)).toBe(INGREDIENT_UNIT_COST); // original cost, not 9
       expect(await netFor(w, "5100", [["order_cogs", id]])).toBe(0);
       expect(await netFor(w, "1100", [["order_sale", id]])).toBe(0);
       expect(await accountBalance(w, "5100")).toBe(cogsBefore - 2 * COGS_PER_UNIT);
@@ -107,11 +122,11 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     });
 
     test("a variant WITHOUT a recipe consumes nothing and posts no COGS journal (no invented cost)", async () => {
-      const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+      const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
       const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
       const item = MenuItem.register({ name: "صنف-بدون-وصفة-acct" });
       const variant = item.addVariant({ label: "عادي", price: 40 });
-      await new KyselyMenuItemRepository(w.db).save(item);
+      await new MenuItemRepository(w.db).save(item);
 
       const res = await request(w.http())
         .post("/orders")
@@ -123,30 +138,30 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     });
 
     test("two ingredients with different costs: COGS = sum(qty x unit cost) of the real movements", async () => {
-      const { KyselyInventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository");
-      const { KyselyStockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/kysely-stock-movement.repository");
+      const { InventoryItemRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository");
+      const { StockMovementRepository } = await import("../../../src/contexts/inventory/infrastructure/persistence/stock-movement.repository");
       const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
       const { StockMovement } = await import("../../../src/contexts/inventory/domain/stock-movement.aggregate");
-      const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
-      const { KyselyRecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository");
+      const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
+      const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
       const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
       const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
       const second = InventoryItem.register({ name: "مكوّن2-acct", unit: "كيلو", unitCost: 3, negativeStockPolicy: "STRICT" });
-      await new KyselyInventoryItemRepository(w.db).save(second);
-      await new KyselyStockMovementRepository(w.db).recordMovement(
+      await new InventoryItemRepository(w.db).save(second);
+      await new StockMovementRepository(w.db).recordMovement(
         StockMovement.register({ inventoryItemId: second.id, branchId: w.branchA, movementType: "RECEIPT", quantityDelta: 100 }),
         { allowNegativeBalance: true }
       );
       const item = MenuItem.register({ name: "صنف-مركب-acct" });
       const variant = item.addVariant({ label: "عادي", price: 90 });
-      await new KyselyMenuItemRepository(w.db).save(item);
+      await new MenuItemRepository(w.db).save(item);
       const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
       const version = recipe.createDraftVersion({});
       recipe.addIngredient(version.id, { ingredientItemId: w.ingredientId, quantity: 1 }); // 1 x 5
       recipe.addIngredient(version.id, { ingredientItemId: second.id, quantity: 4 }); //      4 x 3
       recipe.activateVersion(version.id);
-      await new KyselyRecipeRepository(w.db).save(recipe);
+      await new RecipeRepository(w.db).save(recipe);
 
       const res = await request(w.http())
         .post("/orders")
@@ -178,11 +193,10 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       expect(await netFor(w, "6950", [["payment_adjustment", adj.body.id]])).toBe(20);
       expect(await netFor(w, "1100", [["payment_adjustment", adj.body.id]])).toBe(-20);
       expect(await netFor(w, "1100", [["order_sale", orderId], ["payment_adjustment", adj.body.id]])).toBe(80); // net cash of the order
-      const row = await sql<{ previous_amount: string; previous_payment_method_id: string }>`
-        SELECT previous_amount, previous_payment_method_id FROM payment_adjustment_requests WHERE id = ${adj.body.id}`.execute(w.db);
-      expect(Number(row.rows[0].previous_amount)).toBe(VARIANT_PRICE);
-      expect(row.rows[0].previous_payment_method_id).toBe(w.cashMethodId);
-      expect((await sql<{ payment_method_id: string }>`SELECT payment_method_id FROM orders WHERE id = ${orderId}`.execute(w.db)).rows[0].payment_method_id).toBe(w.visaMethodId);
+      const row = await w.db.select({ previous_amount: paymentAdjustmentRequests.previous_amount, previous_payment_method_id: paymentAdjustmentRequests.previous_payment_method_id }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, adj.body.id));
+      expect(Number(row[0].previous_amount)).toBe(VARIANT_PRICE);
+      expect(row[0].previous_payment_method_id).toBe(w.cashMethodId);
+      expect((await w.db.select({ payment_method_id: orders.payment_method_id }).from(orders).where(eq(orders.id, orderId)))[0].payment_method_id).toBe(w.visaMethodId);
 
       // cancelling the order reverses the sale, the COGS AND the adjustment correction
       const cancel = await request(w.http()).patch(`/orders/${orderId}/cancel`).set(auth(w.tokens.managerA));
@@ -207,7 +221,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const approved = await request(w.http()).post(`/payment-control/adjustment-requests/${adj.body.id}/approve`).set(auth(w.tokens.admin));
       expect(approved.status).toBe(201);
       expect((await journalsFor(w, "payment_adjustment", adj.body.id)).length).toBe(0);
-      expect((await sql<{ payment_method_id: string }>`SELECT payment_method_id FROM orders WHERE id = ${orderId}`.execute(w.db)).rows[0].payment_method_id).toBe(w.visaMethodId);
+      expect((await w.db.select({ payment_method_id: orders.payment_method_id }).from(orders).where(eq(orders.id, orderId)))[0].payment_method_id).toBe(w.visaMethodId);
     });
 
     test("rejected request changes nothing; deciding twice (approve/approve, approve/reject, reject/approve) -> 409", async () => {
@@ -227,17 +241,24 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     });
 
     test("reconciliation: for the orders of a branch, SUM(payment amounts) equals the net cash of the sale + adjustment journals", async () => {
-      const { rows: orders } = await sql<{ id: string }>`SELECT id::text FROM orders WHERE branch_id = ${w.branchA} AND status <> 'cancelled'`.execute(w.db);
-      const { rows: payments } = await sql<{ total: string }>`
-        SELECT COALESCE(SUM(p.amount), 0)::text AS total FROM payments p JOIN orders o ON o.id = p.order_id WHERE o.branch_id = ${w.branchA} AND o.status <> 'cancelled'`.execute(w.db);
+      const branchOrders = and(eq(orders.branch_id, w.branchA), ne(orders.status, "cancelled"));
+      const orderRows = await w.db.select({ id: orders.id }).from(orders).where(branchOrders);
+      const paymentRows = await w.db
+        .select({ total: sql<string>`COALESCE(SUM(${payments.amount}), 0)::text` })
+        .from(payments)
+        .innerJoin(orders, eq(orders.id, payments.order_id))
+        .where(branchOrders);
       let net = 0;
-      for (const o of orders) {
+      for (const o of orderRows) {
         net += await netFor(w, "1100", [["order_sale", o.id]]);
-        const { rows: adjs } = await sql<{ id: string }>`
-          SELECT par.id::text FROM payment_adjustment_requests par JOIN payments p ON p.id = par.payment_id WHERE p.order_id = ${o.id} AND par.status = 'APPROVED'`.execute(w.db);
+        const adjs = await w.db
+          .select({ id: paymentAdjustmentRequests.id })
+          .from(paymentAdjustmentRequests)
+          .innerJoin(payments, eq(payments.id, paymentAdjustmentRequests.payment_id))
+          .where(and(eq(payments.order_id, o.id), eq(paymentAdjustmentRequests.status, "APPROVED")));
         for (const a of adjs) net += await netFor(w, "1100", [["payment_adjustment", a.id]]);
       }
-      expect(net).toBe(Number(payments[0].total));
+      expect(net).toBe(Number(paymentRows[0].total));
       expect(await ledgerImbalance(w)).toBe(0);
     });
   });
@@ -283,19 +304,19 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const line = run.body.employees[0];
       expect([line.advances, line.penalties, line.bonuses]).toEqual([300, 50, 100]);
       expect(line.netPay).toBe(4000 - 300 - 50 + 100);
-      const linked = await sql<{ n: string }>`SELECT count(*)::text AS n FROM payroll_adjustments WHERE payroll_run_id = ${run.body.id}`.execute(w.db);
-      expect(Number(linked.rows[0].n)).toBe(3);
-      const june = await sql<{ payroll_run_id: string | null }>`SELECT payroll_run_id FROM payroll_adjustments WHERE amount = 999`.execute(w.db);
-      expect(june.rows[0].payroll_run_id).toBeNull();
+      const linked = await w.db.select({ n: dbCount() }).from(payrollAdjustments).where(eq(payrollAdjustments.payroll_run_id, run.body.id));
+      expect(Number(linked[0].n)).toBe(3);
+      const june = await w.db.select({ payroll_run_id: payrollAdjustments.payroll_run_id }).from(payrollAdjustments).where(eq(payrollAdjustments.amount, 999));
+      expect(june[0].payroll_run_id).toBeNull();
 
       // a consumed adjustment can not be cancelled behind the run's back
-      const adjId = (await sql<{ id: string }>`SELECT id::text FROM payroll_adjustments WHERE amount = 300`.execute(w.db)).rows[0].id;
+      const adjId = (await w.db.select({ id: payrollAdjustments.id }).from(payrollAdjustments).where(eq(payrollAdjustments.amount, 300)))[0].id;
       expect((await request(w.http()).post(`/hr/adjustments/${adjId}/cancel`).set(auth(w.tokens.admin)).send({ reason: "تراجع" })).status).toBe(409);
 
       // deleting the draft frees them again
       expect((await request(w.http()).delete(`/hr/payroll-runs/${run.body.id}`).set(auth(w.tokens.admin))).status).toBe(200);
-      const free = await sql<{ n: string }>`SELECT count(*)::text AS n FROM payroll_adjustments WHERE payroll_run_id IS NULL AND status = 'ACTIVE' AND entry_date < '2033-06-01'`.execute(w.db);
-      expect(Number(free.rows[0].n)).toBe(3);
+      const free = await w.db.select({ n: dbCount() }).from(payrollAdjustments).where(and(isNull(payrollAdjustments.payroll_run_id), eq(payrollAdjustments.status, "ACTIVE"), lt(payrollAdjustments.entry_date, sql`${"2033-06-01"}::date`)));
+      expect(Number(free[0].n)).toBe(3);
       expect((await request(w.http()).post(`/hr/adjustments/${adjId}/cancel`).set(auth(w.tokens.admin)).send({ reason: "تراجع" })).status).toBe(201);
     });
 
@@ -306,8 +327,8 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const acknowledged = await registerRun(2033, 7, { penalties: 10 }, { acknowledgeAdjustmentMismatch: true });
       expect(acknowledged.status).toBe(201);
       expect(acknowledged.body.employees[0].penalties).toBe(10);
-      const audit = await sql<{ metadata: unknown }>`SELECT metadata FROM audit_logs WHERE action LIKE 'POST /hr/payroll-runs%' ORDER BY created_at DESC LIMIT 1`.execute(w.db);
-      expect(audit.rows.length).toBe(1);
+      const audit = await w.db.select({ metadata: auditLogs.metadata }).from(auditLogs).where(like(auditLogs.action, "POST /hr/payroll-runs%")).orderBy(desc(auditLogs.created_at)).limit(1);
+      expect(audit.length).toBe(1);
 
       const plain = await registerRun(2033, 8, { advances: 25 }); // no adjustments in August: legacy behaviour
       expect(plain.status).toBe(201);
@@ -320,7 +341,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       await adjust("advance", 120, "2033-09-15"); // arrives after the draft
       const blocked = await request(w.http()).post(`/hr/payroll-runs/${run.body.id}/approve`).set(auth(w.tokens.admin2));
       expect(blocked.status).toBe(409);
-      expect((await sql<{ status: string }>`SELECT status FROM payroll_runs WHERE id = ${run.body.id}`.execute(w.db)).rows[0].status).toBe("DRAFT");
+      expect((await w.db.select({ status: payrollRuns.status }).from(payrollRuns).where(eq(payrollRuns.id, run.body.id)))[0].status).toBe("DRAFT");
       expect((await journalsFor(w, "payroll_run", run.body.id)).length).toBe(0);
 
       // rebuild the draft: the adjustment is now applied and approval goes through
@@ -328,7 +349,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const rebuilt = await registerRun(2033, 9);
       expect(rebuilt.body.employees[0].advances).toBe(120);
       expect((await request(w.http()).post(`/hr/payroll-runs/${rebuilt.body.id}/approve`).set(auth(w.tokens.admin2))).status).toBe(201);
-      expect(await count(w, "journal_entries", sql`source_type = 'payroll_run' AND source_id = ${rebuilt.body.id}`)).toBe(1);
+      expect(await count(w, journalEntries, and(eq(journalEntries.source_type, "payroll_run"), eq(journalEntries.source_id, rebuilt.body.id)))).toBe(1);
     });
   });
 });

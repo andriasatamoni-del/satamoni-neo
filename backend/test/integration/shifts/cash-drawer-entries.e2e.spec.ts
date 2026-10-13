@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { cashDrawerEntries, cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
+import { truncate } from "../helpers/db";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e حقيقي: مصروف/مشترى نقدي بيتسجل من درج شيفت شغال -> بيتخصم من الكاش المتوقع (preview وقفل الشيفت
 // كمان) -> وبيترحّل قيد محاسبي تلقائي عبر event bus (CashDrawerEntryRegistered -> Accounting)، نفس
@@ -23,16 +29,15 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyAccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/kysely-account.repository");
+    const { AccountRepository } = await import("../../../src/contexts/accounting/infrastructure/persistence/account.repository");
     const { Account } = await import("../../../src/contexts/accounting/domain/account.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-درج-جست", email: "admin-cash-drawer-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -43,12 +48,12 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
       .send({ email: "admin-cash-drawer-e2e@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع درج-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const accountRepo = new KyselyAccountRepository(db);
+    const accountRepo = new AccountRepository(app.get<Database>(DATABASE));
     const cash = Account.register({ code: "1100", name: "الكاش", accountType: "ASSET", isSystemAccount: true });
     const expense = Account.register({ code: "6900", name: "مصروفات تشغيلية", accountType: "EXPENSE", isSystemAccount: true });
     const inventory = Account.register({ code: "1400", name: "المخزون", accountType: "ASSET", isSystemAccount: true });
@@ -61,13 +66,13 @@ describe("Shifts: مصروفات ومشتريات درج الكاشير", () => 
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`TRUNCATE journal_entry_lines, journal_entries CASCADE`.execute(db);
-    await sql`DELETE FROM accounts WHERE id IN (${sql.join([cashAccountId, expenseAccountId, inventoryAccountId])})`.execute(db);
-    await sql`DELETE FROM cash_drawer_entries WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM cashier_shifts WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-cash-drawer-e2e@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await truncate(db, journalEntryLines, journalEntries);
+    await db.delete(accounts).where(inArray(accounts.id, [cashAccountId, expenseAccountId, inventoryAccountId]));
+    await db.delete(cashDrawerEntries).where(eq(cashDrawerEntries.branch_id, branchId));
+    await db.delete(cashierShifts).where(eq(cashierShifts.branch_id, branchId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-cash-drawer-e2e@jest.test"));
     await app.close();
   });
 

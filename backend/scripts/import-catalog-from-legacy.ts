@@ -8,15 +8,15 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyMenuCategoryRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository";
-import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
-import { KyselyRecipeRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-recipe.repository";
-import { KyselyInventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { MenuCategoryRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-category.repository";
+import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
+import { RecipeRepository } from "../src/contexts/catalog/infrastructure/persistence/recipe.repository";
+import { InventoryItemRepository } from "../src/contexts/inventory/infrastructure/persistence/inventory-item.repository";
 import { MenuCategory, MENU_GROUPS } from "../src/contexts/catalog/domain/menu-category.aggregate";
 import { MenuItem } from "../src/contexts/catalog/domain/menu-item.aggregate";
 import { Recipe, type RecipeVersionStatus } from "../src/contexts/catalog/domain/recipe.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 interface LegacyCategoryRow {
   id: number; name: string; display_order: number; menu_group: string; is_active: boolean;
@@ -51,11 +51,11 @@ function mapLegacyStatus(status: string): RecipeVersionStatus {
   return "DRAFT";
 }
 
-export async function importCatalogFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<CatalogImportResult> {
-  const categoryRepo = new KyselyMenuCategoryRepository(neoDb);
-  const itemRepo = new KyselyMenuItemRepository(neoDb);
-  const recipeRepo = new KyselyRecipeRepository(neoDb);
-  const inventoryRepo = new KyselyInventoryItemRepository(neoDb);
+export async function importCatalogFromLegacy(legacyPool: Pool, neoDb: Database): Promise<CatalogImportResult> {
+  const categoryRepo = new MenuCategoryRepository(neoDb);
+  const itemRepo = new MenuItemRepository(neoDb);
+  const recipeRepo = new RecipeRepository(neoDb);
+  const inventoryRepo = new InventoryItemRepository(neoDb);
 
   const categories: ImportCounts = { created: 0, updated: 0, skipped: 0 };
   const categoryIdMap = new Map<number, string>();
@@ -208,7 +208,7 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importCatalogFromLegacy(legacyPool, neoDb);
   console.log(
@@ -219,7 +219,7 @@ async function main() {
   );
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

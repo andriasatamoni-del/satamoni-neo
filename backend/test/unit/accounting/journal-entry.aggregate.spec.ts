@@ -17,7 +17,7 @@ describe("JournalEntry aggregate", () => {
     });
     expect(entry.status).toBe("POSTED");
     expect(entry.postedAt).not.toBeNull();
-    expect(entry.entryNumber).toBeNull(); // بيتحدد وقت الحفظ بس (راجع KyselyJournalEntryRepository)
+    expect(entry.entryNumber).toBeNull(); // بيتحدد وقت الحفظ بس (راجع JournalEntryRepository)
   });
 
   it("قيد يدوي (sourceType=manual) بيتسجّل DRAFT - محتاج مراجعة/post منفصل قبل ما يترحّل", () => {

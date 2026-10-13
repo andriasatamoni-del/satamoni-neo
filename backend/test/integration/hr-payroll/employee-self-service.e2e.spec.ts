@@ -2,10 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
 import { createSecondUser } from "../helpers/second-user";
+import type { Database } from "../../../src/shared/database/database.token";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { employeeAttendanceShifts, employeeLeaveRequests, employees, payrollRunEmployees, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { truncate } from "../helpers/db";
 
 describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -24,14 +29,13 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({ name: "أدمن-ذاتي-جست", email: "admin-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
@@ -51,7 +55,7 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     await userRepo.save(unlinkedUser);
     unlinkedUserToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-unlinked-self-service@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع خدمة ذاتية-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
@@ -70,13 +74,13 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM employee_attendance_shifts WHERE employee_id IN (${employeeId}, ${otherEmployeeId})`.execute(db);
-    await sql`DELETE FROM employee_leave_requests WHERE employee_id IN (${employeeId}, ${otherEmployeeId})`.execute(db);
-    await sql`TRUNCATE payroll_run_employees, payroll_runs CASCADE`.execute(db);
-    await sql`DELETE FROM employees WHERE id IN (${employeeId}, ${otherEmployeeId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email IN ('admin-self-service@jest.test','cashier-self-service@jest.test','cashier-self-service-2@jest.test','cashier-unlinked-self-service@jest.test','approver-self-service@jest.test')`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(employeeAttendanceShifts).where(inArray(employeeAttendanceShifts.employee_id, [employeeId, otherEmployeeId]));
+    await db.delete(employeeLeaveRequests).where(inArray(employeeLeaveRequests.employee_id, [employeeId, otherEmployeeId]));
+    await truncate(db, payrollRunEmployees, payrollRuns);
+    await db.delete(employees).where(inArray(employees.id, [employeeId, otherEmployeeId]));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(inArray(users.email, ["admin-self-service@jest.test", "cashier-self-service@jest.test", "cashier-self-service-2@jest.test", "cashier-unlinked-self-service@jest.test", "approver-self-service@jest.test"]));
     await app.close();
   });
 

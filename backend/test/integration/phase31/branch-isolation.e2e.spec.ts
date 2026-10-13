@@ -1,6 +1,13 @@
 import request from "supertest";
-import { sql } from "kysely";
 import { auth, bootstrap, createOrder, purge, stockOf, teardown, type World } from "./harness";
+import { and, count, eq } from "drizzle-orm";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { auditLogs } from "../../../src/shared/database/shared.tables";
+import { employees } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
+import { stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { paymentAdjustmentRequests } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
+import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
 // BL-11 - server-side branch isolation. A branch-bound user (branch A) must never read or change branch B data, no matter which
 // identifier is supplied (query / path / body / nested), and a custom permission grant must not widen the branch scope.
@@ -20,10 +27,10 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
   beforeAll(async () => {
     w = await bootstrap("iso");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
     const c = Branch.register({ name: "فرع-C-iso" });
-    await new KyselyBranchRepository(w.db).save(c);
+    await new BranchRepository(w.db).save(c);
     branchC = c.id;
 
     // ---- branch B owns: order+payment, adjustment request, expense, purchase, PO, GRN, invoice, stocktake, shift, driver, employee ----
@@ -158,14 +165,14 @@ describe("Phase 3.1 - branch isolation matrix", () => {
       expect(JSON.stringify((await get("/hr/employees", w.tokens.managerA)).body)).not.toContain("5555");
 
       // even with the HR-management permission granted, a branch-bound user can not set pay or touch other branches' staff
-      await sql`UPDATE users SET permission_grants = ${JSON.stringify(["hr.employees.manage", "hr.employees.view"])}::jsonb WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      await w.db.update(users).set({ permission_grants: ["hr.employees.manage", "hr.employees.view"] }).where(eq(users.id, w.userIds.managerA));
       expect((await patch(`/hr/employees/${own.id}`, w.tokens.managerA, { baseSalary: 99999 })).status).toBe(403);
       expect((await patch(`/hr/employees/${ids.employeeB}`, w.tokens.managerA, { phone: "01000000000" })).status).toBe(404);
       expect((await post("/hr/employees", w.tokens.managerA, { name: "x", restrictedBranchId: w.branchB })).status).toBe(403);
       expect((await get(`/hr/employees/${ids.employeeB}/history`, w.tokens.managerA)).status).toBe(404);
-      const unchanged = await sql<{ base_salary: string }>`SELECT base_salary FROM employees WHERE id = ${own.id}`.execute(w.db);
-      expect(Number(unchanged.rows[0].base_salary)).toBe(5555);
-      await sql`UPDATE users SET permission_grants = '[]'::jsonb WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      const unchanged = await w.db.select({ base_salary: employees.base_salary }).from(employees).where(eq(employees.id, own.id));
+      expect(Number(unchanged[0].base_salary)).toBe(5555);
+      await w.db.update(users).set({ permission_grants: [] }).where(eq(users.id, w.userIds.managerA));
 
       for (const path of ["/hr/payroll-runs", "/hr/adjustments"]) expect([path, (await get(path, w.tokens.managerA)).status]).toEqual([path, 403]);
       expect((await post("/hr/payroll-runs", w.tokens.managerA, { year: 2035, month: 1, employees: [] })).status).toBe(403);
@@ -176,14 +183,14 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
   describe("changing branch-B data as a branch-A user: denied AND nothing changes", () => {
     test("orders, payments, procurement, inventory, expenses, shifts", async () => {
-      const orderStatus = async () => (await sql<{ status: string }>`SELECT status FROM orders WHERE id = ${ids.orderB}`.execute(w.db)).rows[0].status;
+      const orderStatus = async () => (await w.db.select({ status: orders.status }).from(orders).where(eq(orders.id, ids.orderB)))[0].status;
       const stockB = await stockOf(w, w.branchB);
       const before = {
         order: await orderStatus(),
-        adj: (await sql<{ status: string }>`SELECT status FROM payment_adjustment_requests WHERE id = ${ids.adjB}`.execute(w.db)).rows[0].status,
-        grn: (await sql<{ status: string }>`SELECT status FROM goods_receipts WHERE id = ${ids.grnB}`.execute(w.db)).rows[0].status,
-        orders: (await sql<{ n: string }>`SELECT count(*)::text AS n FROM orders`.execute(w.db)).rows[0].n,
-        movements: (await sql<{ n: string }>`SELECT count(*)::text AS n FROM stock_movements`.execute(w.db)).rows[0].n,
+        adj: (await w.db.select({ status: paymentAdjustmentRequests.status }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, ids.adjB)))[0].status,
+        grn: (await w.db.select({ status: goodsReceipts.status }).from(goodsReceipts).where(eq(goodsReceipts.id, ids.grnB)))[0].status,
+        orders: (await w.db.select({ n: count() }).from(orders))[0].n,
+        movements: (await w.db.select({ n: count() }).from(stockMovements))[0].n,
       };
 
       denied(await createOrder(w, w.tokens.managerA, { branchId: w.branchB }));
@@ -211,15 +218,15 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
       expect(await orderStatus()).toBe(before.order);
       expect(await stockOf(w, w.branchB)).toBe(stockB);
-      expect((await sql<{ status: string }>`SELECT status FROM payment_adjustment_requests WHERE id = ${ids.adjB}`.execute(w.db)).rows[0].status).toBe(before.adj);
-      expect((await sql<{ status: string }>`SELECT status FROM goods_receipts WHERE id = ${ids.grnB}`.execute(w.db)).rows[0].status).toBe(before.grn);
-      expect((await sql<{ n: string }>`SELECT count(*)::text AS n FROM orders`.execute(w.db)).rows[0].n).toBe(before.orders);
-      expect((await sql<{ n: string }>`SELECT count(*)::text AS n FROM stock_movements`.execute(w.db)).rows[0].n).toBe(before.movements);
+      expect((await w.db.select({ status: paymentAdjustmentRequests.status }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, ids.adjB)))[0].status).toBe(before.adj);
+      expect((await w.db.select({ status: goodsReceipts.status }).from(goodsReceipts).where(eq(goodsReceipts.id, ids.grnB)))[0].status).toBe(before.grn);
+      expect((await w.db.select({ n: count() }).from(orders))[0].n).toBe(before.orders);
+      expect((await w.db.select({ n: count() }).from(stockMovements))[0].n).toBe(before.movements);
     });
 
     test("every refusal is audited as DENIED with the actor and branch", async () => {
-      const rows = await sql<{ n: string }>`SELECT count(*)::text AS n FROM audit_logs WHERE outcome = 'DENIED' AND actor_user_id = ${w.userIds.managerA}`.execute(w.db);
-      expect(Number(rows.rows[0].n)).toBeGreaterThanOrEqual(20);
+      const rows = await w.db.select({ n: count() }).from(auditLogs).where(and(eq(auditLogs.outcome, "DENIED"), eq(auditLogs.actor_user_id, w.userIds.managerA)));
+      expect(Number(rows[0].n)).toBeGreaterThanOrEqual(20);
     });
   });
 
@@ -240,7 +247,7 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
   describe("custom permissions can never widen the branch scope", () => {
     test("granting accounting.view / reports.* / hr.payroll.* to a branch-A manager still yields 403 for branch B and company-level data", async () => {
-      await sql`UPDATE users SET permission_grants = ${JSON.stringify(["accounting.view", "accounting.manage", "reports.view", "reports.branch_health", "hr.payroll.view", "hr.payroll.manage", "treasuries.view", "purchasing.view"])}::jsonb WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      await w.db.update(users).set({ permission_grants: ["accounting.view", "accounting.manage", "reports.view", "reports.branch_health", "hr.payroll.view", "hr.payroll.manage", "treasuries.view", "purchasing.view"] }).where(eq(users.id, w.userIds.managerA));
       for (const path of [
         `/accounting/reports/trial-balance?branchId=${w.branchB}`,
         `/accounting/journal-entries?branchId=${w.branchB}`,
@@ -263,16 +270,16 @@ describe("Phase 3.1 - branch isolation matrix", () => {
       const tb = await get("/accounting/reports/trial-balance", w.tokens.managerA);
       expect(tb.status).toBe(200);
       expect(tb.body.branchId).toBe(w.branchA);
-      await sql`UPDATE users SET permission_grants = '[]'::jsonb WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      await w.db.update(users).set({ permission_grants: [] }).where(eq(users.id, w.userIds.managerA));
     });
 
     test("a branch-bound user WITHOUT an assigned branch has no access to branch-owned data at all (fail closed)", async () => {
-      await sql`UPDATE users SET branch_id = NULL WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      await w.db.update(users).set({ branch_id: null }).where(eq(users.id, w.userIds.managerA));
       for (const path of ["/orders", "/expenses", "/inventory/stocktakes", "/reports/dashboard"]) {
         const res = await get(path, w.tokens.managerA);
         expect([path, res.status]).toEqual([path, 403]);
       }
-      await sql`UPDATE users SET branch_id = ${w.branchA} WHERE id = ${w.userIds.managerA}`.execute(w.db);
+      await w.db.update(users).set({ branch_id: w.branchA }).where(eq(users.id, w.userIds.managerA));
     });
   });
 

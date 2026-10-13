@@ -2,9 +2,14 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { branchStockBalances, branchStockThresholds, inventoryItems, stockMovements, transferRequestLines, transferRequests } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // REQ-1: اقتراح الطلبية - معاينة مبنية على استهلاك نفس يوم الأسبوع + خصم اللي مطلوب/في الطريق
 describe("Inventory - اقتراح الطلبية (e2e)", () => {
@@ -26,24 +31,24 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import(
-      "../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository"
+    const { UserRepository } = await import(
+      "../../../src/contexts/identity-access/infrastructure/persistence/user.repository"
     );
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import(
       "../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher"
     );
-    const { KyselyBranchRepository } = await import(
-      "../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository"
+    const { BranchRepository } = await import(
+      "../../../src/contexts/branches/infrastructure/persistence/branch.repository"
     );
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyInventoryItemRepository } = await import(
-      "../../../src/contexts/inventory/infrastructure/persistence/kysely-inventory-item.repository"
+    const { InventoryItemRepository } = await import(
+      "../../../src/contexts/inventory/infrastructure/persistence/inventory-item.repository"
     );
     const { InventoryItem } = await import("../../../src/contexts/inventory/domain/inventory-item.aggregate");
 
-    const db = app.get(KYSELY);
-    await new KyselyUserRepository(db).save(
+    const database = app.get<Database>(DATABASE);
+    await new UserRepository(app.get<Database>(DATABASE)).save(
       User.register({
         name: "أدمن-اقتراح-طلبية-جست",
         email: "admin-requisition@jest.test",
@@ -53,7 +58,7 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-requisition@jest.test", password: "12345678" })).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-اقتراح-طلبية-جست" });
     const kitchen = Branch.register({ name: "مطبخ-اقتراح-طلبية-جست" });
     await branchRepo.save(branch);
@@ -61,7 +66,7 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     branchId = branch.id;
     kitchenBranchId = kitchen.id;
 
-    const itemRepo = new KyselyInventoryItemRepository(db);
+    const itemRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const flour = InventoryItem.register({ name: "أ-دقيق-اقتراح-جست", unit: "كيلو" });
     const sugar = InventoryItem.register({ name: "ب-سكر-اقتراح-جست", unit: "كيلو" });
     const untracked = InventoryItem.register({ name: "ج-ملح-من-غير-حدود-جست", unit: "كيلو" });
@@ -74,8 +79,10 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
     await request(server()).patch("/inventory/stock-thresholds").set(auth()).send({ branchId, inventoryItemId: sugarId, reorderPoint: 2 });
 
     // رصيد حالي + تاريخ استهلاك مزروع مباشرة (نفس يوم الأسبوع بتاع targetDate، أسبوع وأسبوعين قبله)
-    await sql`INSERT INTO branch_stock_balances (branch_id, inventory_item_id, quantity) VALUES
-      (${branchId}, ${flourId}, 4), (${branchId}, ${sugarId}, 0)`.execute(db);
+    await database.insert(branchStockBalances).values([
+      { branch_id: branchId, inventory_item_id: flourId, quantity: 4 },
+      { branch_id: branchId, inventory_item_id: sugarId, quantity: 0 },
+    ]);
     const movements: [string, string, number, string][] = [
       [flourId, "CONSUMPTION", -30, "2030-01-03T10:00:00Z"],
       [flourId, "PRODUCTION_OUT", -10, "2030-01-03T11:00:00Z"],
@@ -86,8 +93,7 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
       [untrackedId, "CONSUMPTION", -50, "2030-01-03T10:00:00Z"],
     ];
     for (const [itemId, type, qty, at] of movements) {
-      await sql`INSERT INTO stock_movements (inventory_item_id, branch_id, movement_type, quantity_delta, occurred_at)
-        VALUES (${itemId}, ${branchId}, ${type}, ${qty}, ${at})`.execute(db);
+      await database.insert(stockMovements).values({ inventory_item_id: itemId, branch_id: branchId, movement_type: type, quantity_delta: qty, occurred_at: new Date(at) });
     }
 
     // طلب تحويل لسه متقدّم (pending) للسكر، وطلب اتبعت (in transit) للدقيق
@@ -110,16 +116,16 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM transfer_request_lines WHERE transfer_request_id IN (SELECT id FROM transfer_requests WHERE to_branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM transfer_requests WHERE to_branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM stock_movements WHERE branch_id IN (${branchId}, ${kitchenBranchId})`.execute(db);
-    await sql`DELETE FROM branch_stock_balances WHERE branch_id IN (${branchId}, ${kitchenBranchId})`.execute(db);
-    await sql`DELETE FROM branch_stock_thresholds WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM inventory_items WHERE id IN (${flourId}, ${sugarId}, ${untrackedId})`.execute(db);
-    await sql`DELETE FROM treasuries WHERE branch_id IN (${branchId}, ${kitchenBranchId})`.execute(db);
-    await sql`DELETE FROM branches WHERE id IN (${branchId}, ${kitchenBranchId})`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-requisition@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(transferRequestLines).where(inArray(transferRequestLines.transfer_request_id, db.select({ id: transferRequests.id }).from(transferRequests).where(eq(transferRequests.to_branch_id, branchId))));
+    await db.delete(transferRequests).where(eq(transferRequests.to_branch_id, branchId));
+    await db.delete(stockMovements).where(inArray(stockMovements.branch_id, [branchId, kitchenBranchId]));
+    await db.delete(branchStockBalances).where(inArray(branchStockBalances.branch_id, [branchId, kitchenBranchId]));
+    await db.delete(branchStockThresholds).where(eq(branchStockThresholds.branch_id, branchId));
+    await db.delete(inventoryItems).where(inArray(inventoryItems.id, [flourId, sugarId, untrackedId]));
+    await db.delete(treasuries).where(inArray(treasuries.branch_id, [branchId, kitchenBranchId]));
+    await db.delete(branches).where(inArray(branches.id, [branchId, kitchenBranchId]));
+    await db.delete(users).where(eq(users.email, "admin-requisition@jest.test"));
     await app.close();
   });
 

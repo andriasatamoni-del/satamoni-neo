@@ -9,13 +9,13 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { pgSslOption } from "../src/shared/database/pg-ssl";
-import { Kysely, PostgresDialect } from "kysely";
-import type { Database } from "../src/shared/database/database.types";
-import { KyselyOrderRepository } from "../src/contexts/orders/infrastructure/persistence/kysely-order.repository";
-import { KyselyBranchRepository } from "../src/contexts/branches/infrastructure/persistence/kysely-branch.repository";
-import { KyselyMenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository";
-import { KyselyUserRepository } from "../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository";
+import type { Database } from "../src/shared/database/database.token";
+import { OrderRepository } from "../src/contexts/orders/infrastructure/persistence/order.repository";
+import { BranchRepository } from "../src/contexts/branches/infrastructure/persistence/branch.repository";
+import { MenuItemRepository } from "../src/contexts/catalog/infrastructure/persistence/menu-item.repository";
+import { UserRepository } from "../src/contexts/identity-access/infrastructure/persistence/user.repository";
 import { Order, ORDER_TYPES, ORDER_STATUSES, KITCHEN_STATUSES, type OrderSource } from "../src/contexts/orders/domain/order.aggregate";
+import { createScriptDb, closeScriptDb } from "../src/shared/database/script-db";
 
 // orders.source القديم: pos/talabat/website/callcenter (+whatsapp). الكول سنتر موظف بيسجّل الطلب بنفسه
 // من شاشة الكاشير - في neo ده pos عادي
@@ -36,11 +36,11 @@ interface LegacyOrderItemRow {
 
 export interface ImportCounts { created: number; updated: number; skipped: number; }
 
-export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Kysely<Database>): Promise<ImportCounts> {
-  const orderRepo = new KyselyOrderRepository(neoDb);
-  const branchRepo = new KyselyBranchRepository(neoDb);
-  const menuItemRepo = new KyselyMenuItemRepository(neoDb);
-  const userRepo = new KyselyUserRepository(neoDb);
+export async function importOrdersFromLegacy(legacyPool: Pool, neoDb: Database): Promise<ImportCounts> {
+  const orderRepo = new OrderRepository(neoDb);
+  const branchRepo = new BranchRepository(neoDb);
+  const menuItemRepo = new MenuItemRepository(neoDb);
+  const userRepo = new UserRepository(neoDb);
 
   const branchIdCache = new Map<number, string | null>();
   async function resolveBranchId(legacyId: number | null): Promise<string | null> {
@@ -171,13 +171,13 @@ async function main() {
   if (!neoUrl) throw new Error("لازم تحدد DATABASE_URL");
 
   const legacyPool = new Pool({ connectionString: legacyUrl, ssl: pgSslOption() });
-  const neoDb = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: neoUrl, ssl: pgSslOption() }) }) });
+  const neoDb = createScriptDb(neoUrl);
 
   const result = await importOrdersFromLegacy(legacyPool, neoDb);
   console.log(`✅ الاستيراد خلص: ${result.created} جديد، ${result.updated} موجود بالفعل، ${result.skipped} اتخطّى`);
 
   await legacyPool.end();
-  await neoDb.destroy();
+  await closeScriptDb(neoDb);
 }
 
 if (require.main === module) {

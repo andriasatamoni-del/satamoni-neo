@@ -1,6 +1,7 @@
 import type { ArgumentsHost } from "@nestjs/common";
 import type { Request } from "express";
 import type { AuditLogService } from "./audit-log.service";
+import { dbErrorMessage } from "../database/transaction-context";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
 
 // Static hook so exception filters (which are instantiated per controller, outside the AuditModule) can record DENIED rows.
@@ -27,6 +28,6 @@ export async function recordDenied(host: ArgumentsHost, status: number, reason: 
     });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error("failed to record denied-access audit row:", err instanceof Error ? err.message : err);
+    console.error("failed to record denied-access audit row:", dbErrorMessage(err));
   }
 }

@@ -2,9 +2,17 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { complaints, customerFollowups } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
+import { deliveryAssignments, drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 // e2e لطابور متابعة العملاء (followup-queue) - بيشتغل على أوردرات دليفري حقيقية اتسلّمت فعليًا
 // (delivery_assignments.status='DELIVERED') مش بس المستوردة من الريبو القديم (راجع migration 030 -
@@ -23,16 +31,15 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طابور-متابعة-جست", email: "admin-followup-queue@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -42,12 +49,12 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
       await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-followup-queue@jest.test", password: "12345678" })
     ).body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع طابور-متابعة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "ساندوتش-طابور-متابعة-جست" });
     const variant = item.addVariant({ label: "عادي", price: 60 });
     await menuItemRepo.save(item);
@@ -81,18 +88,18 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM complaints WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM customer_followups WHERE order_id = ${orderId}`.execute(db);
-    await sql`DELETE FROM delivery_assignments WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM drivers WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM print_jobs`.execute(db);
-    await sql`DELETE FROM order_items`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants`.execute(db);
-    await sql`DELETE FROM menu_items WHERE name = 'ساندوتش-طابور-متابعة-جست'`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-followup-queue@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(complaints).where(eq(complaints.branch_id, branchId));
+    await db.delete(customerFollowups).where(eq(customerFollowups.order_id, orderId));
+    await db.delete(deliveryAssignments).where(eq(deliveryAssignments.branch_id, branchId));
+    await db.delete(drivers).where(eq(drivers.branch_id, branchId));
+    await db.delete(printJobs);
+    await db.delete(orderItems);
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(menuItemVariants);
+    await db.delete(menuItems).where(eq(menuItems.name, "ساندوتش-طابور-متابعة-جست"));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-followup-queue@jest.test"));
     await app.close();
   });
 

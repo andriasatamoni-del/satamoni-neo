@@ -2,9 +2,15 @@ import "reflect-metadata";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { sql } from "kysely";
 import { AppModule } from "../../../src/app.module";
-import { KYSELY } from "../../../src/shared/database/database.module";
+import { DATABASE } from "../../../src/shared/database/database.module";
+import { eq, inArray } from "drizzle-orm";
+import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
+import { menuCategories, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { kitchenStations, printJobs, printers } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import type { Database } from "../../../src/shared/database/database.token";
 
 describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضير + توجيه + طابور طباعة", () => {
   let app: INestApplication;
@@ -19,18 +25,17 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    const { KyselyUserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/kysely-user.repository");
+    const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
     const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
-    const { KyselyBranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/kysely-branch.repository");
+    const { BranchRepository } = await import("../../../src/contexts/branches/infrastructure/persistence/branch.repository");
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
-    const { KyselyMenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-category.repository");
+    const { MenuCategoryRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-category.repository");
     const { MenuCategory } = await import("../../../src/contexts/catalog/domain/menu-category.aggregate");
-    const { KyselyMenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/kysely-menu-item.repository");
+    const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
-    const db = app.get(KYSELY);
-    const userRepo = new KyselyUserRepository(db);
+    const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
       name: "أدمن-طباعة", email: "admin-printing@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
@@ -39,17 +44,17 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-printing@jest.test", password: "12345678" });
     adminToken = loginRes.body.token;
 
-    const branchRepo = new KyselyBranchRepository(db);
+    const branchRepo = new BranchRepository(app.get<Database>(DATABASE));
     const branch = Branch.register({ name: "فرع-طباعة-جست" });
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const categoryRepo = new KyselyMenuCategoryRepository(db);
+    const categoryRepo = new MenuCategoryRepository(app.get<Database>(DATABASE));
     const category = MenuCategory.register({ name: "قسم-طباعة-جست" });
     await categoryRepo.save(category);
     categoryId = category.id;
 
-    const menuItemRepo = new KyselyMenuItemRepository(db);
+    const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-طباعة-جست", categoryId });
     const variant = item.addVariant({ label: "عادي", price: 90 });
     await menuItemRepo.save(item);
@@ -57,17 +62,17 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
   });
 
   afterAll(async () => {
-    const db = app.get(KYSELY);
-    await sql`DELETE FROM print_jobs WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ${branchId})`.execute(db);
-    await sql`DELETE FROM orders WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM kitchen_stations WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM printers WHERE branch_id = ${branchId}`.execute(db);
-    await sql`DELETE FROM menu_item_variants WHERE id = ${variantId}`.execute(db);
-    await sql`DELETE FROM menu_items WHERE id IN (SELECT id FROM menu_items WHERE category_id = ${categoryId})`.execute(db);
-    await sql`DELETE FROM menu_categories WHERE id = ${categoryId}`.execute(db);
-    await sql`DELETE FROM branches WHERE id = ${branchId}`.execute(db);
-    await sql`DELETE FROM users WHERE email = 'admin-printing@jest.test'`.execute(db);
+    const db = app.get<Database>(DATABASE);
+    await db.delete(printJobs).where(eq(printJobs.branch_id, branchId));
+    await db.delete(orderItems).where(inArray(orderItems.order_id, db.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
+    await db.delete(orders).where(eq(orders.branch_id, branchId));
+    await db.delete(kitchenStations).where(eq(kitchenStations.branch_id, branchId));
+    await db.delete(printers).where(eq(printers.branch_id, branchId));
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, variantId));
+    await db.delete(menuItems).where(inArray(menuItems.id, db.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.category_id, categoryId))));
+    await db.delete(menuCategories).where(eq(menuCategories.id, categoryId));
+    await db.delete(branches).where(eq(branches.id, branchId));
+    await db.delete(users).where(eq(users.email, "admin-printing@jest.test"));
     await app.close();
   });
 

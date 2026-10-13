@@ -4,9 +4,9 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { CUSTOMER_FOLLOWUP_REPOSITORY } from "./domain/ports/customer-followup-repository.port";
 import { COMPLAINT_REPOSITORY } from "./domain/ports/complaint-repository.port";
 import { FOLLOWUP_QUEUE_READER } from "./domain/ports/followup-queue-reader.port";
-import { KyselyCustomerFollowupRepository } from "./infrastructure/persistence/kysely-customer-followup.repository";
-import { KyselyComplaintRepository } from "./infrastructure/persistence/kysely-complaint.repository";
-import { KyselyFollowupQueueReader } from "./infrastructure/persistence/kysely-followup-queue-reader";
+import { CustomerFollowupRepository } from "./infrastructure/persistence/customer-followup.repository";
+import { ComplaintRepository } from "./infrastructure/persistence/complaint.repository";
+import { FollowupQueueReader } from "./infrastructure/persistence/followup-queue-reader";
 import { RecordFollowupHandler } from "./application/commands/record-followup.handler";
 import { RegisterComplaintHandler } from "./application/commands/register-complaint.handler";
 import { UpdateComplaintStatusHandler } from "./application/commands/update-complaint-status.handler";
@@ -19,9 +19,9 @@ import { CrmController } from "./api/crm.controller";
   imports: [IdentityAccessModule],
   controllers: [CrmController],
   providers: [
-    { provide: CUSTOMER_FOLLOWUP_REPOSITORY, useClass: KyselyCustomerFollowupRepository },
-    { provide: COMPLAINT_REPOSITORY, useClass: KyselyComplaintRepository },
-    { provide: FOLLOWUP_QUEUE_READER, useClass: KyselyFollowupQueueReader },
+    { provide: CUSTOMER_FOLLOWUP_REPOSITORY, useClass: CustomerFollowupRepository },
+    { provide: COMPLAINT_REPOSITORY, useClass: ComplaintRepository },
+    { provide: FOLLOWUP_QUEUE_READER, useClass: FollowupQueueReader },
     RecordFollowupHandler,
     RegisterComplaintHandler,
     UpdateComplaintStatusHandler,

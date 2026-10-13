@@ -12,14 +12,14 @@ import { SUPPLIER_PAYMENT_REPOSITORY } from "./domain/ports/supplier-payment-rep
 import { SUPPLIER_BALANCE_READER } from "./domain/ports/supplier-balance-reader.port";
 import { PURCHASE_REQUEST_REPOSITORY } from "./domain/ports/purchase-request-repository.port";
 import { PURCHASE_RETURN_REPOSITORY } from "./domain/ports/purchase-return-repository.port";
-import { KyselySupplierRepository } from "./infrastructure/persistence/kysely-supplier.repository";
-import { KyselyPurchaseOrderRepository } from "./infrastructure/persistence/kysely-purchase-order.repository";
-import { KyselyGoodsReceiptRepository } from "./infrastructure/persistence/kysely-goods-receipt.repository";
-import { KyselySupplierInvoiceRepository } from "./infrastructure/persistence/kysely-supplier-invoice.repository";
-import { KyselySupplierPaymentRepository } from "./infrastructure/persistence/kysely-supplier-payment.repository";
-import { KyselySupplierBalanceReader } from "./infrastructure/persistence/kysely-supplier-balance-reader";
-import { KyselyPurchaseRequestRepository } from "./infrastructure/persistence/kysely-purchase-request.repository";
-import { KyselyPurchaseReturnRepository } from "./infrastructure/persistence/kysely-purchase-return.repository";
+import { SupplierRepository } from "./infrastructure/persistence/supplier.repository";
+import { PurchaseOrderRepository } from "./infrastructure/persistence/purchase-order.repository";
+import { GoodsReceiptRepository } from "./infrastructure/persistence/goods-receipt.repository";
+import { SupplierInvoiceRepository } from "./infrastructure/persistence/supplier-invoice.repository";
+import { SupplierPaymentRepository } from "./infrastructure/persistence/supplier-payment.repository";
+import { SupplierBalanceReader } from "./infrastructure/persistence/supplier-balance-reader";
+import { PurchaseRequestRepository } from "./infrastructure/persistence/purchase-request.repository";
+import { PurchaseReturnRepository } from "./infrastructure/persistence/purchase-return.repository";
 import { RegisterSupplierHandler } from "./application/commands/register-supplier.handler";
 import { RegisterPurchaseOrderHandler } from "./application/commands/register-purchase-order.handler";
 import { SendPurchaseOrderHandler } from "./application/commands/send-purchase-order.handler";
@@ -58,14 +58,14 @@ import { ProcurementController } from "./api/procurement.controller";
   imports: [IdentityAccessModule, InventoryModule, AccountingModule, TreasuryModule],
   controllers: [ProcurementController],
   providers: [
-    { provide: SUPPLIER_REPOSITORY, useClass: KyselySupplierRepository },
-    { provide: PURCHASE_ORDER_REPOSITORY, useClass: KyselyPurchaseOrderRepository },
-    { provide: GOODS_RECEIPT_REPOSITORY, useClass: KyselyGoodsReceiptRepository },
-    { provide: SUPPLIER_INVOICE_REPOSITORY, useClass: KyselySupplierInvoiceRepository },
-    { provide: SUPPLIER_PAYMENT_REPOSITORY, useClass: KyselySupplierPaymentRepository },
-    { provide: SUPPLIER_BALANCE_READER, useClass: KyselySupplierBalanceReader },
-    { provide: PURCHASE_REQUEST_REPOSITORY, useClass: KyselyPurchaseRequestRepository },
-    { provide: PURCHASE_RETURN_REPOSITORY, useClass: KyselyPurchaseReturnRepository },
+    { provide: SUPPLIER_REPOSITORY, useClass: SupplierRepository },
+    { provide: PURCHASE_ORDER_REPOSITORY, useClass: PurchaseOrderRepository },
+    { provide: GOODS_RECEIPT_REPOSITORY, useClass: GoodsReceiptRepository },
+    { provide: SUPPLIER_INVOICE_REPOSITORY, useClass: SupplierInvoiceRepository },
+    { provide: SUPPLIER_PAYMENT_REPOSITORY, useClass: SupplierPaymentRepository },
+    { provide: SUPPLIER_BALANCE_READER, useClass: SupplierBalanceReader },
+    { provide: PURCHASE_REQUEST_REPOSITORY, useClass: PurchaseRequestRepository },
+    { provide: PURCHASE_RETURN_REPOSITORY, useClass: PurchaseReturnRepository },
     PurchaseDuplicateCheckService,
     RegisterSupplierHandler,
     RegisterPurchaseOrderHandler,
