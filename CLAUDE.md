@@ -21,6 +21,8 @@ Local database: `docker-compose.yml` runs `postgres:17` on `127.0.0.1:5432` (use
 
 Also `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `pnpm test:unit`.
 
+`pnpm seed:dev` (`backend/scripts/dev/seed-dev.ts`) seeds a demo branch and one login per role with simple passwords (`admin@satamoni.dev` / `admin123`, `cashier@satamoni.dev` / `cashier123`, …). It is idempotent and refuses any non-local database, `NODE_ENV=production` or `PGSSL=true`. Never wire it into a workflow or deploy step; `workflow-security.spec.ts` enforces this.
+
 ### Backend
 ```bash
 pnpm start:dev                    # watch mode, port 4100 (PORT); needs backend/.env (copy .env.example)
