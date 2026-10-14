@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ROLE_LABELS } from "../auth/roles";
 import {
   BoxIcon,
   BookIcon,
@@ -59,16 +60,6 @@ const NAV_ITEMS = [
   { to: "/loyalty", label: "نقاط الولاء", icon: CoinsIcon },
   { to: "/pos-settings", label: "إعدادات النظام", icon: GearIcon },
 ];
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: "أدمن",
-  branch_manager: "مدير فرع",
-  accountant: "محاسب",
-  cashier: "كاشير",
-  callcenter: "كول سنتر",
-  driver: "سائق",
-  employee: "موظف",
-};
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   return (

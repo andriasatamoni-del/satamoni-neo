@@ -18,6 +18,7 @@ import { DATABASE, type Database } from "../database/database.token";
 import { pgErrorCode, tableByName } from "../database/transaction-context";
 import { AuditLogService } from "../audit/audit-log.service";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
+import { ROLE, type Role } from "../../contexts/identity-access/domain/role";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Phase 3.1 (BL-11): server-side branch isolation.
@@ -40,13 +41,13 @@ export const BRANCH_RESOURCE_KEY = "branch_resource";
 export const BRANCH_LIST_FILTER_KEY = "branch_list_filter";
 export const COMPANY_WIDE_ONLY_KEY = "company_wide_only";
 
-export const COMPANY_WIDE_ROLES: readonly string[] = ["admin", "accountant"];
+export const COMPANY_WIDE_ROLES: readonly Role[] = [ROLE.ADMIN, ROLE.ACCOUNTANT];
 
 export type BranchScope = { kind: "all" } | { kind: "branch"; branchId: string } | { kind: "none" };
 
 export function branchScopeOf(user: Pick<AuthenticatedUser, "role" | "branchId">): BranchScope {
   if (COMPANY_WIDE_ROLES.includes(user.role)) return { kind: "all" };
-  if (user.role === "callcenter" && !user.branchId) return { kind: "all" };
+  if (user.role === ROLE.CALLCENTER && !user.branchId) return { kind: "all" };
   if (user.branchId) return { kind: "branch", branchId: user.branchId };
   return { kind: "none" };
 }
