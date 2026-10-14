@@ -3,6 +3,7 @@
 // Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, jsonb, timestamp, unique, check, uuid, boolean, integer, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { ROLES } from "../../domain/role";
 
 export const users = pgTable("users", {
   id: uuid().defaultRandom().primaryKey().notNull(),
@@ -10,7 +11,7 @@ export const users = pgTable("users", {
   name: text().notNull(),
   email: text().notNull(),
   password_hash: text().notNull(),
-  role: text().notNull(),
+  role: text({ enum: ROLES }).notNull(),
   permission_grants: jsonb().default([]).notNull().$type<string[]>(),
   permission_revokes: jsonb().default([]).notNull().$type<string[]>(),
   pin_hash: text(),
@@ -20,5 +21,6 @@ export const users = pgTable("users", {
   updated_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   unique("users_email_key").on(table.email),
-  check("users_role_check", sql`role = ANY (ARRAY['admin'::text, 'branch_manager'::text, 'accountant'::text, 'cashier'::text, 'callcenter'::text, 'driver'::text, 'employee'::text])`),
+  // Built from ROLES so the list lives in one place; renders to the same SQL as the baseline constraint.
+  check("users_role_check", sql.raw(`role = ANY (ARRAY[${ROLES.map((r) => `'${r}'::text`).join(", ")}])`)),
 ]);

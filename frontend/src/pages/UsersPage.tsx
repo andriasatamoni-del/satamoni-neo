@@ -7,21 +7,16 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ROLES, ROLE_LABELS, type Role } from "../shared/auth/roles";
 
 interface Branch { id: string; name: string; }
 interface AppUser {
-  id: string; name: string; email: string; role: string; branchId: string | null; isActive: boolean;
+  id: string; name: string; email: string; role: Role; branchId: string | null; isActive: boolean;
   permissionGrants: string[]; permissionRevokes: string[];
 }
 interface PermissionDef { key: string; label: string; }
 interface PermissionGroup { group: string; groupLabel: string; permissions: PermissionDef[]; }
 interface PermissionsCatalog { catalog: PermissionGroup[]; rolePermissions: Record<string, string[]>; }
-
-const ROLES = ["admin", "branch_manager", "accountant", "cashier", "callcenter", "driver", "employee"] as const;
-const ROLE_LABELS: Record<string, string> = {
-  admin: "أدمن", branch_manager: "مدير فرع", accountant: "محاسب", cashier: "كاشير",
-  callcenter: "كول سنتر", driver: "سائق", employee: "موظف",
-};
 
 function effectivePermissions(role: string, catalog: PermissionsCatalog, grants: string[], revokes: string[]): Set<string> {
   const defaults = new Set(catalog.rolePermissions[role] ?? []);

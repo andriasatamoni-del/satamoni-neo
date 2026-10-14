@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiRequest, getToken, setToken } from "../api/client";
+import type { Role } from "./roles";
 
 export interface CurrentUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: Role;
   branchId: string | null;
   isActive: boolean;
   permissionGrants: string[];

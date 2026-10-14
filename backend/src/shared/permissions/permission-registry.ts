@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { ROLE, type Role } from "../../contexts/identity-access/domain/role";
 
 export interface PermissionDefinition {
   key: string;
@@ -19,7 +20,7 @@ export interface PermissionGroup {
 @Injectable()
 export class PermissionRegistry {
   private readonly groups = new Map<string, PermissionGroup>();
-  private readonly roleDefaults = new Map<string, Set<string>>();
+  private readonly roleDefaults = new Map<Role, Set<string>>();
   private readonly allKeys = new Set<string>();
 
   registerGroup(group: PermissionGroup): void {
@@ -30,7 +31,7 @@ export class PermissionRegistry {
     for (const p of group.permissions) this.allKeys.add(p.key);
   }
 
-  setRoleDefaults(role: string, keys: string[]): void {
+  setRoleDefaults(role: Role, keys: string[]): void {
     const existing = this.roleDefaults.get(role) || new Set<string>();
     for (const key of keys) existing.add(key);
     this.roleDefaults.set(role, existing);
@@ -40,7 +41,7 @@ export class PermissionRegistry {
     return this.allKeys.has(key);
   }
 
-  getRoleDefaults(role: string): Set<string> {
+  getRoleDefaults(role: Role): Set<string> {
     return this.roleDefaults.get(role) || new Set<string>();
   }
 
@@ -56,13 +57,13 @@ export class PermissionRegistry {
   // القديم، بس هنا بيتحسب ديناميكيًا من كل الصلاحيات المسجّلة بدل ما يبقى رمز "*" خاص لازم كل حتة
   // في الكود تتعامل معاه بشكل مختلف
   hasPermission(
-    role: string,
+    role: Role,
     permission: string,
     overrides?: { grants?: string[]; revokes?: string[] }
   ): boolean {
     if (overrides?.revokes?.includes(permission)) return false;
     if (overrides?.grants?.includes(permission)) return true;
-    if (role === "admin") return this.allKeys.has(permission);
+    if (role === ROLE.ADMIN) return this.allKeys.has(permission);
     return this.getRoleDefaults(role).has(permission);
   }
 }

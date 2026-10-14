@@ -1,5 +1,5 @@
 import { IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
-import { ROLES } from "../../domain/role";
+import { ROLES, type Role } from "../../domain/role";
 
 export class RegisterUserDto {
   @IsString()
@@ -14,7 +14,7 @@ export class RegisterUserDto {
   password!: string;
 
   @IsIn(ROLES, { message: "الدور ده مش معروف" })
-  role!: string;
+  role!: Role;
 
   @IsOptional()
   @IsUUID()
