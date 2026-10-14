@@ -25,6 +25,7 @@ interface ShiftPreview {
   cashExpensesTotal: number;
   cashPurchasesTotal: number;
 }
+interface Branch { id: string; name: string; }
 interface CashDrawerEntry {
   id: string;
   entryType: "EXPENSE" | "PURCHASE";
@@ -44,6 +45,7 @@ export function ShiftBanner() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [openingCash, setOpeningCash] = useState("");
+  const [openingBranchId, setOpeningBranchId] = useState("");
   const [actualCash, setActualCash] = useState("");
   const [showClose, setShowClose] = useState(false);
   const [showCashEntry, setShowCashEntry] = useState(false);
@@ -57,6 +59,14 @@ export function ShiftBanner() {
     queryFn: () => apiRequest<Shift | null>("/shifts/current"),
   });
   const shift = currentShiftQuery.data;
+  // Users without a fixed branch (admins/owners) must pick the branch the shift is opened in.
+  const needsBranchPick = !user?.branchId;
+
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiRequest<Branch[]>("/branches"),
+    enabled: !shift && needsBranchPick && !currentShiftQuery.isLoading,
+  });
 
   const previewQuery = useQuery({
     queryKey: ["shifts", shift?.id, "preview"],
@@ -73,10 +83,11 @@ export function ShiftBanner() {
 
   const openShift = useMutation({
     mutationFn: () =>
-      apiRequest("/shifts/open", { method: "POST", body: { openingCash: Number(openingCash), branchId: user?.branchId ?? undefined } }),
+      apiRequest("/shifts/open", { method: "POST", body: { openingCash: Number(openingCash), branchId: user?.branchId ?? (openingBranchId || undefined) } }),
     onSuccess: () => {
       setError(null);
       setOpeningCash("");
+      setOpeningBranchId("");
       queryClient.invalidateQueries({ queryKey: ["shifts", "current"] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
@@ -117,11 +128,24 @@ export function ShiftBanner() {
         <CardBody className="flex flex-wrap items-end gap-3">
           <div className="flex-1">
             <p className="mb-2 text-sm font-bold text-amber-900">لازم تفتح شيفت قبل ما تسجّل أي طلب</p>
-            <Field label="رصيد الدرج الافتتاحي">
-              <Input type="number" min="0" value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} className="max-w-[160px]" />
-            </Field>
+            <div className="flex flex-wrap items-end gap-3">
+              {needsBranchPick && (
+                <Field label="الفرع">
+                  <Select value={openingBranchId} onChange={(e) => setOpeningBranchId(e.target.value)} className="max-w-[220px]">
+                    <option value="">اختار الفرع</option>
+                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </Field>
+              )}
+              <Field label="رصيد الدرج الافتتاحي">
+                <Input type="number" min="0" value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} className="max-w-[160px]" />
+              </Field>
+            </div>
           </div>
-          <Button onClick={() => openShift.mutate()} disabled={!openingCash || openShift.isPending}>
+          <Button
+            onClick={() => openShift.mutate()}
+            disabled={!openingCash || (needsBranchPick && !openingBranchId) || openShift.isPending}
+          >
             فتح شيفت
           </Button>
           {error && <p className="w-full text-sm font-medium text-red-700">{error}</p>}
