@@ -11,6 +11,7 @@
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait postgres && pnpm --filter satamoni-neo-backend migrate",
+    "seed:dev": "pnpm --filter satamoni-neo-backend seed:dev",
     "dev:backend": "pnpm --filter satamoni-neo-backend start:dev",
     "dev:frontend": "pnpm --filter satamoni-neo-frontend dev",
     "build": "pnpm -r build",

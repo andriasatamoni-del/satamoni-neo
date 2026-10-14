@@ -164,10 +164,46 @@ describe("committed credentials and privileged test-account paths (BL-14)", () =
 
   test("no script creates users with a literal password", () => {
     const dir = path.join(backendDir, "scripts");
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
+    const files = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((x) => x.endsWith(".ts"));
+    for (const f of files) {
       const txt = fs.readFileSync(path.join(dir, f), "utf8");
       expect({ f, literal: /password(Hash)?\s*[:=]\s*["'`][^"'`]{4,}["'`]/i.test(txt) }).toEqual({ f, literal: false });
     }
+  });
+});
+
+// The local dev seed is the one deliberate exception to "no committed credentials": it holds simple, public demo
+// passwords. That is acceptable only because it can never reach a real database. These tests keep it that way.
+describe("local dev seed stays local (BL-14 exception)", () => {
+  const seedPath = path.join(backendDir, "scripts/dev/seed-dev.ts");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { assertLocalDevDatabase } = require("../../../scripts/dev/seed-dev");
+
+  test("main() asserts a local database before it opens any connection", () => {
+    const main = fs.readFileSync(seedPath, "utf8").split("async function main()")[1] ?? "";
+    expect(main.indexOf("assertLocalDevDatabase(")).toBeGreaterThan(-1);
+    expect(main.indexOf("assertLocalDevDatabase(")).toBeLessThan(main.indexOf("createScriptDb("));
+  });
+
+  test("no workflow, deployment file or Render config references the dev seed", () => {
+    const files = [
+      ...fs.readdirSync(workflowsDir).map((f) => path.join(workflowsDir, f)),
+      path.join(repoRoot, "render.yaml"),
+      path.join(repoRoot, "DEPLOYMENT.md"),
+    ].filter((f) => fs.existsSync(f));
+    for (const f of files) {
+      expect({ f, hit: /seed-dev|seed:dev/.test(fs.readFileSync(f, "utf8")) }).toEqual({ f, hit: false });
+    }
+  });
+
+  test("the guard accepts only a local database outside production", () => {
+    expect(() => assertLocalDevDatabase("postgresql://u:p@localhost:5432/satamoni_neo", {})).not.toThrow();
+    expect(() => assertLocalDevDatabase("postgresql://u:p@127.0.0.1:5432/satamoni_neo", {})).not.toThrow();
+    expect(() => assertLocalDevDatabase("postgresql://u:p@db.render.com:5432/satamoni_neo", {})).toThrow(/not local/);
+    expect(() => assertLocalDevDatabase("postgresql://u:p@localhost:5432/satamoni_neo", { NODE_ENV: "production" })).toThrow(/production/);
+    expect(() => assertLocalDevDatabase("postgresql://u:p@localhost:5432/satamoni_neo", { PGSSL: "true" })).toThrow(/PGSSL/);
+    expect(() => assertLocalDevDatabase(undefined, {})).toThrow(/required/);
+    expect(() => assertLocalDevDatabase("not a url", {})).toThrow(/valid URL/);
   });
 });
 
