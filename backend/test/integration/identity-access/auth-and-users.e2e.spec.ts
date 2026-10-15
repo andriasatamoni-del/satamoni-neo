@@ -26,7 +26,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
 
   test("POST /users بدون توكن -> 401", async () => {
     const res = await request(app.getHttpServer()).post("/users").send({
-      name: "أدمن", email: "admin@jest.test", password: "12345678", role: "admin",
+      name: "أدمن", email: "admin@jest.test", password: "12345678", roles: ["admin"],
     });
     expect(res.status).toBe(401);
   });
@@ -53,7 +53,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
         name: "أدمن-جست",
         email: "admin-e2e@jest.test",
         passwordHash: await hasher.hash("12345678"),
-        role: "admin",
+        roles: ["admin"],
       });
       await repo.save(admin);
 
@@ -78,16 +78,17 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
         .set("Authorization", `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
       expect(res.body.email).toBe("admin-e2e@jest.test");
-      expect(res.body.role).toBe("admin");
+      expect(res.body.roles).toEqual(["admin"]);
+      expect(res.body.permissions).toContain("identity.roles.manage");
     });
 
     test("POST /users بتوكن أدمن -> بيعمل كاشير جديد", async () => {
       const res = await request(app.getHttpServer())
         .post("/users")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ name: "كاشير-جست", email: "cashier-e2e@jest.test", password: "12345678", role: "cashier" });
+        .send({ name: "كاشير-جست", email: "cashier-e2e@jest.test", password: "12345678", roles: ["cashier"] });
       expect(res.status).toBe(201);
-      expect(res.body.role).toBe("cashier");
+      expect(res.body.roles).toEqual(["cashier"]);
       cashierId = res.body.id;
     });
 
@@ -95,7 +96,15 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       const res = await request(app.getHttpServer())
         .post("/users")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ name: "تاني", email: "cashier-e2e@jest.test", password: "12345678", role: "cashier" });
+        .send({ name: "تاني", email: "cashier-e2e@jest.test", password: "12345678", roles: ["cashier"] });
+      expect(res.status).toBe(400);
+    });
+
+    test("POST /users من غير ولا دور -> 400 (validation)", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/users")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ name: "تاني", email: "no-role@jest.test", password: "12345678", roles: [] });
       expect(res.status).toBe(400);
     });
 
@@ -103,7 +112,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       const res = await request(app.getHttpServer())
         .post("/users")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ name: "تاني", email: "ghost-role@jest.test", password: "12345678", role: "ghost" });
+        .send({ name: "تاني", email: "ghost-role@jest.test", password: "12345678", roles: ["ghost"] });
       expect(res.status).toBe(400);
     });
 
@@ -112,7 +121,9 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
         .post("/auth/login")
         .send({ email: "cashier-e2e@jest.test", password: "12345678" });
       expect(res.status).toBe(201);
-      expect(res.body.user.role).toBe("cashier");
+      expect(res.body.user.roles).toEqual(["cashier"]);
+      expect(res.body.user.permissions).toContain("orders.create");
+      expect(res.body.user.permissions).not.toContain("identity.users.view");
     });
 
     test("الكاشير مش يقدر يوصل لـ GET /users (معندوش identity.users.view/manage) -> 403", async () => {
@@ -127,16 +138,17 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       expect(res.status).toBe(403);
     });
 
-    test("PATCH /users/:id بتوكن أدمن - يديله صلاحية إضافية مش من دور الكاشير الأساسي", async () => {
+    test("PATCH /users/:id بتوكن أدمن - يديله دور تاني جنب الكاشير (مدير فرع عنده identity.users.view)", async () => {
       const res = await request(app.getHttpServer())
         .patch(`/users/${cashierId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ permissions: ["identity.users.view"] });
+        .send({ roles: ["cashier", "branch_manager"] });
       expect(res.status).toBe(200);
-      expect(res.body.permissionGrants).toContain("identity.users.view");
+      expect(res.body.roles).toEqual(["branch_manager", "cashier"]);
+      expect(res.body).not.toHaveProperty("permissionGrants");
     });
 
-    test("بعد منحه identity.users.view، الكاشير بقى يقدر يشوف GET /users", async () => {
+    test("بعد ما بقى ليه دور مدير فرع، يقدر يشوف GET /users (صلاحياته = اتحاد صلاحيات أدواره)", async () => {
       const loginRes = await request(app.getHttpServer())
         .post("/auth/login")
         .send({ email: "cashier-e2e@jest.test", password: "12345678" });
@@ -147,6 +159,19 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       expect(Array.isArray(res.body)).toBe(true);
     });
 
+    test("PATCH /users/:id بأدوار فاضية -> 400، وبعدها الأدوار بترجع كاشير بس", async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/users/${cashierId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ roles: [] });
+      expect(res.status).toBe(400);
+      const back = await request(app.getHttpServer())
+        .patch(`/users/${cashierId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ roles: ["cashier"] });
+      expect(back.body.roles).toEqual(["cashier"]);
+    });
+
     test("GET /users/permissions-catalog بتوكن أدمن بيرجّع الكتالوج ودور الكاشير الافتراضي", async () => {
       const res = await request(app.getHttpServer())
         .get("/users/permissions-catalog")
@@ -155,6 +180,71 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
       expect(res.body.catalog.length).toBeGreaterThan(0);
       expect(res.body.rolePermissions.cashier).not.toContain("identity.users.manage");
       expect(res.body.rolePermissions.admin.length).toBeGreaterThan(0);
+    });
+
+    describe("PUT /roles/:role/permissions - صلاحيات كل دور محفوظة في القاعدة", () => {
+      async function cashierLogin() {
+        return request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-e2e@jest.test", password: "12345678" });
+      }
+      async function catalog() {
+        return (await request(app.getHttpServer()).get("/users/permissions-catalog").set("Authorization", `Bearer ${adminToken}`)).body;
+      }
+
+      test("إضافة صلاحية لدور الكاشير بتتطبّق على الكاشير من الطلب الجاي، وشيلها بيرجّعها زي ما كانت", async () => {
+        const original: string[] = (await catalog()).rolePermissions.cashier;
+        const token = (await cashierLogin()).body.token;
+        expect((await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`)).status).toBe(403);
+
+        const res = await request(app.getHttpServer())
+          .put("/roles/cashier/permissions")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ permissions: [...original, "identity.users.view"] });
+        expect(res.status).toBe(200);
+        expect(res.body.permissions).toContain("identity.users.view");
+        expect((await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`)).status).toBe(200);
+        expect((await request(app.getHttpServer()).get("/auth/me").set("Authorization", `Bearer ${token}`)).body.permissions).toContain("identity.users.view");
+
+        const restore = await request(app.getHttpServer())
+          .put("/roles/cashier/permissions")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ permissions: original });
+        expect(restore.status).toBe(200);
+        expect([...restore.body.permissions].sort()).toEqual([...original].sort());
+        expect((await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`)).status).toBe(403);
+      });
+
+      test("صلاحيات الأدمن مقفولة -> 400", async () => {
+        const res = await request(app.getHttpServer())
+          .put("/roles/admin/permissions")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ permissions: [] });
+        expect(res.status).toBe(400);
+        expect((await catalog()).rolePermissions.admin).toContain("identity.roles.manage");
+      });
+
+      test("صلاحية مش معروفة أو دور مش معروف -> 400، ومفيش تغيير", async () => {
+        const before: string[] = (await catalog()).rolePermissions.cashier;
+        const unknownKey = await request(app.getHttpServer())
+          .put("/roles/cashier/permissions")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ permissions: ["does.not.exist"] });
+        expect(unknownKey.status).toBe(400);
+        const unknownRole = await request(app.getHttpServer())
+          .put("/roles/ghost/permissions")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ permissions: [] });
+        expect(unknownRole.status).toBe(400);
+        expect((await catalog()).rolePermissions.cashier).toEqual(before);
+      });
+
+      test("الكاشير (من غير identity.roles.manage) مايقدرش يعدّل صلاحيات دور -> 403", async () => {
+        const token = (await cashierLogin()).body.token;
+        const res = await request(app.getHttpServer())
+          .put("/roles/cashier/permissions")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ permissions: ["identity.users.manage"] });
+        expect(res.status).toBe(403);
+      });
     });
 
     test("PATCH /users/:id بباسورد جديد - تسجيل الدخول القديم بيرفض والجديد بينجح", async () => {

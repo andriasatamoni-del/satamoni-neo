@@ -10,7 +10,7 @@ export async function createSecondUser(app: INestApplication, email: string, rol
   const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
   const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
   const repo = new UserRepository(app.get<Database>(DATABASE));
-  const user = User.register({ name: `ثاني-${email}`, email, passwordHash: await new BcryptPasswordHasher().hash("12345678"), role, branchId });
+  const user = User.register({ name: `ثاني-${email}`, email, passwordHash: await new BcryptPasswordHasher().hash("12345678"), roles: [role], branchId });
   await repo.save(user);
   const res = await request(app.getHttpServer()).post("/auth/login").send({ email, password: "12345678" });
   return { token: res.body.token as string, id: user.id };

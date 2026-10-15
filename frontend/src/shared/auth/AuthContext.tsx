@@ -1,16 +1,16 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiRequest, getToken, setToken } from "../api/client";
 import type { Role } from "./roles";
+import type { Permission } from "./permissions";
 
 export interface CurrentUser {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  roles: Role[];
   branchId: string | null;
   isActive: boolean;
-  permissionGrants: string[];
-  permissionRevokes: string[];
+  permissions: Permission[];
 }
 
 interface LoginResponse {

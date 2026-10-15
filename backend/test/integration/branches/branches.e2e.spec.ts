@@ -30,7 +30,7 @@ describe("Branches - /branches (e2e ضد تطبيق حقيقي كامل)", () =>
     const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-فروع", email: "admin-branches@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-فروع", email: "admin-branches@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await repo.save(admin);
     const loginRes = await request(app.getHttpServer())

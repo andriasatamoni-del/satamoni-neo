@@ -33,12 +33,12 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
-    const admin = User.register({ name: "أدمن-تدقيق-جست", email: "admin-audit@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
+    const admin = User.register({ name: "أدمن-تدقيق-جست", email: "admin-audit@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"] });
     await userRepo.save(admin);
     adminId = admin.id;
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-audit@jest.test", password: "12345678" })).body.token;
 
-    const cashier = User.register({ name: "كاشير-تدقيق-جست", email: "cashier-audit@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
+    const cashier = User.register({ name: "كاشير-تدقيق-جست", email: "cashier-audit@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"] });
     await userRepo.save(cashier);
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-audit@jest.test", password: "12345678" })).body.token;
   });
@@ -120,7 +120,7 @@ describe("Audit Log - سجل التدقيق العام (e2e ضد تطبيق حق
     const res = await request(app.getHttpServer())
       .post("/users")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "مستخدم-تدقيق-جست", email: "created-by-audit-test@jest.test", password: "secret12345", role: "cashier" });
+      .send({ name: "مستخدم-تدقيق-جست", email: "created-by-audit-test@jest.test", password: "secret12345", roles: ["cashier"] });
     expect(res.status).toBe(201);
     createdUserId = res.body.id;
 

@@ -68,7 +68,7 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تقارير-سائقين-جست", email: "admin-driver-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تقارير-سائقين-جست", email: "admin-driver-reports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-driver-reports@jest.test", password: "12345678" });

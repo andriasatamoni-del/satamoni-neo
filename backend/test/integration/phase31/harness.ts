@@ -98,7 +98,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const userIds: Record<string, string> = {};
   for (const [key, role, branchId] of defs) {
     const email = `${tag}-${key}@p31.jest.test`.toLowerCase();
-    const user = User.register({ name: `${key}-${tag}`, email, passwordHash, role, branchId });
+    const user = User.register({ name: `${key}-${tag}`, email, passwordHash, roles: [role], branchId });
     await userRepo.save(user);
     userIds[key] = user.id;
     const res = await request(app.getHttpServer()).post("/auth/login").send({ email, password: "12345678" });

@@ -6,6 +6,7 @@ import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input } from "../shared/ui/Field";
+import { hasRole } from "../shared/auth/roles";
 
 interface PosSettings {
   shiftVarianceAckThresholdEgp: number;
@@ -91,7 +92,7 @@ const FIELDS: { key: keyof Omit<PosSettings, "updatedBy" | "updatedAt" | ToggleK
 export function PosSettingsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const canManage = user?.role === "admin";
+  const canManage = hasRole(user, "admin");
 
   const settingsQuery = useQuery({ queryKey: ["pos-settings"], queryFn: () => apiRequest<PosSettings>("/pos-settings") });
   const [form, setForm] = useState<Record<string, string>>({});

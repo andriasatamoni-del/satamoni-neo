@@ -50,13 +50,13 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-تاريخ-موظف-جست", email: "admin-emphist@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تاريخ-موظف-جست", email: "admin-emphist@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-emphist@jest.test", password: "12345678" })).body.token;
 
     const accountant = User.register({
-      name: "محاسب-تاريخ-موظف-جست", email: "accountant-emphist@jest.test", passwordHash: await hasher.hash("12345678"), role: "accountant",
+      name: "محاسب-تاريخ-موظف-جست", email: "accountant-emphist@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["accountant"],
     });
     await userRepo.save(accountant);
     accountantToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "accountant-emphist@jest.test", password: "12345678" })).body.token;
@@ -68,7 +68,7 @@ describe("HR & Payroll - سجل تغييرات الموظف وتبعات إنه�
     branchId = branchRes.body.id;
 
     const cashierUser = User.register({
-      name: "كاشير-تاريخ-موظف-جست", email: "cashier-emphist@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تاريخ-موظف-جست", email: "cashier-emphist@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
       branchId,
     });
     await userRepo.save(cashierUser);

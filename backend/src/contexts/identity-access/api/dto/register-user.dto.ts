@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
 import { ROLES, type Role } from "../../domain/role";
 
 export class RegisterUserDto {
@@ -13,8 +13,10 @@ export class RegisterUserDto {
   @MinLength(8, { message: "لازم كلمة السر تكون 8 حروف على الأقل" })
   password!: string;
 
-  @IsIn(ROLES, { message: "الدور ده مش معروف" })
-  role!: Role;
+  @IsArray()
+  @ArrayNotEmpty({ message: "لازم تختار دور واحد على الأقل" })
+  @IsIn(ROLES, { each: true, message: "الدور ده مش معروف" })
+  roles!: Role[];
 
   @IsOptional()
   @IsUUID()

@@ -48,7 +48,7 @@ describe("Inventory - دفعات/لوط (BATCH-1, e2e ضد تطبيق حقيقي
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-دفعات-جست", email: "admin-batches@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-دفعات-جست", email: "admin-batches@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-batches@jest.test", password: "12345678" })).body.token;

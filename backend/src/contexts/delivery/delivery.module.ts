@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { OrdersModule } from "../orders/orders.module";
 import { PaymentControlModule } from "../payment-control/payment-control.module";
@@ -62,30 +61,4 @@ import { DeliveryController } from "./api/delivery.controller";
   ],
   exports: [DRIVER_REPOSITORY, DELIVERY_ASSIGNMENT_REPOSITORY, ListPendingSettlementDriversHandler],
 })
-export class DeliveryModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "delivery",
-      groupLabel: "التوصيل والسائقين",
-      permissions: [
-        { key: "delivery.drivers.view", label: "رؤية السائقين" },
-        { key: "delivery.drivers.manage", label: "إدارة السائقين" },
-        { key: "delivery.assignments.view", label: "رؤية طلبات التوصيل" },
-        { key: "delivery.assignments.manage", label: "إدارة توزيع/حالة التوصيل" },
-        { key: "delivery.settlements.view", label: "رؤية تسويات كاش السائقين" },
-        { key: "delivery.settlements.create", label: "تسجيل تسوية كاش سائق" },
-        { key: "delivery.settlements.review", label: "مراجعة فرق تسوية سائق" },
-        { key: "delivery.shifts.manage", label: "تسجيل دخول/خروج شيفت حضور السائق" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", [
-      "delivery.drivers.view", "delivery.drivers.manage", "delivery.assignments.view", "delivery.assignments.manage",
-      "delivery.settlements.view", "delivery.settlements.create", "delivery.settlements.review", "delivery.shifts.manage",
-    ]);
-    this.permissions.setRoleDefaults("accountant", ["delivery.settlements.view", "delivery.settlements.review"]);
-    this.permissions.setRoleDefaults("cashier", ["delivery.settlements.create", "delivery.shifts.manage"]);
-    this.permissions.setRoleDefaults("driver", ["delivery.assignments.view", "delivery.assignments.manage"]);
-  }
-}
+export class DeliveryModule {}

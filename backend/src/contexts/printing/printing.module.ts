@@ -1,5 +1,4 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { BranchesModule } from "../branches/branches.module";
@@ -77,45 +76,12 @@ import type { KitchenStatusAdvancedEvent } from "../orders/domain/events/kitchen
 })
 export class PrintingModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly queueOrderCreationPrintJobs: QueueOrderCreationPrintJobsHandler,
     private readonly queueDineinPreparingPrintJobs: QueueDineinPreparingPrintJobsHandler
   ) {}
 
   onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "printers",
-      groupLabel: "الطابعات",
-      permissions: [
-        { key: "printers.view", label: "رؤية طابعات الفرع" },
-        { key: "printers.manage", label: "إدارة طابعات الفرع" },
-      ],
-    });
-    this.permissions.registerGroup({
-      group: "print_routing",
-      groupLabel: "محطات التحضير والتوجيه",
-      permissions: [
-        { key: "print_routing.view", label: "رؤية محطات التحضير والتوجيه" },
-        { key: "print_routing.manage", label: "إدارة محطات التحضير والتوجيه" },
-      ],
-    });
-    this.permissions.registerGroup({
-      group: "print_jobs",
-      groupLabel: "طابور الطباعة",
-      permissions: [
-        { key: "print_jobs.view", label: "رؤية طابور الطباعة" },
-        { key: "print_jobs.manage_queue", label: "إدارة طابور الطباعة (وكيل الطباعة المحلي)" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", [
-      "printers.view", "printers.manage", "print_routing.view", "print_routing.manage",
-      "print_jobs.view", "print_jobs.manage_queue",
-    ]);
-    // الكاشير هو اللي غالبًا واقف قدام جهاز الطباعة فعليًا في الفرع - نفس فلسفة "كاشير = مطبخ" في
-    // OrdersModule بالظبط
-    this.permissions.setRoleDefaults("cashier", ["printers.view", "print_jobs.view", "print_jobs.manage_queue"]);
-
     // أول مستهلكين حقيقيين لـPrinting على حدثين مختلفين (Orders): طباعة أوتوماتيكية عند تسجيل الطلب
     // (تيك أواي/دليفري)، وطباعة تذاكر مطبخ الصالة لحظة ما التحضير يوصل PREPARING - من غير ما Orders
     // يعرف حاجة عن وجود Printing أصلًا (نفس فايدة الفصل اللي event bus اتصمم لأجلها)

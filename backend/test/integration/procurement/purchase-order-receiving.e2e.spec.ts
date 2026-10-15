@@ -84,7 +84,7 @@ describe("Procurement - استلام أوامر الشراء وتحديث حال
       name: "أدمن-استلام-أوامر-جست",
       email: "admin-poreceiving@jest.test",
       passwordHash: await new BcryptPasswordHasher().hash("12345678"),
-      role: "admin",
+      roles: ["admin"],
     });
     await new UserRepository(app.get<Database>(DATABASE)).save(admin);
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-poreceiving@jest.test", password: "12345678" })).body.token;

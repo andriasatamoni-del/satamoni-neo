@@ -48,7 +48,7 @@ describe("importUsersFromLegacy", () => {
     await neoDb.delete(users);
   });
 
-  test("بيستورد يوزر جديد صح بكل بياناته", async () => {
+  test("بيستورد يوزر جديد صح بكل بياناته، من غير استثناءات الصلاحيات القديمة (الأدوار بس هي المصدر)", async () => {
     await legacyPool.query(
       `INSERT INTO users (branch_id, name, email, password_hash, role, pin_hash, permission_grants, permission_revokes, is_active)
        VALUES (5, 'أحمد', 'ahmed-import@legacy.test', 'bcrypt-hash-here', 'cashier', 'pin-hash', '["orders.cancel"]', '["shifts.open_own"]', true)`
@@ -60,11 +60,9 @@ describe("importUsersFromLegacy", () => {
     const imported = await repo.findByEmail("ahmed-import@legacy.test");
     expect(imported).not.toBeNull();
     expect(imported!.name).toBe("أحمد");
-    expect(imported!.role).toBe("cashier");
+    expect(imported!.roles).toEqual(["cashier"]);
     expect(imported!.passwordHash).toBe("bcrypt-hash-here");
     expect(imported!.pinHash).toBe("pin-hash");
-    expect(imported!.permissionGrants).toEqual(["orders.cancel"]);
-    expect(imported!.permissionRevokes).toEqual(["shifts.open_own"]);
     expect(imported!.branchId).toBeNull(); // لسه مفيش Branches context - راجع تعليق الملف
     expect(imported!.legacyUserId).not.toBeNull();
   });
@@ -87,7 +85,7 @@ describe("importUsersFromLegacy", () => {
     expect(all.filter((u) => u.email === "sara-import@legacy.test").length).toBe(1);
     const updatedUser = await repo.findByEmail("sara-import@legacy.test");
     expect(updatedUser!.passwordHash).toBe("hash2");
-    expect(updatedUser!.role).toBe("admin");
+    expect(updatedUser!.roles).toEqual(["admin"]);
   });
 
   test("صف بدور غير معروف بيتخطّى من غير ما يوقف باقي الاستيراد", async () => {

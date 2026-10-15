@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { SettingsModule } from "../settings/settings.module";
 import { CASHIER_SHIFT_REPOSITORY } from "./domain/ports/cashier-shift-repository.port";
@@ -33,29 +32,4 @@ import { ShiftsController } from "./api/shifts.controller";
     ListCashDrawerEntriesHandler,
   ],
 })
-export class ShiftsModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "shifts",
-      groupLabel: "شيفتات الكاشير",
-      permissions: [
-        { key: "shifts.open_own", label: "فتح شيفت لنفسه" },
-        { key: "shifts.close_own", label: "قفل شيفته" },
-        { key: "shifts.view_own", label: "رؤية شيفته الحالي" },
-        { key: "shifts.view_branch", label: "رؤية شيفتات الفرع" },
-        { key: "shifts.review", label: "مراجعة فروق الكاش" },
-        { key: "shifts.record_cash_entry", label: "تسجيل مصروف/مشترى من درج الشيفت" },
-      ],
-    });
-    this.permissions.setRoleDefaults("cashier", [
-      "shifts.open_own", "shifts.close_own", "shifts.view_own", "shifts.record_cash_entry",
-    ]);
-    this.permissions.setRoleDefaults("branch_manager", [
-      "shifts.open_own", "shifts.close_own", "shifts.view_own", "shifts.view_branch", "shifts.review",
-      "shifts.record_cash_entry",
-    ]);
-    this.permissions.setRoleDefaults("accountant", ["shifts.view_branch", "shifts.review"]);
-  }
-}
+export class ShiftsModule {}

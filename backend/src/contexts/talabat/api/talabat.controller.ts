@@ -15,6 +15,7 @@ import { TalabatDomainErrorFilter } from "./filters/domain-error.filter";
 import type { TalabatOrder } from "../domain/talabat-order.aggregate";
 import type { TalabatIntegrationError } from "../domain/talabat-integration-error.aggregate";
 import type { TalabatProductMapping } from "../domain/talabat-product-mapping.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 // شاشات الإدارة - integration-errors (list/retry)، لوحة التحكم، إدارة الربط، تقرير Payment Control -
 // نفس مفهوم routes/talabat.js بالريبو القديم بالظبط (راجع docs/TALABAT-INTEGRATION.md قسم 10)
@@ -34,49 +35,49 @@ export class TalabatController {
 
   @BranchScoped()
   @Get("dashboard-summary")
-  @RequirePermission("talabat.view")
+  @RequirePermission(PERMISSION.TALABAT_VIEW)
   async dashboardSummary(@Query("branchId") branchId?: string, @Query("date") date?: string) {
     return this.getDashboardSummary.execute({ branchId, date: date ? new Date(date) : undefined });
   }
 
   @BranchScoped()
   @Get("orders")
-  @RequirePermission("talabat.view")
+  @RequirePermission(PERMISSION.TALABAT_VIEW)
   async orders(@Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listTalabatOrders.execute({ branchId, status })).map(toPublicTalabatOrder);
   }
 
   @CompanyWideOnly()
   @Get("integration-errors")
-  @RequirePermission("talabat.view")
+  @RequirePermission(PERMISSION.TALABAT_VIEW)
   async integrationErrors(@Query("status") status?: string) {
     return (await this.listIntegrationErrors.execute({ status })).map(toPublicIntegrationError);
   }
 
   @CompanyWideOnly()
   @Post("integration-errors/:id/retry")
-  @RequirePermission("talabat.retry")
+  @RequirePermission(PERMISSION.TALABAT_RETRY)
   async retryError(@Param("id") id: string) {
     return toPublicIntegrationError(await this.retryIntegrationError.execute({ integrationErrorId: id }));
   }
 
   @BranchScoped()
   @Get("product-mapping")
-  @RequirePermission("talabat.mapping_manage")
+  @RequirePermission(PERMISSION.TALABAT_MAPPING_MANAGE)
   async productMapping(@Query("branchId") branchId: string) {
     return (await this.listProductMappings.execute(branchId)).map(toPublicProductMapping);
   }
 
   @BranchScoped()
   @Post("product-mapping")
-  @RequirePermission("talabat.mapping_manage")
+  @RequirePermission(PERMISSION.TALABAT_MAPPING_MANAGE)
   async createProductMapping(@Body() dto: UpsertProductMappingDto) {
     return toPublicProductMapping(await this.upsertProductMapping.execute(dto));
   }
 
   @CompanyWideOnly()
   @Get("reconciliation")
-  @RequirePermission("talabat.reconciliation")
+  @RequirePermission(PERMISSION.TALABAT_RECONCILIATION)
   async reconciliation() {
     // نفس فلسفة docs/TALABAT-INTEGRATION.md قسم 10 بالحرف - جلب سجلات Talabat الحقيقية لسه stub
     // (talabat-client.stub.ts) لحد ما مواصفة Partner API الحقيقية تتوفر
@@ -85,7 +86,7 @@ export class TalabatController {
 
   @CompanyWideOnly()
   @Get("payment-control-report")
-  @RequirePermission("talabat.reconciliation")
+  @RequirePermission(PERMISSION.TALABAT_RECONCILIATION)
   async paymentControlReport() {
     return this.getPaymentOverrides.execute();
   }

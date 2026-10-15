@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { HOME_TILE_REPOSITORY } from "./domain/ports/home-tile-repository.port";
 import { HomeTileRepository } from "./infrastructure/persistence/home-tile.repository";
@@ -12,15 +11,4 @@ import { HomeTilesController } from "./api/home-tiles.controller";
   controllers: [HomeTilesController],
   providers: [{ provide: HOME_TILE_REPOSITORY, useClass: HomeTileRepository }, ListHomeTilesHandler, UpdateHomeTileHandler],
 })
-export class HomeTilesModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "home_tiles",
-      groupLabel: "بطاقات الصفحة الرئيسية",
-      permissions: [{ key: "home_tiles.manage", label: "تعديل بطاقات الصفحة الرئيسية" }],
-    });
-    // أدمن بس - نفس requireRole("admin") بالريبو القديم بالحرف
-  }
-}
+export class HomeTilesModule {}

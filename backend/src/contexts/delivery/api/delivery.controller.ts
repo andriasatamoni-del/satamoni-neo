@@ -32,6 +32,7 @@ import type { Driver } from "../domain/driver.aggregate";
 import type { DeliveryAssignment } from "../domain/delivery-assignment.aggregate";
 import type { DriverSettlement } from "../domain/driver-settlement.aggregate";
 import type { DriverAttendanceShift } from "../domain/driver-attendance-shift.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("delivery")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -57,21 +58,21 @@ export class DeliveryController {
 
   @BranchScoped()
   @Get("drivers")
-  @RequirePermission("delivery.drivers.view", "delivery.drivers.manage")
+  @RequirePermission(PERMISSION.DELIVERY_DRIVERS_VIEW, PERMISSION.DELIVERY_DRIVERS_MANAGE)
   async drivers(@Query("branchId") branchId?: string) {
     return (await this.listDrivers.execute(branchId ? { branchId } : undefined)).map(toPublicDriver);
   }
 
   @BranchScoped()
   @Post("drivers")
-  @RequirePermission("delivery.drivers.manage")
+  @RequirePermission(PERMISSION.DELIVERY_DRIVERS_MANAGE)
   async createDriver(@Body() dto: RegisterDriverDto) {
     return toPublicDriver(await this.registerDriver.execute(dto));
   }
 
   @BranchScoped()
   @Get("assignments")
-  @RequirePermission("delivery.assignments.view", "delivery.assignments.manage")
+  @RequirePermission(PERMISSION.DELIVERY_ASSIGNMENTS_VIEW, PERMISSION.DELIVERY_ASSIGNMENTS_MANAGE)
   async assignments(@Query("branchId") branchId?: string, @Query("driverId") driverId?: string) {
     return (await this.listAssignments.execute({ branchId, driverId })).map(toPublicAssignment);
   }
@@ -79,7 +80,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResources(["orders", { param: "orderId", from: "body" }], ["drivers", { param: "driverId", from: "body" }])
   @Post("assignments")
-  @RequirePermission("delivery.assignments.manage")
+  @RequirePermission(PERMISSION.DELIVERY_ASSIGNMENTS_MANAGE)
   async createAssignment(@Body() dto: AssignDriverDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAssignment(await this.assignDriver.execute({ ...dto, assignedBy: req.user.id }));
   }
@@ -87,14 +88,14 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("delivery_assignments")
   @Patch("assignments/:id/status")
-  @RequirePermission("delivery.assignments.manage")
+  @RequirePermission(PERMISSION.DELIVERY_ASSIGNMENTS_MANAGE)
   async updateStatus(@Param("id") id: string, @Body() dto: UpdateDeliveryStatusDto) {
     return toPublicAssignment(await this.updateDeliveryStatus.execute({ assignmentId: id, ...dto }));
   }
 
   @BranchScoped()
   @Get("settlements")
-  @RequirePermission("delivery.settlements.view", "delivery.settlements.create", "delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_VIEW, PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async settlements(@Query("driverId") driverId?: string, @Query("branchId") branchId?: string, @Query("varianceStatus") varianceStatus?: string) {
     return (await this.listDriverSettlements.execute({ driverId, branchId, varianceStatus })).map(toPublicSettlement);
   }
@@ -102,14 +103,14 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("drivers", { param: "driverId", from: "query" })
   @Get("settlements/preview")
-  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async settlementPreview(@Query("driverId") driverId: string) {
     return this.previewDriverSettlement.execute(driverId);
   }
 
   @BranchScoped()
   @Get("settlements/pending-drivers")
-  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async pendingSettlementDrivers(@Query("branchId") branchId: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return this.listPendingSettlementDrivers.execute(branchId || req.user.branchId!);
   }
@@ -117,7 +118,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("drivers", { param: "driverId", from: "query" })
   @Get("driver-orders")
-  @RequirePermission("delivery.settlements.create", "delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async driverDayOrders(@Query("driverId") driverId: string, @Query("date") date?: string) {
     return this.getDriverDayOrders.execute(driverId, date);
   }
@@ -125,7 +126,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("driver_settlements")
   @Get("settlements/:id")
-  @RequirePermission("delivery.settlements.view", "delivery.settlements.create", "delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_VIEW, PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async settlement(@Param("id") id: string) {
     return toPublicSettlement(await this.getDriverSettlement.execute(id));
   }
@@ -133,7 +134,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("drivers", { param: "driverId", from: "body" })
   @Post("settlements")
-  @RequirePermission("delivery.settlements.create")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_CREATE)
   async createSettlement(@Body() dto: RegisterDriverSettlementDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicSettlement(await this.registerDriverSettlement.execute({ ...dto, settledBy: req.user.id }));
   }
@@ -141,7 +142,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("driver_settlements")
   @Post("settlements/:id/review")
-  @RequirePermission("delivery.settlements.review")
+  @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
   async reviewSettlement(@Param("id") id: string, @Body() dto: ReviewDriverSettlementDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicSettlement(
       await this.reviewDriverSettlement.execute({ settlementId: id, decision: dto.decision, notes: dto.notes, reviewerId: req.user.id })
@@ -150,7 +151,7 @@ export class DeliveryController {
 
   @BranchScoped()
   @Get("attendance-shifts")
-  @RequirePermission("delivery.shifts.manage")
+  @RequirePermission(PERMISSION.DELIVERY_SHIFTS_MANAGE)
   async attendanceShifts(@Query("branchId") branchId?: string, @Query("driverId") driverId?: string, @Query("status") status?: string) {
     return (await this.listDriverAttendanceShifts.execute({ branchId, driverId, status })).map(toPublicAttendanceShift);
   }
@@ -158,7 +159,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("drivers", { param: "driverId", from: "body" })
   @Post("attendance-shifts/check-in")
-  @RequirePermission("delivery.shifts.manage")
+  @RequirePermission(PERMISSION.DELIVERY_SHIFTS_MANAGE)
   async checkIn(@Body() dto: CheckInDriverDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAttendanceShift(await this.checkInDriver.execute({ ...dto, checkedInBy: req.user.id }));
   }
@@ -166,7 +167,7 @@ export class DeliveryController {
   @BranchScoped()
   @BranchResource("driver_attendance_shifts")
   @Post("attendance-shifts/:id/check-out")
-  @RequirePermission("delivery.shifts.manage")
+  @RequirePermission(PERMISSION.DELIVERY_SHIFTS_MANAGE)
   async checkOut(@Param("id") id: string, @Body() dto: CheckOutDriverDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAttendanceShift(await this.checkOutDriver.execute({ shiftId: id, checkedOutBy: req.user.id, notes: dto.notes }));
   }

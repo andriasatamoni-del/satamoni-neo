@@ -5,7 +5,7 @@ export class UserRegisteredEvent extends DomainEvent {
   constructor(
     readonly userId: string,
     readonly email: string,
-    readonly role: string
+    readonly roles: readonly string[]
   ) {
     super();
   }

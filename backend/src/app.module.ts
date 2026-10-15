@@ -5,7 +5,6 @@ import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
 import { EventsModule } from "./shared/events/events.module";
-import { PermissionsModule } from "./shared/permissions/permissions.module";
 import { AuditModule } from "./shared/audit/audit.module";
 import { IdentityAccessModule } from "./contexts/identity-access/identity-access.module";
 import { CrmModule } from "./contexts/crm/crm.module";
@@ -47,7 +46,6 @@ import { MediaModule } from "./contexts/media/media.module";
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT) || 100 }]),
     DatabaseModule,
     EventsModule,
-    PermissionsModule,
     AuditModule,
     IdentityAccessModule,
     SettingsModule,

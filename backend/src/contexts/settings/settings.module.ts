@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { POS_SETTINGS_REPOSITORY } from "./domain/ports/pos-settings-repository.port";
 import { PosSettingsRepository } from "./infrastructure/persistence/pos-settings.repository";
@@ -21,21 +20,4 @@ import { PosSettingsController } from "./api/pos-settings.controller";
   ],
   exports: [POS_SETTINGS_REPOSITORY, GetPosSettingsHandler],
 })
-export class SettingsModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "pos_settings",
-      groupLabel: "إعدادات النظام",
-      permissions: [
-        { key: "pos_settings.view", label: "رؤية إعدادات النظام" },
-        { key: "pos_settings.manage", label: "تعديل إعدادات النظام" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["pos_settings.view"]);
-    this.permissions.setRoleDefaults("accountant", ["pos_settings.view"]);
-    this.permissions.setRoleDefaults("cashier", ["pos_settings.view"]);
-    this.permissions.setRoleDefaults("driver", ["pos_settings.view"]);
-  }
-}
+export class SettingsModule {}

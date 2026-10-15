@@ -22,6 +22,7 @@ import { WhatsappDomainErrorFilter } from "./filters/domain-error.filter";
 import type { WhatsappConversation } from "../domain/whatsapp-conversation.aggregate";
 import type { WhatsappMessageRecord } from "../domain/ports/whatsapp-message.port";
 import type { WhatsappPendingOrder } from "../domain/whatsapp-pending-order.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("whatsapp")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -41,33 +42,33 @@ export class WhatsappController {
 
   // حالة البوت للواجهة: مفعّل من الإعدادات؟ مفتاح Gemini متضاف؟ الإرسال لكل قناة متظبط؟
   @Get("bot-status")
-  @RequirePermission("whatsapp.view")
+  @RequirePermission(PERMISSION.WHATSAPP_VIEW)
   async botStatus() {
     return this.bot.status();
   }
 
   @Get("conversations")
-  @RequirePermission("whatsapp.view")
+  @RequirePermission(PERMISSION.WHATSAPP_VIEW)
   async conversations() {
     return (await this.listConversations.execute()).map(toPublicConversation);
   }
 
   @Get("conversations/:id")
-  @RequirePermission("whatsapp.view")
+  @RequirePermission(PERMISSION.WHATSAPP_VIEW)
   async conversationDetail(@Param("id") id: string) {
     const { conversation, messages } = await this.getConversation.execute(id);
     return { conversation: toPublicConversation(conversation), messages: messages.map(toPublicMessage) };
   }
 
   @Post("conversations/:id/reply")
-  @RequirePermission("whatsapp.reply")
+  @RequirePermission(PERMISSION.WHATSAPP_REPLY)
   async reply(@Param("id") id: string, @Body() dto: SendReplyDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const { message, delivery } = await this.sendReply.execute({ conversationId: id, body: dto.body, sentBy: req.user.id });
     return { ...toPublicMessage(message), delivery: delivery.sent ? "sent" : delivery.reason };
   }
 
   @Post("conversations/:id/pending-orders")
-  @RequirePermission("whatsapp.orders.manage")
+  @RequirePermission(PERMISSION.WHATSAPP_ORDERS_MANAGE)
   async createPendingOrder(@Param("id") id: string, @Body() dto: RegisterPendingOrderDto) {
     return toPublicPendingOrder(
       await this.registerPendingOrder.execute({ conversationId: id, orderType: dto.orderType, branchId: dto.branchId, addressDetails: dto.addressDetails, items: dto.items })
@@ -75,13 +76,13 @@ export class WhatsappController {
   }
 
   @Get("pending-orders")
-  @RequirePermission("whatsapp.orders.manage")
+  @RequirePermission(PERMISSION.WHATSAPP_ORDERS_MANAGE)
   async pendingOrders() {
     return (await this.listPendingOrders.execute()).map(toPublicPendingOrder);
   }
 
   @Post("pending-orders/:id/confirm")
-  @RequirePermission("whatsapp.orders.manage")
+  @RequirePermission(PERMISSION.WHATSAPP_ORDERS_MANAGE)
   async confirm(@Param("id") id: string, @Body() dto: ConfirmPendingOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPendingOrder(
       await this.confirmPendingOrder.execute({ pendingOrderId: id, paymentMethodId: dto.paymentMethodId, reviewedBy: req.user.id })
@@ -89,13 +90,13 @@ export class WhatsappController {
   }
 
   @Post("pending-orders/:id/reject")
-  @RequirePermission("whatsapp.orders.manage")
+  @RequirePermission(PERMISSION.WHATSAPP_ORDERS_MANAGE)
   async reject(@Param("id") id: string, @Body() dto: RejectPendingOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPendingOrder(await this.rejectPendingOrder.execute({ pendingOrderId: id, reason: dto.reason, reviewedBy: req.user.id }));
   }
 
   @Post("conversations/:id/complaints")
-  @RequirePermission("whatsapp.complaints.create")
+  @RequirePermission(PERMISSION.WHATSAPP_COMPLAINTS_CREATE)
   async createComplaint(@Param("id") id: string, @Body() dto: RegisterComplaintFromConversationDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const complaint = await this.registerComplaintFromConversation.execute({
       conversationId: id,

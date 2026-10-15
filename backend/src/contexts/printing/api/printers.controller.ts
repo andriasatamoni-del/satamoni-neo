@@ -14,6 +14,7 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Printer } from "../domain/printer.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 function toPublicPrinter(printer: Printer) {
   return {
@@ -45,7 +46,7 @@ export class PrintersController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("printers.view", "printers.manage")
+  @RequirePermission(PERMISSION.PRINTERS_VIEW, PERMISSION.PRINTERS_MANAGE)
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     const effectiveBranchId = branchId || req.user.branchId;
     if (!effectiveBranchId) return [];
@@ -54,7 +55,7 @@ export class PrintersController {
 
   @BranchScoped()
   @Post()
-  @RequirePermission("printers.manage")
+  @RequirePermission(PERMISSION.PRINTERS_MANAGE)
   async create(@Body() dto: RegisterPrinterDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const branchId = dto.branchId || req.user.branchId;
     if (!branchId) return { error: "لازم تحدد الفرع" };
@@ -64,7 +65,7 @@ export class PrintersController {
   @BranchScoped()
   @BranchResource("printers")
   @Patch(":id")
-  @RequirePermission("printers.manage")
+  @RequirePermission(PERMISSION.PRINTERS_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdatePrinterDto) {
     return toPublicPrinter(await this.updatePrinter.execute({ printerId: id, ...dto }));
   }
@@ -72,7 +73,7 @@ export class PrintersController {
   @BranchScoped()
   @BranchResource("printers")
   @Delete(":id")
-  @RequirePermission("printers.manage")
+  @RequirePermission(PERMISSION.PRINTERS_MANAGE)
   async remove(@Param("id") id: string) {
     await this.deletePrinter.execute({ printerId: id });
     return { success: true };
@@ -81,7 +82,7 @@ export class PrintersController {
   @BranchScoped()
   @BranchResource("printers")
   @Post(":id/test-print")
-  @RequirePermission("printers.manage")
+  @RequirePermission(PERMISSION.PRINTERS_MANAGE)
   async testPrint(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     const job = await this.queueTestPrint.execute({ printerId: id, createdBy: req.user.id });
     return { id: job.id, status: job.status };

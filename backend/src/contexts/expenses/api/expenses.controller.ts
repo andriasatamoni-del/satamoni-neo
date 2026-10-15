@@ -24,6 +24,7 @@ import { businessDateString } from "../../../shared/time/business-date";
 import { ExpensesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { ExpenseCategory } from "../domain/expense-category.aggregate";
 import type { Expense } from "../domain/expense.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("expenses")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -43,26 +44,26 @@ export class ExpensesController {
   ) {}
 
   @Get("categories")
-  @RequirePermission("expenses.view", "expenses.create", "expenses.create_own_daily", "expenses.manage")
+  @RequirePermission(PERMISSION.EXPENSES_VIEW, PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY, PERMISSION.EXPENSES_MANAGE)
   async categories() {
     return (await this.listCategories.execute()).map(toPublicCategory);
   }
 
   @Post("categories")
-  @RequirePermission("expenses.manage")
+  @RequirePermission(PERMISSION.EXPENSES_MANAGE)
   async createCategory(@Body() dto: RegisterExpenseCategoryDto) {
     return toPublicCategory(await this.registerCategory.execute(dto));
   }
 
   @Patch("categories/:id")
-  @RequirePermission("expenses.manage")
+  @RequirePermission(PERMISSION.EXPENSES_MANAGE)
   async updateCategoryRoute(@Param("id") id: string, @Body() dto: UpdateExpenseCategoryDto) {
     return toPublicCategory(await this.updateCategory.execute({ categoryId: id, ...dto }));
   }
 
   @BranchScoped()
   @Get()
-  @RequirePermission("expenses.view", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_VIEW, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async list(
     @Query("branchId") branchId: string | undefined,
     @Query("businessDate") businessDate: string | undefined,
@@ -70,7 +71,7 @@ export class ExpensesController {
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
     // نفس فلسفة الريبو القديم: الكاشير (expenses.create_own_daily بس) بيشوف مصروفات فرعه هو بس
-    const scopedBranchId = req.user.role === "cashier" ? req.user.branchId ?? undefined : branchId;
+    const scopedBranchId = !req.user.permissions.has(PERMISSION.EXPENSES_VIEW) ? req.user.branchId ?? undefined : branchId;
     const expenses = await this.listExpenses.execute({
       branchId: scopedBranchId,
       businessDate: businessDate ? new Date(businessDate) : undefined,
@@ -82,7 +83,7 @@ export class ExpensesController {
   @BranchScoped()
   @BranchResource("expenses")
   @Get(":id")
-  @RequirePermission("expenses.view", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_VIEW, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async detail(@Param("id") id: string) {
     return toPublicExpense(await this.getExpense.execute(id));
   }
@@ -92,9 +93,9 @@ export class ExpensesController {
   // يحدد status صراحة (DRAFT/SUBMITTED/POSTED)، الافتراضي POSTED (ترحيل فوري زي ما كان دايمًا)
   @BranchScoped()
   @Post()
-  @RequirePermission("expenses.create", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async create(@Body() dto: RegisterExpenseDto, @Req() req: Request & { user: AuthenticatedUser }) {
-    const isCashier = req.user.role === "cashier";
+    const isCashier = !req.user.permissions.has(PERMISSION.EXPENSES_CREATE);
     const branchId = isCashier ? req.user.branchId ?? dto.branchId : dto.branchId;
     const businessDate = isCashier ? businessDateString() : dto.businessDate;
     const requestedStatus = isCashier ? "SUBMITTED" : ((dto.status as "DRAFT" | "SUBMITTED" | "POSTED" | undefined) ?? "POSTED");
@@ -118,7 +119,7 @@ export class ExpensesController {
   @BranchScoped()
   @BranchResource("expenses")
   @Patch(":id")
-  @RequirePermission("expenses.create", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async edit(@Param("id") id: string, @Body() dto: EditExpenseDto) {
     return toPublicExpense(await this.editExpense.execute({ expenseId: id, ...dto }));
   }
@@ -126,7 +127,7 @@ export class ExpensesController {
   @BranchScoped()
   @BranchResource("expenses")
   @Post(":id/submit")
-  @RequirePermission("expenses.create", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async submit(@Param("id") id: string) {
     return toPublicExpense(await this.submitExpense.execute({ expenseId: id }));
   }
@@ -135,7 +136,7 @@ export class ExpensesController {
   @BranchScoped()
   @BranchResource("expenses")
   @Post(":id/review")
-  @RequirePermission("expenses.review", "expenses.manage")
+  @RequirePermission(PERMISSION.EXPENSES_REVIEW, PERMISSION.EXPENSES_MANAGE)
   async review(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicExpense(await this.reviewExpense.execute({ expenseId: id, reviewedBy: req.user.id }));
   }
@@ -143,7 +144,7 @@ export class ExpensesController {
   @BranchScoped()
   @BranchResource("expenses")
   @Post(":id/cancel")
-  @RequirePermission("expenses.create", "expenses.create_own_daily")
+  @RequirePermission(PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY)
   async cancel(@Param("id") id: string, @Body() dto: CancelExpenseDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicExpense(await this.cancelExpense.execute({ expenseId: id, cancelledBy: req.user.id, reason: dto.reason }));
   }

@@ -10,7 +10,7 @@ export interface RegisterUserCommand {
   name: string;
   email: string;
   password: string;
-  role: string;
+  roles: string[];
   branchId?: string | null;
   legacyUserId?: number | null;
 }
@@ -34,13 +34,13 @@ export class RegisterUserHandler {
       name: command.name,
       email: command.email,
       passwordHash,
-      role: command.role,
+      roles: command.roles,
       branchId: command.branchId,
       legacyUserId: command.legacyUserId,
     });
 
     await this.users.save(user);
-    await this.eventBus.publish(new UserRegisteredEvent(user.id, user.email, user.role));
+    await this.eventBus.publish(new UserRegisteredEvent(user.id, user.email, [...user.roles]));
     return user;
   }
 }

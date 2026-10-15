@@ -76,16 +76,17 @@ export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Database): 
 
     try {
       const existing = await repo.findByLegacyUserId(row.id);
-      const grants = asStringArray(row.permission_grants);
-      const revokes = asStringArray(row.permission_revokes);
+      const overrides = [...asStringArray(row.permission_grants).map((k) => `+${k}`), ...asStringArray(row.permission_revokes).map((k) => `-${k}`)];
+      if (overrides.length > 0) {
+        console.warn(`⚠ المستخدم #${row.id} (${row.email}) كان ليه استثناءات صلاحيات مش هتتنقل: ${overrides.join(" ")}`);
+      }
       const branchId = await resolveBranchId(row.branch_id);
 
       if (existing) {
-        existing.changeRole(row.role);
+        existing.changeRoles([row.role]);
         existing.changeBranch(branchId);
         existing.setPasswordHash(row.password_hash);
         existing.setPinHash(row.pin_hash);
-        existing.setPermissionOverrides(grants, revokes);
         if (row.is_active) existing.activate();
         else existing.deactivate();
         await repo.save(existing);
@@ -95,12 +96,11 @@ export async function importUsersFromLegacy(legacyPool: Pool, neoDb: Database): 
           name: row.name,
           email: row.email,
           passwordHash: row.password_hash,
-          role: row.role,
+          roles: [row.role],
           branchId,
           legacyUserId: row.id,
         });
         user.setPinHash(row.pin_hash);
-        user.setPermissionOverrides(grants, revokes);
         if (!row.is_active) user.deactivate();
         await repo.save(user);
         created++;

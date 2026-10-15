@@ -11,6 +11,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { goodsReceiptItems, goodsReceipts, purchaseOrderItems, purchaseOrders, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -21,7 +22,7 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
   let supplierId: string;
   let poReceivedId: string;
   let poOutstandingId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -48,13 +49,13 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تقارير-مشتريات-جست", email: "admin-procreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تقارير-مشتريات-جست", email: "admin-procreports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-procreports@jest.test", password: "12345678" })).body.token;
 
     const cashier = User.register({
-      name: "كاشير-تقارير-مشتريات-جست", email: "cashier-procreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تقارير-مشتريات-جست", email: "cashier-procreports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-procreports@jest.test", password: "12345678" })).body.token;

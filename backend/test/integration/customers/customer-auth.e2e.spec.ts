@@ -111,7 +111,7 @@ describe("CustomerAuth - بوابة الدخول الذاتي للعملاء (e2
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const staff = User.register({
-      name: "موظف-كروس-توكن-جست", email: "staff-cross-token@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "موظف-كروس-توكن-جست", email: "staff-cross-token@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(staff);
     const staffToken = (

@@ -12,6 +12,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -20,7 +21,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
   let branchManagerToken: string;
   let variantId: string;
   let paymentMethodId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -48,7 +49,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-تقارير-جست", email: "admin-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تقارير-جست", email: "admin-reports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const adminLogin = await request(app.getHttpServer())
@@ -63,7 +64,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
 
     const branchManager = User.register({
       name: "مدير فرع-تقارير-جست", email: "manager-reports@jest.test", passwordHash: await hasher.hash("12345678"),
-      role: "branch_manager", branchId,
+      roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     const managerLogin = await request(app.getHttpServer())
@@ -164,7 +165,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())

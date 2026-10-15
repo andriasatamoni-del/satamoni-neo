@@ -2,13 +2,15 @@ import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedExceptio
 import type { Request } from "express";
 import { TOKEN_SERVICE, type TokenServicePort } from "../../domain/ports/token.service.port";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
+import { ROLE_PERMISSION_REPOSITORY, type RolePermissionRepositoryPort } from "../../domain/ports/role-permission-repository.port";
 import type { AuthenticatedUser } from "../types";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     @Inject(TOKEN_SERVICE) private readonly tokens: TokenServicePort,
-    @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort
+    @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+    @Inject(ROLE_PERMISSION_REPOSITORY) private readonly rolePermissions: RolePermissionRepositoryPort
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -28,10 +30,9 @@ export class JwtAuthGuard implements CanActivate {
 
     req.user = {
       id: user.id,
-      role: user.role,
+      roles: user.roles,
       branchId: user.branchId,
-      permissionGrants: [...user.permissionGrants],
-      permissionRevokes: [...user.permissionRevokes],
+      permissions: await this.rolePermissions.permissionsForRoles(user.roles),
     };
     return true;
   }

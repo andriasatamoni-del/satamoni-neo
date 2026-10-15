@@ -67,14 +67,14 @@ export async function seedDev(db: Database): Promise<{ created: number; reset: n
     const accountBranch = account.branchBound ? branchId : null;
     const existing = await repo.findByEmail(account.email);
     if (existing) {
-      existing.changeRole(account.role);
+      existing.changeRoles([account.role]);
       existing.changeBranch(accountBranch);
       existing.setPasswordHash(hash);
       existing.activate();
       await repo.save(existing);
       reset++;
     } else {
-      await repo.save(User.register({ name: account.name, email: account.email, passwordHash: hash, role: account.role, branchId: accountBranch }));
+      await repo.save(User.register({ name: account.name, email: account.email, passwordHash: hash, roles: [account.role], branchId: accountBranch }));
       created++;
     }
   }

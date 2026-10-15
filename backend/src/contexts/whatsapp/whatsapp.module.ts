@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { OrdersModule } from "../orders/orders.module";
@@ -55,27 +54,4 @@ import { WhatsappController } from "./api/whatsapp.controller";
   ],
   exports: [OUTBOUND_MESSENGER],
 })
-export class WhatsappModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "whatsapp",
-      groupLabel: "بوابة استقبال واتساب",
-      permissions: [
-        { key: "whatsapp.view", label: "رؤية محادثات واتساب" },
-        { key: "whatsapp.reply", label: "الرد على محادثة واتساب" },
-        { key: "whatsapp.orders.manage", label: "مراجعة/تسجيل طلبات واتساب المعلّقة" },
-        { key: "whatsapp.complaints.create", label: "تسجيل شكوى من محادثة واتساب" },
-      ],
-    });
-    // نفس شاشة "طلبات وشكاوى واتساب" في الريبو القديم - كول سنتر هو المسؤول الأساسي عن المراجعة
-    this.permissions.setRoleDefaults("callcenter", [
-      "whatsapp.view",
-      "whatsapp.reply",
-      "whatsapp.orders.manage",
-      "whatsapp.complaints.create",
-    ]);
-    this.permissions.setRoleDefaults("branch_manager", ["whatsapp.view", "whatsapp.orders.manage"]);
-  }
-}
+export class WhatsappModule {}

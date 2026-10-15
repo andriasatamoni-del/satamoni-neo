@@ -9,6 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { hasRole } from "../shared/auth/roles";
 
 interface Branch { id: string; name: string; }
 interface Treasury { id: string; name: string; kind: "MAIN" | "BANK"; branchId: string | null; accountCode: string; balance: number; }
@@ -33,7 +34,7 @@ export function TreasuriesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("treasuries");
-  const canFilterByBranch = user?.role === "admin" || user?.role === "accountant";
+  const canFilterByBranch = hasRole(user, "admin", "accountant");
   const [branchId, setBranchId] = useState("");
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });

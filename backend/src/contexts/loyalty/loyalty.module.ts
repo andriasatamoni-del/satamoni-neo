@@ -1,5 +1,4 @@
 import { Inject, Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { OrdersModule } from "../orders/orders.module";
@@ -39,23 +38,12 @@ import { CustomerLoyaltyController, LoyaltyRewardsController } from "./api/loyal
 })
 export class LoyaltyModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly awardPoints: AwardPointsForCompletedOrderHandler,
     @Inject(LOYALTY_LEDGER) private readonly ledger: LoyaltyLedgerPort
   ) {}
 
   onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "loyalty",
-      groupLabel: "نقاط الولاء",
-      permissions: [
-        { key: "loyalty.view", label: "رؤية مكافآت الولاء" },
-        { key: "loyalty.manage", label: "إدارة مكافآت الولاء" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["loyalty.view"]);
-
     this.eventBus.subscribe<OrderStatusChangedEvent>("OrderStatusChanged", (e) => this.awardPoints.handle(e));
     this.eventBus.subscribe<OrderCancelledEvent>("OrderCancelled", (e) => this.ledger.settleCancelledOrder(e.orderId));
   }

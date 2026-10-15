@@ -48,7 +48,7 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-جرد-جست", email: "admin-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-جرد-جست", email: "admin-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())
@@ -209,7 +209,7 @@ describe("Inventory - جرد فعلي (e2e ضد تطبيق حقيقي كامل)"
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-جرد-جست", email: "cashier-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-جرد-جست", email: "cashier-stocktake@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())

@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { BranchesModule } from "../branches/branches.module";
 import { OrdersModule } from "../orders/orders.module";
@@ -54,25 +53,4 @@ import { TalabatController } from "./api/talabat.controller";
     GetTalabatPaymentOverridesHandler,
   ],
 })
-export class TalabatModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "talabat",
-      groupLabel: "تكامل Talabat",
-      permissions: [
-        { key: "talabat.view", label: "رؤية لوحة تكامل Talabat" },
-        { key: "talabat.retry", label: "إعادة محاولة أخطاء المزامنة" },
-        { key: "talabat.payment_override", label: "تعديل دفعة أوردر مصدره Talabat" },
-        { key: "talabat.reconciliation", label: "مطابقة ديل Talabat" },
-        { key: "talabat.mapping_manage", label: "إدارة ربط الفروع/طرق الدفع/الأصناف" },
-      ],
-    });
-    this.permissions.setRoleDefaults("cashier", ["talabat.view"]);
-    this.permissions.setRoleDefaults("callcenter", ["talabat.view"]);
-    this.permissions.setRoleDefaults("branch_manager", ["talabat.view", "talabat.retry"]);
-    this.permissions.setRoleDefaults("accountant", ["talabat.view", "talabat.retry", "talabat.payment_override", "talabat.reconciliation"]);
-    // talabat.mapping_manage أدمن بس - نفس docs/TALABAT-INTEGRATION.md قسم 7 بالحرف
-  }
-}
+export class TalabatModule {}

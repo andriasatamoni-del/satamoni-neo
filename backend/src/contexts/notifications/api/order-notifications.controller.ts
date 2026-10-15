@@ -5,6 +5,7 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import { ORDER_NOTIFICATION_STORE, type OrderNotificationStorePort } from "../domain/ports/order-notification-store.port";
 import { SMS_GATEWAY, type SmsGatewayPort } from "../domain/ports/sms-gateway.port";
 import { publicAppUrl } from "../application/order-notifications.service";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("order-notifications")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -16,7 +17,7 @@ export class OrderNotificationsController {
 
   // سجل آخر الرسايل (نجحت/فشلت/مفيش بوابة) + هل البوابة متظبطة أصلًا - للمراجعة من شاشة الإعدادات
   @Get()
-  @RequirePermission("pos_settings.view", "pos_settings.manage")
+  @RequirePermission(PERMISSION.POS_SETTINGS_VIEW, PERMISSION.POS_SETTINGS_MANAGE)
   async recent(@Query("limit", new DefaultValuePipe(50), ParseIntPipe) limit: number) {
     return {
       gatewayConfigured: this.sms.isConfigured(),

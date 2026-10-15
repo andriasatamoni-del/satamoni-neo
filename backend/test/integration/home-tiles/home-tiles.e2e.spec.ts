@@ -28,13 +28,13 @@ describe("HomeTiles - بطاقات الصفحة الرئيسية (e2e ضد تط�
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-بطاقات-جست", email: "admin-home-tiles@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-بطاقات-جست", email: "admin-home-tiles@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-home-tiles@jest.test", password: "12345678" })).body.token;
 
     const cashier = User.register({
-      name: "كاشير-بطاقات-جست", email: "cashier-home-tiles@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-بطاقات-جست", email: "cashier-home-tiles@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-home-tiles@jest.test", password: "12345678" })).body.token;

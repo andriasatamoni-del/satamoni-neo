@@ -13,6 +13,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
 // طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
@@ -44,7 +45,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-دفعات-e2e", email: "admin-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-دفعات-e2e", email: "admin-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payment-control-e2e@jest.test", password: "12345678" });
@@ -56,7 +57,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     branchId = branch.id;
 
     const branchManager = User.register({
-      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager", branchId,
+      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     branchManagerToken = (
@@ -303,7 +304,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
   });
 
   test("GET /reports/daily-owner بيلخّص مدفوعات اليوم صح", async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDateString();
     const order = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)

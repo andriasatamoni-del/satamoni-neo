@@ -9,6 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { hasRole } from "../shared/auth/roles";
 
 interface Branch { id: string; name: string; }
 interface Printer {
@@ -49,7 +50,7 @@ export function PrintingPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("printers");
-  const canPickBranch = user?.role === "admin";
+  const canPickBranch = hasRole(user, "admin");
   const [branchId, setBranchId] = useState(user?.branchId ?? "");
   const effectiveBranchId = branchId || user?.branchId || "";
 

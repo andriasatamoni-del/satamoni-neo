@@ -1,7 +1,5 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
-import { ROLES } from "../identity-access/domain/role";
 import { EMPLOYEE_REPOSITORY } from "./domain/ports/employee-repository.port";
 import { DEPARTMENT_REPOSITORY } from "./domain/ports/department-repository.port";
 import { POSITION_REPOSITORY } from "./domain/ports/position-repository.port";
@@ -92,39 +90,4 @@ import { HrPayrollController } from "./api/hr-payroll.controller";
   ],
   exports: [EMPLOYEE_REPOSITORY, PAYROLL_RUN_REPOSITORY],
 })
-export class HrPayrollModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "hr",
-      groupLabel: "الموارد البشرية والرواتب",
-      permissions: [
-        { key: "hr.employees.view", label: "رؤية الموظفين" },
-        { key: "hr.employees.manage", label: "إدارة الموظفين (إنشاء/تعديل/إنهاء خدمة)" },
-        { key: "hr.payroll.view", label: "رؤية قوائم الرواتب" },
-        { key: "hr.payroll.manage", label: "إعداد قوائم الرواتب" },
-        { key: "hr.payroll.approve", label: "اعتماد/إلغاء قوائم الرواتب" },
-        { key: "hr.self.view", label: "بياناتي (بروفايل/قسائم راتب/حضور)" },
-        { key: "hr.self.leave.manage", label: "طلبات الإجازة الخاصة بيا" },
-        { key: "hr.leave.review", label: "مراجعة طلبات إجازة الموظفين" },
-        { key: "hr.payroll.adjustments.manage", label: "تسجيل/إلغاء سلف وجزاءات ومكافآت الموظفين" },
-        { key: "hr.organization.manage", label: "إدارة الهيكل التنظيمي (أقسام ومسميات وظيفية)" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["hr.employees.view", "hr.payroll.view", "hr.leave.review"]);
-    this.permissions.setRoleDefaults("accountant", [
-      "hr.employees.view",
-      "hr.payroll.view",
-      "hr.payroll.manage",
-      "hr.payroll.approve",
-      "hr.payroll.adjustments.manage",
-      "hr.organization.manage",
-    ]);
-    // بوابة الخدمة الذاتية متاحة لأي دور - نفس فلسفة "زر بياناتي" اللي كان ظاهر في كل شاشة في الريبو
-    // القديم بغض النظر عن دور المستخدم
-    for (const role of ROLES) {
-      this.permissions.setRoleDefaults(role, ["hr.self.view", "hr.self.leave.manage"]);
-    }
-  }
-}
+export class HrPayrollModule {}

@@ -1,17 +1,15 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../../domain/user.aggregate";
-import { UnknownPermissionError, UserNotFoundError } from "../../domain/errors";
+import { UserNotFoundError } from "../../domain/errors";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
 import { auditDetail } from "../../../../shared/audit/audit-context";
-import { PermissionRegistry } from "../../../../shared/permissions/permission-registry";
 
 export interface UpdateUserCommand {
   userId: string;
-  role?: string;
+  roles?: string[];
   branchId?: string | null;
   isActive?: boolean;
-  permissionKeys?: string[]; // لو مبعوتة، بتستبدل كل الاستثناءات الحالية (نفس PATCH /api/users/:id القديم)
   password?: string; // إعادة تعيين كلمة سر (نسيان/فقدان) - الأدمن بس، نفس صلاحية identity.users.manage
 }
 
@@ -19,32 +17,20 @@ export interface UpdateUserCommand {
 export class UpdateUserHandler {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
-    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
-    private readonly permissions: PermissionRegistry
+    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort
   ) {}
 
   async execute(command: UpdateUserCommand): Promise<User> {
     const user = await this.users.findById(command.userId);
     if (!user) throw new UserNotFoundError();
-    // audit evidence: role / branch / active / permission changes (never the password or its hash)
-    const snapshot = () => ({ role: user.role, branchId: user.branchId, isActive: user.isActive, permissionGrants: [...user.permissionGrants], permissionRevokes: [...user.permissionRevokes] });
+    // audit evidence: roles / branch / active changes (never the password or its hash)
+    const snapshot = () => ({ roles: [...user.roles], branchId: user.branchId, isActive: user.isActive });
     auditDetail({ entityType: "users", entityId: user.id, before: snapshot() });
 
-    // لو الدور بيتغيّر في نفس الطلب، الصلاحيات (لو مبعوتة) بتتحسب مقابل الدور الجديد - نفس منطق
-    // الريبو القديم (المرحلة 8.58) اللي بيخلي الأدمن يغيّر الدور ويظبط الصلاحيات مرة واحدة
-    if (command.role !== undefined) user.changeRole(command.role);
+    if (command.roles !== undefined) user.changeRoles(command.roles);
     if (command.branchId !== undefined) user.changeBranch(command.branchId);
     if (command.isActive === true) user.activate();
     if (command.isActive === false) user.deactivate();
-
-    if (command.permissionKeys !== undefined) {
-      const unknown = command.permissionKeys.filter((k) => !this.permissions.isKnownPermission(k));
-      if (unknown.length > 0) throw new UnknownPermissionError(unknown);
-      const roleDefaults = user.role === "admin"
-        ? new Set(this.permissions.getAllKeys())
-        : this.permissions.getRoleDefaults(user.role);
-      user.replacePermissionOverrides(command.permissionKeys, roleDefaults);
-    }
 
     if (command.password !== undefined) {
       User.validatePasswordPolicy(command.password);

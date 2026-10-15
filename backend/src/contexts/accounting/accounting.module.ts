@@ -1,5 +1,4 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { ACCOUNT_REPOSITORY } from "./domain/ports/account-repository.port";
@@ -99,7 +98,6 @@ import type { PurchaseConfirmedEvent } from "../purchases/domain/events/purchase
 })
 export class AccountingModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly postOrderSaleJournalEntry: PostOrderSaleJournalEntryHandler,
     private readonly postOrderCancellationJournalEntry: PostOrderCancellationJournalEntryHandler,
@@ -118,30 +116,6 @@ export class AccountingModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "accounting",
-      groupLabel: "الحسابات",
-      permissions: [
-        { key: "accounting.view", label: "رؤية الحسابات والقيود" },
-        { key: "accounting.manage", label: "إدارة الحسابات وتسجيل القيود" },
-        { key: "accounting.create", label: "تسجيل قيد يدوي (مسودة)" },
-        { key: "accounting.post", label: "ترحيل قيد يدوي (مراجعة واعتماد)" },
-        { key: "accounting.close_period", label: "قفل شهر محاسبي" },
-        { key: "accounting.close_year", label: "قفل سنة مالية" },
-        { key: "accounting.repair", label: "إصلاح القيود الناقصة (إعادة ترحيل)" },
-      ],
-    });
-    this.permissions.setRoleDefaults("accountant", [
-      "accounting.view",
-      "accounting.manage",
-      "accounting.create",
-      "accounting.post",
-      "accounting.close_period",
-      "accounting.repair",
-    ]);
-    // قفل السنة المالية أدمن بس (نفس الريبو القديم بالحرف: requireRole("admin") قبل حتى requirePermission)
-    // - أثر أعمق وأصعب في التراجع من قفل شهر واحد
-
     // أول استخدام حقيقي لـEventBusService في النظام - Accounting بيشترك في حدث Orders من غير ما
     // Orders يعرف حاجة عن وجود Accounting أصلًا (نفس فايدة الفصل اللي الـbus اتصمم لأجلها من الأول)
     this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) =>

@@ -49,7 +49,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-فواتير-موردين-جست", email: "admin-supplier-invoices@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-فواتير-موردين-جست", email: "admin-supplier-invoices@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())
@@ -310,7 +310,7 @@ describe("Procurement - فواتير وسدادات الموردين (e2e ضد �
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-فواتير-موردين-جست", email: "cashier-supplier-invoices@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-فواتير-موردين-جست", email: "cashier-supplier-invoices@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())

@@ -7,6 +7,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import { HomeTilesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { HomeTile } from "../domain/home-tile.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 // GET متاح لأي موظف مسجّل دخول (مفيش صلاحية مطلوبة - نفس فلسفة "الصفحة الرئيسية بتاعة الكل" بالريبو
 // القديم، بس هنا خلف تسجيل الدخول لأن neo مالوش مفهوم صفحة عامة قبل الدخول أصلًا). PATCH أدمن بس.
@@ -25,7 +26,7 @@ export class HomeTilesController {
   }
 
   @Patch(":id")
-  @RequirePermission("home_tiles.manage")
+  @RequirePermission(PERMISSION.HOME_TILES_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdateHomeTileDto) {
     return toPublicHomeTile(await this.updateHomeTile.execute({ tileId: id, ...dto }));
   }

@@ -26,6 +26,19 @@ describe("Drizzle baseline adoption", () => {
   };
   let admin: Client;
   const pools: Pool[] = [];
+  const journal = JSON.parse(fs.readFileSync(path.join(MIGRATIONS_FOLDER, "meta/_journal.json"), "utf8"));
+  const migrationCount: number = journal.entries.length;
+  const latestWhen: number = journal.entries[journal.entries.length - 1].when;
+  const tmpDirs: string[] = [];
+  afterAll(() => tmpDirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
+
+  const baselineOnlyFolder = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "satamoni-baseline-"));
+    tmpDirs.push(dir);
+    fs.cpSync(MIGRATIONS_FOLDER, dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.slice(0, 1) }));
+    return dir;
+  };
 
   const open = (db: string) => {
     // DROP DATABASE ... WITH (FORCE) in afterAll terminates idle pooled connections; swallow that expected error.
@@ -36,9 +49,9 @@ describe("Drizzle baseline adoption", () => {
   };
   const scalar = async (pool: Pool, text: string) => (await pool.query(text)).rows[0]?.v;
 
-  // Simulates what the Kysely migrator left behind: the full schema plus its bookkeeping table, no Drizzle journal.
+  // Simulates what the Kysely migrator left behind: the baseline schema plus its bookkeeping table, no Drizzle journal.
   const makeKyselyDatabase = async (db: string, lastMigration: string) => {
-    await runMigrations(withDatabase(serverUrl, db));
+    await runMigrations(withDatabase(serverUrl, db), baselineOnlyFolder());
     const pool = open(db);
     await pool.query("DROP SCHEMA drizzle CASCADE");
     await pool.query("CREATE TABLE kysely_migration (name varchar(255) PRIMARY KEY, timestamp varchar(255) NOT NULL)");
@@ -60,18 +73,18 @@ describe("Drizzle baseline adoption", () => {
     await admin.end();
   });
 
-  test("a fresh database runs the baseline: schema, triggers and seed rows", async () => {
+  test("a fresh database runs the baseline and every later migration: schema, triggers and seed rows", async () => {
     await runMigrations(withDatabase(serverUrl, names.fresh));
     const pool = open(names.fresh);
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_tables WHERE schemaname = 'public'"))).toBe(96);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_tables WHERE schemaname = 'public'"))).toBe(99);
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_trigger WHERE NOT tgisinternal"))).toBe(6);
     expect(await scalar(pool, "SELECT email AS v FROM users")).toBe("talabat-integration@system.internal");
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM home_tiles"))).toBe(10);
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(1);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(migrationCount);
 
     // running again changes nothing
     await runMigrations(withDatabase(serverUrl, names.fresh));
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(1);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(migrationCount);
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM users"))).toBe(1);
   });
 
@@ -81,11 +94,14 @@ describe("Drizzle baseline adoption", () => {
 
     await runMigrations(withDatabase(serverUrl, names.kysely));
 
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(1);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(migrationCount);
     // the baseline did not run again: no second seed user, existing rows untouched, Kysely history kept
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM users"))).toBe(1);
     expect(await scalar(pool, "SELECT name AS v FROM branches")).toBe("فرع قائم");
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM kysely_migration"))).toBe(2);
+    expect(await scalar(pool, "SELECT string_agg(role, ',') AS v FROM user_roles")).toBe("admin");
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM permissions"))).toBeGreaterThan(100);
+    expect(Number(await scalar(pool, "SELECT count(DISTINCT role) AS v FROM role_permissions"))).toBe(7);
   });
 
   test("a Kysely database that stopped before 058 is refused and left untouched", async () => {
@@ -99,22 +115,18 @@ describe("Drizzle baseline adoption", () => {
     const url = withDatabase(serverUrl, names.concurrent);
     await Promise.all([runMigrations(url), runMigrations(url)]);
     const pool = open(names.concurrent);
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(1);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM drizzle.__drizzle_migrations"))).toBe(migrationCount);
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM users"))).toBe(1);
   });
 
   describe("migrations out of timestamp order", () => {
-    const journal = JSON.parse(fs.readFileSync(path.join(MIGRATIONS_FOLDER, "meta/_journal.json"), "utf8"));
-    const baselineWhen: number = journal.entries[0].when;
-    const dirs: string[] = [];
-    afterAll(() => dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
 
     // a copy of the real migrations plus one more, generated with the given timestamp
     const folderWithExtra = (when: number) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "satamoni-migrations-"));
-      dirs.push(dir);
+      tmpDirs.push(dir);
       fs.cpSync(MIGRATIONS_FOLDER, dir, { recursive: true });
-      const tag = "0001_late_branch";
+      const tag = "9999_late_branch";
       fs.writeFileSync(path.join(dir, `${tag}.sql`), "CREATE TABLE late_branch_marker (id int);");
       const entries = [...journal.entries, { idx: journal.entries.length, version: "7", when, tag, breakpoints: true }];
       fs.writeFileSync(path.join(dir, "meta/_journal.json"), JSON.stringify({ ...journal, entries }));
@@ -122,8 +134,8 @@ describe("Drizzle baseline adoption", () => {
     };
 
     test("a journal whose timestamps do not increase is refused", async () => {
-      await expect(runMigrations(withDatabase(serverUrl, names.order), folderWithExtra(baselineWhen - 1))).rejects.toThrow(
-        /"0001_late_branch" is not newer than/
+      await expect(runMigrations(withDatabase(serverUrl, names.order), folderWithExtra(latestWhen - 1))).rejects.toThrow(
+        /"9999_late_branch" is not newer than/
       );
     });
 
@@ -132,9 +144,9 @@ describe("Drizzle baseline adoption", () => {
       await runMigrations(url);
       const pool = open(names.order);
       // another branch's migration, generated later, was deployed first
-      await pool.query("INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('other-branch', $1)", [baselineWhen + 10]);
+      await pool.query("INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('other-branch', $1)", [latestWhen + 10]);
 
-      await expect(runMigrations(url, folderWithExtra(baselineWhen + 5))).rejects.toThrow(/"0001_late_branch" was never applied/);
+      await expect(runMigrations(url, folderWithExtra(latestWhen + 5))).rejects.toThrow(/"9999_late_branch" was never applied/);
       expect(await scalar(pool, "SELECT to_regclass('public.late_branch_marker')::text AS v")).toBeNull();
     });
   });

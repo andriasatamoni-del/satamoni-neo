@@ -1,5 +1,4 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -63,41 +62,11 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
 })
 export class PaymentControlModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly lockPaymentForOrder: LockPaymentForOrderHandler
   ) {}
 
   onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "payment_control",
-      groupLabel: "التحكم في المدفوعات والمطابقة",
-      permissions: [
-        { key: "payment_control.view", label: "رؤية الدفعات والمطابقة" },
-        { key: "payment_control.methods.manage", label: "إدارة طرق الدفع" },
-        { key: "payment_control.adjustment.request", label: "طلب تعديل دفعة" },
-        { key: "payment_control.adjustment.approve", label: "اعتماد تعديل دفعة (سقف عادي)" },
-        { key: "payment_control.adjustment.approve_high", label: "اعتماد تعديل دفعة (سقف عالي)" },
-        { key: "payment_control.reconciliation.enter", label: "إدخال ومطابقة كشوف الحساب" },
-        { key: "payment_control.exceptions.resolve", label: "مراجعة الاستثناءات ونقاط المخاطر" },
-      ],
-    });
-    this.permissions.setRoleDefaults("cashier", ["payment_control.adjustment.request"]);
-    this.permissions.setRoleDefaults("branch_manager", [
-      "payment_control.view",
-      "payment_control.adjustment.request",
-      "payment_control.adjustment.approve",
-    ]);
-    this.permissions.setRoleDefaults("accountant", [
-      "payment_control.view",
-      "payment_control.methods.manage",
-      "payment_control.adjustment.request",
-      "payment_control.adjustment.approve",
-      "payment_control.adjustment.approve_high",
-      "payment_control.reconciliation.enter",
-      "payment_control.exceptions.resolve",
-    ]);
-
     // تاني مستهلك لـOrderRegisteredEvent (بعد Accounting) - قفل الدفعة فوره وقت تسجيل الطلب لو
     // paymentMethodId متحدد
     // critical: the payment is part of the order transaction (BL-09) - a failure rolls the whole order back

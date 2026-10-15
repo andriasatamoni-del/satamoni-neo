@@ -8,6 +8,7 @@ import { Button } from "../shared/ui/Button";
 import { Field, Select, Textarea } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "../shared/ui/Table";
+import { hasRole } from "../shared/auth/roles";
 
 interface Branch {
   id: string;
@@ -56,7 +57,7 @@ export function BranchDayPage() {
   const [managerNotes, setManagerNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState(user?.branchId ?? "");
-  const canClose = user?.role === "admin" || user?.role === "branch_manager";
+  const canClose = hasRole(user, "admin", "branch_manager");
 
   const branchesQuery = useQuery({
     queryKey: ["branches"],

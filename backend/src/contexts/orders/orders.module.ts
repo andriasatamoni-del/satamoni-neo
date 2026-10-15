@@ -1,5 +1,4 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { InventoryModule } from "../inventory/inventory.module";
@@ -42,7 +41,6 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
 })
 export class OrdersModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly syncOrderPaymentMethod: SyncOrderPaymentMethodHandler
   ) {}
@@ -50,29 +48,5 @@ export class OrdersModule implements OnModuleInit {
   onModuleInit(): void {
     // BL-06: critical - runs inside the payment-adjustment transaction
     this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (e) => this.syncOrderPaymentMethod.handle(e), { critical: true });
-    this.permissions.registerGroup({
-      group: "orders",
-      groupLabel: "الطلبات والبيع",
-      permissions: [
-        { key: "orders.view", label: "رؤية الطلبات" },
-        { key: "orders.create", label: "تسجيل طلب جديد" },
-        { key: "orders.manage", label: "إدارة حالة الطلبات" },
-      ],
-    });
-    this.permissions.setRoleDefaults("cashier", ["orders.view", "orders.create"]);
-    this.permissions.setRoleDefaults("branch_manager", ["orders.view", "orders.create", "orders.manage"]);
-
-    // مفيش دور "مطبخ" منفصل - نفس قرار الريبو القديم بالظبط (docs/KITCHEN-DISPLAY.md): الكاشير غالبًا
-    // هو الواقف قدام شاشة المطبخ فعليًا، ومدير الفرع طبعًا لازم يشوف ويتابع برضه.
-    this.permissions.registerGroup({
-      group: "kitchen",
-      groupLabel: "شاشة المطبخ",
-      permissions: [
-        { key: "kitchen.view", label: "رؤية شاشة المطبخ" },
-        { key: "kitchen.advance", label: "تقديم حالة تحضير الطلب" },
-      ],
-    });
-    this.permissions.setRoleDefaults("cashier", ["kitchen.view", "kitchen.advance"]);
-    this.permissions.setRoleDefaults("branch_manager", ["kitchen.view", "kitchen.advance"]);
   }
 }

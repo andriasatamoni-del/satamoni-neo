@@ -2,6 +2,7 @@ import { User } from "../../../src/contexts/identity-access/domain/user.aggregat
 import {
   InvalidEmailError,
   InvalidRoleError,
+  RolesRequiredError,
   WeakPasswordError,
 } from "../../../src/contexts/identity-access/domain/errors";
 
@@ -12,28 +13,35 @@ describe("User aggregate", () => {
         name: "  أحمد  ",
         email: "  Ahmed@Example.com ",
         passwordHash: "hashed",
-        role: "cashier",
+        roles: ["cashier"],
       });
       expect(user.id).toBeTruthy();
       expect(user.name).toBe("أحمد");
       expect(user.email).toBe("ahmed@example.com"); // trimmed + lowercased
-      expect(user.role).toBe("cashier");
+      expect(user.roles).toEqual(["cashier"]);
       expect(user.isActive).toBe(true);
-      expect(user.permissionGrants).toEqual([]);
-      expect(user.permissionRevokes).toEqual([]);
       expect(user.pinHash).toBeNull();
     });
 
     it("بيرفض إيميل غلط", () => {
       expect(() =>
-        User.register({ name: "أحمد", email: "not-an-email", passwordHash: "h", role: "cashier" })
+        User.register({ name: "أحمد", email: "not-an-email", passwordHash: "h", roles: ["cashier"] })
       ).toThrow(InvalidEmailError);
     });
 
     it("بيرفض دور مش معروف", () => {
       expect(() =>
-        User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", role: "superadmin" })
+        User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", roles: ["superadmin"] })
       ).toThrow(InvalidRoleError);
+    });
+
+    it("بيرفض مستخدم من غير ولا دور", () => {
+      expect(() => User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", roles: [] })).toThrow(RolesRequiredError);
+    });
+
+    it("بيقبل أكتر من دور، من غير تكرار وبترتيب ثابت (ترتيب ROLES)", () => {
+      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier", "branch_manager", "cashier"] });
+      expect(user.roles).toEqual(["branch_manager", "cashier"]);
     });
   });
 
@@ -47,38 +55,9 @@ describe("User aggregate", () => {
     });
   });
 
-  describe("permission overrides", () => {
-    it("grantPermission بيضيف للـgrants ويشيلها من الـrevokes لو موجودة", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
-      user.revokePermission("orders.create");
-      expect(user.permissionRevokes).toContain("orders.create");
-      user.grantPermission("orders.create");
-      expect(user.permissionGrants).toContain("orders.create");
-      expect(user.permissionRevokes).not.toContain("orders.create");
-    });
-
-    it("revokePermission بيضيف للـrevokes ويشيلها من الـgrants لو موجودة", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
-      user.grantPermission("orders.create");
-      user.revokePermission("orders.create");
-      expect(user.permissionGrants).not.toContain("orders.create");
-      expect(user.permissionRevokes).toContain("orders.create");
-    });
-
-    it("replacePermissionOverrides بيحسب الفرق صح مقابل صلاحيات الدور الافتراضية", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
-      const roleDefaults = new Set(["orders.create", "shifts.open_own"]);
-      // الأدمن علّم orders.create (موجودة أصلًا في الدور - مفيش تأثير) + payslips.view_own (إضافية)
-      // وشال shifts.open_own (موجودة في الدور - لازم تتحول revoke)
-      user.replacePermissionOverrides(["orders.create", "payslips.view_own"], roleDefaults);
-      expect(user.permissionGrants).toEqual(["payslips.view_own"]);
-      expect(user.permissionRevokes).toEqual(["shifts.open_own"]);
-    });
-  });
-
   describe("activate/deactivate", () => {
     it("deactivate بيقفل isActive و activate بيرجعه", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
+      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
       user.deactivate();
       expect(user.isActive).toBe(false);
       user.activate();
@@ -86,17 +65,23 @@ describe("User aggregate", () => {
     });
   });
 
-  describe("changeRole", () => {
-    it("بيرفض دور مش معروف ومايغيّرش الدور الحالي", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
-      expect(() => user.changeRole("ghost")).toThrow(InvalidRoleError);
-      expect(user.role).toBe("cashier");
+  describe("changeRoles", () => {
+    it("بيرفض دور مش معروف ومايغيّرش الأدوار الحالية", () => {
+      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
+      expect(() => user.changeRoles(["branch_manager", "ghost"])).toThrow(InvalidRoleError);
+      expect(user.roles).toEqual(["cashier"]);
     });
 
-    it("بيغيّر الدور لو صحيح", () => {
-      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", role: "cashier" });
-      user.changeRole("branch_manager");
-      expect(user.role).toBe("branch_manager");
+    it("بيرفض قايمة فاضية ومايغيّرش الأدوار الحالية", () => {
+      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
+      expect(() => user.changeRoles([])).toThrow(RolesRequiredError);
+      expect(user.roles).toEqual(["cashier"]);
+    });
+
+    it("بيستبدل الأدوار كلها لو صحيحة", () => {
+      const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
+      user.changeRoles(["accountant", "branch_manager"]);
+      expect(user.roles).toEqual(["branch_manager", "accountant"]);
     });
   });
 });

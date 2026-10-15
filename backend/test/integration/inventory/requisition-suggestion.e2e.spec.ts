@@ -53,7 +53,7 @@ describe("Inventory - اقتراح الطلبية (e2e)", () => {
         name: "أدمن-اقتراح-طلبية-جست",
         email: "admin-requisition@jest.test",
         passwordHash: await new BcryptPasswordHasher().hash("12345678"),
-        role: "admin",
+        roles: ["admin"],
       })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-requisition@jest.test", password: "12345678" })).body.token;

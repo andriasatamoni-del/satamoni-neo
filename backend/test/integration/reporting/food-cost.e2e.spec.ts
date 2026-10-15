@@ -12,6 +12,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -20,7 +21,7 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
   let ingredientItemId: string;
   let variantId: string;
   let orderIdToCancel: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -55,7 +56,7 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تكلفة-طعام-جست", email: "admin-foodcost@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تكلفة-طعام-جست", email: "admin-foodcost@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())

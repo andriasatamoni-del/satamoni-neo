@@ -43,7 +43,7 @@ describe("Procurement - /procurement (e2e ضد تطبيق حقيقي كامل)",
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-مشتريات", email: "admin-procurement@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-مشتريات", email: "admin-procurement@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())

@@ -1,21 +1,18 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import { PermissionRegistry } from "../../../../shared/permissions/permission-registry";
 import { PERMISSIONS_KEY } from "./require-permission.decorator";
 import type { AuthenticatedUser } from "../types";
+import type { Permission } from "../../domain/permission";
 
 // لازم JwtAuthGuard يتنفّذ قبله (بيعتمد على req.user اللي بيحطه) - نفس ترتيب requireAuth قبل
 // requirePermission في الريبو القديم
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(
-    private readonly reflector: Reflector,
-    private readonly permissions: PermissionRegistry
-  ) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+    const required = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -25,13 +22,9 @@ export class PermissionsGuard implements CanActivate {
     const user = req.user;
     if (!user) throw new ForbiddenException("معندكش صلاحية تعمل الإجراء ده");
 
-    const allowed = required.some((permission) =>
-      this.permissions.hasPermission(user.role, permission, {
-        grants: user.permissionGrants,
-        revokes: user.permissionRevokes,
-      })
-    );
-    if (!allowed) throw new ForbiddenException("معندكش صلاحية تعمل الإجراء ده");
+    if (!required.some((permission) => user.permissions.has(permission))) {
+      throw new ForbiddenException("معندكش صلاحية تعمل الإجراء ده");
+    }
     return true;
   }
 }

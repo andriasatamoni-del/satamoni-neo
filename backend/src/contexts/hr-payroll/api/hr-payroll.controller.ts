@@ -48,6 +48,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
 import { BranchScopeGuard, BranchScoped, BranchResource, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { HrPayrollDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Employee } from "../domain/employee.aggregate";
@@ -57,6 +58,7 @@ import type { PayrollRun } from "../domain/payroll-run.aggregate";
 import type { LeaveRequest } from "../domain/leave-request.aggregate";
 import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shift.aggregate";
 import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -96,7 +98,7 @@ export class HrPayrollController {
 
   @BranchScoped()
   @Get("employees")
-  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
   async employees(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
     const scope = branchScopeOf(req.user);
     const all = await this.listEmployees.execute({ status });
@@ -108,7 +110,7 @@ export class HrPayrollController {
 
   @BranchScoped()
   @Post("employees")
-  @RequirePermission("hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_MANAGE)
   async createEmployee(@Body() dto: RegisterEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     this.assertBranchBoundEmployeeRules(req.user, dto);
     const scope = branchScopeOf(req.user);
@@ -120,13 +122,13 @@ export class HrPayrollController {
   @BranchScoped()
   @BranchResource("employees", { column: "restricted_branch_id" })
   @Patch("employees/:id")
-  @RequirePermission("hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_MANAGE)
   async updateEmployeeRoute(@Param("id") id: string, @Body() dto: UpdateEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     this.assertBranchBoundEmployeeRules(req.user, dto);
     return toPublicEmployee(
       await this.updateEmployee.execute({
         employeeId: id,
-        actorRole: req.user.role,
+        actorIsAdmin: hasAnyRole(req.user.roles, ROLE.ADMIN),
         ...dto,
         changedBy: req.user.id,
       })
@@ -136,7 +138,7 @@ export class HrPayrollController {
   @BranchScoped()
   @BranchResource("employees", { column: "restricted_branch_id" })
   @Patch("employees/:id/status")
-  @RequirePermission("hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_MANAGE)
   async updateEmployeeStatus(@Param("id") id: string, @Body() dto: SetEmployeeStatusDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const { employee, terminationCascade } = await this.setEmployeeStatus.execute({
       employeeId: id,
@@ -155,7 +157,7 @@ export class HrPayrollController {
   @BranchScoped()
   @BranchResource("employees", { column: "restricted_branch_id" })
   @Get("employees/:id/history")
-  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
   async employeeHistoryRoute(@Param("id") id: string) {
     return this.employeeHistory.listByEmployee(id);
   }
@@ -163,72 +165,72 @@ export class HrPayrollController {
   // الهيكل التنظيمي - أقسام ومسميات وظيفية حقيقية (نفس فلسفة HRF-6 بالريبو القديم بالحرف) بدل ما تكون
   // نص حر على employees.department/job_title
   @Get("departments")
-  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
   async departments(@Query("status") status?: string) {
     return (await this.listDepartments.execute({ status })).map(toPublicDepartment);
   }
 
   @Post("departments")
-  @RequirePermission("hr.organization.manage")
+  @RequirePermission(PERMISSION.HR_ORGANIZATION_MANAGE)
   async createDepartment(@Body() dto: RegisterDepartmentDto) {
     return toPublicDepartment(await this.registerDepartment.execute(dto));
   }
 
   @Patch("departments/:id")
-  @RequirePermission("hr.organization.manage")
+  @RequirePermission(PERMISSION.HR_ORGANIZATION_MANAGE)
   async updateDepartmentHandler(@Param("id") id: string, @Body() dto: UpdateDepartmentDto) {
     return toPublicDepartment(await this.updateDepartment.execute({ departmentId: id, ...dto }));
   }
 
   @Get("positions")
-  @RequirePermission("hr.employees.view", "hr.employees.manage")
+  @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
   async positions(@Query("status") status?: string, @Query("departmentId") departmentId?: string) {
     return (await this.listPositions.execute({ status, departmentId })).map(toPublicPosition);
   }
 
   @Post("positions")
-  @RequirePermission("hr.organization.manage")
+  @RequirePermission(PERMISSION.HR_ORGANIZATION_MANAGE)
   async createPosition(@Body() dto: RegisterPositionDto) {
     return toPublicPosition(await this.registerPosition.execute(dto));
   }
 
   @Patch("positions/:id")
-  @RequirePermission("hr.organization.manage")
+  @RequirePermission(PERMISSION.HR_ORGANIZATION_MANAGE)
   async updatePositionHandler(@Param("id") id: string, @Body() dto: UpdatePositionDto) {
     return toPublicPosition(await this.updatePosition.execute({ positionId: id, ...dto }));
   }
 
   @CompanyWideOnly()
   @Get("payroll-runs")
-  @RequirePermission("hr.payroll.view", "hr.payroll.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE)
   async payrollRuns(@Query("status") status?: string) {
     return (await this.listPayrollRuns.execute({ status })).map(toPublicPayrollRun);
   }
 
   @CompanyWideOnly()
   @Post("payroll-runs")
-  @RequirePermission("hr.payroll.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_MANAGE)
   async createPayrollRun(@Body() dto: RegisterPayrollRunDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.registerPayrollRun.execute({ ...dto, createdBy: req.user.id }));
   }
 
   @CompanyWideOnly()
   @Post("payroll-runs/:id/approve")
-  @RequirePermission("hr.payroll.approve")
+  @RequirePermission(PERMISSION.HR_PAYROLL_APPROVE)
   async approve(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.approvePayrollRun.execute({ payrollRunId: id, approvedBy: req.user.id }));
   }
 
   @CompanyWideOnly()
   @Post("payroll-runs/:id/cancel")
-  @RequirePermission("hr.payroll.approve")
+  @RequirePermission(PERMISSION.HR_PAYROLL_APPROVE)
   async cancel(@Param("id") id: string, @Body() dto: CancelPayrollRunDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPayrollRun(await this.cancelPayrollRun.execute({ payrollRunId: id, cancelledBy: req.user.id, reason: dto.reason }));
   }
 
   @CompanyWideOnly()
   @Delete("payroll-runs/:id")
-  @RequirePermission("hr.payroll.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_MANAGE)
   async deleteDraft(@Param("id") id: string) {
     await this.deleteDraftPayrollRun.execute(id);
     return { deleted: true };
@@ -237,26 +239,26 @@ export class HrPayrollController {
   // بوابة الخدمة الذاتية - أي دور (حتى غير "employee") ممكن يشوف بياناته لو حسابه مربوط بملف موظف
   // (employees.user_id) - نفس فلسفة "زر بياناتي" الموجود في كل شاشة في الريبو القديم
   @Get("self/profile")
-  @RequirePermission("hr.self.view")
+  @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async ownProfile(@Req() req: Request & { user: AuthenticatedUser }) {
     const { employee, departmentName, positionName } = await this.getOwnEmployeeProfile.execute(req.user.id);
     return { ...toPublicEmployee(employee), departmentName, positionName };
   }
 
   @Get("self/payslips")
-  @RequirePermission("hr.self.view")
+  @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async ownPayslips(@Req() req: Request & { user: AuthenticatedUser }) {
     return this.listOwnPayslips.execute(req.user.id);
   }
 
   @Get("self/leave-requests")
-  @RequirePermission("hr.self.leave.manage")
+  @RequirePermission(PERMISSION.HR_SELF_LEAVE_MANAGE)
   async ownLeaveRequests(@Req() req: Request & { user: AuthenticatedUser }) {
     return (await this.listOwnLeaveRequests.execute(req.user.id)).map(toPublicLeaveRequest);
   }
 
   @Post("self/leave-requests")
-  @RequirePermission("hr.self.leave.manage")
+  @RequirePermission(PERMISSION.HR_SELF_LEAVE_MANAGE)
   async createOwnLeaveRequest(@Body() dto: RegisterLeaveRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicLeaveRequest(
       await this.registerLeaveRequest.execute({
@@ -270,25 +272,25 @@ export class HrPayrollController {
   }
 
   @Post("self/leave-requests/:id/cancel")
-  @RequirePermission("hr.self.leave.manage")
+  @RequirePermission(PERMISSION.HR_SELF_LEAVE_MANAGE)
   async cancelOwnLeaveRequest(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicLeaveRequest(await this.cancelLeaveRequest.execute({ userId: req.user.id, leaveRequestId: id }));
   }
 
   @Get("self/attendance")
-  @RequirePermission("hr.self.view")
+  @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async ownAttendance(@Req() req: Request & { user: AuthenticatedUser }) {
     return (await this.listOwnAttendanceShifts.execute(req.user.id)).map(toPublicAttendanceShift);
   }
 
   @Post("self/attendance/check-in")
-  @RequirePermission("hr.self.view")
+  @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async checkIn(@Body() dto: CheckInEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAttendanceShift(await this.checkInEmployee.execute({ userId: req.user.id, branchId: dto.branchId }));
   }
 
   @Post("self/attendance/:id/check-out")
-  @RequirePermission("hr.self.view")
+  @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async checkOut(@Param("id") id: string, @Body() dto: CheckOutEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAttendanceShift(
       await this.checkOutEmployee.execute({ userId: req.user.id, shiftId: id, notes: dto.notes })
@@ -298,7 +300,7 @@ export class HrPayrollController {
   // مراجعة طلبات الإجازة (جانب الإدارة) - hr.leave.review
   @BranchScoped()
   @Get("leave-requests")
-  @RequirePermission("hr.leave.review")
+  @RequirePermission(PERMISSION.HR_LEAVE_REVIEW)
   async leaveRequests(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
     const requests = await this.listLeaveRequests.execute({ status });
     const scope = branchScopeOf(req.user);
@@ -313,7 +315,7 @@ export class HrPayrollController {
   @BranchScoped()
   @BranchResource("employee_leave_requests", { through: { column: "employee_id", table: "employees", branchColumn: "restricted_branch_id" } })
   @Post("leave-requests/:id/review")
-  @RequirePermission("hr.leave.review")
+  @RequirePermission(PERMISSION.HR_LEAVE_REVIEW)
   async reviewLeave(@Param("id") id: string, @Body() dto: ReviewLeaveRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicLeaveRequest(
       await this.reviewLeaveRequest.execute({
@@ -328,14 +330,14 @@ export class HrPayrollController {
   // سلف/جزاءات/مكافآت فردية - راجع تعليق payroll-adjustment.aggregate.ts
   @CompanyWideOnly()
   @Get("adjustments")
-  @RequirePermission("hr.payroll.view", "hr.payroll.adjustments.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE)
   async adjustments(@Query("employeeId") employeeId?: string, @Query("status") status?: string) {
     return (await this.listPayrollAdjustments.execute({ employeeId, status })).map(toPublicAdjustment);
   }
 
   @CompanyWideOnly()
   @Post("adjustments")
-  @RequirePermission("hr.payroll.adjustments.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE)
   async createAdjustment(@Body() dto: RegisterPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAdjustment(
       await this.registerPayrollAdjustment.execute({
@@ -351,7 +353,7 @@ export class HrPayrollController {
 
   @CompanyWideOnly()
   @Post("adjustments/:id/cancel")
-  @RequirePermission("hr.payroll.adjustments.manage")
+  @RequirePermission(PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE)
   async cancelAdjustment(@Param("id") id: string, @Body() dto: CancelPayrollAdjustmentDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicAdjustment(
       await this.cancelPayrollAdjustment.execute({ adjustmentId: id, reason: dto.reason, cancelledBy: req.user.id })

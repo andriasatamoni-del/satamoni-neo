@@ -14,6 +14,7 @@ import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { cashDrawerEntries, cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -24,7 +25,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
   let variantId: string;
   let ingredientItemId: string;
   let shiftId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -55,7 +56,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-صحة-فروع-جست", email: "admin-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-صحة-فروع-جست", email: "admin-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-branchhealth@jest.test", password: "12345678" })).body.token;
@@ -74,7 +75,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
 
     const branchManager = User.register({
       name: "مدير فرع-صحة-فروع-جست", email: "manager-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"),
-      role: "branch_manager", branchId,
+      roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     branchManagerToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "manager-branchhealth@jest.test", password: "12345678" })).body.token;

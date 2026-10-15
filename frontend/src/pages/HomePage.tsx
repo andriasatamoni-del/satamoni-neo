@@ -8,6 +8,7 @@ import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Field";
 import { DashboardSummary } from "./home/DashboardSummary";
 import { ActionCenterPanel } from "./home/ActionCenterPanel";
+import { hasRole } from "../shared/auth/roles";
 import {
   BoxIcon,
   BookIcon,
@@ -35,7 +36,7 @@ const ICONS: Record<string, typeof CartIcon> = {
 // الترتيب وقت التشغيل (نفس تقييد routes/home-tiles.js بالريبو القديم بالحرف: tileKey/href/icon ثابتين)
 export function HomePage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = hasRole(user, "admin");
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
 

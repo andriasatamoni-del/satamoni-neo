@@ -8,6 +8,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import type { PosSettings } from "../domain/pos-settings.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("pos-settings")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -20,13 +21,13 @@ export class PosSettingsController {
   // كل مستخدم مسجّل دخول يقدر يقرأ الإعدادات (بيُستخدم قيمها في شاشات تانية - أجر الساعة الافتراضي في
   // شاشة تسجيل دخول السائق مثلًا) - القراءة مش حساسة، التعديل بس محتاج صلاحية
   @Get()
-  @RequirePermission("pos_settings.view", "pos_settings.manage")
+  @RequirePermission(PERMISSION.POS_SETTINGS_VIEW, PERMISSION.POS_SETTINGS_MANAGE)
   async get() {
     return toPublic(await this.getSettings.execute());
   }
 
   @Patch()
-  @RequirePermission("pos_settings.manage")
+  @RequirePermission(PERMISSION.POS_SETTINGS_MANAGE)
   async update(@Body() dto: UpdatePosSettingsDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublic(await this.updateSettings.execute({ ...dto, updatedBy: req.user.id }));
   }

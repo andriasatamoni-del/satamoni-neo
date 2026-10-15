@@ -97,7 +97,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
 
     await new UserRepository(app.get<Database>(DATABASE)).save(
-      User.register({ name: "أدمن-موقع-جست", email: "admin-store@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
+      User.register({ name: "أدمن-موقع-جست", email: "admin-store@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), roles: ["admin"] })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-store@jest.test", password: "12345678" })).body.token;
 

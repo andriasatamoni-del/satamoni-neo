@@ -37,7 +37,7 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-خزائن-جست", email: "admin-treasury@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-خزائن-جست", email: "admin-treasury@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())
@@ -157,7 +157,7 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
 
     const manager = User.register({
       name: "مدير فرع-خزائن-جست", email: "manager-treasury@jest.test", passwordHash: await hasher.hash("12345678"),
-      role: "branch_manager", branchId,
+      roles: ["branch_manager"], branchId,
     });
     await userRepo.save(manager);
     const managerLogin = await request(app.getHttpServer())
@@ -176,7 +176,7 @@ describe("Treasury - /treasuries و /banks (e2e ضد تطبيق حقيقي كا�
     expect(managerTransfer.status).toBe(403); // مالي بحت، مش متاح لمدير الفرع
 
     const cashier = User.register({
-      name: "كاشير-خزائن-جست", email: "cashier-treasury@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-خزائن-جست", email: "cashier-treasury@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     const cashierLogin = await request(app.getHttpServer())

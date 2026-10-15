@@ -26,8 +26,8 @@ describe("Media - صور المنيو (e2e)", () => {
     const { BcryptPasswordHasher } = await import("../../../src/contexts/identity-access/infrastructure/security/bcrypt-password-hasher");
     const hash = await new BcryptPasswordHasher().hash("12345678");
     const repo = new UserRepository(app.get<Database>(DATABASE));
-    await repo.save(User.register({ name: "أدمن-صور", email: "admin-media@jest.test", passwordHash: hash, role: "admin" }));
-    await repo.save(User.register({ name: "كاشير-صور", email: "cashier-media@jest.test", passwordHash: hash, role: "cashier" }));
+    await repo.save(User.register({ name: "أدمن-صور", email: "admin-media@jest.test", passwordHash: hash, roles: ["admin"] }));
+    await repo.save(User.register({ name: "كاشير-صور", email: "cashier-media@jest.test", passwordHash: hash, roles: ["cashier"] }));
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-media@jest.test", password: "12345678" })).body.token;
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-media@jest.test", password: "12345678" })).body.token;
   });

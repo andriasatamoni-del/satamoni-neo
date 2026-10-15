@@ -15,6 +15,7 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { KitchenStation } from "../domain/kitchen-station.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 function toPublicStation(station: KitchenStation) {
   return { id: station.id, branchId: station.branchId, name: station.name, printerId: station.printerId, isActive: station.isActive };
@@ -36,7 +37,7 @@ export class KitchenStationsController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("print_routing.view", "print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_VIEW, PERMISSION.PRINT_ROUTING_MANAGE)
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     const effectiveBranchId = branchId || req.user.branchId;
     if (!effectiveBranchId) return [];
@@ -44,14 +45,14 @@ export class KitchenStationsController {
   }
 
   @Get("routing/menu")
-  @RequirePermission("print_routing.view", "print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_VIEW, PERMISSION.PRINT_ROUTING_MANAGE)
   async menuRouting() {
     return this.getMenuRouting.execute();
   }
 
   @BranchScoped()
   @Post()
-  @RequirePermission("print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_MANAGE)
   async create(@Body() dto: RegisterKitchenStationDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const branchId = dto.branchId || req.user.branchId;
     if (!branchId) return { error: "لازم تحدد الفرع" };
@@ -59,14 +60,14 @@ export class KitchenStationsController {
   }
 
   @Patch("routing/menu-categories/:id")
-  @RequirePermission("print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_MANAGE)
   async routeCategory(@Param("id") id: string, @Body() dto: RouteStationDto) {
     const category = await this.routeMenuCategory.execute({ categoryId: id, stationId: dto.stationId ?? null });
     return { categoryId: category.id, stationId: category.stationId };
   }
 
   @Patch("routing/menu-items/:id")
-  @RequirePermission("print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_MANAGE)
   async routeItem(@Param("id") id: string, @Body() dto: RouteStationDto) {
     const item = await this.routeMenuItem.execute({ itemId: id, stationId: dto.stationId ?? null });
     return { itemId: item.id, stationId: item.stationId };
@@ -75,7 +76,7 @@ export class KitchenStationsController {
   @BranchScoped()
   @BranchResource("kitchen_stations")
   @Patch(":id")
-  @RequirePermission("print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdateKitchenStationDto) {
     return toPublicStation(await this.updateStation.execute({ stationId: id, ...dto }));
   }
@@ -83,7 +84,7 @@ export class KitchenStationsController {
   @BranchScoped()
   @BranchResource("kitchen_stations")
   @Delete(":id")
-  @RequirePermission("print_routing.manage")
+  @RequirePermission(PERMISSION.PRINT_ROUTING_MANAGE)
   async remove(@Param("id") id: string) {
     await this.deleteStation.execute({ stationId: id });
     return { success: true };

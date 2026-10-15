@@ -18,13 +18,13 @@ import { DATABASE, type Database } from "../database/database.token";
 import { pgErrorCode, tableByName } from "../database/transaction-context";
 import { AuditLogService } from "../audit/audit-log.service";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
-import { ROLE, type Role } from "../../contexts/identity-access/domain/role";
+import { hasAnyRole, ROLE, type Role } from "../../contexts/identity-access/domain/role";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Phase 3.1 (BL-11): server-side branch isolation.
 //
 // POLICY (documented, enforced here and tested by test/integration/security/branch-isolation.e2e.spec.ts):
-//   * Branch scope is derived ONLY from the authenticated user's server-side identity (role + users.branch_id, loaded from the
+//   * Branch scope is derived ONLY from the authenticated user's server-side identity (roles + users.branch_id, loaded from the
 //     database on every request by JwtAuthGuard). It is NEVER derived from a client-supplied branchId and NEVER from permissions,
 //     so granting a custom permission (e.g. accounting.view) can not widen a user's branch scope.
 //   * COMPANY-WIDE roles: `admin` and `accountant` see/act on every branch.
@@ -45,9 +45,9 @@ export const COMPANY_WIDE_ROLES: readonly Role[] = [ROLE.ADMIN, ROLE.ACCOUNTANT]
 
 export type BranchScope = { kind: "all" } | { kind: "branch"; branchId: string } | { kind: "none" };
 
-export function branchScopeOf(user: Pick<AuthenticatedUser, "role" | "branchId">): BranchScope {
-  if (COMPANY_WIDE_ROLES.includes(user.role)) return { kind: "all" };
-  if (user.role === ROLE.CALLCENTER && !user.branchId) return { kind: "all" };
+export function branchScopeOf(user: Pick<AuthenticatedUser, "roles" | "branchId">): BranchScope {
+  if (hasAnyRole(user.roles, ...COMPANY_WIDE_ROLES)) return { kind: "all" };
+  if (hasAnyRole(user.roles, ROLE.CALLCENTER) && !user.branchId) return { kind: "all" };
   if (user.branchId) return { kind: "branch", branchId: user.branchId };
   return { kind: "none" };
 }

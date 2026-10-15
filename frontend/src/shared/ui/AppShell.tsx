@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { ROLE_LABELS } from "../auth/roles";
+import { roleLabels } from "../auth/roles";
 import {
   BoxIcon,
   BookIcon,
@@ -129,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             <div className="text-end leading-tight">
               <p className="text-sm font-semibold text-slate-800">{user?.name}</p>
-              <p className="text-xs text-slate-400">{user ? (ROLE_LABELS[user.role] ?? user.role) : ""}</p>
+              <p className="text-xs text-slate-400">{user ? roleLabels(user.roles) : ""}</p>
             </div>
             <button
               onClick={logout}

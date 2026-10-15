@@ -31,6 +31,7 @@ import type { Account } from "../domain/account.aggregate";
 import type { JournalEntry } from "../domain/journal-entry.aggregate";
 import type { AccountingPeriod } from "../domain/accounting-period.aggregate";
 import type { FiscalYearClosing } from "../domain/fiscal-year-closing.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("accounting")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -54,20 +55,20 @@ export class AccountingController {
   ) {}
 
   @Get("accounts")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async accounts() {
     return (await this.listAccounts.execute()).map(toPublicAccount);
   }
 
   @Post("accounts")
-  @RequirePermission("accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_MANAGE)
   async createAccount(@Body() dto: RegisterAccountDto) {
     return toPublicAccount(await this.registerAccount.execute(dto));
   }
 
   @Get("journal-entries")
   @BranchScoped()
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async journalEntries(@Query("branchId") branchId?: string, @Query("sourceType") sourceType?: string) {
     return (await this.listJournalEntries.execute({ branchId, sourceType })).map(toPublicEntry);
   }
@@ -76,7 +77,7 @@ export class AccountingController {
   // /post منفصل بصلاحية accounting.post - راجع تعليق RegisterJournalEntryDto وJournalEntry.post()
   @Post("journal-entries")
   @BranchScoped()
-  @RequirePermission("accounting.create")
+  @RequirePermission(PERMISSION.ACCOUNTING_CREATE)
   async createJournalEntry(@Body() dto: RegisterJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(
       await this.registerJournalEntry.execute({
@@ -91,7 +92,7 @@ export class AccountingController {
   @Post("journal-entries/:id/post")
   @BranchScoped()
   @BranchResource("journal_entries")
-  @RequirePermission("accounting.post")
+  @RequirePermission(PERMISSION.ACCOUNTING_POST)
   async postJournalEntryRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(await this.postJournalEntry.execute({ entryId: id, postedBy: req.user.id }));
   }
@@ -99,20 +100,20 @@ export class AccountingController {
   @Post("journal-entries/:id/reverse")
   @BranchScoped()
   @BranchResource("journal_entries")
-  @RequirePermission("accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_MANAGE)
   async reverse(@Param("id") id: string, @Body() dto: ReverseJournalEntryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicEntry(await this.reverseJournalEntry.execute({ entryId: id, reversedBy: req.user.id, reason: dto.reason }));
   }
 
   @Get("reports/trial-balance")
   @BranchScoped()
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async trialBalance(@Query("asOf") asOf: string | undefined, @Query("branchId") branchId: string | undefined) {
     return this.getTrialBalance.execute(asOf ? utcMidnight(asOf) : businessDate(), branchId ?? null);
   }
 
   @Get("reports/general-ledger")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async generalLedger(
     @Query("accountId") accountId: string,
     @Query("from") from: string | undefined,
@@ -126,7 +127,7 @@ export class AccountingController {
 
   @Get("reports/income-statement")
   @BranchScoped()
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async incomeStatement(
     @Query("from") from: string | undefined,
     @Query("to") to: string | undefined,
@@ -137,13 +138,13 @@ export class AccountingController {
   }
 
   @Get("periods")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async periods(@Query("year") year: string | undefined) {
     return (await this.listPeriods.execute(year ? { year: Number(year) } : undefined)).map(toPublicPeriod);
   }
 
   @Post("periods/:year/:month/close")
-  @RequirePermission("accounting.close_period")
+  @RequirePermission(PERMISSION.ACCOUNTING_CLOSE_PERIOD)
   async closeAccountingPeriod(
     @Param("year") year: string,
     @Param("month") month: string,
@@ -156,13 +157,13 @@ export class AccountingController {
   }
 
   @Get("fiscal-year-closings")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async fiscalYearClosings() {
     return (await this.listFiscalYearClosings.execute()).map(toPublicFiscalYearClosing);
   }
 
   @Post("fiscal-year-closings")
-  @RequirePermission("accounting.close_year")
+  @RequirePermission(PERMISSION.ACCOUNTING_CLOSE_YEAR)
   async closeYear(@Body() dto: CloseFiscalYearDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicFiscalYearClosing(await this.closeFiscalYear.execute({ year: dto.year, closedBy: req.user.id }));
   }
@@ -171,7 +172,7 @@ export class AccountingController {
 
   // Is the chart of accounts complete for the automatic postings? (and which enforcement mode is active)
   @Get("readiness")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async readiness() {
     return this.repairService.readiness();
   }
@@ -179,7 +180,7 @@ export class AccountingController {
   // Business transactions that should have a journal (or a reversal) but do not - the durable record of missing postings
   @Get("reports/journal-coverage")
   @BranchScoped()
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async journalCoverage(@Query("branchId") branchId?: string, @Query("kinds") kinds?: string, @Query("limit") limit?: string) {
     return this.repairService.coverage({
       branchId: branchId ?? null,
@@ -190,7 +191,7 @@ export class AccountingController {
 
   // Auto-posted journals whose entry_date differs from the Cairo business date of their transaction (reported, never rewritten)
   @Get("reports/business-date-drift")
-  @RequirePermission("accounting.view", "accounting.manage")
+  @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
   async businessDateDrift(@Req() req: Request & { user: AuthenticatedUser }) {
     requireCompanyWide(req.user);
     return this.repairService.businessDateDrift();
@@ -198,7 +199,7 @@ export class AccountingController {
 
   // Safe, idempotent repost of missing journals (see AccountingRepairService). Audited per item.
   @Post("repair/journals")
-  @RequirePermission("accounting.repair")
+  @RequirePermission(PERMISSION.ACCOUNTING_REPAIR)
   async repairJournals(@Body() dto: RepairJournalsDto, @Req() req: Request & { user: AuthenticatedUser }) {
     requireCompanyWide(req.user);
     return this.repairService.repair({ kinds: dto.kinds as GapKind[] | undefined, sourceIds: dto.sourceIds, limit: dto.limit, actorUserId: req.user.id });

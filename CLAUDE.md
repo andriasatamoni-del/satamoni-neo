@@ -62,7 +62,7 @@ Every folder in `backend/src/contexts/<name>/` is a Nest module with the same la
 - `application/commands|queries/`: one handler class per use case, with an `execute()` method.
 - `infrastructure/persistence/`: the Drizzle repositories and readers that implement the ports, named by business role (`order.repository.ts`, `OrderRepository`), and the context's Drizzle tables in `<ctx>.tables.ts`.
 - `api/`: controllers, DTOs (class-validator; the global `ValidationPipe` uses `whitelist` + `transform`) and per-context domain-error filters.
-- `<name>.module.ts`: binds ports to implementations. In `onModuleInit()` it also **registers its permission group and role defaults** with `PermissionRegistry` and **subscribes to other contexts' events**.
+- `<name>.module.ts`: binds ports to implementations. In `onModuleInit()` it **subscribes to other contexts' events**. Permissions are not registered in code (see Authorization).
 
 Contexts talk to each other through domain events on `EventBusService`, or by importing another module's exported handlers and ports. New contexts must be added to `app.module.ts`.
 
@@ -95,11 +95,21 @@ Contexts talk to each other through domain events on `EventBusService`, or by im
 Partial unique indexes (migration 057) guarantee one auto-journal per (source type, source id) and one reversal per entry. The full rationale is in `backend/docs/PHASE31_REMEDIATION.md`.
 
 ### Authorization
-Controllers use `@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)` plus `@RequirePermission(...keys)`. The guards live in `contexts/identity-access/api/guards/`.
+Controllers use `@UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)` plus `@RequirePermission(...keys)` (any one key is enough). The guards live in `contexts/identity-access/api/guards/`.
+
+The database is the only source of authorization:
+- The 7 roles are fixed in code (`identity-access/domain/role.ts`). A user has **one or more** roles (`user_roles`).
+- `permissions` is the catalog (key, group, Arabic labels). `role_permissions` says which permissions each role has. An admin edits it from the Users page (`PUT /roles/:role/permissions`, permission `identity.roles.manage`); `admin` itself always has every permission and can not be edited.
+- `JwtAuthGuard` loads the user, their roles and their effective permissions (union of the roles' permissions) on **every request**, so `req.user.permissions` reflects edits immediately. Check extra permissions inside a handler with `req.user.permissions.has(PERMISSION.SOME_KEY)`; check roles with `hasAnyRole(req.user.roles, ROLE.ADMIN)`.
+- There are no per-user grants/revokes. `users.role`, `users.permission_grants` and `users.permission_revokes` are deprecated columns that are no longer read or written.
+
+**Permission keys** are the `PERMISSION` const in `identity-access/domain/permission.ts` (type `Permission`). `@RequirePermission(...)`, `req.user.permissions` and the frontend `can(user, ...)` take these constants, never string literals. The frontend mirror is `frontend/src/shared/auth/permissions.ts`; `test/unit/identity-access/permissions-sync.spec.ts` fails if the two differ.
+
+**Adding a permission:** add the key to `PERMISSION` in both `domain/permission.ts` and the frontend mirror. Then write a `pnpm db:generate --custom` migration that inserts the key into `permissions` (with `group_key`, `group_label`, `label`, next `sort_order`) and into `role_permissions` for `admin` plus every role that should have it by default. Use it as `@RequirePermission(PERMISSION.X)`. `test/integration/identity-access/permissions-catalog.spec.ts` fails if the enum and the table differ, if a permission check uses a string literal, or if `admin` lacks a permission.
 
 Branch isolation lives in `src/shared/authorization/branch-scope.ts`:
-- Scope is derived only from the user's server-side role and `users.branch_id`. It never comes from client input or from permissions.
-- `admin` and `accountant` are company-wide. `callcenter` is company-wide only when it has no branch. Every other role is branch-bound and fails closed.
+- Scope is derived only from the user's server-side roles and `users.branch_id`. It never comes from client input or from permissions.
+- `admin` and `accountant` are company-wide; a user with several roles is company-wide when any of them is. `callcenter` is company-wide only when it has no branch. Every other role is branch-bound and fails closed.
 - Mark controllers `@BranchScoped()`. Mark by-id routes `@BranchResource("<table>")`. A foreign-branch id returns 404, and a foreign `branchId` parameter returns 403 with a DENIED audit row.
 - Collection responses are filtered by the global `BranchListFilterInterceptor`.
 
@@ -119,7 +129,7 @@ The business day is the **Africa/Cairo calendar date**. The process and DB sessi
 
 - `src/App.tsx` holds the routes. Pages live in `src/pages/` (one page per backend context, plus `portal/` and `storefront/` for the customer-facing `/order` site).
 - `src/shared/api/client.ts`: the staff API client. It stores the JWT in localStorage (`satamoni-neo:token`) and uses `VITE_API_BASE_URL` as its base URL, falling back to `/api` so the Vite proxy handles requests in dev. `customerClient.ts` is the separate client for storefront customer auth.
-- `src/shared/auth/AuthContext.tsx`: auth state and permissions.
+- `src/shared/auth/AuthContext.tsx`: auth state. The user from `/auth/me` carries `roles` and effective `permissions`; use `hasRole(user, ...)` / `can(user, "key")` from `src/shared/auth/roles.ts` to show or hide actions (the backend still enforces).
 - `src/shared/offline/`: offline cashier mode. IndexedDB queue plus `useOfflineSync`. `public/sw.js` caches the UI so the orders page can open without network.
 
 ## Legacy import & operations

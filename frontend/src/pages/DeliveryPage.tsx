@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { hasRole } from "../shared/auth/roles";
 
 interface Branch { id: string; name: string; }
 interface Driver { id: string; name: string; status: string; branchId: string; }
@@ -63,7 +64,7 @@ export function DeliveryPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("assignments");
-  const canReview = user?.role === "admin" || user?.role === "accountant" || user?.role === "branch_manager";
+  const canReview = hasRole(user, "admin", "accountant", "branch_manager");
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const driversQuery = useQuery({ queryKey: ["delivery", "drivers"], queryFn: () => apiRequest<Driver[]>("/delivery/drivers") });

@@ -77,7 +77,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-Talabat-جست", email: "admin-talabat@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-Talabat-جست", email: "admin-talabat@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (
@@ -85,7 +85,7 @@ describe("Talabat - تكامل شركة التوصيل (e2e ضد تطبيق حق
     ).body.token;
 
     const branchManager = User.register({
-      name: "مدير فرع-Talabat-جست", email: "bm-talabat@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager",
+      name: "مدير فرع-Talabat-جست", email: "bm-talabat@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["branch_manager"],
     });
     await userRepo.save(branchManager);
     branchManagerToken = (
