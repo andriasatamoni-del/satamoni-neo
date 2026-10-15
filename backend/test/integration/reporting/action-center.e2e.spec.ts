@@ -14,6 +14,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { supplierInvoiceLines, supplierInvoices, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -23,7 +24,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
   let missingCostItemId: string;
   let complaintId: string;
   let supplierInvoiceId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

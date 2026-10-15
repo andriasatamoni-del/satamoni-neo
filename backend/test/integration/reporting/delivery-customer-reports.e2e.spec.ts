@@ -18,6 +18,7 @@ import { printJobs } from "../../../src/contexts/printing/infrastructure/persist
 import { purchases } from "../../../src/contexts/purchases/infrastructure/persistence/purchases.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import { truncate } from "../helpers/db";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - تقارير التوصيل والعملاء والمصروفات والمشتريات (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -34,7 +35,7 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
   let expenseId: string;
   let purchaseId: string;
   const customerPhone = "01011112222-جست";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

@@ -14,6 +14,7 @@ import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/
 import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -22,7 +23,7 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
   let ingredientItemId: string;
   let variantId: string;
   let cancelledOrderId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

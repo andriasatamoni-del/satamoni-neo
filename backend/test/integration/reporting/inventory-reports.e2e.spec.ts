@@ -10,6 +10,7 @@ import { branches } from "../../../src/contexts/branches/infrastructure/persiste
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { branchStockBalances, inventoryItems, stockMovements, transferRequestLines, transferRequests } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -24,7 +25,7 @@ describe("Reporting - تقارير المخزون (e2e ضد تطبيق حقيق�
   let transferItemId: string;
   let transferRequestId: string;
   let transferLineId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

@@ -23,6 +23,7 @@ import { payrollAdjustments, payrollRuns } from "../../../src/contexts/hr-payrol
 import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { and, count as dbCount, desc, eq, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 // BL-06 (payment adjustments), BL-07 (COGS), BL-10 (payroll cancellation + adjustments <-> runs) and the accounting reconciliation
 // invariants: every business fact has exactly the journal(s) it should, reversals mirror originals, the ledger always balances.
@@ -116,7 +117,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       expect(after).toEqual(before); // revenue, cash, COGS and inventory are back where they were
       expect(after.balanced).toBe(true);
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessDateString();
       const income = await request(w.http()).get(`/accounting/reports/income-statement?from=${today}&to=${today}`).set(auth(w.tokens.accountant));
       expect(income.status).toBe(200);
     });

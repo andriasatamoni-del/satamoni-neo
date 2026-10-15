@@ -13,6 +13,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 // e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
 // طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
@@ -303,7 +304,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
   });
 
   test("GET /reports/daily-owner بيلخّص مدفوعات اليوم صح", async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDateString();
     const order = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)

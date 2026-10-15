@@ -6,7 +6,7 @@ import { createBackup, applyRetention, verifyBackupFile, sha256File } from "../.
 import { compareDatabases } from "../../../scripts/backup/compare-databases";
 import { runRestoreDrill } from "../../../scripts/backup/restore-drill";
 import { withDatabase } from "../../../scripts/backup/pg-env";
-import { LAST_KYSELY_MIGRATION, runMigrations } from "../../../src/migrations/run-migrations";
+import { LAST_KYSELY_MIGRATION, MIGRATIONS_FOLDER, runMigrations } from "../../../src/migrations/run-migrations";
 
 // OPS-1: نسخ حقيقي بـpg_dump واسترجاع حقيقي بـpg_restore على نفس سيرفر Postgres بتاع الاختبارات
 describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
@@ -18,10 +18,16 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
   let admin: Client;
   let dir: string;
 
-  // A database from before the switch to Drizzle: the full schema plus the Kysely migrator's bookkeeping table at 058,
+  const journal = JSON.parse(fs.readFileSync(path.join(MIGRATIONS_FOLDER, "meta/_journal.json"), "utf8"));
+  const migrationCount: number = journal.entries.length;
+
+  // A database from before the switch to Drizzle: the baseline schema only (later migrations did not exist yet) plus the Kysely migrator's bookkeeping table at 058,
   // and no Drizzle journal (the same simulation as baseline-adoption.spec.ts).
   async function makePreDrizzleDatabase(url: string) {
-    await runMigrations(url);
+    const baselineOnly = path.join(dir, "baseline-only-migrations");
+    fs.cpSync(MIGRATIONS_FOLDER, baselineOnly, { recursive: true });
+    fs.writeFileSync(path.join(baselineOnly, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.slice(0, 1) }));
+    await runMigrations(url, baselineOnly);
     const db = new Client({ connectionString: url });
     await db.connect();
     try {
@@ -67,7 +73,8 @@ describe("backup + restore drill (pg_dump/pg_restore حقيقي)", () => {
     expect(failed).toEqual([]);
     expect(report.success).toBe(true);
     const migrationStep = report.steps.find((s) => s.step.includes("migration"));
-    expect(migrationStep?.detail).toContain("اتطبّق 1");
+    // no Drizzle journal in a pre-Drizzle backup, so every migration counts as pending (the baseline is recorded, not run)
+    expect(migrationStep?.detail).toContain(`اتطبّق ${migrationCount} `);
 
     const left = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [report.scratchDatabase]);
     expect(left.rows).toHaveLength(0);

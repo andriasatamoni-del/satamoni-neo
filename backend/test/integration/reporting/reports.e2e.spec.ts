@@ -12,6 +12,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { businessDateString } from "../../../src/shared/time/business-date";
 
 describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -20,7 +21,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
   let branchManagerToken: string;
   let variantId: string;
   let paymentMethodId: string;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateString();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
