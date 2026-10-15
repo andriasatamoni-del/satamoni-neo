@@ -9,6 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { hasRole } from "../shared/auth/roles";
 
 interface Employee {
   id: string; name: string; departmentId: string | null; positionId: string | null; baseSalary: number; wageType: string;
@@ -406,7 +407,7 @@ export function HrPayrollPage() {
                   <Select
                     value={editForm.restrictedBranchId}
                     onChange={(e) => setEditForm({ ...editForm, restrictedBranchId: e.target.value })}
-                    disabled={user?.role !== "admin"}
+                    disabled={!hasRole(user, "admin")}
                   >
                     <option value="">كل الفروع</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

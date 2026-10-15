@@ -26,20 +26,20 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
   });
 
   describe("audit trail", () => {
-    test("a user role/branch change is audited with the REAL entity id and before/after evidence (and never the password)", async () => {
+    test("a user roles/branch change is audited with the REAL entity id and before/after evidence (and never the password)", async () => {
       const target = w.userIds.cashierB;
-      const res = await patch(`/users/${target}`, w.tokens.admin, { role: "branch_manager", branchId: w.branchB, password: "Zx9!secretPass" });
+      const res = await patch(`/users/${target}`, w.tokens.admin, { roles: ["branch_manager"], branchId: w.branchB, password: "Zx9!secretPass" });
       expect(res.status).toBe(200);
       const rows = await w.db.select({ entity_type: auditLogs.entity_type, entity_id: auditLogs.entity_id, outcome: auditLogs.outcome, actor_user_id: auditLogs.actor_user_id, metadata }).from(auditLogs).where(like(auditLogs.action, "PATCH /users/%")).orderBy(desc(auditLogs.created_at)).limit(1);
       expect(rows[0].outcome).toBe("SUCCESS");
       expect(rows[0].entity_type).toBe("users");
       expect(rows[0].entity_id).toBe(target);
       expect(rows[0].actor_user_id).toBe(w.userIds.admin);
-      expect(rows[0].metadata.before.role).toBe("cashier");
-      expect(rows[0].metadata.after.role).toBe("branch_manager");
+      expect(rows[0].metadata.before.roles).toEqual(["cashier"]);
+      expect(rows[0].metadata.after.roles).toEqual(["branch_manager"]);
       expect(JSON.stringify(rows[0].metadata)).not.toContain("Zx9!secretPass");
       expect(JSON.stringify(rows[0].metadata).toLowerCase()).not.toContain("passwordhash");
-      await patch(`/users/${target}`, w.tokens.admin, { role: "cashier" });
+      await patch(`/users/${target}`, w.tokens.admin, { roles: ["cashier"] });
     });
 
     test("salary changes carry before/after pay values", async () => {
@@ -101,7 +101,7 @@ describe("Phase 3.1 - audit trail, error mapping and Cairo business date", () =>
     test("deleting a user (FK ON DELETE SET NULL) is the only tolerated update of an audit row and keeps the evidence", async () => {
       const { UserRepository } = await import("../../../src/contexts/identity-access/infrastructure/persistence/user.repository");
       const { User } = await import("../../../src/contexts/identity-access/domain/user.aggregate");
-      const user = User.register({ name: "مؤقت-aud", email: "temp-aud@p31.jest.test", passwordHash: "x".repeat(60), role: "cashier", branchId: w.branchA });
+      const user = User.register({ name: "مؤقت-aud", email: "temp-aud@p31.jest.test", passwordHash: "x".repeat(60), roles: ["cashier"], branchId: w.branchA });
       await new UserRepository(w.db).save(user);
       await w.db.insert(auditLogs).values({ actor_user_id: user.id, action: "TEMP ACTION" });
       await w.db.delete(users).where(eq(users.id, user.id));

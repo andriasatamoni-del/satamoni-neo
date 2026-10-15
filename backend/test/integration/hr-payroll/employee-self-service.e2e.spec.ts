@@ -38,20 +38,20 @@ describe("HR & Payroll - بوابة الخدمة الذاتية للموظف (e2
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
 
-    const admin = User.register({ name: "أدمن-ذاتي-جست", email: "admin-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
+    const admin = User.register({ name: "أدمن-ذاتي-جست", email: "admin-self-service@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"] });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-self-service@jest.test", password: "12345678" })).body.token;
     approverToken = (await createSecondUser(app, "approver-self-service@jest.test")).token;
 
-    const cashierUser = User.register({ name: "كاشير-ذاتي-جست", email: "cashier-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
+    const cashierUser = User.register({ name: "كاشير-ذاتي-جست", email: "cashier-self-service@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"] });
     await userRepo.save(cashierUser);
     employeeToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-self-service@jest.test", password: "12345678" })).body.token;
 
-    const otherUser = User.register({ name: "كاشير-ذاتي-تاني-جست", email: "cashier-self-service-2@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
+    const otherUser = User.register({ name: "كاشير-ذاتي-تاني-جست", email: "cashier-self-service-2@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"] });
     await userRepo.save(otherUser);
     otherEmployeeToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-self-service-2@jest.test", password: "12345678" })).body.token;
 
-    const unlinkedUser = User.register({ name: "كاشير-من-غير-ملف-جست", email: "cashier-unlinked-self-service@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
+    const unlinkedUser = User.register({ name: "كاشير-من-غير-ملف-جست", email: "cashier-unlinked-self-service@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"] });
     await userRepo.save(unlinkedUser);
     unlinkedUserToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-unlinked-self-service@jest.test", password: "12345678" })).body.token;
 

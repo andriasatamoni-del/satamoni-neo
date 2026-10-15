@@ -36,7 +36,7 @@ describe("Accounting Period/Fiscal Year Close - إقفال الشهر والسن
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-إقفال-محاسبي-جست", email: "admin-period-close@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-إقفال-محاسبي-جست", email: "admin-period-close@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (

@@ -38,7 +38,7 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     const hasher = new BcryptPasswordHasher();
     await db.delete(catalogLayout);
     for (const [name, email, role] of [["أدمن-ترتيب", "admin-catgroups@jest.test", "admin"], ["كاشير-ترتيب", "cashier-catgroups@jest.test", "cashier"]] as const) {
-      await repo.save(User.register({ name, email, passwordHash: await hasher.hash("12345678"), role }));
+      await repo.save(User.register({ name, email, passwordHash: await hasher.hash("12345678"), roles: [role] }));
     }
     const login = async (email: string) => (await request(server()).post("/auth/login").send({ email, password: "12345678" })).body.token as string;
     adminToken = await login("admin-catgroups@jest.test");

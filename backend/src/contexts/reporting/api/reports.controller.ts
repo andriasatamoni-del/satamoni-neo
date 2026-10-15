@@ -13,6 +13,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import { BranchScopeGuard, BranchScoped, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("reports")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -30,7 +31,7 @@ export class ReportsController {
   ) {}
 
   @Get("dashboard")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async dashboard(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -45,7 +46,7 @@ export class ReportsController {
 
   // تكلفة الطعام: النظري (المستهلك حسب الوصفة) مقابل الفعلي (بعد تصحيحات الجرد/إلغاء الطلبات) لكل صنف
   @Get("food-cost")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async foodCost(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -59,7 +60,7 @@ export class ReportsController {
   // نفس تقرير تكلفة الطعام لكن مجمّع على مستوى كل فرع - أساس بطاقة صحة الفروع (Branch Health) لاحقًا
   @CompanyWideOnly()
   @Get("food-cost/by-branch")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async foodCostByBranch(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
     return this.getFoodCostReport.executeByBranch({ from, to });
   }
@@ -68,7 +69,7 @@ export class ReportsController {
   // فرق تصنيع/مصروف متجاوز الحد/فرق تكلفة طعام/فاتورة مورد متأخرة/شكوى عميل فاضلة) بدل ما يتفتح كل
   // تقرير لوحده كل يوم
   @Get("action-center")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async actionCenter(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -83,7 +84,7 @@ export class ReportsController {
   // أدمن/محاسب بس (نفس نطاق الريبو القديم - المقارنة الشاملة بين الفروع مش حاجة مدير فرع واحد يحتاجها)
   @CompanyWideOnly()
   @Get("branch-health")
-  @RequirePermission("reports.branch_health")
+  @RequirePermission(PERMISSION.REPORTS_BRANCH_HEALTH)
   async branchHealth(@Query("from") from: string | undefined, @Query("to") to: string | undefined) {
     return this.getBranchHealth.execute({ from, to });
   }
@@ -96,7 +97,7 @@ export class ReportsController {
 
   // ملخّص يومي لكل فرع - عدد الطلبات والإيراد لكل يوم في المدى
   @Get("daily")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async daily(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -108,7 +109,7 @@ export class ReportsController {
 
   // تفصيل المبيعات: الملخّص + حسب طريقة الدفع + حسب نوع الطلب + الاتجاه اليومي
   @Get("sales-detail")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async salesDetail(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -120,7 +121,7 @@ export class ReportsController {
 
   // الطلبات الملغاة في المدى - العدد والقيمة الإجمالية + القائمة التفصيلية
   @Get("cancelled-orders")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async cancelledOrders(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -132,7 +133,7 @@ export class ReportsController {
 
   // الطلبات اللي فضلت "بتتحضّر" أكتر من الحد المسموح (افتراضيًا 45 دقيقة)
   @Get("delays")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async delays(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -150,7 +151,7 @@ export class ReportsController {
 
   // أداء الأصناف: الأكثر/الأقل مبيعًا، والأقل ربحًا
   @Get("item-performance")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async itemPerformance(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -168,7 +169,7 @@ export class ReportsController {
 
   // كل أصناف المنيو (حتى اللي مبيعتش) مع مبيعاتها في المدى - عشان مراجعة إيه اللي محتاج يتشال
   @Get("catalog")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async catalog(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -181,21 +182,21 @@ export class ReportsController {
   // كل الوصفات (مكوّناتها وتكلفتها) - لمراجعة جودة البيانات (وصفة ناقصة/مكوّن من غير تكلفة)
   @CompanyWideOnly()
   @Get("recipes")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async recipes() {
     return this.getSalesOps.recipes();
   }
 
   // تقييم المخزون - قيمة كل صنف في كل فرع (كمية × تكلفة الوحدة)، وإجمالي لكل فرع وللكل
   @Get("inventory-valuation")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async inventoryValuation(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     return this.getInventoryReports.valuation({ branchId: this.effectiveBranchId(req, branchId) });
   }
 
   // كارت الصنف - كل حركة اتسجلت على صنف في فرع بالترتيب الزمني، مع الرصيد بعد كل حركة
   @Get("stock-card")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async stockCard(
     @Query("branchId") branchId: string | undefined,
     @Query("inventoryItemId") inventoryItemId: string,
@@ -210,7 +211,7 @@ export class ReportsController {
 
   // تقرير التحويلات بين الفروع في المدى - مع فرق المُرسل عن المُستلم (variance) لكل بند
   @Get("transfers")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async transfers(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -222,7 +223,7 @@ export class ReportsController {
 
   // أي صنف رصيده سالب دلوقتي - القائمة التفصيلية (مش العدد بس زي مركز التنبيهات)
   @Get("negative-stock")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async negativeStock(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     return this.getInventoryReports.negativeStock({ branchId: this.effectiveBranchId(req, branchId) });
   }
@@ -230,14 +231,14 @@ export class ReportsController {
   // مقارنة رصيد صنف (أو كل الأصناف) بين كل الفروع جنب بعض - أدمن/محاسب بس، زي بطاقة صحة الفروع بالظبط
   @CompanyWideOnly()
   @Get("inventory-comparison")
-  @RequirePermission("reports.branch_health")
+  @RequirePermission(PERMISSION.REPORTS_BRANCH_HEALTH)
   async inventoryComparison(@Query("inventoryItemId") inventoryItemId: string | undefined) {
     return this.getInventoryReports.inventoryComparison({ inventoryItemId: inventoryItemId ?? null });
   }
 
   // BATCH-1: دفعات هتنتهي صلاحيتها خلال N يوم (افتراضي 7)
   @Get("expiring-batches")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async expiringBatches(
     @Query("days") days: string | undefined,
     @Query("branchId") branchId: string | undefined,
@@ -251,7 +252,7 @@ export class ReportsController {
 
   // قائمة أوامر الشراء في المدى - مع عدد البنود وإجمالي القيمة، وفلترة بالفرع/المورد/الحالة
   @Get("purchase-orders")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseOrders(
     @Query("branchId") branchId: string | undefined,
     @Query("supplierId") supplierId: string | undefined,
@@ -265,7 +266,7 @@ export class ReportsController {
 
   // أذون الاستلام المؤكّدة (CONFIRMED) في المدى - مع إجمالي القيمة
   @Get("purchase-receipts")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseReceipts(
     @Query("branchId") branchId: string | undefined,
     @Query("supplierId") supplierId: string | undefined,
@@ -280,14 +281,14 @@ export class ReportsController {
   // مش من كتالوج أسعار منفصل (راجع تعليق procurement-reports-reader.port.ts)
   @CompanyWideOnly()
   @Get("purchase-price-history")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchasePriceHistory(@Query("inventoryItemId") inventoryItemId: string, @Query("supplierId") supplierId: string | undefined) {
     return this.getProcurementReports.purchasePriceHistory({ inventoryItemId, supplierId });
   }
 
   // كل بنود أوامر الشراء في المدى مع فرق سعرها عن آخر سعر سابق لنفس (مورد، صنف)
   @Get("purchase-price-variance")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchasePriceVariance(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -300,7 +301,7 @@ export class ReportsController {
   // أداء مورد معيّن في المدى - معدّل التنفيذ، ومتوسط مدة التسليم (بالأيام) لحد تأكيد إذن الاستلام
   @CompanyWideOnly()
   @Get("supplier-performance")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async supplierPerformance(
     @Query("supplierId") supplierId: string,
     @Query("from") from: string | undefined,
@@ -311,14 +312,14 @@ export class ReportsController {
 
   // أوامر شراء اتبعتت للمورد ولسه من غير إذن استلام مؤكّد عليها (لسه مستنية)
   @Get("outstanding-purchase-orders")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async outstandingPurchaseOrders(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     return this.getProcurementReports.outstandingPurchaseOrders({ branchId: this.effectiveBranchId(req, branchId) });
   }
 
   // أداء كل سائق: عدد الطلبات المسلّمة، الإيراد، عدد الفشل، متوسط وقت التوصيل الفعلي
   @Get("drivers")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async drivers(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -330,7 +331,7 @@ export class ReportsController {
 
   // مؤشرات خدمة الدليفري الإجمالية: متوسط وقت التحضير والتوصيل، نسبة الالتزام بالوقت، نسبة الفشل
   @Get("delivery-service")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async deliveryService(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -346,7 +347,7 @@ export class ReportsController {
 
   // ساعات الذروة - عدد الطلبات والإيراد حسب الساعة ويوم الأسبوع
   @Get("peak-hours")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async peakHours(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -358,7 +359,7 @@ export class ReportsController {
 
   // أعلى العملاء إنفاقًا وتكرار طلب في المدى + عدد العملاء الجدد
   @Get("customer-spend")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async customerSpend(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -373,7 +374,7 @@ export class ReportsController {
 
   // المصروفات مجمّعة حسب الفئة + الاتجاه الزمني + تنبيهات تجاوز الحد لكل فئة
   @Get("expenses-report")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async expensesReport(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
@@ -388,7 +389,7 @@ export class ReportsController {
 
   // المشتريات النقدية مجمّعة حسب الفئة + الاتجاه الزمني
   @Get("purchases-report")
-  @RequirePermission("reports.view")
+  @RequirePermission(PERMISSION.REPORTS_VIEW)
   async purchasesReport(
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,

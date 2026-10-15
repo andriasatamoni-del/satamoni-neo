@@ -33,7 +33,7 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-سجل-أسعار", email: "admin-price-history@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-سجل-أسعار", email: "admin-price-history@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())

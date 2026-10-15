@@ -66,7 +66,7 @@ Historical receipts without a supplier are not back-filled (it would change post
 
 ## 8. Branch isolation (BL-11)
 
-Scope is derived **only** from the authenticated identity (role + `users.branch_id`), never from a client value or a permission:
+Scope is derived **only** from the authenticated identity (roles + `users.branch_id`), never from a client value or a permission:
 `admin`, `accountant` company-wide; `callcenter` company-wide only without a branch; everyone else bound to their branch (no branch ⇒ no access).
 Foreign `branchId` (query/path/body) ⇒ **403 + DENIED audit**; a foreign resource by id ⇒ **404**; collections filtered; HR lists show own-branch staff
 **without salary data**; payroll, adjustments, supplier balances, GL, drift/repair, Talabat integration errors are **company-wide only**; transfers are

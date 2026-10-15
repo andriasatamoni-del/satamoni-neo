@@ -8,6 +8,8 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
 
 interface PurchaseLine {
   inventoryItemId: string; quantity: number; unit: string | null; unitPrice: number; lineTotal: number;
@@ -34,7 +36,7 @@ interface ItemRow { inventoryItemId: string; quantity: string; unitPrice: string
 
 export function PurchasesPage() {
   const { user } = useAuth();
-  const isCashier = user?.role === "cashier";
+  const isCashier = !can(user, PERMISSION.PURCHASES_CREATE);
   const queryClient = useQueryClient();
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });

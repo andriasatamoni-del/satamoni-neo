@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { AccountingModule } from "../accounting/accounting.module";
 import { EXPENSE_CATEGORY_REPOSITORY } from "./domain/ports/expense-category-repository.port";
@@ -36,23 +35,4 @@ import { ExpensesController } from "./api/expenses.controller";
     GetExpenseHandler,
   ],
 })
-export class ExpensesModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "expenses",
-      groupLabel: "المصروفات",
-      permissions: [
-        { key: "expenses.view", label: "رؤية المصروفات" },
-        { key: "expenses.create", label: "تسجيل مصروف (كامل، أي فرع)" },
-        { key: "expenses.create_own_daily", label: "تسجيل مصروف نقدي (كاشير - فرعه/النهاردة بس)" },
-        { key: "expenses.review", label: "مراجعة واعتماد مصروف مقدّم" },
-        { key: "expenses.manage", label: "إدارة بنود المصروفات (تكويد)" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["expenses.view", "expenses.create", "expenses.review"]);
-    this.permissions.setRoleDefaults("accountant", ["expenses.view", "expenses.create", "expenses.review", "expenses.manage"]);
-    this.permissions.setRoleDefaults("cashier", ["expenses.create_own_daily"]);
-  }
-}
+export class ExpensesModule {}

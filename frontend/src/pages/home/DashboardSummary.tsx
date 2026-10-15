@@ -5,6 +5,7 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Select } from "../../shared/ui/Field";
 import { Badge, type Tone } from "../../shared/ui/Badge";
+import { hasRole } from "../../shared/auth/roles";
 
 interface Branch { id: string; name: string; }
 interface DashboardSummary {
@@ -49,7 +50,7 @@ export function DashboardSummary() {
   const from = toDateStr(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000));
 
   // مدير الفرع مقفول على فرعه من السيرفر أصلًا (نفس نطاق الريبو القديم) - فلتر الفرع هنا للأدمن/المحاسب بس
-  const showBranchFilter = user?.role === "admin" || user?.role === "accountant";
+  const showBranchFilter = hasRole(user, "admin", "accountant");
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiRequest<Branch[]>("/branches"),

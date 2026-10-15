@@ -9,7 +9,7 @@ import { EmployeeHistoryService } from "../services/employee-history.service";
 
 export interface UpdateEmployeeCommand {
   employeeId: string;
-  actorRole: string;
+  actorIsAdmin: boolean;
   name?: string;
   departmentId?: string | null;
   positionId?: string | null;
@@ -41,7 +41,7 @@ export class UpdateEmployeeHandler {
   ) {}
 
   async execute(command: UpdateEmployeeCommand): Promise<Employee> {
-    if (command.restrictedBranchId !== undefined && command.actorRole !== "admin") {
+    if (command.restrictedBranchId !== undefined && !command.actorIsAdmin) {
       throw new BranchTransferRequiresAdminError();
     }
 

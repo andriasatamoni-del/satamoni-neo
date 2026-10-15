@@ -1,6 +1,5 @@
 export interface TokenPayload {
   sub: string; // user id
-  role: string;
 }
 
 export interface TokenServicePort {

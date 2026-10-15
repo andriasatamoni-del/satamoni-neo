@@ -9,6 +9,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import { BranchesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Branch } from "../domain/branch.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("branches")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -21,21 +22,21 @@ export class BranchesController {
   ) {}
 
   @Get()
-  @RequirePermission("branches.view", "branches.manage")
+  @RequirePermission(PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE)
   async list() {
     const branches = await this.listBranches.execute();
     return branches.map(toPublicBranch);
   }
 
   @Post()
-  @RequirePermission("branches.manage")
+  @RequirePermission(PERMISSION.BRANCHES_MANAGE)
   async create(@Body() dto: RegisterBranchDto) {
     const branch = await this.registerBranch.execute(dto);
     return toPublicBranch(branch);
   }
 
   @Patch(":id")
-  @RequirePermission("branches.manage")
+  @RequirePermission(PERMISSION.BRANCHES_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdateBranchDto) {
     const branch = await this.updateBranch.execute({ branchId: id, ...dto });
     return toPublicBranch(branch);

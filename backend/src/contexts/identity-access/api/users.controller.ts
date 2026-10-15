@@ -12,6 +12,8 @@ import { RequirePermission } from "./guards/require-permission.decorator";
 import { DomainErrorFilter } from "./filters/domain-error.filter";
 import { toPublicUser } from "./auth.controller";
 import type { AuthenticatedUser } from "./types";
+import { hasAnyRole, ROLE } from "../domain/role";
+import { PERMISSION } from "../domain/permission";
 
 @Controller("users")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -25,37 +27,36 @@ export class UsersController {
   ) {}
 
   @Get("permissions-catalog")
-  @RequirePermission("identity.users.manage")
+  @RequirePermission(PERMISSION.IDENTITY_USERS_MANAGE, PERMISSION.IDENTITY_ROLES_MANAGE)
   permissionsCatalog() {
     return this.getPermissionsCatalog.execute();
   }
 
   @Get()
-  @RequirePermission("identity.users.view", "identity.users.manage")
+  @RequirePermission(PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE)
   async list(@Req() req: Request & { user: AuthenticatedUser }, @Query("branchId") branchId?: string) {
     // نفس نطاق GET /api/users في الريبو القديم: أدمن يشوف كل حاجة (أو فرع محدد لو حدده)، أي حد
     // تاني بيتقفل على فرعه هو بس تلقائيًا
-    const scopedBranchId = req.user.role === "admin" ? branchId ?? null : req.user.branchId;
+    const scopedBranchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? branchId ?? null : req.user.branchId;
     const users = await this.listUsers.execute(scopedBranchId !== null ? { branchId: scopedBranchId } : undefined);
     return users.map(toPublicUser);
   }
 
   @Post()
-  @RequirePermission("identity.users.manage")
+  @RequirePermission(PERMISSION.IDENTITY_USERS_MANAGE)
   async create(@Body() dto: RegisterUserDto) {
     const user = await this.registerUser.execute(dto);
     return toPublicUser(user);
   }
 
   @Patch(":id")
-  @RequirePermission("identity.users.manage")
+  @RequirePermission(PERMISSION.IDENTITY_USERS_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdateUserDto) {
     const user = await this.updateUser.execute({
       userId: id,
-      role: dto.role,
+      roles: dto.roles,
       branchId: dto.branchId,
       isActive: dto.isActive,
-      permissionKeys: dto.permissions,
       password: dto.password,
     });
     return toPublicUser(user);

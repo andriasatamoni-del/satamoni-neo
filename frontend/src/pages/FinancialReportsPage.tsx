@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Tabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { hasRole } from "../shared/auth/roles";
 
 interface Account {
   id: string;
@@ -133,7 +134,7 @@ export function FinancialReportsPage() {
 
   // بطاقة صحة الفروع مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
   // في الباك إند بالظبط (مدير الفرع مقفول على فرعه، مش له معنى يقارن فروع تانية)
-  const canSeeBranchHealth = user?.role === "admin" || user?.role === "accountant";
+  const canSeeBranchHealth = hasRole(user, "admin", "accountant");
   const tabs = canSeeBranchHealth ? [...BASE_TABS, { key: "branch-health", label: "صحة الفروع" }] : BASE_TABS;
 
   return (

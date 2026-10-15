@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Tabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { hasRole } from "../shared/auth/roles";
 
 interface DailyRow { businessDate: string; branchId: string; branchName: string; ordersCount: number; revenue: number; }
 
@@ -208,9 +209,9 @@ export function OperationalReportsPage() {
   const [tab, setTab] = useState("daily");
   const { user } = useAuth();
   // مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
-  const canSeeBranchHealth = user?.role === "admin" || user?.role === "accountant";
+  const canSeeBranchHealth = hasRole(user, "admin", "accountant");
   // نفس أدوار purchasing.view بالظبط (راجع procurement.module.ts) - أدمن/مدير فرع/محاسب
-  const canSeeProcurement = user?.role === "admin" || user?.role === "branch_manager" || user?.role === "accountant";
+  const canSeeProcurement = hasRole(user, "admin", "branch_manager", "accountant");
   const tabs = [
     ...TABS,
     ...(canSeeBranchHealth ? [BRANCH_HEALTH_TAB] : []),
@@ -630,7 +631,8 @@ function InventoryValuationTab() {
 
 function StockCardTab() {
   const { user } = useAuth();
-  const [branchId, setBranchId] = useState(user?.role === "branch_manager" ? (user.branchId ?? "") : "");
+  const isBranchLocked = hasRole(user, "branch_manager") && !hasRole(user, "admin", "accountant");
+  const [branchId, setBranchId] = useState(isBranchLocked ? (user?.branchId ?? "") : "");
   const [inventoryItemId, setInventoryItemId] = useState("");
   const { from, setFrom, to, setTo } = useDateRange();
   const branchesQuery = useBranches();
@@ -648,7 +650,7 @@ function StockCardTab() {
       <CardHeader className="flex flex-wrap items-end justify-between gap-3">
         <CardTitle>كارت الصنف - كل حركة بالترتيب مع الرصيد بعدها</CardTitle>
         <div className="flex flex-wrap items-end gap-3">
-          {user?.role !== "branch_manager" && <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />}
+          {!isBranchLocked && <BranchSelect value={branchId} onChange={setBranchId} branches={branchesQuery.data ?? []} />}
           <Field label="الصنف">
             <Select value={inventoryItemId} onChange={(e) => setInventoryItemId(e.target.value)}>
               <option value="">اختار صنف</option>

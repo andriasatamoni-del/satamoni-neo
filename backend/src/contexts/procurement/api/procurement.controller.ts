@@ -54,6 +54,7 @@ import type { SupplierInvoice } from "../domain/supplier-invoice.aggregate";
 import type { SupplierPayment } from "../domain/supplier-payment.aggregate";
 import type { PurchaseRequest } from "../domain/purchase-request.aggregate";
 import type { PurchaseReturn } from "../domain/purchase-return.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("procurement")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -94,13 +95,13 @@ export class ProcurementController {
   ) {}
 
   @Get("suppliers")
-  @RequirePermission("procurement.suppliers.view", "procurement.suppliers.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_SUPPLIERS_VIEW, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE)
   async suppliers() {
     return (await this.listSuppliers.execute()).map(toPublicSupplier);
   }
 
   @Post("suppliers")
-  @RequirePermission("procurement.suppliers.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE)
   async createSupplier(@Body() dto: RegisterSupplierDto) {
     return toPublicSupplier(await this.registerSupplier.execute(dto));
   }
@@ -108,14 +109,14 @@ export class ProcurementController {
   @BranchScoped()
   @BranchFilteredList()
   @Get("purchase-orders")
-  @RequirePermission("procurement.purchase_orders.view", "procurement.purchase_orders.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_VIEW, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE)
   async purchaseOrders() {
     return (await this.listPurchaseOrders.execute()).map(toPublicPurchaseOrder);
   }
 
   @BranchScoped()
   @Post("purchase-orders")
-  @RequirePermission("procurement.purchase_orders.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE)
   async createPurchaseOrder(@Body() dto: RegisterPurchaseOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseOrder(await this.registerPurchaseOrder.execute({ ...dto, createdBy: req.user.id }));
   }
@@ -123,7 +124,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_orders")
   @Post("purchase-orders/:id/send")
-  @RequirePermission("procurement.purchase_orders.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE)
   async sendPurchaseOrderRoute(@Param("id") id: string) {
     return toPublicPurchaseOrder(await this.sendPurchaseOrder.execute(id));
   }
@@ -131,7 +132,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_orders")
   @Get("purchase-orders/:id/receipt-progress")
-  @RequirePermission("procurement.purchase_orders.view", "procurement.purchase_orders.manage", "procurement.goods_receipts.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_VIEW, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE)
   async purchaseOrderReceiptProgress(@Param("id") id: string) {
     return this.getPurchaseOrderReceiptProgress.execute(id);
   }
@@ -139,7 +140,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_orders")
   @Post("purchase-orders/:id/cancel")
-  @RequirePermission("procurement.purchase_orders.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE)
   async cancelPurchaseOrderRoute(@Param("id") id: string) {
     return toPublicPurchaseOrder(await this.cancelPurchaseOrder.execute(id));
   }
@@ -147,14 +148,14 @@ export class ProcurementController {
   @BranchScoped()
   @BranchFilteredList()
   @Get("goods-receipts")
-  @RequirePermission("procurement.goods_receipts.view", "procurement.goods_receipts.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_GOODS_RECEIPTS_VIEW, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE)
   async goodsReceipts(@Query("branchId") branchId?: string) {
     return (await this.listGoodsReceipts.execute(branchId ? { branchId } : undefined)).map(toPublicGoodsReceipt);
   }
 
   @BranchScoped()
   @Post("goods-receipts")
-  @RequirePermission("procurement.goods_receipts.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE)
   async createGoodsReceipt(@Body() dto: RegisterGoodsReceiptDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicGoodsReceipt(
       await this.registerGoodsReceipt.execute({
@@ -172,7 +173,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("goods_receipts")
   @Post("goods-receipts/:id/confirm")
-  @RequirePermission("procurement.goods_receipts.manage")
+  @RequirePermission(PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE)
   async confirm(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicGoodsReceipt(
       await this.confirmGoodsReceipt.execute({ goodsReceiptId: id, confirmedBy: req.user.id })
@@ -181,7 +182,7 @@ export class ProcurementController {
 
   @BranchScoped()
   @Get("supplier-invoices")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async supplierInvoices(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listSupplierInvoices.execute({ supplierId, branchId, status })).map(toPublicSupplierInvoice);
   }
@@ -189,7 +190,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("supplier_invoices")
   @Get("supplier-invoices/:id")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async supplierInvoice(@Param("id") id: string) {
     const { invoice, payments } = await this.getSupplierInvoice.execute(id);
     return { invoice: toPublicSupplierInvoice(invoice), payments: payments.map(toPublicSupplierPayment) };
@@ -197,7 +198,7 @@ export class ProcurementController {
 
   @BranchScoped()
   @Post("supplier-invoices")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async createSupplierInvoice(@Body() dto: RegisterSupplierInvoiceDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const invoice = await this.registerSupplierInvoice.execute({
       ...dto,
@@ -211,7 +212,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("supplier_invoices")
   @Post("supplier-invoices/:id/approve")
-  @RequirePermission("purchasing.approve")
+  @RequirePermission(PERMISSION.PURCHASING_APPROVE)
   async approveSupplierInvoiceRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicSupplierInvoice(await this.approveSupplierInvoice.execute({ supplierInvoiceId: id, approvedBy: req.user.id }));
   }
@@ -219,7 +220,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("supplier_invoices")
   @Post("supplier-invoices/:id/cancel")
-  @RequirePermission("purchasing.cancel")
+  @RequirePermission(PERMISSION.PURCHASING_CANCEL)
   async cancelSupplierInvoiceRoute(@Param("id") id: string, @Body() dto: CancelSupplierInvoiceDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicSupplierInvoice(
       await this.cancelSupplierInvoice.execute({ supplierInvoiceId: id, reason: dto.reason, cancelledBy: req.user.id })
@@ -228,14 +229,14 @@ export class ProcurementController {
 
   @BranchScoped()
   @Get("supplier-payments")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async supplierPayments(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string) {
     return (await this.listSupplierPayments.execute({ supplierId, branchId })).map(toPublicSupplierPayment);
   }
 
   @BranchScoped()
   @Post("supplier-payments")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async createSupplierPayment(@Body() dto: RegisterSupplierPaymentDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const payment = await this.registerSupplierPayment.execute({
       ...dto,
@@ -246,7 +247,7 @@ export class ProcurementController {
   }
 
   @Get("suppliers/:id/balance")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async supplierBalance(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     requireCompanyWide(req.user); // a supplier's balance aggregates every branch's payables
     return { supplierId: id, balance: await this.getSupplierBalance.execute(id) };
@@ -254,7 +255,7 @@ export class ProcurementController {
 
   @BranchScoped()
   @Get("purchase-requests")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseRequests(@Query("branchId") branchId?: string, @Query("status") status?: string) {
     return (await this.listPurchaseRequests.execute({ branchId, status })).map(toPublicPurchaseRequest);
   }
@@ -262,14 +263,14 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Get("purchase-requests/:id")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseRequest(@Param("id") id: string) {
     return toPublicPurchaseRequest(await this.getPurchaseRequest.execute(id));
   }
 
   @BranchScoped()
   @Post("purchase-requests")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async createPurchaseRequest(@Body() dto: RegisterPurchaseRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const request = await this.registerPurchaseRequest.execute({
       ...dto,
@@ -282,7 +283,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/edit")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async editPurchaseRequestRoute(@Param("id") id: string, @Body() dto: EditPurchaseRequestDto) {
     const request = await this.editPurchaseRequest.execute({
       purchaseRequestId: id,
@@ -296,7 +297,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/submit")
-  @RequirePermission("purchasing.submit")
+  @RequirePermission(PERMISSION.PURCHASING_SUBMIT)
   async submitPurchaseRequestRoute(@Param("id") id: string) {
     return toPublicPurchaseRequest(await this.submitPurchaseRequest.execute(id));
   }
@@ -304,7 +305,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/approve")
-  @RequirePermission("purchasing.approve")
+  @RequirePermission(PERMISSION.PURCHASING_APPROVE)
   async approvePurchaseRequestRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseRequest(await this.approvePurchaseRequest.execute({ purchaseRequestId: id, approvedBy: req.user.id }));
   }
@@ -312,7 +313,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/reject")
-  @RequirePermission("purchasing.approve")
+  @RequirePermission(PERMISSION.PURCHASING_APPROVE)
   async rejectPurchaseRequestRoute(@Param("id") id: string, @Body() dto: RejectPurchaseRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseRequest(
       await this.rejectPurchaseRequest.execute({ purchaseRequestId: id, reason: dto.reason, rejectedBy: req.user.id })
@@ -322,14 +323,14 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_requests")
   @Post("purchase-requests/:id/cancel")
-  @RequirePermission("purchasing.cancel")
+  @RequirePermission(PERMISSION.PURCHASING_CANCEL)
   async cancelPurchaseRequestRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseRequest(await this.cancelPurchaseRequest.execute({ purchaseRequestId: id, cancelledBy: req.user.id }));
   }
 
   @BranchScoped()
   @Get("purchase-returns")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseReturns(@Query("branchId") branchId?: string, @Query("supplierId") supplierId?: string, @Query("status") status?: string) {
     return (await this.listPurchaseReturns.execute({ branchId, supplierId, status })).map(toPublicPurchaseReturn);
   }
@@ -337,14 +338,14 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_returns")
   @Get("purchase-returns/:id")
-  @RequirePermission("purchasing.view")
+  @RequirePermission(PERMISSION.PURCHASING_VIEW)
   async purchaseReturn(@Param("id") id: string) {
     return toPublicPurchaseReturn(await this.getPurchaseReturn.execute(id));
   }
 
   @BranchScoped()
   @Post("purchase-returns")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async createPurchaseReturn(@Body() dto: RegisterPurchaseReturnDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseReturn(await this.registerPurchaseReturn.execute({ ...dto, createdBy: req.user.id }));
   }
@@ -352,7 +353,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_returns")
   @Post("purchase-returns/:id/post")
-  @RequirePermission("purchasing.create")
+  @RequirePermission(PERMISSION.PURCHASING_CREATE)
   async postPurchaseReturnRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseReturn(await this.postPurchaseReturn.execute({ purchaseReturnId: id, postedBy: req.user.id }));
   }
@@ -360,7 +361,7 @@ export class ProcurementController {
   @BranchScoped()
   @BranchResource("purchase_returns")
   @Post("purchase-returns/:id/cancel")
-  @RequirePermission("purchasing.cancel")
+  @RequirePermission(PERMISSION.PURCHASING_CANCEL)
   async cancelPurchaseReturnRoute(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchaseReturn(await this.cancelPurchaseReturn.execute({ purchaseReturnId: id, cancelledBy: req.user.id }));
   }

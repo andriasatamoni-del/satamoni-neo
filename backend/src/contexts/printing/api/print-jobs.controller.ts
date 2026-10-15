@@ -15,6 +15,7 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { PrintJob } from "../domain/print-job.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 function toPublicJob(job: PrintJob) {
   return {
@@ -43,7 +44,7 @@ export class PrintJobsController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("print_jobs.view", "print_jobs.manage_queue")
+  @RequirePermission(PERMISSION.PRINT_JOBS_VIEW, PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
   async list(
     @Query("branchId") branchId: string | undefined,
     @Query("status") status: string | undefined,
@@ -61,7 +62,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("print_jobs")
   @Post(":id/claim")
-  @RequirePermission("print_jobs.manage_queue")
+  @RequirePermission(PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
   async claim(@Param("id") id: string) {
     return toPublicJob(await this.claimPrintJob.execute({ printJobId: id }));
   }
@@ -69,7 +70,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("print_jobs")
   @Post(":id/printed")
-  @RequirePermission("print_jobs.manage_queue")
+  @RequirePermission(PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
   async printed(@Param("id") id: string) {
     return toPublicJob(await this.markPrinted.execute({ printJobId: id }));
   }
@@ -77,7 +78,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("print_jobs")
   @Post(":id/failed")
-  @RequirePermission("print_jobs.manage_queue")
+  @RequirePermission(PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
   async failed(@Param("id") id: string, @Body() dto: MarkPrintJobFailedDto) {
     return toPublicJob(await this.markFailed.execute({ printJobId: id, error: dto.error }));
   }
@@ -85,7 +86,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("print_jobs")
   @Post(":id/retry")
-  @RequirePermission("print_jobs.manage_queue")
+  @RequirePermission(PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
   async retry(@Param("id") id: string) {
     return toPublicJob(await this.retryPrintJob.execute({ printJobId: id }));
   }
@@ -93,7 +94,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("orders", { param: "orderId" })
   @Post("delivery-handover/:orderId")
-  @RequirePermission("orders.manage")
+  @RequirePermission(PERMISSION.ORDERS_MANAGE)
   async deliveryHandover(@Param("orderId") orderId: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicJob(await this.queueDeliveryHandover.execute({ orderId, createdBy: req.user.id }));
   }
@@ -101,7 +102,7 @@ export class PrintJobsController {
   @BranchScoped()
   @BranchResource("orders", { param: "orderId" })
   @Post("dine-in-bill/:orderId")
-  @RequirePermission("orders.view", "orders.create")
+  @RequirePermission(PERMISSION.ORDERS_VIEW, PERMISSION.ORDERS_CREATE)
   async dineInBill(@Param("orderId") orderId: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicJob(await this.queueDineinBill.execute({ orderId, createdBy: req.user.id }));
   }

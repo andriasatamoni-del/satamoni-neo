@@ -58,7 +58,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-مركز-تنبيهات-جست", email: "admin-actioncenter@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-مركز-تنبيهات-جست", email: "admin-actioncenter@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())

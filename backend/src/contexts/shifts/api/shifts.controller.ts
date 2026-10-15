@@ -16,9 +16,11 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
 import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { ShiftsDomainErrorFilter } from "./filters/domain-error.filter";
 import type { CashierShift } from "../domain/cashier-shift.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 type Req_ = Request & { user: AuthenticatedUser };
 
@@ -38,16 +40,16 @@ export class ShiftsController {
 
   @BranchScoped()
   @Post("open")
-  @RequirePermission("shifts.open_own")
+  @RequirePermission(PERMISSION.SHIFTS_OPEN_OWN)
   async open(@Body() dto: OpenShiftDto, @Req() req: Req_) {
-    const branchId = req.user.role === "admin" ? dto.branchId || req.user.branchId : req.user.branchId;
+    const branchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? dto.branchId || req.user.branchId : req.user.branchId;
     return toPublicShift(
       await this.openShift.execute({ branchId, userId: req.user.id, openingCash: dto.openingCash, openingNotes: dto.openingNotes })
     );
   }
 
   @Get("current")
-  @RequirePermission("shifts.view_own")
+  @RequirePermission(PERMISSION.SHIFTS_VIEW_OWN)
   async current(@Req() req: Req_) {
     const shift = await this.listShifts.currentForUser(req.user.id);
     return shift ? toPublicShift(shift) : null;
@@ -56,7 +58,7 @@ export class ShiftsController {
   @BranchScoped()
   @BranchResource("cashier_shifts")
   @Get(":id/preview")
-  @RequirePermission("shifts.view_own")
+  @RequirePermission(PERMISSION.SHIFTS_VIEW_OWN)
   async preview(@Param("id") id: string) {
     return this.previewShift.execute(id);
   }
@@ -64,7 +66,7 @@ export class ShiftsController {
   @BranchScoped()
   @BranchResource("cashier_shifts")
   @Post(":id/close")
-  @RequirePermission("shifts.close_own")
+  @RequirePermission(PERMISSION.SHIFTS_CLOSE_OWN)
   async close(@Param("id") id: string, @Body() dto: CloseShiftDto, @Req() req: Req_) {
     return toPublicShift(
       await this.closeShift.execute({ shiftId: id, actualCash: dto.actualCash, closingNotes: dto.closingNotes, closedBy: req.user.id })
@@ -74,7 +76,7 @@ export class ShiftsController {
   @BranchScoped()
   @BranchResource("cashier_shifts")
   @Post(":id/review")
-  @RequirePermission("shifts.review")
+  @RequirePermission(PERMISSION.SHIFTS_REVIEW)
   async review(@Param("id") id: string, @Body() dto: ReviewShiftVarianceDto, @Req() req: Req_) {
     return toPublicShift(
       await this.reviewShiftVariance.execute({ shiftId: id, decision: dto.decision, notes: dto.notes, reviewerId: req.user.id })
@@ -83,7 +85,7 @@ export class ShiftsController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("shifts.view_branch")
+  @RequirePermission(PERMISSION.SHIFTS_VIEW_BRANCH)
   async list(@Query("branchId") branchId: string | undefined, @Query("status") status: string | undefined, @Req() req: Req_) {
     const effectiveBranchId = branchId || req.user.branchId;
     if (!effectiveBranchId) return [];
@@ -93,7 +95,7 @@ export class ShiftsController {
   @BranchScoped()
   @BranchResource("cashier_shifts")
   @Post(":id/cash-drawer-entries")
-  @RequirePermission("shifts.record_cash_entry")
+  @RequirePermission(PERMISSION.SHIFTS_RECORD_CASH_ENTRY)
   async addCashDrawerEntry(@Param("id") id: string, @Body() dto: RegisterCashDrawerEntryDto, @Req() req: Req_) {
     return toPublicCashDrawerEntry(
       await this.registerCashDrawerEntry.execute({
@@ -110,7 +112,7 @@ export class ShiftsController {
   @BranchScoped()
   @BranchResource("cashier_shifts")
   @Get(":id/cash-drawer-entries")
-  @RequirePermission("shifts.view_own")
+  @RequirePermission(PERMISSION.SHIFTS_VIEW_OWN)
   async cashDrawerEntries(@Param("id") id: string) {
     return (await this.listCashDrawerEntries.execute(id)).map(toPublicCashDrawerEntry);
   }

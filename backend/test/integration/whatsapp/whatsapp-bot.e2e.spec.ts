@@ -142,7 +142,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     const { Branch } = await import("../../../src/contexts/branches/domain/branch.aggregate");
 
     await new UserRepository(app.get<Database>(DATABASE)).save(
-      User.register({ name: "أدمن-بوت-جست", email: "admin-bot@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
+      User.register({ name: "أدمن-بوت-جست", email: "admin-bot@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), roles: ["admin"] })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-bot@jest.test", password: "12345678" })).body.token;
 

@@ -26,6 +26,7 @@ import { UploadImageHandler } from "../application/upload-image.handler";
 import { GetImageHandler } from "../application/get-image.handler";
 import { ImageNotFoundError, MAX_IMAGE_BYTES } from "../domain/image-format";
 import { recordDenied } from "../../../shared/audit/audit-denial";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Catch(DomainError)
 class MediaDomainErrorFilter implements ExceptionFilter {
@@ -52,7 +53,7 @@ export class MediaController {
   // رفع صورة صنف/عرض/مكافأة - لمين يقدر يعدّل المنيو بس
   @Post("images")
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   // حد الـmulter أعلى شوية من حد الدومين عشان الرسالة العربي (أكبر من 2 ميجا) هي اللي توصل
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_IMAGE_BYTES + 1024 } }))
   async upload(@UploadedFile() file: { buffer: Buffer } | undefined, @Req() req: Request & { user: AuthenticatedUser }) {

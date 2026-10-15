@@ -82,7 +82,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
 
     await new UserRepository(app.get<Database>(DATABASE)).save(
-      User.register({ name: "أدمن-رسايل-جست", email: "admin-notify@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), role: "admin" })
+      User.register({ name: "أدمن-رسايل-جست", email: "admin-notify@jest.test", passwordHash: await new BcryptPasswordHasher().hash("12345678"), roles: ["admin"] })
     );
     adminToken = (await request(server()).post("/auth/login").send({ email: "admin-notify@jest.test", password: "12345678" })).body.token;
 

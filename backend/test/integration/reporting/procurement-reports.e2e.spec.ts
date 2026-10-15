@@ -48,13 +48,13 @@ describe("Reporting - تقارير المشتريات (e2e ضد تطبيق حق�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تقارير-مشتريات-جست", email: "admin-procreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تقارير-مشتريات-جست", email: "admin-procreports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-procreports@jest.test", password: "12345678" })).body.token;
 
     const cashier = User.register({
-      name: "كاشير-تقارير-مشتريات-جست", email: "cashier-procreports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تقارير-مشتريات-جست", email: "cashier-procreports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     cashierToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-procreports@jest.test", password: "12345678" })).body.token;

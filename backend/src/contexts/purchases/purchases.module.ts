@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { ProcurementModule } from "../procurement/procurement.module";
@@ -28,34 +27,4 @@ import { PurchasesController } from "./api/purchases.controller";
     GetPurchaseHandler,
   ],
 })
-export class PurchasesModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "purchases",
-      groupLabel: "المشتريات النقدية",
-      permissions: [
-        { key: "purchases.view", label: "رؤية كل المشتريات النقدية" },
-        { key: "purchases.view_own_daily", label: "رؤية مشترياته النقدية (فرعه/النهاردة)" },
-        { key: "purchases.create", label: "تسجيل مشترى نقدي (كامل، أي فرع، يترحّل فورًا)" },
-        { key: "purchases.create_own_daily", label: "تسجيل مشترى نقدي (كاشير - فرعه/النهاردة بس)" },
-        { key: "purchases.edit_own_daily", label: "تعديل مشترى نقدي معلّق (فرعه/النهاردة)" },
-        { key: "purchases.review", label: "مراجعة واعتماد/رفض مشترى نقدي معلّق" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", [
-      "purchases.view",
-      "purchases.create",
-      "purchases.edit_own_daily",
-      "purchases.review",
-    ]);
-    this.permissions.setRoleDefaults("accountant", [
-      "purchases.view",
-      "purchases.create",
-      "purchases.edit_own_daily",
-      "purchases.review",
-    ]);
-    this.permissions.setRoleDefaults("cashier", ["purchases.create_own_daily", "purchases.view_own_daily", "purchases.edit_own_daily"]);
-  }
-}
+export class PurchasesModule {}

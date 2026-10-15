@@ -38,7 +38,7 @@ describe("Inventory - طلبات التحويل بين الفروع (e2e ضد ت
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تحويل-جست", email: "admin-transfer@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تحويل-جست", email: "admin-transfer@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (

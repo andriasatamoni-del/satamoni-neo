@@ -41,7 +41,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-مصروفات-جست", email: "admin-expenses@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-مصروفات-جست", email: "admin-expenses@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (
@@ -54,7 +54,7 @@ describe("Expenses - تسجيل المصروفات (e2e ضد تطبيق حقيق
     branchId = branch.id;
 
     const cashier = User.register({
-      name: "كاشير-مصروفات-جست", email: "cashier-expenses@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier", branchId,
+      name: "كاشير-مصروفات-جست", email: "cashier-expenses@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"], branchId,
     });
     await userRepo.save(cashier);
     cashierToken = (

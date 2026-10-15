@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { INVENTORY_ITEM_REPOSITORY } from "./domain/ports/inventory-item-repository.port";
 import { STOCK_MOVEMENT_REPOSITORY } from "./domain/ports/stock-movement-repository.port";
@@ -73,25 +72,4 @@ import { InventoryController } from "./api/inventory.controller";
   ],
   exports: [INVENTORY_ITEM_REPOSITORY, STOCK_MOVEMENT_REPOSITORY, TRANSFER_REQUEST_REPOSITORY, INVENTORY_BATCH_REPOSITORY],
 })
-export class InventoryModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "inventory",
-      groupLabel: "المخزون",
-      permissions: [
-        { key: "inventory.items.view", label: "رؤية أصناف المخزون" },
-        { key: "inventory.items.manage", label: "إدارة أصناف المخزون" },
-        { key: "inventory.movements.record", label: "تسجيل حركات مخزون" },
-        { key: "inventory.batches.manage", label: "إعدام/إنهاء دفعات (تلف، انتهاء صلاحية)" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", [
-      "inventory.items.view",
-      "inventory.movements.record",
-      "inventory.batches.manage",
-    ]);
-    this.permissions.setRoleDefaults("accountant", ["inventory.items.view"]);
-  }
-}
+export class InventoryModule {}

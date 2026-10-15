@@ -36,7 +36,7 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-كتالوج", email: "admin-catalog@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-كتالوج", email: "admin-catalog@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())
@@ -201,7 +201,7 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-كتالوج", email: "cashier-catalog@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-كتالوج", email: "cashier-catalog@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await repo.save(cashier);
     const loginRes = await request(app.getHttpServer())

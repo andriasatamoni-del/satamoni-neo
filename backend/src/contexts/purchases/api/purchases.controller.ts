@@ -17,6 +17,7 @@ import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/
 import { businessDateString } from "../../../shared/time/business-date";
 import { PurchasesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Purchase } from "../domain/purchase.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("purchases")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -33,14 +34,14 @@ export class PurchasesController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("purchases.view", "purchases.view_own_daily")
+  @RequirePermission(PERMISSION.PURCHASES_VIEW, PERMISSION.PURCHASES_VIEW_OWN_DAILY)
   async list(
     @Query("branchId") branchId: string | undefined,
     @Query("businessDate") businessDate: string | undefined,
     @Query("status") status: string | undefined,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
-    const scopedBranchId = req.user.role === "cashier" ? req.user.branchId ?? undefined : branchId;
+    const scopedBranchId = !req.user.permissions.has(PERMISSION.PURCHASES_VIEW) ? req.user.branchId ?? undefined : branchId;
     const purchases = await this.listPurchases.execute({
       branchId: scopedBranchId,
       businessDate: businessDate ? new Date(businessDate) : undefined,
@@ -52,7 +53,7 @@ export class PurchasesController {
   @BranchScoped()
   @BranchResource("purchases")
   @Get(":id")
-  @RequirePermission("purchases.view", "purchases.view_own_daily")
+  @RequirePermission(PERMISSION.PURCHASES_VIEW, PERMISSION.PURCHASES_VIEW_OWN_DAILY)
   async detail(@Param("id") id: string) {
     return toPublicPurchase(await this.getPurchase.execute(id));
   }
@@ -62,9 +63,9 @@ export class PurchasesController {
   // تاني بيتسجل CONFIRMED مباشرة (يترحّل فورًا لو فيه بنود)
   @BranchScoped()
   @Post()
-  @RequirePermission("purchases.create", "purchases.create_own_daily")
+  @RequirePermission(PERMISSION.PURCHASES_CREATE, PERMISSION.PURCHASES_CREATE_OWN_DAILY)
   async create(@Body() dto: RegisterPurchaseDto, @Req() req: Request & { user: AuthenticatedUser }) {
-    const isCashier = req.user.role === "cashier";
+    const isCashier = !req.user.permissions.has(PERMISSION.PURCHASES_CREATE);
     const branchId = isCashier ? req.user.branchId ?? dto.branchId : dto.branchId;
     const businessDate = isCashier ? businessDateString() : dto.businessDate;
 
@@ -88,7 +89,7 @@ export class PurchasesController {
   @BranchScoped()
   @BranchResource("purchases")
   @Patch(":id")
-  @RequirePermission("purchases.create", "purchases.edit_own_daily")
+  @RequirePermission(PERMISSION.PURCHASES_CREATE, PERMISSION.PURCHASES_EDIT_OWN_DAILY)
   async edit(@Param("id") id: string, @Body() dto: EditPurchaseDto) {
     return toPublicPurchase(await this.editPurchase.execute({ purchaseId: id, ...dto }));
   }
@@ -96,7 +97,7 @@ export class PurchasesController {
   @BranchScoped()
   @BranchResource("purchases")
   @Post(":id/confirm")
-  @RequirePermission("purchases.review")
+  @RequirePermission(PERMISSION.PURCHASES_REVIEW)
   async confirm(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchase(await this.confirmPurchase.execute({ purchaseId: id, reviewedBy: req.user.id }));
   }
@@ -104,7 +105,7 @@ export class PurchasesController {
   @BranchScoped()
   @BranchResource("purchases")
   @Post(":id/reject")
-  @RequirePermission("purchases.review")
+  @RequirePermission(PERMISSION.PURCHASES_REVIEW)
   async reject(@Param("id") id: string, @Body() dto: RejectPurchaseDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicPurchase(await this.rejectPurchase.execute({ purchaseId: id, reviewedBy: req.user.id, reason: dto.reason }));
   }

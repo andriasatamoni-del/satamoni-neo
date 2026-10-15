@@ -43,7 +43,7 @@ export class LoginHandler {
       throw new InvalidCredentialsError();
     }
 
-    const token = this.tokens.sign({ sub: user.id, role: user.role });
+    const token = this.tokens.sign({ sub: user.id });
     await this.auditLog.record({ actorUserId: user.id, action: "LOGIN_SUCCEEDED", entityType: "users", entityId: user.id });
     return { token, user };
   }

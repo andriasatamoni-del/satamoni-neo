@@ -28,7 +28,7 @@ describe("UserRepository", () => {
       name: "أحمد الكاشير",
       email: "ahmed-repo@jest.test",
       passwordHash: "hashed-pw",
-      role: "cashier",
+      roles: ["cashier"],
     });
     await repo.save(user);
 
@@ -36,9 +36,8 @@ describe("UserRepository", () => {
     expect(found).not.toBeNull();
     expect(found!.name).toBe("أحمد الكاشير");
     expect(found!.email).toBe("ahmed-repo@jest.test");
-    expect(found!.role).toBe("cashier");
+    expect(found!.roles).toEqual(["cashier"]);
     expect(found!.isActive).toBe(true);
-    expect(found!.permissionGrants).toEqual([]);
   });
 
   test("findByEmail بيرجّع null لو مفيش يوزر بالإيميل ده", async () => {
@@ -47,21 +46,25 @@ describe("UserRepository", () => {
   });
 
   test("existsByEmail بيرجع صح/غلط صح", async () => {
-    const user = User.register({ name: "أ", email: "exists-repo@jest.test", passwordHash: "h", role: "cashier" });
+    const user = User.register({ name: "أ", email: "exists-repo@jest.test", passwordHash: "h", roles: ["cashier"] });
     await repo.save(user);
     expect(await repo.existsByEmail("exists-repo@jest.test")).toBe(true);
     expect(await repo.existsByEmail("nope-repo@jest.test")).toBe(false);
   });
 
-  test("save تاني على نفس الـid بيعمل update (upsert) مش صف جديد", async () => {
-    const user = User.register({ name: "أ", email: "upsert-repo@jest.test", passwordHash: "h", role: "cashier" });
+  test("save تاني على نفس الـid بيعمل update (upsert) مش صف جديد، وبيستبدل الأدوار", async () => {
+    const user = User.register({ name: "أ", email: "upsert-repo@jest.test", passwordHash: "h", roles: ["cashier"] });
     await repo.save(user);
 
-    user.grantPermission("orders.cancel");
+    user.changeRoles(["cashier", "branch_manager"]);
     await repo.save(user);
 
     const found = await repo.findById(user.id);
-    expect(found!.permissionGrants).toEqual(["orders.cancel"]);
+    expect(found!.roles).toEqual(["branch_manager", "cashier"]);
+
+    user.changeRoles(["branch_manager"]);
+    await repo.save(user);
+    expect((await repo.findById(user.id))!.roles).toEqual(["branch_manager"]);
 
     const all = await repo.list();
     expect(all.filter((u) => u.id === user.id).length).toBe(1);
@@ -69,7 +72,7 @@ describe("UserRepository", () => {
 
   test("findByLegacyUserId بيلاقي اليوزر المستورد من الريبو القديم بكود الـid بتاعه هناك", async () => {
     const user = User.register({
-      name: "أ", email: "legacy-repo@jest.test", passwordHash: "h", role: "cashier", legacyUserId: 42,
+      name: "أ", email: "legacy-repo@jest.test", passwordHash: "h", roles: ["cashier"], legacyUserId: 42,
     });
     await repo.save(user);
 
@@ -80,8 +83,8 @@ describe("UserRepository", () => {
 
   test("list بيفلتر بالفرع صح", async () => {
     const branchId = "11111111-1111-1111-1111-111111111111";
-    const inBranch = User.register({ name: "فرع", email: "inbranch-repo@jest.test", passwordHash: "h", role: "cashier", branchId });
-    const noBranch = User.register({ name: "بدون فرع", email: "nobranch-repo@jest.test", passwordHash: "h", role: "admin" });
+    const inBranch = User.register({ name: "فرع", email: "inbranch-repo@jest.test", passwordHash: "h", roles: ["cashier"], branchId });
+    const noBranch = User.register({ name: "بدون فرع", email: "nobranch-repo@jest.test", passwordHash: "h", roles: ["admin"] });
     await repo.save(inBranch);
     await repo.save(noBranch);
 

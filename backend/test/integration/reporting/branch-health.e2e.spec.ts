@@ -55,7 +55,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-صحة-فروع-جست", email: "admin-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-صحة-فروع-جست", email: "admin-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-branchhealth@jest.test", password: "12345678" })).body.token;
@@ -74,7 +74,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
 
     const branchManager = User.register({
       name: "مدير فرع-صحة-فروع-جست", email: "manager-branchhealth@jest.test", passwordHash: await hasher.hash("12345678"),
-      role: "branch_manager", branchId,
+      roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     branchManagerToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "manager-branchhealth@jest.test", password: "12345678" })).body.token;

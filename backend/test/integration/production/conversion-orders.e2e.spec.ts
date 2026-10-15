@@ -43,7 +43,7 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
 
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
-    const admin = User.register({ name: "أدمن-تصنيع-جست", email: "admin-production@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin" });
+    const admin = User.register({ name: "أدمن-تصنيع-جست", email: "admin-production@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"] });
     await userRepo.save(admin);
     adminToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-production@jest.test", password: "12345678" })).body.token;
 
@@ -208,7 +208,7 @@ describe("Production - أوامر التحويل (تصنيع/تعبئة) (e2e ض
     const db = app.get<Database>(DATABASE);
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
-    const cashier = User.register({ name: "كاشير-تصنيع-جست", email: "cashier-production@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier" });
+    const cashier = User.register({ name: "كاشير-تصنيع-جست", email: "cashier-production@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"] });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "cashier-production@jest.test", password: "12345678" });
 

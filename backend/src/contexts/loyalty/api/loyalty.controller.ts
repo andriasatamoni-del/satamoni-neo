@@ -10,6 +10,7 @@ import { GetCustomerLoyaltyHandler } from "../application/queries/get-customer-l
 import { SaveLoyaltyRewardHandler } from "../application/commands/save-loyalty-reward.handler";
 import { SaveLoyaltyRewardDto } from "./dto/save-loyalty-reward.dto";
 import { LoyaltyDomainErrorFilter } from "./filters/domain-error.filter";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 // إدارة كتالوج المكافآت (الموظفين) - نسبة الكسب نفسها في إعدادات النظام (loyaltyPointsPerEgp)
 @Controller("loyalty/rewards")
@@ -22,19 +23,19 @@ export class LoyaltyRewardsController {
   ) {}
 
   @Get()
-  @RequirePermission("loyalty.view", "loyalty.manage")
+  @RequirePermission(PERMISSION.LOYALTY_VIEW, PERMISSION.LOYALTY_MANAGE)
   async list() {
     return this.listRewards.execute();
   }
 
   @Post()
-  @RequirePermission("loyalty.manage")
+  @RequirePermission(PERMISSION.LOYALTY_MANAGE)
   async create(@Body() dto: SaveLoyaltyRewardDto) {
     return this.saveReward.create(dto);
   }
 
   @Patch(":id")
-  @RequirePermission("loyalty.manage")
+  @RequirePermission(PERMISSION.LOYALTY_MANAGE)
   async update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: SaveLoyaltyRewardDto) {
     return this.saveReward.update(id, dto);
   }

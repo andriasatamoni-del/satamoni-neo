@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { DeliveryModule } from "../delivery/delivery.module";
 import { BRANCH_DAY_REPOSITORY } from "./domain/ports/branch-day-repository.port";
@@ -25,19 +24,4 @@ import { BranchDayController } from "./api/branch-day.controller";
     ListBranchDayHistoryHandler,
   ],
 })
-export class BranchDayModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "branch_day",
-      groupLabel: "قفل يوم الفرع",
-      permissions: [
-        { key: "branch_day.view", label: "رؤية حالة/سجل قفل يوم الفرع" },
-        { key: "branch_day.close", label: "قفل يوم الفرع" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["branch_day.view", "branch_day.close"]);
-    this.permissions.setRoleDefaults("accountant", ["branch_day.view"]);
-  }
-}
+export class BranchDayModule {}

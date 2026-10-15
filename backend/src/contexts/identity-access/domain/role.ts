@@ -20,3 +20,7 @@ export const ROLES = Object.values(ROLE) as [Role, ...Role[]];
 export function isValidRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
+
+export function hasAnyRole(roles: readonly Role[], ...wanted: Role[]): boolean {
+  return wanted.some((r) => roles.includes(r));
+}

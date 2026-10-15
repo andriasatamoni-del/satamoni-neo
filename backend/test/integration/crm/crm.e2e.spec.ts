@@ -31,11 +31,11 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-كرم", email: "admin-crm@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-كرم", email: "admin-crm@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await repo.save(admin);
     const callcenter = User.register({
-      name: "كول سنتر-كرم", email: "callcenter-crm@jest.test", passwordHash: await hasher.hash("12345678"), role: "callcenter",
+      name: "كول سنتر-كرم", email: "callcenter-crm@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["callcenter"],
     });
     await repo.save(callcenter);
 
@@ -165,7 +165,7 @@ describe("CRM & Complaints - /crm (e2e ضد تطبيق حقيقي كامل)", ()
     const repo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const driver = User.register({
-      name: "سواق-كرم", email: "driver-crm@jest.test", passwordHash: await hasher.hash("12345678"), role: "driver",
+      name: "سواق-كرم", email: "driver-crm@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["driver"],
     });
     await repo.save(driver);
     const loginRes = await request(app.getHttpServer())

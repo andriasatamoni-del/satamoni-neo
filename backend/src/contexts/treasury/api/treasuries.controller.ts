@@ -9,10 +9,12 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
+import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
 import { BranchScopeGuard, BranchScoped, BranchResources } from "../../../shared/authorization/branch-scope";
 import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { JournalEntry } from "../../accounting/domain/journal-entry.aggregate";
 import type { Treasury } from "../domain/treasury.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("treasuries")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -26,10 +28,10 @@ export class TreasuriesController {
 
   @BranchScoped()
   @Get()
-  @RequirePermission("treasuries.view")
+  @RequirePermission(PERMISSION.TREASURIES_VIEW)
   async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     // نفس نطاق الريبو القديم بالظبط: مدير الفرع والمحاسب لفرعهم بس، أدمن لأي فرع أو كل الفروع
-    const isBranchScoped = req.user.role === "branch_manager" || req.user.role === "accountant";
+    const isBranchScoped = !hasAnyRole(req.user.roles, ROLE.ADMIN) && hasAnyRole(req.user.roles, ROLE.BRANCH_MANAGER, ROLE.ACCOUNTANT);
     const effectiveBranchId = isBranchScoped ? req.user.branchId : (branchId ?? null);
     if (isBranchScoped && !effectiveBranchId) {
       throw new BadRequestException("لازم تحدد الفرع");
@@ -39,7 +41,7 @@ export class TreasuriesController {
 
   @BranchScoped()
   @Post()
-  @RequirePermission("treasuries.manage")
+  @RequirePermission(PERMISSION.TREASURIES_MANAGE)
   async create(@Body() dto: RegisterTreasuryDto) {
     const treasury = await this.registerTreasury.execute({ name: dto.name, kind: "MAIN", branchId: dto.branchId });
     return toPublicTreasury(treasury);
@@ -48,7 +50,7 @@ export class TreasuriesController {
   @BranchScoped()
   @BranchResources(["treasuries"], ["treasuries", { param: "toTreasuryId", from: "body" }])
   @Post(":id/transfer")
-  @RequirePermission("treasuries.transfer")
+  @RequirePermission(PERMISSION.TREASURIES_TRANSFER)
   async transfer(@Param("id") id: string, @Body() dto: TransferBetweenTreasuriesDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const entry = await this.transferBetweenTreasuries.execute({
       fromTreasuryId: id,

@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { hasRole } from "../shared/auth/roles";
 
 interface Supplier { id: string; name: string; status: string; }
 interface Branch { id: string; name: string; }
@@ -147,7 +148,7 @@ export function ProcurementPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("receipts");
-  const canApproveOrCancel = user?.role === "admin" || user?.role === "accountant";
+  const canApproveOrCancel = hasRole(user, "admin", "accountant");
 
   const suppliersQuery = useQuery({ queryKey: ["procurement", "suppliers"], queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers") });
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });

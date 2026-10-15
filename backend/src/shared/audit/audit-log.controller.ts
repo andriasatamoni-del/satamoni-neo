@@ -3,6 +3,7 @@ import { AuditLogService } from "./audit-log.service";
 import { JwtAuthGuard } from "../../contexts/identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../contexts/identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../contexts/identity-access/api/guards/require-permission.decorator";
+import { PERMISSION } from "../../contexts/identity-access/domain/permission";
 
 @Controller("audit-logs")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -10,7 +11,7 @@ export class AuditLogController {
   constructor(private readonly auditLog: AuditLogService) {}
 
   @Get()
-  @RequirePermission("audit.view")
+  @RequirePermission(PERMISSION.AUDIT_VIEW)
   async list(
     @Query("actorUserId") actorUserId?: string,
     @Query("entityType") entityType?: string,

@@ -50,7 +50,7 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-مشتريات-جست", email: "admin-purchases@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-مشتريات-جست", email: "admin-purchases@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (
@@ -63,7 +63,7 @@ describe("Purchases - المشتريات النقدية الطارئة (e2e ضد
     branchId = branch.id;
 
     const cashier = User.register({
-      name: "كاشير-مشتريات-جست", email: "cashier-purchases@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier", branchId,
+      name: "كاشير-مشتريات-جست", email: "cashier-purchases@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"], branchId,
     });
     await userRepo.save(cashier);
     cashierToken = (

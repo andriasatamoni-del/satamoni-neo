@@ -1,5 +1,4 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
 import { EventBusService } from "../../shared/events/event-bus.service";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { AccountingModule } from "../accounting/accounting.module";
@@ -46,28 +45,11 @@ import { BanksController } from "./api/banks.controller";
 })
 export class TreasuryModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly eventBus: EventBusService,
     private readonly registerTreasury: RegisterTreasuryHandler
   ) {}
 
   onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "treasuries",
-      groupLabel: "الخزائن والبنوك",
-      permissions: [
-        { key: "treasuries.view", label: "رؤية الخزائن وأرصدتها" },
-        { key: "treasuries.transfer", label: "تحويل بين الخزائن" },
-        { key: "treasuries.manage", label: "إنشاء خزائن رئيسية" },
-        { key: "banks.view", label: "رؤية البنوك والحسابات البنكية" },
-        { key: "banks.manage", label: "إدارة البنوك والحسابات البنكية" },
-      ],
-    });
-    // نفس نطاق الريبو القديم بالظبط: التحويل بين الخزائن ورؤيتها مالي بحت (مش متاح لمدير الفرع)،
-    // البنوك إدارة أدمن بس ورؤية للمحاسب
-    this.permissions.setRoleDefaults("accountant", ["treasuries.view", "treasuries.transfer", "treasuries.manage", "banks.view"]);
-    this.permissions.setRoleDefaults("branch_manager", ["treasuries.view"]);
-
     // خزينة رئيسية تلقائية لكل فرع جديد - راجع تعليق BranchRegisteredEvent وRegisterTreasuryHandler
     this.eventBus.subscribe<BranchRegisteredEvent>("BranchRegistered", async (event) => {
       await this.registerTreasury.execute({ name: `خزينة ${event.name} الرئيسية`, kind: "MAIN", branchId: event.branchId });

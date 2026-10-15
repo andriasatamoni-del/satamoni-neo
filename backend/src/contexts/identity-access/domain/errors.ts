@@ -19,6 +19,18 @@ export class InvalidRoleError extends DomainError {
   }
 }
 
+export class RolesRequiredError extends DomainError {
+  constructor() {
+    super("لازم تختار دور واحد على الأقل");
+  }
+}
+
+export class AdminRolePermissionsLockedError extends DomainError {
+  constructor() {
+    super("صلاحيات الأدمن ثابتة (كل الصلاحيات) ومينفعش تتعدّل");
+  }
+}
+
 export class DuplicateEmailError extends DomainError {
   constructor(email: string) {
     super(`الإيميل ده مستخدم بالفعل: ${email}`);

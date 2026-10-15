@@ -16,6 +16,7 @@ import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
 import { OrdersDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Order } from "../domain/order.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("orders")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -32,13 +33,13 @@ export class OrdersController {
   ) {}
 
   @Get()
-  @RequirePermission("orders.view", "orders.create")
+  @RequirePermission(PERMISSION.ORDERS_VIEW, PERMISSION.ORDERS_CREATE)
   async list(@Query("branchId") branchId?: string) {
     return (await this.listOrders.execute(branchId ? { branchId } : undefined)).map(toPublicOrder);
   }
 
   @Get("kitchen-board")
-  @RequirePermission("kitchen.view")
+  @RequirePermission(PERMISSION.KITCHEN_VIEW)
   async kitchenBoard(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
     const effectiveBranchId = branchId || req.user.branchId;
     if (!effectiveBranchId) return [];
@@ -46,21 +47,21 @@ export class OrdersController {
   }
 
   @Post()
-  @RequirePermission("orders.create")
+  @RequirePermission(PERMISSION.ORDERS_CREATE)
   async create(@Body() dto: RegisterOrderDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicOrder(await this.registerOrder.execute({ ...dto, createdBy: req.user.id }));
   }
 
   @Patch(":id/status")
   @BranchResource("orders")
-  @RequirePermission("orders.manage")
+  @RequirePermission(PERMISSION.ORDERS_MANAGE)
   async updateStatus(@Param("id") id: string, @Body() dto: UpdateOrderStatusDto) {
     return toPublicOrder(await this.updateOrderStatus.execute({ orderId: id, ...dto }));
   }
 
   @Patch(":id/kitchen-status")
   @BranchResource("orders")
-  @RequirePermission("kitchen.advance")
+  @RequirePermission(PERMISSION.KITCHEN_ADVANCE)
   async updateKitchenStatus(@Param("id") id: string, @Body() dto: AdvanceKitchenStatusDto) {
     return toPublicOrder(await this.advanceKitchenStatus.execute({ orderId: id, kitchenStatus: dto.kitchenStatus }));
   }
@@ -70,7 +71,7 @@ export class OrdersController {
   // يدوي من الكاشير/مدير الفرع (نفس مفهوم "void order" بالريبو القديم)
   @Patch(":id/cancel")
   @BranchResource("orders")
-  @RequirePermission("orders.manage")
+  @RequirePermission(PERMISSION.ORDERS_MANAGE)
   async cancel(@Param("id") id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicOrder(await this.cancelOrder.execute({ orderId: id, cancelledBy: req.user.id }));
   }

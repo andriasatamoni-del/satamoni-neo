@@ -1,6 +1,5 @@
 import { Global, Module, OnModuleInit } from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
-import { PermissionRegistry } from "../permissions/permission-registry";
 import { IdentityAccessModule } from "../../contexts/identity-access/identity-access.module";
 import { registerDenialRecorder } from "./audit-denial";
 import { AuditLogService } from "./audit-log.service";
@@ -16,18 +15,10 @@ import { AuditLogController } from "./audit-log.controller";
 })
 export class AuditModule implements OnModuleInit {
   constructor(
-    private readonly permissions: PermissionRegistry,
     private readonly auditLog: AuditLogService
   ) {}
 
   onModuleInit(): void {
     registerDenialRecorder(this.auditLog);
-    this.permissions.registerGroup({
-      group: "audit",
-      groupLabel: "سجل التدقيق",
-      permissions: [{ key: "audit.view", label: "رؤية سجل التدقيق العام" }],
-    });
-    // مفيش role تاني بياخد الصلاحية دي افتراضيًا غير admin (كاتش-أول الأدمن في
-    // PermissionRegistry.hasPermission) - سجل تدقيق حساس أمنيًا، أدمن بس بشكل افتراضي
   }
 }

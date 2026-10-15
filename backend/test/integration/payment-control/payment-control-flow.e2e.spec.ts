@@ -44,7 +44,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-دفعات-e2e", email: "admin-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-دفعات-e2e", email: "admin-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-payment-control-e2e@jest.test", password: "12345678" });
@@ -56,7 +56,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     branchId = branch.id;
 
     const branchManager = User.register({
-      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager", branchId,
+      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     branchManagerToken = (

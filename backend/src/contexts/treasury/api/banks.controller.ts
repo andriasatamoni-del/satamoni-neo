@@ -14,6 +14,7 @@ import { PermissionsGuard } from "../../identity-access/api/guards/permissions.g
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Bank } from "../domain/bank.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("banks")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -29,38 +30,38 @@ export class BanksController {
   ) {}
 
   @Get()
-  @RequirePermission("banks.view")
+  @RequirePermission(PERMISSION.BANKS_VIEW)
   async list() {
     return (await this.listBanks.execute()).map(toPublicBank);
   }
 
   @Post()
-  @RequirePermission("banks.manage")
+  @RequirePermission(PERMISSION.BANKS_MANAGE)
   async create(@Body() dto: RegisterBankDto) {
     return toPublicBank(await this.registerBank.execute(dto));
   }
 
   @Patch(":id")
-  @RequirePermission("banks.manage")
+  @RequirePermission(PERMISSION.BANKS_MANAGE)
   async update(@Param("id") id: string, @Body() dto: UpdateBankDto) {
     return toPublicBank(await this.updateBank.execute({ bankId: id, ...dto }));
   }
 
   @Get("accounts")
-  @RequirePermission("banks.view")
+  @RequirePermission(PERMISSION.BANKS_VIEW)
   async accounts() {
     return this.listBankAccounts.execute();
   }
 
   @Post("accounts")
-  @RequirePermission("banks.manage")
+  @RequirePermission(PERMISSION.BANKS_MANAGE)
   async createAccount(@Body() dto: RegisterBankAccountDto) {
     const bankAccount = await this.registerBankAccount.execute(dto);
     return { id: bankAccount.id, bankId: bankAccount.bankId, treasuryId: bankAccount.treasuryId };
   }
 
   @Patch("accounts/:id")
-  @RequirePermission("banks.manage")
+  @RequirePermission(PERMISSION.BANKS_MANAGE)
   async updateAccount(@Param("id") id: string, @Body() dto: UpdateBankAccountDto) {
     const bankAccount = await this.updateBankAccount.execute({ bankAccountId: id, ...dto });
     return {

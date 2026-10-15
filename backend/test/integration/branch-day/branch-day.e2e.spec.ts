@@ -42,7 +42,7 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
     branchId = branch.id;
 
     const manager = User.register({
-      name: "مدير-قفل-يوم-جست", email: "manager-branch-day@jest.test", passwordHash: await hasher.hash("12345678"), role: "branch_manager",
+      name: "مدير-قفل-يوم-جست", email: "manager-branch-day@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["branch_manager"],
       branchId,
     });
     await userRepo.save(manager);
@@ -51,7 +51,7 @@ describe("Branch Day Close - قفل يوم الفرع", () => {
     ).body.token;
 
     const cashier = User.register({
-      name: "كاشير-قفل-يوم-جست", email: "cashier-branch-day@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-قفل-يوم-جست", email: "cashier-branch-day@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
       branchId,
     });
     await userRepo.save(cashier);

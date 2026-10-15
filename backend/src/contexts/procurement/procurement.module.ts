@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { AccountingModule } from "../accounting/accounting.module";
@@ -101,50 +100,4 @@ import { ProcurementController } from "./api/procurement.controller";
   ],
   exports: [SUPPLIER_REPOSITORY, PURCHASE_ORDER_REPOSITORY, GOODS_RECEIPT_REPOSITORY],
 })
-export class ProcurementModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "procurement",
-      groupLabel: "المشتريات والموردين",
-      permissions: [
-        { key: "procurement.suppliers.view", label: "رؤية الموردين" },
-        { key: "procurement.suppliers.manage", label: "إدارة الموردين" },
-        { key: "procurement.purchase_orders.view", label: "رؤية أوامر الشراء" },
-        { key: "procurement.purchase_orders.manage", label: "إدارة أوامر الشراء" },
-        { key: "procurement.goods_receipts.view", label: "رؤية أذون الاستلام" },
-        { key: "procurement.goods_receipts.manage", label: "إدارة أذون الاستلام" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", [
-      "procurement.suppliers.view",
-      "procurement.purchase_orders.view",
-      "procurement.goods_receipts.manage",
-    ]);
-    this.permissions.setRoleDefaults("accountant", ["procurement.suppliers.view", "procurement.purchase_orders.view"]);
-
-    // نفس namespace الريبو القديم بالظبط (purchasing.* منفصل عن procurement.* - فاتورة/سداد المورد
-    // وطلبات الشراء ومرتجعاتها طبقة فوق دورة الشراء الأساسية، مش جزء من إدارتها الأساسية). purchasing.submit
-    // منفصلة عن purchasing.create - نفس فرق الريبو القديم بين "يعمل طلب" و"يقدّمه للاعتماد"
-    this.permissions.registerGroup({
-      group: "purchasing",
-      groupLabel: "فواتير وسدادات وطلبات ومرتجعات الموردين",
-      permissions: [
-        { key: "purchasing.view", label: "رؤية فواتير/سدادات/طلبات/مرتجعات الموردين" },
-        { key: "purchasing.create", label: "تسجيل فاتورة/سداد/طلب شراء/مرتجع مورد" },
-        { key: "purchasing.submit", label: "تقديم طلب شراء للاعتماد" },
-        { key: "purchasing.approve", label: "اعتماد فاتورة مورد أو طلب شراء" },
-        { key: "purchasing.cancel", label: "إلغاء فاتورة مورد أو طلب شراء أو مرتجع" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["purchasing.view", "purchasing.create", "purchasing.submit"]);
-    this.permissions.setRoleDefaults("accountant", [
-      "purchasing.view",
-      "purchasing.create",
-      "purchasing.submit",
-      "purchasing.approve",
-      "purchasing.cancel",
-    ]);
-  }
-}
+export class ProcurementModule {}

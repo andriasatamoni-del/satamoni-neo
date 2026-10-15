@@ -9,6 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
+import { hasRole } from "../shared/auth/roles";
 
 interface Reward {
   id: string;
@@ -34,7 +35,7 @@ const EMPTY_FORM = { name: "", description: "", imageUrl: "", pointsCost: "", ki
 // على موقع الطلب (خصم / بيتزا هدية / فطيرة حلو هدية / كومبو هدية)
 export function LoyaltyPage() {
   const { user } = useAuth();
-  const canManage = user?.role === "admin";
+  const canManage = hasRole(user, "admin");
   const queryClient = useQueryClient();
 
   const settingsQuery = useQuery({ queryKey: ["pos-settings"], queryFn: () => apiRequest<{ loyaltyPointsPerEgp: number }>("/pos-settings") });

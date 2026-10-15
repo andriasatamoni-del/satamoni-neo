@@ -45,6 +45,7 @@ import type { Stocktake } from "../domain/stocktake.aggregate";
 import type { BranchStockThreshold } from "../domain/branch-stock-threshold.aggregate";
 import type { TransferRequest } from "../domain/transfer-request.aggregate";
 import type { InventoryBatch } from "../domain/inventory-batch.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -75,14 +76,14 @@ export class InventoryController {
   ) {}
 
   @Get("items")
-  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
   async list() {
     const items = await this.listItems.execute();
     return items.map(toPublicItem);
   }
 
   @Post("items")
-  @RequirePermission("inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_MANAGE)
   async create(@Body() dto: RegisterInventoryItemDto) {
     const item = await this.registerItem.execute(dto);
     return toPublicItem(item);
@@ -90,7 +91,7 @@ export class InventoryController {
 
   @BranchScoped()
   @Post("movements")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async record(@Body() dto: RecordStockMovementDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const { movement, balanceAfter } = await this.recordMovement.execute({ ...dto, performedBy: req.user.id });
     return { movement: toPublicMovement(movement), balanceAfter };
@@ -98,7 +99,7 @@ export class InventoryController {
 
   @BranchScoped()
   @Get("balances")
-  @RequirePermission("inventory.items.view", "inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async balance(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
     const quantity = await this.getBalance.execute(branchId, inventoryItemId);
     return { branchId, inventoryItemId, quantity };
@@ -106,14 +107,14 @@ export class InventoryController {
 
   @BranchScoped()
   @Get("stock-thresholds")
-  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
   async stockThreshold(@Query("branchId") branchId: string, @Query("inventoryItemId") inventoryItemId: string) {
     return toPublicThreshold(await this.getStockThreshold.execute(branchId, inventoryItemId));
   }
 
   @BranchScoped()
   @Patch("stock-thresholds")
-  @RequirePermission("inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_MANAGE)
   async updateStockThresholdRoute(@Body() dto: UpdateStockThresholdDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicThreshold(
       await this.updateStockThreshold.execute({
@@ -129,28 +130,28 @@ export class InventoryController {
 
   @BranchScoped()
   @Get("low-stock")
-  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
   async lowStock(@Query("branchId") branchId?: string) {
     return this.listLowStock.execute(branchId);
   }
 
   @BranchScoped()
   @Get("requisition-suggestion")
-  @RequirePermission("inventory.items.view", "inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async requisitionSuggestion(@Query() dto: GetRequisitionSuggestionDto) {
     return this.getRequisitionSuggestion.execute(dto);
   }
 
   @BranchScoped()
   @Get("stocktakes/board")
-  @RequirePermission("inventory.items.view")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW)
   async stocktakeBoard(@Query("branchId") branchId: string) {
     return this.getStocktakeBoard.execute(branchId);
   }
 
   @BranchScoped()
   @Get("stocktakes")
-  @RequirePermission("inventory.items.view")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW)
   async stocktakes(@Query("branchId") branchId?: string) {
     return (await this.listStocktakes.execute({ branchId })).map(toPublicStocktake);
   }
@@ -158,14 +159,14 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("stocktakes")
   @Get("stocktakes/:id")
-  @RequirePermission("inventory.items.view")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW)
   async stocktake(@Param("id") id: string) {
     return toPublicStocktake(await this.getStocktake.execute(id));
   }
 
   @BranchScoped()
   @Post("stocktakes")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async createStocktake(@Body() dto: RegisterStocktakeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     return toPublicStocktake(await this.registerStocktake.execute({ ...dto, createdBy: req.user.id }));
   }
@@ -174,7 +175,7 @@ export class InventoryController {
   // transfer-request.aggregate.ts). صلاحية واحدة للعرض، وواحدة لكل فعل بيغيّر حالة الطلب
   @BranchScoped()
   @Get("transfer-requests")
-  @RequirePermission("inventory.items.view", "inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async transferRequests(
     @Req() req: Request & { user: AuthenticatedUser },
     @Query("fromBranchId") fromBranchId?: string,
@@ -190,7 +191,7 @@ export class InventoryController {
 
   @BranchScoped()
   @Post("transfer-requests")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async createTransferRequest(@Body() dto: RegisterTransferRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
     // a branch can only request stock FOR itself (the receiving branch is the caller's own branch)
     assertBranchAccess(req.user, dto.toBranchId);
@@ -209,7 +210,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/approve")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async approveTransferRequestRoute(
     @Param("id") id: string,
     @Body() dto: ApproveTransferRequestDto,
@@ -223,7 +224,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/reject")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async rejectTransferRequestRoute(
     @Param("id") id: string,
     @Body() dto: RejectTransferRequestDto,
@@ -235,7 +236,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("transfer_requests", { column: "from_branch_id" })
   @Post("transfer-requests/:id/dispatch")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async dispatchTransferRequestRoute(
     @Param("id") id: string,
     @Body() dto: DispatchTransferRequestDto,
@@ -249,7 +250,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("transfer_requests", { column: "to_branch_id" })
   @Post("transfer-requests/:id/receive")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async receiveTransferRequestRoute(
     @Param("id") id: string,
     @Body() dto: ReceiveTransferRequestDto,
@@ -261,7 +262,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("transfer_requests", { column: "to_branch_id", alsoColumns: ["from_branch_id"] })
   @Post("transfer-requests/:id/cancel")
-  @RequirePermission("inventory.movements.record")
+  @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async cancelTransferRequestRoute(
     @Param("id") id: string,
     @Body() dto: CancelTransferRequestDto,
@@ -274,7 +275,7 @@ export class InventoryController {
   // استهلاك يدوي، تتبّع مستوى واحد)
   @BranchScoped()
   @Get("items/:id/batches")
-  @RequirePermission("inventory.items.view", "inventory.items.manage")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
   async batches(@Param("id") id: string, @Query("branchId") branchId: string) {
     return (await this.listInventoryBatches.execute({ inventoryItemId: id, branchId })).map(toPublicBatch);
   }
@@ -282,7 +283,7 @@ export class InventoryController {
   @BranchScoped()
   @BranchResource("inventory_batches")
   @Post("batches/:id/write-off")
-  @RequirePermission("inventory.batches.manage")
+  @RequirePermission(PERMISSION.INVENTORY_BATCHES_MANAGE)
   async writeOffBatch(@Param("id") id: string, @Body() dto: WriteOffInventoryBatchDto) {
     return toPublicBatch(await this.writeOffInventoryBatch.execute({ batchId: id, quantity: dto.quantity, markExpired: dto.markExpired }));
   }

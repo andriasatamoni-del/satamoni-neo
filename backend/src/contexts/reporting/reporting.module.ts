@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { PaymentControlModule } from "../payment-control/payment-control.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -51,23 +50,4 @@ import { ReportsController } from "./api/reports.controller";
     GetDeliveryCustomerReportsHandler,
   ],
 })
-export class ReportingModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "reports",
-      groupLabel: "التقارير ولوحة التحكم",
-      permissions: [
-        { key: "reports.view", label: "رؤية لوحة التحكم والتقارير" },
-        // مقارنة شاملة بين كل الفروع - نفس requireRole("admin", "accountant") في الريبو القديم بالظبط،
-        // مفتاح صلاحية منفصل بدل reports.view العام عشان مدير الفرع (اللي عنده reports.view لفرعه بس)
-        // ميشوفش بيانات فروع تانية
-        { key: "reports.branch_health", label: "رؤية بطاقة صحة الفروع (مقارنة كل الفروع)" },
-      ],
-    });
-    // نفس canSeeReports في الريبو القديم بالظبط: أدمن + محاسب + مدير فرع (مش كاشير/كول سنتر/سائق)
-    this.permissions.setRoleDefaults("accountant", ["reports.view", "reports.branch_health"]);
-    this.permissions.setRoleDefaults("branch_manager", ["reports.view"]);
-  }
-}
+export class ReportingModule {}

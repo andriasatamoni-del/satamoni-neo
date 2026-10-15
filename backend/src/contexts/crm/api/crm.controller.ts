@@ -15,6 +15,7 @@ import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, bra
 import { CrmDomainErrorFilter } from "./filters/domain-error.filter";
 import { Complaint } from "../domain/complaint.aggregate";
 import { CustomerFollowup } from "../domain/customer-followup.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("crm")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -30,7 +31,7 @@ export class CrmController {
 
   @BranchScoped()
   @Get("followup-queue")
-  @RequirePermission("crm.followups.view")
+  @RequirePermission(PERMISSION.CRM_FOLLOWUPS_VIEW)
   async followupQueue(@Query("branchId") branchId?: string) {
     const rows = await this.listFollowupQueue.execute(branchId);
     return rows.map((r) => ({
@@ -50,7 +51,7 @@ export class CrmController {
 
   @BranchScoped()
   @Post("followups")
-  @RequirePermission("crm.followups.record")
+  @RequirePermission(PERMISSION.CRM_FOLLOWUPS_RECORD)
   async recordFollowupCall(
     @Body() dto: RecordFollowupDto,
     @Req() req: Request & { user: AuthenticatedUser }
@@ -73,7 +74,7 @@ export class CrmController {
   @BranchScoped()
   @BranchFilteredList()
   @Get("complaints")
-  @RequirePermission("crm.complaints.view")
+  @RequirePermission(PERMISSION.CRM_COMPLAINTS_VIEW)
   async listOpenComplaints(@Query("status") status?: string) {
     const complaints = await this.listComplaints.execute(status ? { status } : undefined);
     return complaints.map(toPublicComplaint);
@@ -82,7 +83,7 @@ export class CrmController {
   @BranchScoped()
   @BranchResource("complaints")
   @Patch("complaints/:id")
-  @RequirePermission("crm.complaints.manage")
+  @RequirePermission(PERMISSION.CRM_COMPLAINTS_MANAGE)
   async updateStatus(
     @Param("id") id: string,
     @Body() dto: UpdateComplaintStatusDto,
@@ -99,7 +100,7 @@ export class CrmController {
 
   @BranchScoped()
   @Get("customers/:phone/complaints/latest")
-  @RequirePermission("crm.complaints.view")
+  @RequirePermission(PERMISSION.CRM_COMPLAINTS_VIEW)
   async latestComplaintForCustomer(@Param("phone") phone: string, @Req() req: Request & { user: AuthenticatedUser }) {
     const complaint = await this.getLatestComplaintByPhone.execute(phone);
     const scope = branchScopeOf(req.user);

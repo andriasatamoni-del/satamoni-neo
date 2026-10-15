@@ -65,7 +65,7 @@ describe("importCrmFromLegacy", () => {
     // يطابق called_by/created_by في بيانات الـfixture تحت
     const calledByUser = User.register({
       name: "كول سنتر مستورد", email: "callcenter-import@legacy.test", passwordHash: "h",
-      role: "callcenter", legacyUserId: 900,
+      roles: ["callcenter"], legacyUserId: 900,
     });
     await userRepo.save(calledByUser);
     calledById = calledByUser.id;

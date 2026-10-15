@@ -1,17 +1,12 @@
-import { Injectable } from "@nestjs/common";
-import { PermissionRegistry } from "../../../../shared/permissions/permission-registry";
-import { ROLES } from "../../domain/role";
+import { Inject, Injectable } from "@nestjs/common";
+import { ROLE_PERMISSION_REPOSITORY, type RolePermissionRepositoryPort } from "../../domain/ports/role-permission-repository.port";
 
 @Injectable()
 export class GetPermissionsCatalogHandler {
-  constructor(private readonly permissions: PermissionRegistry) {}
+  constructor(@Inject(ROLE_PERMISSION_REPOSITORY) private readonly rolePermissions: RolePermissionRepositoryPort) {}
 
-  execute() {
-    const rolePermissions: Record<string, string[]> = {};
-    for (const role of ROLES) {
-      rolePermissions[role] =
-        role === "admin" ? this.permissions.getAllKeys() : [...this.permissions.getRoleDefaults(role)];
-    }
-    return { catalog: this.permissions.getCatalog(), rolePermissions };
+  async execute() {
+    const [catalog, rolePermissions] = await Promise.all([this.rolePermissions.catalog(), this.rolePermissions.allRolePermissions()]);
+    return { catalog, rolePermissions };
   }
 }

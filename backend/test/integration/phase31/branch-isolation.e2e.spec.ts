@@ -1,13 +1,23 @@
 import request from "supertest";
 import { auth, bootstrap, createOrder, purge, stockOf, teardown, type World } from "./harness";
-import { and, count, eq } from "drizzle-orm";
-import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { and, count, eq, inArray } from "drizzle-orm";
+import { rolePermissions, users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { auditLogs } from "../../../src/shared/database/shared.tables";
 import { employees } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 import { stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 import { paymentAdjustmentRequests } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+
+async function grantToBranchManagers(w: World, keys: string[]): Promise<string[]> {
+  const added = await w.db.insert(rolePermissions).values(keys.map((key) => ({ role: "branch_manager" as const, permission_key: key })))
+    .onConflictDoNothing().returning({ key: rolePermissions.permission_key });
+  return added.map((r) => r.key);
+}
+async function revokeFromBranchManagers(w: World, keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await w.db.delete(rolePermissions).where(and(eq(rolePermissions.role, "branch_manager"), inArray(rolePermissions.permission_key, keys)));
+}
 
 // BL-11 - server-side branch isolation. A branch-bound user (branch A) must never read or change branch B data, no matter which
 // identifier is supplied (query / path / body / nested), and a custom permission grant must not widen the branch scope.
@@ -165,14 +175,14 @@ describe("Phase 3.1 - branch isolation matrix", () => {
       expect(JSON.stringify((await get("/hr/employees", w.tokens.managerA)).body)).not.toContain("5555");
 
       // even with the HR-management permission granted, a branch-bound user can not set pay or touch other branches' staff
-      await w.db.update(users).set({ permission_grants: ["hr.employees.manage", "hr.employees.view"] }).where(eq(users.id, w.userIds.managerA));
+      const hrAdded = await grantToBranchManagers(w, ["hr.employees.manage", "hr.employees.view"]);
       expect((await patch(`/hr/employees/${own.id}`, w.tokens.managerA, { baseSalary: 99999 })).status).toBe(403);
       expect((await patch(`/hr/employees/${ids.employeeB}`, w.tokens.managerA, { phone: "01000000000" })).status).toBe(404);
       expect((await post("/hr/employees", w.tokens.managerA, { name: "x", restrictedBranchId: w.branchB })).status).toBe(403);
       expect((await get(`/hr/employees/${ids.employeeB}/history`, w.tokens.managerA)).status).toBe(404);
       const unchanged = await w.db.select({ base_salary: employees.base_salary }).from(employees).where(eq(employees.id, own.id));
       expect(Number(unchanged[0].base_salary)).toBe(5555);
-      await w.db.update(users).set({ permission_grants: [] }).where(eq(users.id, w.userIds.managerA));
+      await revokeFromBranchManagers(w, hrAdded);
 
       for (const path of ["/hr/payroll-runs", "/hr/adjustments"]) expect([path, (await get(path, w.tokens.managerA)).status]).toEqual([path, 403]);
       expect((await post("/hr/payroll-runs", w.tokens.managerA, { year: 2035, month: 1, employees: [] })).status).toBe(403);
@@ -247,7 +257,7 @@ describe("Phase 3.1 - branch isolation matrix", () => {
 
   describe("custom permissions can never widen the branch scope", () => {
     test("granting accounting.view / reports.* / hr.payroll.* to a branch-A manager still yields 403 for branch B and company-level data", async () => {
-      await w.db.update(users).set({ permission_grants: ["accounting.view", "accounting.manage", "reports.view", "reports.branch_health", "hr.payroll.view", "hr.payroll.manage", "treasuries.view", "purchasing.view"] }).where(eq(users.id, w.userIds.managerA));
+      const added = await grantToBranchManagers(w, ["accounting.view", "accounting.manage", "reports.view", "reports.branch_health", "hr.payroll.view", "hr.payroll.manage", "treasuries.view", "purchasing.view"]);
       for (const path of [
         `/accounting/reports/trial-balance?branchId=${w.branchB}`,
         `/accounting/journal-entries?branchId=${w.branchB}`,
@@ -270,7 +280,7 @@ describe("Phase 3.1 - branch isolation matrix", () => {
       const tb = await get("/accounting/reports/trial-balance", w.tokens.managerA);
       expect(tb.status).toBe(200);
       expect(tb.body.branchId).toBe(w.branchA);
-      await w.db.update(users).set({ permission_grants: [] }).where(eq(users.id, w.userIds.managerA));
+      await revokeFromBranchManagers(w, added);
     });
 
     test("a branch-bound user WITHOUT an assigned branch has no access to branch-owned data at all (fail closed)", async () => {

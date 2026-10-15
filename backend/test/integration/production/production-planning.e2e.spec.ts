@@ -42,7 +42,7 @@ describe("Production - تخطيط تصنيع السنتر كيتشن (e2e ضد �
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تخطيط-جست", email: "admin-prodplan@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تخطيط-جست", email: "admin-prodplan@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (

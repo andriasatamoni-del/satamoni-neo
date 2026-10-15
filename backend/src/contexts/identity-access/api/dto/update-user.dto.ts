@@ -1,10 +1,12 @@
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
 import { ROLES, type Role } from "../../domain/role";
 
 export class UpdateUserDto {
   @IsOptional()
-  @IsIn(ROLES, { message: "الدور ده مش معروف" })
-  role?: Role;
+  @IsArray()
+  @ArrayNotEmpty({ message: "لازم تختار دور واحد على الأقل" })
+  @IsIn(ROLES, { each: true, message: "الدور ده مش معروف" })
+  roles?: Role[];
 
   @IsOptional()
   @IsUUID()
@@ -13,11 +15,6 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  permissions?: string[];
 
   @IsOptional()
   @IsString()

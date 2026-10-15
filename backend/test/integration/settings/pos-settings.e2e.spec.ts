@@ -35,7 +35,7 @@ describe("POS Settings - إعدادات النظام القابلة للتهيئ
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-إعدادات-جست", email: "admin-pos-settings@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-إعدادات-جست", email: "admin-pos-settings@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (
@@ -48,7 +48,7 @@ describe("POS Settings - إعدادات النظام القابلة للتهيئ
     branchId = branch.id;
 
     const cashier = User.register({
-      name: "كاشير-إعدادات-جست", email: "cashier-pos-settings@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-إعدادات-جست", email: "cashier-pos-settings@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
       branchId,
     });
     await userRepo.save(cashier);

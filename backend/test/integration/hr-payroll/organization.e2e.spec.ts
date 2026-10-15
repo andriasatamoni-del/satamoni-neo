@@ -31,7 +31,7 @@ describe("HR & Payroll - الهيكل التنظيمي (e2e ضد تطبيق حق
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تنظيمي-جست", email: "admin-organization@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تنظيمي-جست", email: "admin-organization@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (

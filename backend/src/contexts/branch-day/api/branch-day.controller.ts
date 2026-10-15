@@ -12,6 +12,7 @@ import { USER_REPOSITORY, type UserRepositoryPort } from "../../identity-access/
 import { BranchScopeGuard, BranchScoped } from "../../../shared/authorization/branch-scope";
 import { BranchDayDomainErrorFilter } from "./filters/domain-error.filter";
 import type { BranchDay } from "../domain/branch-day.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("branch-days")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -26,13 +27,13 @@ export class BranchDayController {
   ) {}
 
   @Get(":branchId/status")
-  @RequirePermission("branch_day.view", "branch_day.close")
+  @RequirePermission(PERMISSION.BRANCH_DAY_VIEW, PERMISSION.BRANCH_DAY_CLOSE)
   async status(@Param("branchId") branchId: string, @Query("businessDate") businessDate?: string) {
     return this.getStatus.execute(branchId, businessDate);
   }
 
   @Post(":branchId/close")
-  @RequirePermission("branch_day.close")
+  @RequirePermission(PERMISSION.BRANCH_DAY_CLOSE)
   async close(
     @Param("branchId") branchId: string,
     @Body() dto: CloseBranchDayDto,
@@ -49,7 +50,7 @@ export class BranchDayController {
   }
 
   @Get(":branchId/history")
-  @RequirePermission("branch_day.view", "branch_day.close")
+  @RequirePermission(PERMISSION.BRANCH_DAY_VIEW, PERMISSION.BRANCH_DAY_CLOSE)
   async history(@Param("branchId") branchId: string) {
     const days = await this.listHistory.execute(branchId);
     const closerIds = [...new Set(days.map((d) => d.closedBy))];

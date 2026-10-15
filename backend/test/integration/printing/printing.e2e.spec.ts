@@ -38,7 +38,7 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-طباعة", email: "admin-printing@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-طباعة", email: "admin-printing@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer()).post("/auth/login").send({ email: "admin-printing@jest.test", password: "12345678" });

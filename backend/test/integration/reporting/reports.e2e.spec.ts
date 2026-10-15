@@ -48,7 +48,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const hasher = new BcryptPasswordHasher();
 
     const admin = User.register({
-      name: "أدمن-تقارير-جست", email: "admin-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تقارير-جست", email: "admin-reports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const adminLogin = await request(app.getHttpServer())
@@ -63,7 +63,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
 
     const branchManager = User.register({
       name: "مدير فرع-تقارير-جست", email: "manager-reports@jest.test", passwordHash: await hasher.hash("12345678"),
-      role: "branch_manager", branchId,
+      roles: ["branch_manager"], branchId,
     });
     await userRepo.save(branchManager);
     const managerLogin = await request(app.getHttpServer())
@@ -164,7 +164,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-تقارير-جست", email: "cashier-reports@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())

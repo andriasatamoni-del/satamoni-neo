@@ -33,7 +33,7 @@ describe("Accounting - قيد يدوي DRAFT/Post (e2e ضد تطبيق حقيق�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-قيد-يدوي-جست", email: "admin-je-draft@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-قيد-يدوي-جست", email: "admin-je-draft@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     adminToken = (
@@ -41,7 +41,7 @@ describe("Accounting - قيد يدوي DRAFT/Post (e2e ضد تطبيق حقيق�
     ).body.token;
 
     const cashier = User.register({
-      name: "كاشير-قيد-يدوي-جست", email: "cashier-je-draft@jest.test", passwordHash: await hasher.hash("12345678"), role: "cashier",
+      name: "كاشير-قيد-يدوي-جست", email: "cashier-je-draft@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"],
     });
     await userRepo.save(cashier);
     cashierToken = (

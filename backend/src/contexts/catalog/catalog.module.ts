@@ -1,5 +1,4 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PermissionRegistry } from "../../shared/permissions/permission-registry";
+import { Module } from "@nestjs/common";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 import { CATALOG_LAYOUT_REPOSITORY, MENU_CATEGORY_REPOSITORY } from "./domain/ports/menu-category-repository.port";
 import { MENU_ITEM_REPOSITORY } from "./domain/ports/menu-item-repository.port";
@@ -74,21 +73,4 @@ import { CatalogController } from "./api/catalog.controller";
   ],
   exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY, COMBO_REPOSITORY],
 })
-export class CatalogModule implements OnModuleInit {
-  constructor(private readonly permissions: PermissionRegistry) {}
-
-  onModuleInit(): void {
-    this.permissions.registerGroup({
-      group: "catalog",
-      groupLabel: "قائمة الطعام والوصفات",
-      permissions: [
-        { key: "catalog.items.view", label: "رؤية قائمة الطعام" },
-        { key: "catalog.items.manage", label: "إدارة قائمة الطعام" },
-        { key: "catalog.recipes.manage", label: "إدارة الوصفات" },
-      ],
-    });
-    this.permissions.setRoleDefaults("branch_manager", ["catalog.items.view"]);
-    this.permissions.setRoleDefaults("cashier", ["catalog.items.view"]);
-    this.permissions.setRoleDefaults("callcenter", ["catalog.items.view"]);
-  }
-}
+export class CatalogModule {}

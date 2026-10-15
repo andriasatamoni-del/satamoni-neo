@@ -9,6 +9,8 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs } from "../shared/ui/Tabs";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
 
 interface ExpenseCategory {
   id: string; name: string; isActive: boolean; alertThreshold: number | null; accountId: string | null;
@@ -38,7 +40,7 @@ function fmt(n: number): string {
 
 export function ExpensesPage() {
   const { user } = useAuth();
-  const isCashier = user?.role === "cashier";
+  const isCashier = !can(user, PERMISSION.EXPENSES_CREATE);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("expenses");
 

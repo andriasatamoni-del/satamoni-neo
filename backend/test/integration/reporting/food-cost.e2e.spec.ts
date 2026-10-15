@@ -55,7 +55,7 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const admin = User.register({
-      name: "أدمن-تكلفة-طعام-جست", email: "admin-foodcost@jest.test", passwordHash: await hasher.hash("12345678"), role: "admin",
+      name: "أدمن-تكلفة-طعام-جست", email: "admin-foodcost@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["admin"],
     });
     await userRepo.save(admin);
     const loginRes = await request(app.getHttpServer())

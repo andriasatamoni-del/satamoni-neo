@@ -49,6 +49,7 @@ import type { MenuCategory } from "../domain/menu-category.aggregate";
 import type { MenuItem } from "../domain/menu-item.aggregate";
 import type { Recipe } from "../domain/recipe.aggregate";
 import type { Combo } from "../domain/combo.aggregate";
+import { PERMISSION } from "../../identity-access/domain/permission";
 
 @Controller("catalog")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -84,84 +85,84 @@ export class CatalogController {
   ) {}
 
   @Get("recipes")
-  @RequirePermission("catalog.items.view", "catalog.recipes.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
   async recipes(@Query("recipeType") recipeType?: string) {
     return (await this.listRecipes.execute({ recipeType })).map(toPublicRecipe);
   }
 
   // ?archived=true بيرجّع الأقسام المؤرشفة بس (قائمة الاسترجاع في الإعدادات)؛ الافتراضي غير المؤرشفة
   @Get("categories")
-  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async categories(@Query("archived") archived?: string) {
     return (await this.listCategories.execute({ archived: archived === "true" })).map(toPublicCategory);
   }
 
   // مكان تبويب "العروض" وسط الأقسام
   @Get("layout")
-  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async layout() {
     return this.getLayout.execute();
   }
 
   // ترتيب الأقسام (ومعاهم "combos") بالترتيب المطلوب
   @Put("categories/order")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async reorder(@Body() dto: ReorderMenuCategoriesDto) {
     const result = await this.reorderCategories.execute({ order: dto.order });
     return { categories: result.categories.map(toPublicCategory), combosPosition: result.combosPosition };
   }
 
   @Post("categories/:id/archive")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async archive(@Param("id") id: string) {
     return toPublicCategory(await this.archiveCategory.execute({ categoryId: id }));
   }
 
   @Post("categories/:id/restore")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async restore(@Param("id") id: string) {
     return toPublicCategory(await this.restoreCategory.execute({ categoryId: id }));
   }
 
   @Post("categories")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async createCategory(@Body() dto: RegisterMenuCategoryDto) {
     return toPublicCategory(await this.registerCategory.execute(dto));
   }
 
   @Patch("categories/:id")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async updateCategoryHandler(@Param("id") id: string, @Body() dto: UpdateMenuCategoryDto) {
     return toPublicCategory(await this.updateCategory.execute({ categoryId: id, ...dto }));
   }
 
   @Get("items")
-  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async items() {
     return (await this.listItems.execute()).map(toPublicItem);
   }
 
   @Post("items")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async createItem(@Body() dto: RegisterMenuItemDto) {
     return toPublicItem(await this.registerItem.execute(dto));
   }
 
   @Patch("items/:id")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async updateItemHandler(@Param("id") id: string, @Body() dto: UpdateMenuItemDto) {
     return toPublicItem(await this.updateItem.execute({ itemId: id, ...dto }));
   }
 
   @Post("items/:id/variants")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async createVariant(@Param("id") id: string, @Body() dto: AddVariantDto) {
     const { item } = await this.addVariant.execute({ itemId: id, ...dto });
     return toPublicItem(item);
   }
 
   @Patch("items/:id/variants/:variantId")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async updateVariantHandler(
     @Param("id") id: string,
     @Param("variantId") variantId: string,
@@ -172,20 +173,20 @@ export class CatalogController {
   }
 
   @Get("items/:id/variants/:variantId/price-history")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async variantPriceHistory(@Param("variantId") variantId: string) {
     return this.priceHistory.listByVariant(variantId);
   }
 
   @Post("items/:id/modifiers")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async createModifier(@Param("id") id: string, @Body() dto: AddModifierDto) {
     const { item } = await this.addModifier.execute({ itemId: id, ...dto });
     return toPublicItem(item);
   }
 
   @Patch("items/:id/modifiers/:modifierId")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async updateModifierHandler(
     @Param("id") id: string,
     @Param("modifierId") modifierId: string,
@@ -196,13 +197,13 @@ export class CatalogController {
   }
 
   @Get("items/:id/modifiers/:modifierId/price-history")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async modifierPriceHistory(@Param("modifierId") modifierId: string, @Query("variantId") variantId?: string) {
     return this.priceHistory.listByModifier(modifierId, variantId);
   }
 
   @Put("items/:id/modifiers/:modifierId/variant-prices/:variantId")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async setModifierVariantPriceRoute(
     @Param("id") id: string,
     @Param("modifierId") modifierId: string,
@@ -216,7 +217,7 @@ export class CatalogController {
   }
 
   @Delete("items/:id/modifiers/:modifierId/variant-prices/:variantId")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async clearModifierVariantPriceRoute(
     @Param("id") id: string,
     @Param("modifierId") modifierId: string,
@@ -226,13 +227,13 @@ export class CatalogController {
   }
 
   @Post("recipes")
-  @RequirePermission("catalog.recipes.manage")
+  @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
   async createRecipe(@Body() dto: RegisterRecipeDto) {
     return toPublicRecipe(await this.registerRecipe.execute(dto));
   }
 
   @Post("recipes/:id/versions")
-  @RequirePermission("catalog.recipes.manage")
+  @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
   async createVersion(
     @Param("id") id: string,
     @Body() dto: CreateRecipeVersionDto,
@@ -247,13 +248,13 @@ export class CatalogController {
   }
 
   @Post("recipes/:id/versions/:versionId/activate")
-  @RequirePermission("catalog.recipes.manage")
+  @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
   async activateVersion(@Param("id") id: string, @Param("versionId") versionId: string) {
     return toPublicRecipe(await this.activateRecipeVersion.execute({ recipeId: id, versionId }));
   }
 
   @Get("variants/:variantId/recipe")
-  @RequirePermission("catalog.items.view", "catalog.recipes.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
   async recipeByVariant(@Param("variantId") variantId: string) {
     const recipe = await this.getRecipeByVariant.execute(variantId);
     return recipe ? toPublicRecipe(recipe) : null;
@@ -261,32 +262,32 @@ export class CatalogController {
 
   // العروض النشطة بس - نفس GET /api/combos بالريبو القديم (لأي حد يقدر يسجّل/يشوف طلبات)
   @Get("combos")
-  @RequirePermission("catalog.items.view", "catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async combos() {
     return (await this.listCombos.execute({ activeOnly: true })).map(toPublicCombo);
   }
 
   // كل العروض (نشطة وغير نشطة) - نفس GET /api/combos/all بالريبو القديم (لشاشة الإدارة بس)
   @Get("combos/all")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async allCombos() {
     return (await this.listCombos.execute()).map(toPublicCombo);
   }
 
   @Post("combos")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async createCombo(@Body() dto: RegisterComboDto) {
     return toPublicCombo(await this.registerCombo.execute(dto));
   }
 
   @Patch("combos/:id")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async updateComboHandler(@Param("id") id: string, @Body() dto: UpdateComboDto) {
     return toPublicCombo(await this.updateCombo.execute({ comboId: id, ...dto }));
   }
 
   @Put("combos/:id/items")
-  @RequirePermission("catalog.items.manage")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async replaceComboItemsHandler(@Param("id") id: string, @Body() dto: ReplaceComboItemsDto) {
     return toPublicCombo(await this.replaceComboItems.execute({ comboId: id, items: dto.items }));
   }
