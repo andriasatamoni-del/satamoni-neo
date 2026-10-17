@@ -144,3 +144,16 @@ The business day is the **Africa/Cairo calendar date**. The process and DB sessi
 - Production operations run only through `.github/workflows/maintenance-operation.yml`. It offers a fixed operation list and is gated by the `production-maintenance` environment, which requires a reviewer. Do not reintroduce a workflow that runs arbitrary scripts with production secrets. See `backend/docs/SECURITY_HARDENING.md`.
 - Backups: `pnpm backup` and `pnpm restore-drill`, plus the daily `db-backup.yml` workflow. See `backend/docs/BACKUP_AND_RECOVERY.md`.
 - Deployment target is Render (`render.yaml`, `DEPLOYMENT.md`): both services build from the repo root with pnpm (no `rootDir`; `buildFilter` scopes auto-deploys). The backend runs as a Node web service and the frontend as a static site with a `/* → /index.html` rewrite.
+
+## Working efficiently (token budget)
+
+- One task per session. When a task is done, or switches to something unrelated, stop and tell the user to `/clear`. For long multi-step work (migrations, multi-context refactors), finish one context or milestone at a time, summarize the state in a short note (or commit), then suggest `/compact` before continuing.
+- Locate before reading. Use Grep (`-n`, `glob`, `head_limit`) to find the symbol, then Read only that range with `offset`/`limit`. Do not `cat`/`sed -n`/`Get-Content` whole files, and never loop `cat` over many files. If you need the shape of many files, grep for signatures (`export class|@Get|@Post|async \w+\(`) instead.
+- Never re-read a file you already read or edited in this session unless it changed outside your edits.
+- Git: start with `git diff --stat` / `git show --stat <sha>`, then diff one file or one context at a time. Never dump a whole multi-context commit in one call.
+- If a command's output was truncated or saved to a `tool-results` file, Grep that file for what you need; do not Read it whole.
+- Pipe noisy commands through a filter: `pnpm exec tsc --noEmit 2>&1 | head -50`, `jest ... 2>&1 | tail -60`, `psql -c ... | head -40`. Run single specs (`pnpm exec jest <path>`) rather than whole suites while iterating.
+- Use absolute paths in one style (`/g/projects/satamoni-neo/...` in Bash) instead of a `cd` prefix on every command.
+- Subagents: use Explore/general-purpose agents for broad sweeps (reviews across many contexts, "find all X"), and tell them to return a short list of findings with `file:line`, not code dumps. Give each review agent one bounded slice (one or two contexts), not the whole commit.
+- Don't publish Artifacts or write long plans unless asked; keep plans to a short bullet list of steps and files.
+- Keep replies short: state what changed and where; don't restate code you just wrote.
