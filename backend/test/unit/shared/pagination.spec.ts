@@ -53,7 +53,7 @@ describe("list query contract", () => {
   });
 
   test("bad input is rejected", () => {
-    for (const plain of [{ limit: "0" }, { limit: "abc" }, { offset: "-1" }, { paginate: "maybe" }, { order: "up" }, { from: "01-01-2030" }, { to: "2030-1-1" }, { q: "x".repeat(101) }]) {
+    for (const plain of [{ limit: "0" }, { limit: "abc" }, { offset: "-1" }, { paginate: "maybe" }, { order: "up" }, { from: "01-01-2030" }, { to: "2030-1-1" }, { from: "2026-02-31" }, { to: "2026-13-01" }, { q: "x".repeat(101) }]) {
       expect([plain, validate(plain).errors.length > 0]).toEqual([plain, true]);
     }
   });

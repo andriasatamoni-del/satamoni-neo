@@ -69,8 +69,9 @@ export function DebouncedInput({ value, placeholder, onCommit }: { value: string
   const commit = useRef(onCommit);
   commit.current = onCommit;
 
-  // the URL changed from outside (back/forward, a reset): show it
-  useEffect(() => setText(value), [value]);
+  // the URL changed from outside (back/forward, a reset): show it, but keep what the user is typing when it only differs
+  // by surrounding spaces (the committed value is trimmed; "ahmed " must not lose its space before "ali" is typed)
+  useEffect(() => setText((current) => (current.trim() === value ? current : value)), [value]);
 
   useEffect(() => {
     if (text.trim() === value) return;

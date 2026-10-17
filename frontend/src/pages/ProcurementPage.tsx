@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
@@ -501,6 +501,11 @@ export function ProcurementPage() {
   const purchaseRequests = purchaseRequestsQuery.data ?? [];
   const purchaseReturns = purchaseReturnsQuery.data ?? [];
   const purchaseOrders = purchaseOrdersQuery.data?.items ?? [];
+  // NEO-6: the table shows one page; keep the order being received even when it leaves that page (paging, a filter, a refetch)
+  const receivingOrderRef = useRef<(typeof purchaseOrders)[number] | null>(null);
+  const receivingOrder = receivingOrderId
+    ? (receivingOrderRef.current = purchaseOrders.find((o) => o.id === receivingOrderId) ?? (receivingOrderRef.current?.id === receivingOrderId ? receivingOrderRef.current : null))
+    : null;
   const confirmedReceiptsForReturnForm = receipts.filter(
     (r) => r.status === "CONFIRMED" && (!purchaseReturnForm.supplierId || r.supplierId === purchaseReturnForm.supplierId)
   );
@@ -1017,7 +1022,7 @@ export function ProcurementPage() {
               isFetching={purchaseOrdersQuery.isFetching}
             />
             {receivingOrderId && (() => {
-              const order = purchaseOrders.find((o) => o.id === receivingOrderId);
+              const order = receivingOrder;
               if (!order) return null;
               const progress = receiptProgressQuery.data ?? [];
               return (

@@ -374,7 +374,7 @@ export function OrdersPage() {
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="الفرع">
-          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="max-w-[220px]">
+          <Select value={branchId} onChange={(e) => { setBranchId(e.target.value); ordersList.setPage(1); }} className="max-w-[220px]">
             <option value="">كل الفروع</option>
             {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>

@@ -72,8 +72,8 @@ export function DeliveryPage() {
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const driversQuery = useQuery({ queryKey: ["delivery", "drivers"], queryFn: () => apiRequest<Driver[]>("/delivery/drivers") });
-  // NEO-6: بدل ما الصفحة تسحب كل الطلبات، قايمة الاختيار بتجيب آخر 200 طلب دليفري بس من السيرفر
-  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { orderType: "delivery", limit: 200, offset: 0 });
+  // NEO-6: قايمة الاختيار بتجيب طلبات الدليفري بس (الفلترة في السيرفر)، من غير سقف عشان مفيش طلب يختفي منها
+  const ordersQuery = useQuery({ queryKey: ["orders", "delivery"], queryFn: () => apiRequest<Order[]>("/orders?orderType=delivery") });
   const assignmentsList = useListState(["status", "driverId", "from", "to"] as const, { prefix: "assignments." });
   const assignmentsQuery = usePaginatedQuery<Assignment>(["delivery", "assignments"], "/delivery/assignments", assignmentsList.params);
   const settlementsQuery = useQuery({ queryKey: ["delivery", "settlements"], queryFn: () => apiRequest<DriverSettlement[]>("/delivery/settlements") });
@@ -224,7 +224,7 @@ export function DeliveryPage() {
                   <Field label="طلب الدليفري">
                     <Select required value={assignForm.orderId} onChange={(e) => setAssignForm({ ...assignForm, orderId: e.target.value })}>
                       <option value="">اختر طلب دليفري</option>
-                      {ordersQuery.data?.items.map((o) => (
+                      {ordersQuery.data?.map((o) => (
                         <option key={o.id} value={o.id}>{o.id.slice(0, 8)} - {o.total}ج</option>
                       ))}
                     </Select>

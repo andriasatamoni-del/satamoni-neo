@@ -253,7 +253,7 @@ export function AccountingPage() {
             dateRange
             selects={[
               { name: "status", label: "الحالة", options: [{ value: "DRAFT", label: "مسودة" }, { value: "POSTED", label: "مرحّل" }, { value: "REVERSED", label: "معكوس" }] },
-              { name: "sourceType", label: "المصدر", options: [{ value: "manual", label: "يدوي" }, { value: "order_sale", label: "مبيعات" }, { value: "goods_receipt", label: "استلام بضاعة" }, { value: "payroll_run", label: "مرتبات" }] },
+              { name: "sourceType", label: "المصدر", options: [{ value: "manual", label: "يدوي" }, { value: "order_sale", label: "مبيعات" }, { value: "purchase", label: "مشتريات (استلام بضاعة)" }, { value: "goods_receipt", label: "استلام بضاعة (فاتورة)" }, { value: "payroll_run", label: "مرتبات" }] },
             ]}
           />
           {postError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{postError}</p>}

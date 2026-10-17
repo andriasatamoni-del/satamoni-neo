@@ -26,6 +26,10 @@ export function useListState<F extends string>(filterNames: readonly F[], option
   const limit = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // React Router hands the updater the params of the last render, so two updates in one commit (two lists clamping
+  // their pages at once) would overwrite each other; read the live URL instead
+  const current = () => new URLSearchParams(window.location.search);
+
   const namesKey = filterNames.join(",");
   const filters = useMemo(
     () => Object.fromEntries(namesKey.split(",").filter(Boolean).map((name) => [name, searchParams.get(prefix + name) ?? ""])) as Record<F, string>,
@@ -36,8 +40,8 @@ export function useListState<F extends string>(filterNames: readonly F[], option
   const setFilter = useCallback(
     (name: F, value: string) =>
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          const next = current();
           if (value) next.set(prefix + name, value);
           else next.delete(prefix + name);
           next.delete(`${prefix}page`);
@@ -51,8 +55,8 @@ export function useListState<F extends string>(filterNames: readonly F[], option
   const setPage = useCallback(
     (nextPage: number) =>
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          const next = current();
           if (nextPage > 1) next.set(`${prefix}page`, String(nextPage));
           else next.delete(`${prefix}page`);
           return next;

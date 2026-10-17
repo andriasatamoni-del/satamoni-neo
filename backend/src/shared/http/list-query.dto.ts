@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from "class-validator";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from "class-validator";
 
 // NEO-6: one list contract for every paginated endpoint.
 //
@@ -56,11 +56,13 @@ export class ListQueryDto {
   /** Cairo business date (YYYY-MM-DD), inclusive */
   @IsOptional()
   @Matches(DATE_ONLY, { message: "from must be YYYY-MM-DD" })
+  @IsDateString({ strict: true }, { message: "from must be a real calendar date" })
   from?: string;
 
   /** Cairo business date (YYYY-MM-DD), inclusive */
   @IsOptional()
   @Matches(DATE_ONLY, { message: "to must be YYYY-MM-DD" })
+  @IsDateString({ strict: true }, { message: "to must be a real calendar date" })
   to?: string;
 }
 
