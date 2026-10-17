@@ -8,7 +8,9 @@ import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Field";
 import { DashboardSummary } from "./home/DashboardSummary";
 import { ActionCenterPanel } from "./home/ActionCenterPanel";
-import { hasRole } from "../shared/auth/roles";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
+import { canOpenPath } from "../routes";
 import {
   BoxIcon,
   BookIcon,
@@ -36,7 +38,7 @@ const ICONS: Record<string, typeof CartIcon> = {
 // الترتيب وقت التشغيل (نفس تقييد routes/home-tiles.js بالريبو القديم بالحرف: tileKey/href/icon ثابتين)
 export function HomePage() {
   const { user } = useAuth();
-  const isAdmin = hasRole(user, "admin");
+  const canManageTiles = can(user, PERMISSION.HOME_TILES_MANAGE);
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
 
@@ -54,7 +56,7 @@ export function HomePage() {
       <ActionCenterPanel />
       <DashboardSummary />
 
-      {isAdmin && (
+      {canManageTiles && (
         <div className="mb-4 flex justify-end">
           <Button variant="secondary" onClick={() => setEditMode((v) => !v)}>
             {editMode ? "خلاص، قفل التعديل" : "تعديل بطاقات الصفحة الرئيسية"}
@@ -63,7 +65,8 @@ export function HomePage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {tilesQuery.data?.map((tile) => {
+        {/* وضع التعديل بيعرض كل البطاقات؛ العرض العادي بيخفي البطاقات اللي صفحتها مش مسموحة للمستخدم */}
+        {tilesQuery.data?.filter((tile) => editMode || canOpenPath(user, tile.href)).map((tile) => {
           const TileIcon = ICONS[tile.icon] ?? CartIcon;
           if (editMode) {
             return (

@@ -12,8 +12,10 @@ import { ListFilters } from "../shared/ui/ListFilters";
 import { Pagination } from "../shared/ui/Pagination";
 import { useListState } from "../shared/ui/useListState";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
-import { Tabs } from "../shared/ui/Tabs";
-import { hasRole } from "../shared/auth/roles";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface Supplier { id: string; name: string; status: string; }
 interface Branch { id: string; name: string; }
@@ -89,12 +91,16 @@ interface ReceiptProgressLine {
 }
 
 const TABS = [
-  { key: "receipts", label: "أذون الاستلام" },
-  { key: "invoices", label: "فواتير الموردين" },
-  { key: "payments", label: "سدادات الموردين" },
-  { key: "purchase-requests", label: "طلبات الشراء" },
-  { key: "purchase-orders", label: "أوامر الشراء" },
-  { key: "purchase-returns", label: "مرتجعات المشتريات" },
+  { key: "receipts", label: "أذون الاستلام", perm: [PERMISSION.PROCUREMENT_GOODS_RECEIPTS_VIEW, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE] },
+  { key: "invoices", label: "فواتير الموردين", perm: PERMISSION.PURCHASING_VIEW },
+  { key: "payments", label: "سدادات الموردين", perm: PERMISSION.PURCHASING_VIEW },
+  { key: "purchase-requests", label: "طلبات الشراء", perm: PERMISSION.PURCHASING_VIEW },
+  {
+    key: "purchase-orders",
+    label: "أوامر الشراء",
+    perm: [PERMISSION.PROCUREMENT_PURCHASE_ORDERS_VIEW, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE],
+  },
+  { key: "purchase-returns", label: "مرتجعات المشتريات", perm: PERMISSION.PURCHASING_VIEW },
 ];
 
 const PO_STATUS_LABELS: Record<string, string> = {
@@ -151,23 +157,73 @@ function fmt(n: number): string {
 export function ProcurementPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("receipts");
-  const canApproveOrCancel = hasRole(user, "admin", "accountant");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const canSeeSuppliers = can(user, PERMISSION.PROCUREMENT_SUPPLIERS_VIEW, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE);
+  const canManageSuppliers = can(user, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE);
+  const canSeeItems = can(user, PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE);
+  const canSeeReceipts = can(user, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_VIEW, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE);
+  const canManageReceipts = can(user, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE);
+  const canSeeTreasuries = can(user, PERMISSION.TREASURIES_VIEW);
+  const canSeePurchasing = can(user, PERMISSION.PURCHASING_VIEW);
+  const canCreatePurchasing = can(user, PERMISSION.PURCHASING_CREATE);
+  const canSubmitPurchasing = can(user, PERMISSION.PURCHASING_SUBMIT);
+  const canApprove = can(user, PERMISSION.PURCHASING_APPROVE);
+  const canCancel = can(user, PERMISSION.PURCHASING_CANCEL);
+  const canSeeOrders = can(user, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_VIEW, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE);
+  const canManageOrders = can(user, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE);
 
-  const suppliersQuery = useQuery({ queryKey: ["procurement", "suppliers"], queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
-  const itemsQuery = useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
-  const receiptsQuery = useQuery({ queryKey: ["procurement", "goods-receipts"], queryFn: () => apiRequest<GoodsReceipt[]>("/procurement/goods-receipts") });
-  const treasuriesQuery = useQuery({ queryKey: ["treasuries"], queryFn: () => apiRequest<Treasury[]>("/treasuries") });
-  const invoicesQuery = useQuery({ queryKey: ["procurement", "supplier-invoices"], queryFn: () => apiRequest<SupplierInvoice[]>("/procurement/supplier-invoices") });
-  const paymentsQuery = useQuery({ queryKey: ["procurement", "supplier-payments"], queryFn: () => apiRequest<SupplierPayment[]>("/procurement/supplier-payments") });
-  const purchaseRequestsQuery = useQuery({ queryKey: ["procurement", "purchase-requests"], queryFn: () => apiRequest<PurchaseRequest[]>("/procurement/purchase-requests") });
-  const purchaseReturnsQuery = useQuery({ queryKey: ["procurement", "purchase-returns"], queryFn: () => apiRequest<PurchaseReturn[]>("/procurement/purchase-returns") });
+  // أذون الاستلام والفواتير بتتحمّل مع الصفحة لأن فورمات تابات تانية بتستخدمها (الفاتورة/المرتجع بيختاروا إذن،
+  // والسداد بيختار فاتورة). باقي القوايم بتتحمّل لما التاب بتاعها يتفتح.
+  const suppliersQuery = useQuery({
+    queryKey: ["procurement", "suppliers"],
+    queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers"),
+    enabled: canSeeSuppliers,
+  });
+  const { branches } = useBranchOptions<Branch>();
+  const itemsQuery = useQuery({
+    queryKey: ["inventory", "items"],
+    queryFn: () => apiRequest<InventoryItem[]>("/inventory/items"),
+    enabled: canSeeItems,
+  });
+  const receiptsQuery = useQuery({
+    queryKey: ["procurement", "goods-receipts"],
+    queryFn: () => apiRequest<GoodsReceipt[]>("/procurement/goods-receipts"),
+    enabled: canSeeReceipts,
+  });
+  const treasuriesQuery = useQuery({
+    queryKey: ["treasuries"],
+    queryFn: () => apiRequest<Treasury[]>("/treasuries"),
+    enabled: canSeeTreasuries && tab === "payments",
+  });
+  const invoicesQuery = useQuery({
+    queryKey: ["procurement", "supplier-invoices"],
+    queryFn: () => apiRequest<SupplierInvoice[]>("/procurement/supplier-invoices"),
+    enabled: canSeePurchasing,
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["procurement", "supplier-payments"],
+    queryFn: () => apiRequest<SupplierPayment[]>("/procurement/supplier-payments"),
+    enabled: canSeePurchasing && tab === "payments",
+  });
+  const purchaseRequestsQuery = useQuery({
+    queryKey: ["procurement", "purchase-requests"],
+    queryFn: () => apiRequest<PurchaseRequest[]>("/procurement/purchase-requests"),
+    enabled: canSeePurchasing && tab === "purchase-requests",
+  });
+  const purchaseReturnsQuery = useQuery({
+    queryKey: ["procurement", "purchase-returns"],
+    queryFn: () => apiRequest<PurchaseReturn[]>("/procurement/purchase-returns"),
+    enabled: canSeePurchasing && tab === "purchase-returns",
+  });
   // أوامر الشراء وجدول أذون الاستلام صفحات من السيرفر (NEO-6)؛ قائمة الأذون الكاملة فوق لسه لفورم الفواتير والمرتجعات
   const purchaseOrdersList = useListState(["q", "status", "from", "to"] as const, { prefix: "po." });
-  const purchaseOrdersQuery = usePaginatedQuery<PurchaseOrder>(["procurement", "purchase-orders"], "/procurement/purchase-orders", purchaseOrdersList.params);
+  const purchaseOrdersQuery = usePaginatedQuery<PurchaseOrder>(["procurement", "purchase-orders"], "/procurement/purchase-orders", purchaseOrdersList.params, {
+    enabled: canSeeOrders && tab === "purchase-orders",
+  });
   const receiptsList = useListState(["q", "status", "from", "to"] as const, { prefix: "gr." });
-  const receiptsPageQuery = usePaginatedQuery<GoodsReceipt>(["procurement", "goods-receipts"], "/procurement/goods-receipts", receiptsList.params);
+  const receiptsPageQuery = usePaginatedQuery<GoodsReceipt>(["procurement", "goods-receipts"], "/procurement/goods-receipts", receiptsList.params, {
+    enabled: canSeeReceipts && tab === "receipts",
+  });
   const pageReceipts = receiptsPageQuery.data?.items ?? [];
 
   const [newSupplierName, setNewSupplierName] = useState("");
@@ -299,7 +355,7 @@ export function ProcurementPage() {
   const balanceQuery = useQuery({
     queryKey: ["procurement", "suppliers", "balance", balanceSupplierId],
     queryFn: () => apiRequest<{ supplierId: string; balance: number }>(`/procurement/suppliers/${balanceSupplierId}/balance`),
-    enabled: !!balanceSupplierId,
+    enabled: canSeePurchasing && !!balanceSupplierId,
   });
 
   // --- طلبات الشراء ---
@@ -420,7 +476,7 @@ export function ProcurementPage() {
   const receiptProgressQuery = useQuery({
     queryKey: ["procurement", "purchase-orders", receivingOrderId, "receipt-progress"],
     queryFn: () => apiRequest<ReceiptProgressLine[]>(`/procurement/purchase-orders/${receivingOrderId}/receipt-progress`),
-    enabled: receivingOrderId !== null,
+    enabled: canManageReceipts && receivingOrderId !== null,
   });
   function startReceivingOrder(orderId: string) {
     setReceivingOrderId(orderId);
@@ -486,7 +542,7 @@ export function ProcurementPage() {
   }
 
   const itemName = (id: string) => itemsQuery.data?.find((i) => i.id === id)?.name ?? id;
-  const branchName = (id: string) => branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
+  const branchName = (id: string) => branches.find((b) => b.id === id)?.name ?? id;
   const supplierName = (id: string) => suppliersQuery.data?.find((s) => s.id === id)?.name ?? id;
   const suppliers = suppliersQuery.data ?? [];
   const receipts = receiptsQuery.data ?? [];
@@ -513,30 +569,32 @@ export function ProcurementPage() {
   return (
     <div>
       <PageHeader title="المشتريات والموردين" description="الموردين، أذون استلام البضاعة، فواتير وسدادات الموردين" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      <Card className="mb-6">
-        <CardBody>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="max-w-xs flex-1">
-              <Field label="عرض رصيد مورد">
-                <Select value={balanceSupplierId} onChange={(e) => setBalanceSupplierId(e.target.value)}>
-                  <option value="">اختر مورد</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </Select>
-              </Field>
+      {canSeePurchasing && (
+        <Card className="mb-6">
+          <CardBody>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="max-w-xs flex-1">
+                <Field label="عرض رصيد مورد">
+                  <Select value={balanceSupplierId} onChange={(e) => setBalanceSupplierId(e.target.value)}>
+                    <option value="">اختر مورد</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              {balanceSupplierId && (
+                <p className="text-sm font-semibold text-slate-700">
+                  الرصيد (اللي واجبنا ليه):{" "}
+                  <span className={balanceQuery.data && balanceQuery.data.balance > 0 ? "text-red-600" : "text-slate-900"}>
+                    {balanceQuery.isLoading ? "..." : `${fmt(balanceQuery.data?.balance ?? 0)}ج`}
+                  </span>
+                </p>
+              )}
             </div>
-            {balanceSupplierId && (
-              <p className="text-sm font-semibold text-slate-700">
-                الرصيد (اللي واجبنا ليه):{" "}
-                <span className={balanceQuery.data && balanceQuery.data.balance > 0 ? "text-red-600" : "text-slate-900"}>
-                  {balanceQuery.isLoading ? "..." : `${fmt(balanceQuery.data?.balance ?? 0)}ج`}
-                </span>
-              </p>
-            )}
-          </div>
-        </CardBody>
-      </Card>
+          </CardBody>
+        </Card>
+      )}
 
       {tab === "receipts" && (
         <>
@@ -546,14 +604,16 @@ export function ProcurementPage() {
                 <CardTitle>إضافة مورد</CardTitle>
               </CardHeader>
               <CardBody>
-                <form onSubmit={handleSupplierSubmit} className="mb-4 flex items-end gap-3">
-                  <div className="flex-1">
-                    <Field label="اسم المورد">
-                      <Input required value={newSupplierName} onChange={(e) => setNewSupplierName(e.target.value)} />
-                    </Field>
-                  </div>
-                  <Button type="submit" disabled={createSupplier.isPending}>إضافة</Button>
-                </form>
+                {canManageSuppliers && (
+                  <form onSubmit={handleSupplierSubmit} className="mb-4 flex items-end gap-3">
+                    <div className="flex-1">
+                      <Field label="اسم المورد">
+                        <Input required value={newSupplierName} onChange={(e) => setNewSupplierName(e.target.value)} />
+                      </Field>
+                    </div>
+                    <Button type="submit" disabled={createSupplier.isPending}>إضافة</Button>
+                  </form>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {suppliers.map((s) => (
                     <Badge key={s.id} tone="neutral">{s.name} - {s.status}</Badge>
@@ -562,63 +622,65 @@ export function ProcurementPage() {
               </CardBody>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>تسجيل إذن استلام بضاعة (PO-less)</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <form onSubmit={handleReceiptSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field label="المورد">
-                      <Select required value={receiptForm.supplierId} onChange={(e) => setReceiptForm({ ...receiptForm, supplierId: e.target.value })}>
-                        <option value="">اختر مورد</option>
-                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="الفرع">
-                      <Select required value={receiptForm.branchId} onChange={(e) => setReceiptForm({ ...receiptForm, branchId: e.target.value })}>
-                        <option value="">اختر فرع</option>
-                        {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="الصنف">
-                      <Select required value={receiptForm.inventoryItemId} onChange={(e) => setReceiptForm({ ...receiptForm, inventoryItemId: e.target.value })}>
-                        <option value="">اختر صنف</option>
-                        {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="الكمية">
-                      <Input required type="number" value={receiptForm.quantity} onChange={(e) => setReceiptForm({ ...receiptForm, quantity: e.target.value })} />
-                    </Field>
-                    <Field label="تكلفة الوحدة">
-                      <Input required type="number" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} />
-                    </Field>
-                    <Field label="تاريخ الصلاحية (اختياري - بيعمل دفعة)">
-                      <Input type="date" value={receiptForm.expiryDate} onChange={(e) => setReceiptForm({ ...receiptForm, expiryDate: e.target.value })} />
-                    </Field>
-                    {receiptForm.supplierId && (
-                      <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">
-                        <Input
-                          value={receiptForm.supplierDocumentNumber}
-                          onChange={(e) => setReceiptForm({ ...receiptForm, supplierDocumentNumber: e.target.value })}
-                        />
+            {canManageReceipts && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>تسجيل إذن استلام بضاعة (PO-less)</CardTitle>
+                </CardHeader>
+                <CardBody>
+                  <form onSubmit={handleReceiptSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field label="المورد">
+                        <Select required value={receiptForm.supplierId} onChange={(e) => setReceiptForm({ ...receiptForm, supplierId: e.target.value })}>
+                          <option value="">اختر مورد</option>
+                          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </Select>
                       </Field>
-                    )}
-                  </div>
-                  {receiptError && (
-                    <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-                      <p>{receiptError}</p>
-                      {receiptDuplicateWarning && (
-                        <Button type="button" size="sm" variant="danger" onClick={() => createReceipt.mutate(true)}>
-                          تسجيل برضه (مش تكرار)
-                        </Button>
+                      <Field label="الفرع">
+                        <Select required value={receiptForm.branchId} onChange={(e) => setReceiptForm({ ...receiptForm, branchId: e.target.value })}>
+                          <option value="">اختر فرع</option>
+                          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="الصنف">
+                        <Select required value={receiptForm.inventoryItemId} onChange={(e) => setReceiptForm({ ...receiptForm, inventoryItemId: e.target.value })}>
+                          <option value="">اختر صنف</option>
+                          {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="الكمية">
+                        <Input required type="number" value={receiptForm.quantity} onChange={(e) => setReceiptForm({ ...receiptForm, quantity: e.target.value })} />
+                      </Field>
+                      <Field label="تكلفة الوحدة">
+                        <Input required type="number" value={receiptForm.unitCost} onChange={(e) => setReceiptForm({ ...receiptForm, unitCost: e.target.value })} />
+                      </Field>
+                      <Field label="تاريخ الصلاحية (اختياري - بيعمل دفعة)">
+                        <Input type="date" value={receiptForm.expiryDate} onChange={(e) => setReceiptForm({ ...receiptForm, expiryDate: e.target.value })} />
+                      </Field>
+                      {receiptForm.supplierId && (
+                        <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">
+                          <Input
+                            value={receiptForm.supplierDocumentNumber}
+                            onChange={(e) => setReceiptForm({ ...receiptForm, supplierDocumentNumber: e.target.value })}
+                          />
+                        </Field>
                       )}
                     </div>
-                  )}
-                  <Button type="submit" disabled={createReceipt.isPending}>تسجيل</Button>
-                </form>
-              </CardBody>
-            </Card>
+                    {receiptError && (
+                      <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                        <p>{receiptError}</p>
+                        {receiptDuplicateWarning && (
+                          <Button type="button" size="sm" variant="danger" onClick={() => createReceipt.mutate(true)}>
+                            تسجيل برضه (مش تكرار)
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    <Button type="submit" disabled={createReceipt.isPending}>تسجيل</Button>
+                  </form>
+                </CardBody>
+              </Card>
+            )}
           </div>
 
           <Card>
@@ -646,7 +708,7 @@ export function ProcurementPage() {
                       <TD>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.quantity}`).join("، ")}</TD>
                       <TD><Badge tone={r.status === "CONFIRMED" ? "success" : "neutral"}>{r.status === "CONFIRMED" ? "اتأكد" : "مسودة"}</Badge></TD>
                       <TD>
-                        {r.status === "DRAFT" && (
+                        {r.status === "DRAFT" && canManageReceipts && (
                           <Button size="sm" variant="secondary" onClick={() => confirmReceipt.mutate(r.id)} disabled={confirmReceipt.isPending}>
                             تأكيد (يرحّل المخزون + قيد AP)
                           </Button>
@@ -671,54 +733,56 @@ export function ProcurementPage() {
 
       {tab === "invoices" && (
         <>
-          <Card className="mb-6">
-            <CardHeader><CardTitle>تسجيل فاتورة مورد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handleInvoiceSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="المورد">
-                    <Select required value={invoiceForm.supplierId} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierId: e.target.value, goodsReceiptId: "" })}>
-                      <option value="">اختر مورد</option>
-                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الفرع">
-                    <Select required value={invoiceForm.branchId} onChange={(e) => setInvoiceForm({ ...invoiceForm, branchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="إذن الاستلام (اختياري - للمطابقة)">
-                    <Select value={invoiceForm.goodsReceiptId} onChange={(e) => setInvoiceForm({ ...invoiceForm, goodsReceiptId: e.target.value })}>
-                      <option value="">بدون مطابقة</option>
-                      {confirmedReceiptsForInvoiceForm.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")} - {branchName(r.branchId)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="رقم فاتورة المورد">
-                    <Input required value={invoiceForm.supplierInvoiceNumber} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierInvoiceNumber: e.target.value })} />
-                  </Field>
-                  <Field label="الصنف">
-                    <Select required value={invoiceForm.inventoryItemId} onChange={(e) => setInvoiceForm({ ...invoiceForm, inventoryItemId: e.target.value })}>
-                      <option value="">اختر صنف</option>
-                      {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الكمية المفوترة">
-                    <Input required type="number" value={invoiceForm.invoicedQuantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, invoicedQuantity: e.target.value })} />
-                  </Field>
-                  <Field label="سعر الوحدة">
-                    <Input required type="number" value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: e.target.value })} />
-                  </Field>
-                </div>
-                {invoiceError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{invoiceError}</p>}
-                <Button type="submit" disabled={createInvoice.isPending}>{createInvoice.isPending ? "بيتسجّل..." : "تسجيل الفاتورة"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+          {canCreatePurchasing && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>تسجيل فاتورة مورد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handleInvoiceSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field label="المورد">
+                      <Select required value={invoiceForm.supplierId} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierId: e.target.value, goodsReceiptId: "" })}>
+                        <option value="">اختر مورد</option>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الفرع">
+                      <Select required value={invoiceForm.branchId} onChange={(e) => setInvoiceForm({ ...invoiceForm, branchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="إذن الاستلام (اختياري - للمطابقة)">
+                      <Select value={invoiceForm.goodsReceiptId} onChange={(e) => setInvoiceForm({ ...invoiceForm, goodsReceiptId: e.target.value })}>
+                        <option value="">بدون مطابقة</option>
+                        {confirmedReceiptsForInvoiceForm.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")} - {branchName(r.branchId)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="رقم فاتورة المورد">
+                      <Input required value={invoiceForm.supplierInvoiceNumber} onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierInvoiceNumber: e.target.value })} />
+                    </Field>
+                    <Field label="الصنف">
+                      <Select required value={invoiceForm.inventoryItemId} onChange={(e) => setInvoiceForm({ ...invoiceForm, inventoryItemId: e.target.value })}>
+                        <option value="">اختر صنف</option>
+                        {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الكمية المفوترة">
+                      <Input required type="number" value={invoiceForm.invoicedQuantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, invoicedQuantity: e.target.value })} />
+                    </Field>
+                    <Field label="سعر الوحدة">
+                      <Input required type="number" value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: e.target.value })} />
+                    </Field>
+                  </div>
+                  {invoiceError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{invoiceError}</p>}
+                  <Button type="submit" disabled={createInvoice.isPending}>{createInvoice.isPending ? "بيتسجّل..." : "تسجيل الفاتورة"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>فواتير الموردين ({invoices.length})</CardTitle></CardHeader>
@@ -738,26 +802,32 @@ export function ProcurementPage() {
                       <TD className={inv.varianceAmount !== 0 ? "font-bold text-amber-600" : ""}>{fmt(inv.varianceAmount)}ج</TD>
                       <TD><Badge tone={INVOICE_STATUS_TONES[inv.status]}>{INVOICE_STATUS_LABELS[inv.status]}</Badge></TD>
                       <TD>
-                        {canApproveOrCancel && ["MATCHED", "VARIANCE_PENDING"].includes(inv.status) && (
+                        {(canApprove || canCancel) && ["MATCHED", "VARIANCE_PENDING"].includes(inv.status) && (
                           <div className="flex flex-wrap items-center gap-2">
-                            <Button size="sm" onClick={() => approveInvoice.mutate(inv.id)} disabled={approveInvoice.isPending}>اعتماد</Button>
-                            <Input
-                              placeholder="سبب الإلغاء (اختياري)"
-                              className="w-40"
-                              value={cancelReason[inv.id] ?? ""}
-                              onChange={(e) => setCancelReason({ ...cancelReason, [inv.id]: e.target.value })}
-                            />
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => cancelInvoice.mutate({ id: inv.id, reason: cancelReason[inv.id] })}
-                              disabled={cancelInvoice.isPending}
-                            >
-                              إلغاء
-                            </Button>
+                            {canApprove && (
+                              <Button size="sm" onClick={() => approveInvoice.mutate(inv.id)} disabled={approveInvoice.isPending}>اعتماد</Button>
+                            )}
+                            {canCancel && (
+                              <>
+                                <Input
+                                  placeholder="سبب الإلغاء (اختياري)"
+                                  className="w-40"
+                                  value={cancelReason[inv.id] ?? ""}
+                                  onChange={(e) => setCancelReason({ ...cancelReason, [inv.id]: e.target.value })}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => cancelInvoice.mutate({ id: inv.id, reason: cancelReason[inv.id] })}
+                                  disabled={cancelInvoice.isPending}
+                                >
+                                  إلغاء
+                                </Button>
+                              </>
+                            )}
                           </div>
                         )}
-                        {canApproveOrCancel && inv.status === "APPROVED" && (
+                        {canCancel && inv.status === "APPROVED" && (
                           <Button
                             size="sm"
                             variant="danger"
@@ -780,52 +850,54 @@ export function ProcurementPage() {
 
       {tab === "payments" && (
         <>
-          <Card className="mb-6">
-            <CardHeader><CardTitle>تسجيل سداد لمورد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="المورد">
-                    <Select required value={paymentForm.supplierId} onChange={(e) => setPaymentForm({ ...paymentForm, supplierId: e.target.value, supplierInvoiceId: "" })}>
-                      <option value="">اختر مورد</option>
-                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </Select>
+          {canCreatePurchasing && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>تسجيل سداد لمورد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field label="المورد">
+                      <Select required value={paymentForm.supplierId} onChange={(e) => setPaymentForm({ ...paymentForm, supplierId: e.target.value, supplierInvoiceId: "" })}>
+                        <option value="">اختر مورد</option>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الفرع">
+                      <Select required value={paymentForm.branchId} onChange={(e) => setPaymentForm({ ...paymentForm, branchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="من خزينة">
+                      <Select required value={paymentForm.treasuryId} onChange={(e) => setPaymentForm({ ...paymentForm, treasuryId: e.target.value })}>
+                        <option value="">اختر خزينة</option>
+                        {treasuriesQuery.data?.map((t) => <option key={t.id} value={t.id}>{t.name} ({fmt(t.balance)}ج)</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="فاتورة مورد (اختياري)">
+                      <Select value={paymentForm.supplierInvoiceId} onChange={(e) => setPaymentForm({ ...paymentForm, supplierInvoiceId: e.target.value })}>
+                        <option value="">بدون ربط بفاتورة معيّنة</option>
+                        {unpaidInvoicesForPaymentForm.map((inv) => (
+                          <option key={inv.id} value={inv.id}>{inv.supplierInvoiceNumber} - {fmt(inv.total)}ج</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="المبلغ">
+                      <Input required type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
+                    </Field>
+                    <Field label="رقم مرجعي (اختياري)">
+                      <Input value={paymentForm.referenceNumber} onChange={(e) => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })} />
+                    </Field>
+                  </div>
+                  <Field label="ملاحظات (اختياري)">
+                    <Textarea value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
                   </Field>
-                  <Field label="الفرع">
-                    <Select required value={paymentForm.branchId} onChange={(e) => setPaymentForm({ ...paymentForm, branchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="من خزينة">
-                    <Select required value={paymentForm.treasuryId} onChange={(e) => setPaymentForm({ ...paymentForm, treasuryId: e.target.value })}>
-                      <option value="">اختر خزينة</option>
-                      {treasuriesQuery.data?.map((t) => <option key={t.id} value={t.id}>{t.name} ({fmt(t.balance)}ج)</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="فاتورة مورد (اختياري)">
-                    <Select value={paymentForm.supplierInvoiceId} onChange={(e) => setPaymentForm({ ...paymentForm, supplierInvoiceId: e.target.value })}>
-                      <option value="">بدون ربط بفاتورة معيّنة</option>
-                      {unpaidInvoicesForPaymentForm.map((inv) => (
-                        <option key={inv.id} value={inv.id}>{inv.supplierInvoiceNumber} - {fmt(inv.total)}ج</option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="المبلغ">
-                    <Input required type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
-                  </Field>
-                  <Field label="رقم مرجعي (اختياري)">
-                    <Input value={paymentForm.referenceNumber} onChange={(e) => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })} />
-                  </Field>
-                </div>
-                <Field label="ملاحظات (اختياري)">
-                  <Textarea value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
-                </Field>
-                {paymentError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{paymentError}</p>}
-                <Button type="submit" disabled={createPayment.isPending}>{createPayment.isPending ? "بيتسجّل..." : "تسجيل السداد"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+                  {paymentError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{paymentError}</p>}
+                  <Button type="submit" disabled={createPayment.isPending}>{createPayment.isPending ? "بيتسجّل..." : "تسجيل السداد"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>سدادات الموردين ({payments.length})</CardTitle></CardHeader>
@@ -856,35 +928,37 @@ export function ProcurementPage() {
 
       {tab === "purchase-requests" && (
         <>
-          <Card className="mb-6">
-            <CardHeader><CardTitle>طلب شراء جديد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handlePurchaseRequestSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Field label="الفرع">
-                    <Select required value={purchaseRequestForm.branchId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, branchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الصنف">
-                    <Select required value={purchaseRequestForm.inventoryItemId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, inventoryItemId: e.target.value })}>
-                      <option value="">اختر صنف</option>
-                      {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الكمية المطلوبة">
-                    <Input required type="number" value={purchaseRequestForm.requestedQuantity} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, requestedQuantity: e.target.value })} />
-                  </Field>
-                  <Field label="السبب (اختياري)">
-                    <Input value={purchaseRequestForm.reason} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, reason: e.target.value })} />
-                  </Field>
-                </div>
-                {purchaseRequestError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseRequestError}</p>}
-                <Button type="submit" disabled={createPurchaseRequest.isPending}>{createPurchaseRequest.isPending ? "بيتسجّل..." : "تسجيل الطلب"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+          {canCreatePurchasing && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>طلب شراء جديد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handlePurchaseRequestSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="الفرع">
+                      <Select required value={purchaseRequestForm.branchId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, branchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الصنف">
+                      <Select required value={purchaseRequestForm.inventoryItemId} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, inventoryItemId: e.target.value })}>
+                        <option value="">اختر صنف</option>
+                        {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الكمية المطلوبة">
+                      <Input required type="number" value={purchaseRequestForm.requestedQuantity} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, requestedQuantity: e.target.value })} />
+                    </Field>
+                    <Field label="السبب (اختياري)">
+                      <Input value={purchaseRequestForm.reason} onChange={(e) => setPurchaseRequestForm({ ...purchaseRequestForm, reason: e.target.value })} />
+                    </Field>
+                  </div>
+                  {purchaseRequestError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseRequestError}</p>}
+                  <Button type="submit" disabled={createPurchaseRequest.isPending}>{createPurchaseRequest.isPending ? "بيتسجّل..." : "تسجيل الطلب"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>طلبات الشراء ({purchaseRequests.length})</CardTitle></CardHeader>
@@ -906,32 +980,44 @@ export function ProcurementPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           {r.status === "DRAFT" && (
                             <>
-                              <Button size="sm" onClick={() => submitPurchaseRequest.mutate(r.id)} disabled={submitPurchaseRequest.isPending}>تقديم</Button>
-                              <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              {canSubmitPurchasing && (
+                                <Button size="sm" onClick={() => submitPurchaseRequest.mutate(r.id)} disabled={submitPurchaseRequest.isPending}>تقديم</Button>
+                              )}
+                              {canCancel && (
+                                <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              )}
                             </>
                           )}
-                          {r.status === "SUBMITTED" && canApproveOrCancel && (
+                          {r.status === "SUBMITTED" && (
                             <>
-                              <Button size="sm" onClick={() => approvePurchaseRequest.mutate(r.id)} disabled={approvePurchaseRequest.isPending}>اعتماد</Button>
-                              <Input
-                                placeholder="سبب الرفض"
-                                className="w-32"
-                                value={rejectReason[r.id] ?? ""}
-                                onChange={(e) => setRejectReason({ ...rejectReason, [r.id]: e.target.value })}
-                              />
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => rejectPurchaseRequest.mutate({ id: r.id, reason: rejectReason[r.id] ?? "" })}
-                                disabled={rejectPurchaseRequest.isPending || !rejectReason[r.id]}
-                              >
-                                رفض
-                              </Button>
-                              <Button size="sm" variant="secondary" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              {canApprove && (
+                                <>
+                                  <Button size="sm" onClick={() => approvePurchaseRequest.mutate(r.id)} disabled={approvePurchaseRequest.isPending}>اعتماد</Button>
+                                  <Input
+                                    placeholder="سبب الرفض"
+                                    className="w-32"
+                                    value={rejectReason[r.id] ?? ""}
+                                    onChange={(e) => setRejectReason({ ...rejectReason, [r.id]: e.target.value })}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => rejectPurchaseRequest.mutate({ id: r.id, reason: rejectReason[r.id] ?? "" })}
+                                    disabled={rejectPurchaseRequest.isPending || !rejectReason[r.id]}
+                                  >
+                                    رفض
+                                  </Button>
+                                </>
+                              )}
+                              {canCancel && (
+                                <Button size="sm" variant="secondary" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              )}
                             </>
                           )}
-                          {r.status === "APPROVED" && (
+                          {r.status === "APPROVED" && (canManageOrders || canCancel) && (
                             <div className="flex flex-wrap items-center gap-2">
+                              {canManageOrders && (
+                              <>
                               <Select
                                 className="w-32"
                                 value={convertForm[r.id]?.supplierId ?? ""}
@@ -954,7 +1040,11 @@ export function ProcurementPage() {
                               >
                                 تحويل لأمر شراء
                               </Button>
-                              <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              </>
+                              )}
+                              {canCancel && (
+                                <Button size="sm" variant="danger" onClick={() => cancelPurchaseRequest.mutate(r.id)} disabled={cancelPurchaseRequest.isPending}>إلغاء</Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -994,16 +1084,16 @@ export function ProcurementPage() {
                     <TD>{o.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")}</TD>
                     <TD><Badge tone={PO_STATUS_TONES[o.status]}>{PO_STATUS_LABELS[o.status]}</Badge></TD>
                     <TD>
-                      {o.status === "DRAFT" && (
+                      {o.status === "DRAFT" && canManageOrders && (
                         <div className="flex flex-wrap items-center gap-2">
                           <Button size="sm" onClick={() => sendPurchaseOrder.mutate(o.id)} disabled={sendPurchaseOrder.isPending}>إرسال للمورد</Button>
                           <Button size="sm" variant="danger" onClick={() => cancelPurchaseOrder.mutate(o.id)} disabled={cancelPurchaseOrder.isPending}>إلغاء</Button>
                         </div>
                       )}
-                      {(o.status === "SENT" || o.status === "PARTIALLY_RECEIVED") && (
+                      {(o.status === "SENT" || o.status === "PARTIALLY_RECEIVED") && (canManageReceipts || canManageOrders) && (
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" onClick={() => startReceivingOrder(o.id)}>استلام</Button>
-                          {o.status === "SENT" && (
+                          {canManageReceipts && <Button size="sm" onClick={() => startReceivingOrder(o.id)}>استلام</Button>}
+                          {o.status === "SENT" && canManageOrders && (
                             <Button size="sm" variant="danger" onClick={() => cancelPurchaseOrder.mutate(o.id)} disabled={cancelPurchaseOrder.isPending}>إلغاء</Button>
                           )}
                         </div>
@@ -1091,52 +1181,54 @@ export function ProcurementPage() {
 
       {tab === "purchase-returns" && (
         <>
-          <Card className="mb-6">
-            <CardHeader><CardTitle>مرتجع مشتريات جديد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handlePurchaseReturnSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="الفرع">
-                    <Select required value={purchaseReturnForm.branchId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, branchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
+          {canCreatePurchasing && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>مرتجع مشتريات جديد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handlePurchaseReturnSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field label="الفرع">
+                      <Select required value={purchaseReturnForm.branchId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, branchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="المورد (اختياري)">
+                      <Select value={purchaseReturnForm.supplierId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, supplierId: e.target.value, goodsReceiptId: "" })}>
+                        <option value="">بدون مورد محدد</option>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="إذن الاستلام (اختياري - للتتبع)">
+                      <Select value={purchaseReturnForm.goodsReceiptId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, goodsReceiptId: e.target.value })}>
+                        <option value="">بدون ربط</option>
+                        {confirmedReceiptsForReturnForm.map((r) => (
+                          <option key={r.id} value={r.id}>{r.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="الصنف">
+                      <Select required value={purchaseReturnForm.inventoryItemId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, inventoryItemId: e.target.value })}>
+                        <option value="">اختر صنف</option>
+                        {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الكمية">
+                      <Input required type="number" value={purchaseReturnForm.quantity} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, quantity: e.target.value })} />
+                    </Field>
+                    <Field label="الوحدة">
+                      <Input required placeholder="كيلو/لتر/قطعة" value={purchaseReturnForm.unit} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, unit: e.target.value })} />
+                    </Field>
+                  </div>
+                  <Field label="السبب">
+                    <Input required placeholder="تالف / غلط / منتهي الصلاحية" value={purchaseReturnForm.reason} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, reason: e.target.value })} />
                   </Field>
-                  <Field label="المورد (اختياري)">
-                    <Select value={purchaseReturnForm.supplierId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, supplierId: e.target.value, goodsReceiptId: "" })}>
-                      <option value="">بدون مورد محدد</option>
-                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="إذن الاستلام (اختياري - للتتبع)">
-                    <Select value={purchaseReturnForm.goodsReceiptId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, goodsReceiptId: e.target.value })}>
-                      <option value="">بدون ربط</option>
-                      {confirmedReceiptsForReturnForm.map((r) => (
-                        <option key={r.id} value={r.id}>{r.lines.map((l) => `${itemName(l.inventoryItemId)}×${l.quantity}`).join("، ")}</option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="الصنف">
-                    <Select required value={purchaseReturnForm.inventoryItemId} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, inventoryItemId: e.target.value })}>
-                      <option value="">اختر صنف</option>
-                      {itemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الكمية">
-                    <Input required type="number" value={purchaseReturnForm.quantity} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, quantity: e.target.value })} />
-                  </Field>
-                  <Field label="الوحدة">
-                    <Input required placeholder="كيلو/لتر/قطعة" value={purchaseReturnForm.unit} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, unit: e.target.value })} />
-                  </Field>
-                </div>
-                <Field label="السبب">
-                  <Input required placeholder="تالف / غلط / منتهي الصلاحية" value={purchaseReturnForm.reason} onChange={(e) => setPurchaseReturnForm({ ...purchaseReturnForm, reason: e.target.value })} />
-                </Field>
-                {purchaseReturnError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseReturnError}</p>}
-                <Button type="submit" disabled={createPurchaseReturn.isPending}>{createPurchaseReturn.isPending ? "بيتسجّل..." : "تسجيل المرتجع"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+                  {purchaseReturnError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{purchaseReturnError}</p>}
+                  <Button type="submit" disabled={createPurchaseReturn.isPending}>{createPurchaseReturn.isPending ? "بيتسجّل..." : "تسجيل المرتجع"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>مرتجعات المشتريات ({purchaseReturns.length})</CardTitle></CardHeader>
@@ -1159,8 +1251,12 @@ export function ProcurementPage() {
                       <TD>
                         {r.status === "DRAFT" && (
                           <div className="flex flex-wrap items-center gap-2">
-                            <Button size="sm" onClick={() => postPurchaseReturn.mutate(r.id)} disabled={postPurchaseReturn.isPending}>ترحيل</Button>
-                            <Button size="sm" variant="danger" onClick={() => cancelPurchaseReturn.mutate(r.id)} disabled={cancelPurchaseReturn.isPending}>إلغاء</Button>
+                            {canCreatePurchasing && (
+                              <Button size="sm" onClick={() => postPurchaseReturn.mutate(r.id)} disabled={postPurchaseReturn.isPending}>ترحيل</Button>
+                            )}
+                            {canCancel && (
+                              <Button size="sm" variant="danger" onClick={() => cancelPurchaseReturn.mutate(r.id)} disabled={cancelPurchaseReturn.isPending}>إلغاء</Button>
+                            )}
                           </div>
                         )}
                       </TD>

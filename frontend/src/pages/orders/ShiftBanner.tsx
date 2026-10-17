@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/AuthContext";
+import { PERMISSION } from "../../shared/auth/permissions";
+import { can } from "../../shared/auth/roles";
+import { useBranchOptions } from "../../shared/auth/useBranchOptions";
 import { Card, CardBody } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
 import { Field, Input, Select } from "../../shared/ui/Field";
@@ -54,31 +57,34 @@ export function ShiftBanner() {
   const [entryAmount, setEntryAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Shift endpoints need shifts.view_own (read) and open_own / close_own / record_cash_entry (actions).
+  const canViewOwnShift = can(user, PERMISSION.SHIFTS_VIEW_OWN);
+  const canOpenShift = can(user, PERMISSION.SHIFTS_OPEN_OWN);
+  const canCloseShift = can(user, PERMISSION.SHIFTS_CLOSE_OWN);
+  const canRecordCashEntry = can(user, PERMISSION.SHIFTS_RECORD_CASH_ENTRY);
+
   const currentShiftQuery = useQuery({
     queryKey: ["shifts", "current"],
     queryFn: () => apiRequest<Shift | null>("/shifts/current"),
+    enabled: canViewOwnShift,
   });
   const shift = currentShiftQuery.data;
   // Users without a fixed branch (admins/owners) must pick the branch the shift is opened in.
   const needsBranchPick = !user?.branchId;
 
-  const branchesQuery = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => apiRequest<Branch[]>("/branches"),
-    enabled: !shift && needsBranchPick && !currentShiftQuery.isLoading,
-  });
+  const { branches } = useBranchOptions<Branch>(canOpenShift && !shift && needsBranchPick && !currentShiftQuery.isLoading);
 
   const previewQuery = useQuery({
     queryKey: ["shifts", shift?.id, "preview"],
     queryFn: () => apiRequest<ShiftPreview>(`/shifts/${shift!.id}/preview`),
-    enabled: !!shift && showClose,
+    enabled: canViewOwnShift && !!shift && showClose,
     refetchInterval: showClose ? 5000 : false,
   });
 
   const cashDrawerEntriesQuery = useQuery({
     queryKey: ["shifts", shift?.id, "cash-drawer-entries"],
     queryFn: () => apiRequest<CashDrawerEntry[]>(`/shifts/${shift!.id}/cash-drawer-entries`),
-    enabled: !!shift,
+    enabled: canViewOwnShift && !!shift,
   });
 
   const openShift = useMutation({
@@ -120,9 +126,11 @@ export function ShiftBanner() {
     onError: (err) => setError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  if (currentShiftQuery.isLoading) return null;
+  if (!canViewOwnShift || currentShiftQuery.isLoading) return null;
 
   if (!shift) {
+    // Nothing to show without permission to open a shift (the backend would reject it anyway).
+    if (!canOpenShift) return null;
     return (
       <Card className="mb-6 border-amber-200 bg-amber-50">
         <CardBody className="flex flex-wrap items-end gap-3">
@@ -133,7 +141,7 @@ export function ShiftBanner() {
                 <Field label="الفرع">
                   <Select value={openingBranchId} onChange={(e) => setOpeningBranchId(e.target.value)} className="max-w-[220px]">
                     <option value="">اختار الفرع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               )}
@@ -165,12 +173,16 @@ export function ShiftBanner() {
             <p className="text-sm font-semibold text-slate-700">رصيد الافتتاح: {shift.openingCash}ج</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowCashEntry((v) => !v)}>
-              {showCashEntry ? "إلغاء" : "تسجيل مصروف/مشترى"}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowClose((v) => !v)}>
-              {showClose ? "إلغاء" : "قفل الشيفت"}
-            </Button>
+            {canRecordCashEntry && (
+              <Button variant="secondary" size="sm" onClick={() => setShowCashEntry((v) => !v)}>
+                {showCashEntry ? "إلغاء" : "تسجيل مصروف/مشترى"}
+              </Button>
+            )}
+            {canCloseShift && (
+              <Button variant="secondary" size="sm" onClick={() => setShowClose((v) => !v)}>
+                {showClose ? "إلغاء" : "قفل الشيفت"}
+              </Button>
+            )}
           </div>
         </div>
 

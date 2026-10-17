@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { can } from "../shared/auth/roles";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface Conversation { id: string; channel: "whatsapp" | "messenger" | "instagram"; phone: string; customerName: string | null; lastMessageAt: string | null; createdAt: string; }
 interface BotStatus { enabled: boolean; aiConfigured: boolean; whatsappSendConfigured: boolean; socialSendConfigured: boolean; }
@@ -22,8 +26,8 @@ interface PendingOrder {
 }
 
 const TABS = [
-  { key: "conversations", label: "المحادثات" },
-  { key: "pending-orders", label: "الطلبات المعلّقة" },
+  { key: "conversations", label: "المحادثات", perm: PERMISSION.WHATSAPP_VIEW },
+  { key: "pending-orders", label: "الطلبات المعلّقة", perm: PERMISSION.WHATSAPP_ORDERS_MANAGE },
 ];
 
 const CHANNEL_LABELS: Record<string, string> = { whatsapp: "واتساب", messenger: "ماسنجر", instagram: "إنستجرام" };
@@ -36,9 +40,15 @@ function fmt(n: number): string {
 }
 
 export function WhatsappPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("conversations");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
+  const canReply = can(user, PERMISSION.WHATSAPP_REPLY);
+  const canManageOrders = can(user, PERMISSION.WHATSAPP_ORDERS_MANAGE);
+  const canCreateComplaint = can(user, PERMISSION.WHATSAPP_COMPLAINTS_CREATE);
+  // أصناف وفروع فورم "تسجيل طلب" بس
+  const canPickVariants = canManageOrders && can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
 
   const conversationsQuery = useQuery({ queryKey: ["whatsapp", "conversations"], queryFn: () => apiRequest<Conversation[]>("/whatsapp/conversations") });
   const conversationDetailQuery = useQuery({
@@ -46,9 +56,18 @@ export function WhatsappPage() {
     queryFn: () => apiRequest<{ conversation: Conversation; messages: Message[] }>(`/whatsapp/conversations/${openConversationId}`),
     enabled: !!openConversationId,
   });
-  const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
-  const pendingOrdersQuery = useQuery({ queryKey: ["whatsapp", "pending-orders"], queryFn: () => apiRequest<PendingOrder[]>("/whatsapp/pending-orders") });
+  const menuItemsQuery = useQuery({
+    queryKey: ["catalog", "items"],
+    queryFn: () => apiRequest<MenuItem[]>("/catalog/items"),
+    enabled: canPickVariants,
+  });
+  // من غير branches.view الطلب بيتسجّل على فرع المستخدم
+  const { branches: orderBranches, canListBranches } = useBranchOptions<Branch>(canManageOrders);
+  const pendingOrdersQuery = useQuery({
+    queryKey: ["whatsapp", "pending-orders"],
+    queryFn: () => apiRequest<PendingOrder[]>("/whatsapp/pending-orders"),
+    enabled: canManageOrders && tab === "pending-orders",
+  });
   const botStatusQuery = useQuery({ queryKey: ["whatsapp", "bot-status"], queryFn: () => apiRequest<BotStatus>("/whatsapp/bot-status") });
 
   const variants = (menuItemsQuery.data ?? []).flatMap((item) => item.variants.map((v) => ({ ...v, itemName: item.name })));
@@ -72,7 +91,11 @@ export function WhatsappPage() {
     },
   });
 
-  const [orderForm, setOrderForm] = useState({ orderType: "delivery", branchId: "", addressDetails: "" });
+  const [orderForm, setOrderForm] = useState({
+    orderType: "delivery",
+    branchId: canListBranches ? "" : (user?.branchId ?? ""),
+    addressDetails: "",
+  });
   const [orderLines, setOrderLines] = useState<{ variantId: string; quantity: string }[]>([{ variantId: "", quantity: "1" }]);
   const [orderError, setOrderError] = useState<string | null>(null);
   const createPendingOrder = useMutation({
@@ -156,7 +179,7 @@ export function WhatsappPage() {
         </div>
       )}
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "conversations" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -198,84 +221,90 @@ export function WhatsappPage() {
                     ))}
                     {conversationDetailQuery.data.messages.length === 0 && <EmptyState>مفيش رسائل لسه</EmptyState>}
                   </CardBody>
-                  <CardBody className="border-t border-slate-100">
-                    <form onSubmit={handleReplySubmit} className="flex gap-2">
-                      <Input value={replyBody} onChange={(e) => setReplyBody(e.target.value)} placeholder="اكتب رد..." className="flex-1" />
-                      <Button type="submit" disabled={sendReply.isPending || !replyBody}>إرسال</Button>
-                    </form>
-                    {replyNotice && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{replyNotice}</p>}
-                  </CardBody>
+                  {canReply && (
+                    <CardBody className="border-t border-slate-100">
+                      <form onSubmit={handleReplySubmit} className="flex gap-2">
+                        <Input value={replyBody} onChange={(e) => setReplyBody(e.target.value)} placeholder="اكتب رد..." className="flex-1" />
+                        <Button type="submit" disabled={sendReply.isPending || !replyBody}>إرسال</Button>
+                      </form>
+                      {replyNotice && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{replyNotice}</p>}
+                    </CardBody>
+                  )}
                 </Card>
 
-                <Card>
-                  <CardHeader><CardTitle>تسجيل طلب من المحادثة دي</CardTitle></CardHeader>
-                  <CardBody>
-                    <form onSubmit={handleOrderSubmit} className="space-y-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <Field label="نوع الطلب">
-                          <Select value={orderForm.orderType} onChange={(e) => setOrderForm({ ...orderForm, orderType: e.target.value })}>
-                            <option value="delivery">توصيل</option>
-                            <option value="takeaway">تيك أواي</option>
-                            <option value="dinein">صالة</option>
-                          </Select>
-                        </Field>
-                        <Field label="الفرع">
-                          <Select required value={orderForm.branchId} onChange={(e) => setOrderForm({ ...orderForm, branchId: e.target.value })}>
-                            <option value="">اختر فرع</option>
-                            {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                          </Select>
-                        </Field>
-                        <Field label="العنوان (لو توصيل)">
-                          <Input value={orderForm.addressDetails} onChange={(e) => setOrderForm({ ...orderForm, addressDetails: e.target.value })} />
-                        </Field>
-                      </div>
-
-                      <div className="space-y-2">
-                        {orderLines.map((line, i) => (
-                          <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <Select
-                              value={line.variantId}
-                              onChange={(e) => setOrderLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, variantId: e.target.value } : l)))}
-                            >
-                              <option value="">اختر صنف</option>
-                              {variants.map((v) => <option key={v.id} value={v.id}>{v.itemName} - {v.label} ({fmt(v.price)}ج)</option>)}
+                {canManageOrders && (
+                  <Card>
+                    <CardHeader><CardTitle>تسجيل طلب من المحادثة دي</CardTitle></CardHeader>
+                    <CardBody>
+                      <form onSubmit={handleOrderSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          <Field label="نوع الطلب">
+                            <Select value={orderForm.orderType} onChange={(e) => setOrderForm({ ...orderForm, orderType: e.target.value })}>
+                              <option value="delivery">توصيل</option>
+                              <option value="takeaway">تيك أواي</option>
+                              <option value="dinein">صالة</option>
                             </Select>
-                            <Input
-                              type="number" step="any" placeholder="الكمية"
-                              value={line.quantity}
-                              onChange={(e) => setOrderLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, quantity: e.target.value } : l)))}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <Button type="button" variant="secondary" size="sm" onClick={() => setOrderLines((prev) => [...prev, { variantId: "", quantity: "1" }])}>+ صنف</Button>
+                          </Field>
+                          <Field label="الفرع">
+                            <Select required value={orderForm.branchId} onChange={(e) => setOrderForm({ ...orderForm, branchId: e.target.value })}>
+                              <option value="">اختر فرع</option>
+                              {orderBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </Select>
+                          </Field>
+                          <Field label="العنوان (لو توصيل)">
+                            <Input value={orderForm.addressDetails} onChange={(e) => setOrderForm({ ...orderForm, addressDetails: e.target.value })} />
+                          </Field>
+                        </div>
 
-                      {orderError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{orderError}</p>}
-                      <Button type="submit" disabled={createPendingOrder.isPending}>تسجيل الطلب كمعلّق</Button>
-                    </form>
-                  </CardBody>
-                </Card>
+                        <div className="space-y-2">
+                          {orderLines.map((line, i) => (
+                            <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <Select
+                                value={line.variantId}
+                                onChange={(e) => setOrderLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, variantId: e.target.value } : l)))}
+                              >
+                                <option value="">اختر صنف</option>
+                                {variants.map((v) => <option key={v.id} value={v.id}>{v.itemName} - {v.label} ({fmt(v.price)}ج)</option>)}
+                              </Select>
+                              <Input
+                                type="number" step="any" placeholder="الكمية"
+                                value={line.quantity}
+                                onChange={(e) => setOrderLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, quantity: e.target.value } : l)))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => setOrderLines((prev) => [...prev, { variantId: "", quantity: "1" }])}>+ صنف</Button>
 
-                <Card>
-                  <CardHeader><CardTitle>تسجيل شكوى من المحادثة دي</CardTitle></CardHeader>
-                  <CardBody>
-                    <form onSubmit={handleComplaintSubmit} className="space-y-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Field label="نوع الشكوى">
-                          <Select value={complaintForm.category} onChange={(e) => setComplaintForm({ ...complaintForm, category: e.target.value })}>
-                            {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </Select>
-                        </Field>
-                        <Field label="التفاصيل">
-                          <Input value={complaintForm.description} onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })} />
-                        </Field>
-                      </div>
-                      {complaintError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{complaintError}</p>}
-                      {complaintOk && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">اتسجّلت الشكوى - هتلاقيها في متابعة العملاء والشكاوى</p>}
-                      <Button type="submit" disabled={createComplaint.isPending}>تسجيل الشكوى</Button>
-                    </form>
-                  </CardBody>
-                </Card>
+                        {orderError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{orderError}</p>}
+                        <Button type="submit" disabled={createPendingOrder.isPending}>تسجيل الطلب كمعلّق</Button>
+                      </form>
+                    </CardBody>
+                  </Card>
+                )}
+
+                {canCreateComplaint && (
+                  <Card>
+                    <CardHeader><CardTitle>تسجيل شكوى من المحادثة دي</CardTitle></CardHeader>
+                    <CardBody>
+                      <form onSubmit={handleComplaintSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <Field label="نوع الشكوى">
+                            <Select value={complaintForm.category} onChange={(e) => setComplaintForm({ ...complaintForm, category: e.target.value })}>
+                              {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                            </Select>
+                          </Field>
+                          <Field label="التفاصيل">
+                            <Input value={complaintForm.description} onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })} />
+                          </Field>
+                        </div>
+                        {complaintError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{complaintError}</p>}
+                        {complaintOk && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">اتسجّلت الشكوى - هتلاقيها في متابعة العملاء والشكاوى</p>}
+                        <Button type="submit" disabled={createComplaint.isPending}>تسجيل الشكوى</Button>
+                      </form>
+                    </CardBody>
+                  </Card>
+                )}
               </>
             )}
           </div>

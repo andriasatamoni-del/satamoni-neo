@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
+import { useCan } from "../../shared/auth/AuthContext";
+import { PERMISSION } from "../../shared/auth/permissions";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Badge, type Tone } from "../../shared/ui/Badge";
 
@@ -25,14 +27,16 @@ const SEVERITY_LABELS: Record<AlertSeverity, string> = { HIGH: "عاجل", MEDIU
 // مركز التنبيهات - نقطة واحدة تجمّع كل استثناء يستاهل انتباه فوري (نفس مفهوم db/action-center.js
 // بالريبو القديم بالظبط). فحص يومي سريع (آخر 7 أيام)، مش تقرير تحليلي طويل المدى زي باقي التقارير
 export function ActionCenterPanel() {
+  const canSee = useCan()(PERMISSION.REPORTS_VIEW);
   const query = useQuery({
     queryKey: ["reports", "action-center"],
     queryFn: () => apiRequest<ActionCenterReport>("/reports/action-center"),
     retry: false,
+    enabled: canSee,
   });
 
   // كاشير/كول سنتر/سائق معندهمش reports.view - نفس أسلوب DashboardSummary بالظبط
-  if (query.isError) return null;
+  if (!canSee || query.isError) return null;
   const data = query.data;
   if (data && data.alerts.length === 0) return null;
 

@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface Branch { id: string; name: string; talabatBranchId: string | null; }
 interface PaymentMethod { id: string; name: string; talabatPaymentCode: string | null; }
@@ -38,21 +41,27 @@ const ORDER_STATUS_TONES: Record<string, "neutral" | "warning" | "success" | "da
 };
 
 const TABS = [
-  { key: "dashboard", label: "لوحة التحكم" },
-  { key: "orders", label: "أوردرات Talabat" },
-  { key: "errors", label: "أخطاء التكامل" },
-  { key: "mapping", label: "الربط" },
-  { key: "payment-control", label: "Payment Control" },
+  { key: "dashboard", label: "لوحة التحكم", perm: PERMISSION.TALABAT_VIEW },
+  { key: "orders", label: "أوردرات Talabat", perm: PERMISSION.TALABAT_VIEW },
+  { key: "errors", label: "أخطاء التكامل", perm: PERMISSION.TALABAT_VIEW },
+  { key: "mapping", label: "الربط", perm: PERMISSION.TALABAT_MAPPING_MANAGE },
+  { key: "payment-control", label: "Payment Control", perm: PERMISSION.TALABAT_RECONCILIATION },
 ];
 
 export function TalabatPage() {
-  const [tab, setTab] = useState("dashboard");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
   const queryClient = useQueryClient();
-
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const allowed = useCan();
+  const canRetry = allowed(PERMISSION.TALABAT_RETRY);
+  // ربط الفرع = PATCH /branches/:id، وكود طريقة الدفع = PATCH payment-methods/:id/talabat-code
+  const canLinkBranches = allowed(PERMISSION.BRANCHES_MANAGE);
+  const canSeePaymentMethods = allowed(PERMISSION.PAYMENT_CONTROL_VIEW);
+  const canLinkPaymentMethods = allowed(PERMISSION.PAYMENT_CONTROL_METHODS_MANAGE);
+  const { branches } = useBranchOptions<Branch>();
   const paymentMethodsQuery = useQuery({
     queryKey: ["payment-control", "payment-methods"],
     queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods"),
+    enabled: canSeePaymentMethods && tab === "mapping",
   });
 
   const [dashboardBranchId, setDashboardBranchId] = useState("");
@@ -126,14 +135,14 @@ export function TalabatPage() {
   return (
     <div>
       <PageHeader title="تكامل Talabat" description="مزامنة أوردرات Talabat، متابعة أخطاء الربط، وإدارة الربط بين الفروع/طرق الدفع/الأصناف" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "dashboard" && (
         <div className="space-y-4">
           <Field label="الفرع">
             <Select value={dashboardBranchId} onChange={(e) => setDashboardBranchId(e.target.value)}>
               <option value="">كل الفروع</option>
-              {branchesQuery.data?.map((b) => (
+              {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </Select>
@@ -238,7 +247,7 @@ export function TalabatPage() {
                     <TD>{e.retryCount}</TD>
                     <TD>
                       {e.status !== "RESOLVED" && e.stage === "SYNC" && (
-                        <Button variant="secondary" onClick={() => retryError.mutate(e.id)} disabled={retryError.isPending}>
+                        <Button variant="secondary" onClick={() => retryError.mutate(e.id)} disabled={retryError.isPending || !canRetry}>
                           إعادة محاولة
                         </Button>
                       )}
@@ -260,12 +269,13 @@ export function TalabatPage() {
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-700">الفروع</p>
                 <div className="space-y-2">
-                  {branchesQuery.data?.map((b) => (
+                  {branches.map((b) => (
                     <div key={b.id} className="flex items-center gap-2">
                       <span className="w-40 shrink-0 text-sm text-slate-600">{b.name}</span>
                       <Input
                         defaultValue={b.talabatBranchId ?? ""}
                         placeholder="معرّف الفرع عند Talabat"
+                        disabled={!canLinkBranches}
                         onBlur={(e) => linkBranch.mutate({ branchId: b.id, talabatBranchId: e.target.value })}
                       />
                     </div>
@@ -282,6 +292,7 @@ export function TalabatPage() {
                       <Input
                         defaultValue={m.talabatPaymentCode ?? ""}
                         placeholder="كود الدفع عند Talabat"
+                        disabled={!canLinkPaymentMethods}
                         onBlur={(e) => linkPaymentMethod.mutate({ id: m.id, code: e.target.value })}
                       />
                     </div>
@@ -297,7 +308,7 @@ export function TalabatPage() {
               <Field label="الفرع">
                 <Select value={mappingBranchId} onChange={(e) => setMappingBranchId(e.target.value)}>
                   <option value="">اختر فرع</option>
-                  {branchesQuery.data?.map((b) => (
+                  {branches.map((b) => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </Select>

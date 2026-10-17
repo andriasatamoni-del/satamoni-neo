@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -71,14 +73,23 @@ const PRICE_FIELD_LABELS: Record<string, string> = { price: "السعر", talaba
 
 export function CatalogPage() {
   const queryClient = useQueryClient();
+  // من غير catalog.items.manage الصفحة عرض بس: مفيش إضافة/تعديل/أرشفة، والعروض النشطة بس (combos/all للإدارة)
+  const canManage = useCan()(PERMISSION.CATALOG_ITEMS_MANAGE);
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
   // القائمة الكاملة لسه لازمة لاختيار الأحجام في العروض وأسماء الأصناف؛ جدول الأصناف نفسه صفحات من السيرفر (NEO-6)
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const itemsList = useListState(["q", "categoryId", "status"] as const, { prefix: "items." });
   const itemsPageQuery = usePaginatedQuery<MenuItem>(["catalog", "items"], "/catalog/items", itemsList.params);
-  const combosQuery = useQuery({ queryKey: ["catalog", "combos", "all"], queryFn: () => apiRequest<Combo[]>("/catalog/combos/all") });
+  const combosQuery = useQuery({
+    queryKey: canManage ? ["catalog", "combos", "all"] : ["catalog", "combos"],
+    queryFn: () => apiRequest<Combo[]>(canManage ? "/catalog/combos/all" : "/catalog/combos"),
+  });
   const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => apiRequest<{ combosPosition: number }>("/catalog/layout") });
-  const archivedQuery = useQuery({ queryKey: ["catalog", "categories", "archived"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories?archived=true") });
+  const archivedQuery = useQuery({
+    queryKey: ["catalog", "categories", "archived"],
+    queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories?archived=true"),
+    enabled: canManage,
+  });
 
   const invalidateCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "categories"] });
@@ -212,7 +223,7 @@ export function CatalogPage() {
       priceHistoryTarget!.kind === "variant"
         ? apiRequest<PriceHistoryEntry[]>(`/catalog/items/${priceHistoryTarget!.itemId}/variants/${(priceHistoryTarget as { variantId: string }).variantId}/price-history`)
         : apiRequest<PriceHistoryEntry[]>(`/catalog/items/${priceHistoryTarget!.itemId}/modifiers/${(priceHistoryTarget as { modifierId: string }).modifierId}/price-history`),
-    enabled: !!priceHistoryTarget,
+    enabled: canManage && !!priceHistoryTarget,
   });
 
   const [comboForm, setComboForm] = useState({ name: "", price: "" });
@@ -304,26 +315,28 @@ export function CatalogPage() {
     <div>
       <PageHeader title="قائمة الطعام" description="الأقسام والأصناف والأحجام" />
 
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className={`mb-6 grid grid-cols-1 gap-6 ${canManage ? "lg:grid-cols-2" : ""}`}>
         <Card>
           <CardHeader>
             <CardTitle>الأقسام ({categories.length})</CardTitle>
           </CardHeader>
           <CardBody>
-            <form onSubmit={handleCategorySubmit} className="mb-4 flex items-end gap-3">
-              <div className="flex-1">
-                <Field label="اسم القسم الجديد">
-                  <Input required value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
-                </Field>
-              </div>
-              <Button type="submit" disabled={createCategory.isPending}>إضافة</Button>
-            </form>
+            {canManage && (
+              <form onSubmit={handleCategorySubmit} className="mb-4 flex items-end gap-3">
+                <div className="flex-1">
+                  <Field label="اسم القسم الجديد">
+                    <Input required value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+                  </Field>
+                </div>
+                <Button type="submit" disabled={createCategory.isPending}>إضافة</Button>
+              </form>
+            )}
             {categoryError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{categoryError}</p>}
             <p className="mb-2 text-xs text-slate-500">الترتيب هنا هو ترتيب أزرار الأقسام في شاشة الطلبات (العروض بتتحرك وسط الأقسام).</p>
             <div className="space-y-1.5">
               {orderRows.map((row, index) => {
                 const c = row.category;
-                const arrows = (
+                const arrows = canManage && (
                   <span className="flex flex-col">
                     <button type="button" aria-label="لفوق" title="لفوق" disabled={index === 0 || reorderCategories.isPending} onClick={() => moveRow(index, -1)} className="px-1 text-xs leading-none text-slate-500 hover:text-brand-700 disabled:opacity-30">▲</button>
                     <button type="button" aria-label="لتحت" title="لتحت" disabled={index === orderRows.length - 1 || reorderCategories.isPending} onClick={() => moveRow(index, 1)} className="px-1 text-xs leading-none text-slate-500 hover:text-brand-700 disabled:opacity-30">▼</button>
@@ -358,16 +371,20 @@ export function CatalogPage() {
                       <>
                         <span className={`flex-1 text-sm font-semibold ${c.isActive ? "text-slate-800" : "text-slate-400 line-through"}`}>{c.name}</span>
                         {!c.isActive && <Badge tone="neutral">موقوف</Badge>}
-                        <Button size="sm" variant="ghost" onClick={() => startEditCategory(c)}>تعديل</Button>
-                        <Button
-                          size="sm"
-                          variant={c.isActive ? "secondary" : "primary"}
-                          onClick={() => updateCategory.mutate({ id: c.id, isActive: !c.isActive })}
-                          disabled={updateCategory.isPending}
-                        >
-                          {c.isActive ? "إيقاف" : "تفعيل"}
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => confirmArchive(c)} disabled={archiveCategory.isPending}>إلغاء القسم</Button>
+                        {canManage && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => startEditCategory(c)}>تعديل</Button>
+                            <Button
+                              size="sm"
+                              variant={c.isActive ? "secondary" : "primary"}
+                              onClick={() => updateCategory.mutate({ id: c.id, isActive: !c.isActive })}
+                              disabled={updateCategory.isPending}
+                            >
+                              {c.isActive ? "إيقاف" : "تفعيل"}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => confirmArchive(c)} disabled={archiveCategory.isPending}>إلغاء القسم</Button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -375,54 +392,58 @@ export function CatalogPage() {
               })}
             </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-3">
-              <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm font-semibold text-slate-600 hover:text-brand-700">
-                {showArchived ? "▼" : "◀"} الأقسام المؤرشفة ({archivedCategories.length})
-              </button>
-              {showArchived && (
-                <div className="mt-2 space-y-1.5">
-                  {archivedCategories.length === 0 && <p className="text-sm text-slate-400">مفيش أقسام مؤرشفة</p>}
-                  {archivedCategories.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                      <span className="flex-1 text-sm text-slate-500">{c.name}</span>
-                      <Button size="sm" variant="secondary" onClick={() => restoreCategory.mutate(c.id)} disabled={restoreCategory.isPending}>استرجاع (موقوف)</Button>
-                    </div>
-                  ))}
-                  <p className="text-xs text-slate-400">الاسترجاع بيرجّع القسم موقوف؛ فعّله بعد كده لو عايزه يظهر في الكاشير.</p>
-                </div>
-              )}
-            </div>
+            {canManage && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm font-semibold text-slate-600 hover:text-brand-700">
+                  {showArchived ? "▼" : "◀"} الأقسام المؤرشفة ({archivedCategories.length})
+                </button>
+                {showArchived && (
+                  <div className="mt-2 space-y-1.5">
+                    {archivedCategories.length === 0 && <p className="text-sm text-slate-400">مفيش أقسام مؤرشفة</p>}
+                    {archivedCategories.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                        <span className="flex-1 text-sm text-slate-500">{c.name}</span>
+                        <Button size="sm" variant="secondary" onClick={() => restoreCategory.mutate(c.id)} disabled={restoreCategory.isPending}>استرجاع (موقوف)</Button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-slate-400">الاسترجاع بيرجّع القسم موقوف؛ فعّله بعد كده لو عايزه يظهر في الكاشير.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>إضافة صنف</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <form onSubmit={handleItemSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="اسم الصنف">
-                  <Input required value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} />
-                </Field>
-                <Field label="القسم">
-                  <Select value={itemForm.categoryId} onChange={(e) => setItemForm({ ...itemForm, categoryId: e.target.value })}>
-                    <option value="">بدون قسم</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="اسم الحجم (اختياري)">
-                  <Input value={itemForm.variantLabel} onChange={(e) => setItemForm({ ...itemForm, variantLabel: e.target.value })} />
-                </Field>
-                <Field label="السعر">
-                  <Input type="number" value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} />
-                </Field>
-              </div>
-              {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
-              <Button type="submit" disabled={createItem.isPending}>إضافة</Button>
-            </form>
-          </CardBody>
-        </Card>
+        {canManage && (
+          <Card>
+            <CardHeader>
+              <CardTitle>إضافة صنف</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <form onSubmit={handleItemSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label="اسم الصنف">
+                    <Input required value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} />
+                  </Field>
+                  <Field label="القسم">
+                    <Select value={itemForm.categoryId} onChange={(e) => setItemForm({ ...itemForm, categoryId: e.target.value })}>
+                      <option value="">بدون قسم</option>
+                      {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="اسم الحجم (اختياري)">
+                    <Input value={itemForm.variantLabel} onChange={(e) => setItemForm({ ...itemForm, variantLabel: e.target.value })} />
+                  </Field>
+                  <Field label="السعر">
+                    <Input type="number" value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} />
+                  </Field>
+                </div>
+                {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
+                <Button type="submit" disabled={createItem.isPending}>إضافة</Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
       </div>
 
       <Card>
@@ -455,6 +476,7 @@ export function CatalogPage() {
                     <ImageUploadButton
                       imageUrl={i.imageUrl}
                       onUploaded={(url) => updateItem.mutate({ id: i.id, imageUrl: url })}
+                      readOnly={!canManage}
                       testId={`item-image-${i.name}`}
                     />
                   </TD>
@@ -514,27 +536,33 @@ export function CatalogPage() {
                             {i.variants.map((v) => (
                               <div key={v.id} className="flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1">
                                 <span className="text-xs text-slate-500">{v.label}:</span>
-                                <Input
-                                  type="number"
-                                  value={variantPrices[v.id] ?? String(v.price)}
-                                  onChange={(e) => setVariantPrices({ ...variantPrices, [v.id]: e.target.value })}
-                                  className="w-20 py-0.5 text-xs"
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => updateVariant.mutate({ itemId: i.id, variantId: v.id, price: Number(variantPrices[v.id] ?? v.price) })}
-                                  disabled={updateVariant.isPending || Number(variantPrices[v.id] ?? v.price) === v.price}
-                                >
-                                  حفظ
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => setPriceHistoryTarget({ kind: "variant", itemId: i.id, variantId: v.id, label: `${i.name} - ${v.label}` })}
-                                >
-                                  السجل
-                                </Button>
+                                {canManage ? (
+                                  <>
+                                    <Input
+                                      type="number"
+                                      value={variantPrices[v.id] ?? String(v.price)}
+                                      onChange={(e) => setVariantPrices({ ...variantPrices, [v.id]: e.target.value })}
+                                      className="w-20 py-0.5 text-xs"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => updateVariant.mutate({ itemId: i.id, variantId: v.id, price: Number(variantPrices[v.id] ?? v.price) })}
+                                      disabled={updateVariant.isPending || Number(variantPrices[v.id] ?? v.price) === v.price}
+                                    >
+                                      حفظ
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setPriceHistoryTarget({ kind: "variant", itemId: i.id, variantId: v.id, label: `${i.name} - ${v.label}` })}
+                                    >
+                                      السجل
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <span className="text-xs font-semibold text-slate-800">{v.price}</span>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -542,6 +570,7 @@ export function CatalogPage() {
                       </TD>
                       <TD>{i.isActive ? <Badge tone="success">نشط</Badge> : <Badge tone="neutral">معطّل</Badge>}</TD>
                       <TD>
+                        {canManage && (
                         <div className="flex gap-1.5">
                           <Button size="sm" variant="ghost" onClick={() => startEditItem(i)}>تعديل</Button>
                           <Button size="sm" variant="ghost" onClick={() => setModifiersItemId(i.id)}>
@@ -556,6 +585,7 @@ export function CatalogPage() {
                             {i.isActive ? "تعطيل" : "تفعيل"}
                           </Button>
                         </div>
+                        )}
                       </TD>
                     </>
                   )}
@@ -580,40 +610,42 @@ export function CatalogPage() {
         </CardHeader>
         <CardBody>
           <p className="mb-4 text-sm text-slate-500">عرض بيجمع أكتر من حجم بسعر واحد مختلف عن مجموع أسعارهم</p>
-          <form
-            onSubmit={(e: FormEvent) => { e.preventDefault(); createCombo.mutate(); }}
-            className="mb-6 space-y-3 border-b border-slate-100 pb-6"
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="اسم العرض">
-                <Input required value={comboForm.name} onChange={(e) => setComboForm({ ...comboForm, name: e.target.value })} />
-              </Field>
-              <Field label="السعر">
-                <Input required type="number" min="0.01" step="any" value={comboForm.price} onChange={(e) => setComboForm({ ...comboForm, price: e.target.value })} />
-              </Field>
-            </div>
-            <div className="space-y-2">
-              {comboItemRows.map((row, idx) => (
-                <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
-                  <Field label="الصنف/الحجم">
-                    <Select value={row.variantId} onChange={(e) => updateComboItemRow(idx, { variantId: e.target.value })}>
-                      <option value="">اختر حجم</option>
-                      {items.flatMap((it) => it.variants.map((v) => (
-                        <option key={v.id} value={v.id}>{it.name} - {v.label}</option>
-                      )))}
-                    </Select>
-                  </Field>
-                  <Field label="الكمية">
-                    <Input type="number" min="1" value={row.quantity} onChange={(e) => updateComboItemRow(idx, { quantity: e.target.value })} />
-                  </Field>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => removeComboItemRow(idx)}>حذف</Button>
-                </div>
-              ))}
-              <Button type="button" variant="secondary" size="sm" onClick={addComboItemRow}>+ بند تاني</Button>
-            </div>
-            {comboError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{comboError}</p>}
-            <Button type="submit" disabled={createCombo.isPending}>إضافة عرض</Button>
-          </form>
+          {canManage && (
+            <form
+              onSubmit={(e: FormEvent) => { e.preventDefault(); createCombo.mutate(); }}
+              className="mb-6 space-y-3 border-b border-slate-100 pb-6"
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="اسم العرض">
+                  <Input required value={comboForm.name} onChange={(e) => setComboForm({ ...comboForm, name: e.target.value })} />
+                </Field>
+                <Field label="السعر">
+                  <Input required type="number" min="0.01" step="any" value={comboForm.price} onChange={(e) => setComboForm({ ...comboForm, price: e.target.value })} />
+                </Field>
+              </div>
+              <div className="space-y-2">
+                {comboItemRows.map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
+                    <Field label="الصنف/الحجم">
+                      <Select value={row.variantId} onChange={(e) => updateComboItemRow(idx, { variantId: e.target.value })}>
+                        <option value="">اختر حجم</option>
+                        {items.flatMap((it) => it.variants.map((v) => (
+                          <option key={v.id} value={v.id}>{it.name} - {v.label}</option>
+                        )))}
+                      </Select>
+                    </Field>
+                    <Field label="الكمية">
+                      <Input type="number" min="1" value={row.quantity} onChange={(e) => updateComboItemRow(idx, { quantity: e.target.value })} />
+                    </Field>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => removeComboItemRow(idx)}>حذف</Button>
+                  </div>
+                ))}
+                <Button type="button" variant="secondary" size="sm" onClick={addComboItemRow}>+ بند تاني</Button>
+              </div>
+              {comboError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{comboError}</p>}
+              <Button type="submit" disabled={createCombo.isPending}>إضافة عرض</Button>
+            </form>
+          )}
 
           <Table>
             <THead>
@@ -623,10 +655,12 @@ export function CatalogPage() {
               {combos.map((c) => (
                 <TR key={c.id}>
                   <TD>
-                    <ImageUploadButton imageUrl={c.imageUrl} onUploaded={(url) => updateCombo.mutate({ id: c.id, imageUrl: url })} testId={`combo-image-${c.name}`} />
+                    <ImageUploadButton imageUrl={c.imageUrl} onUploaded={(url) => updateCombo.mutate({ id: c.id, imageUrl: url })} readOnly={!canManage} testId={`combo-image-${c.name}`} />
                   </TD>
                   <TD className="font-semibold text-slate-900">
                     {c.name} {c.onlineOnly && <Badge tone="brand">حصري أونلاين</Badge>}
+                    {!canManage && c.description && <p className="text-xs font-normal text-slate-400">{c.description}</p>}
+                    {canManage && (
                     <Input
                       key={c.description ?? ""}
                       defaultValue={c.description ?? ""}
@@ -637,11 +671,14 @@ export function CatalogPage() {
                         if (value !== (c.description ?? "")) updateCombo.mutate({ id: c.id, description: value || null });
                       }}
                     />
+                    )}
                   </TD>
                   <TD>{c.price}ج</TD>
                   <TD className="text-xs text-slate-500">{c.items.map((i) => `${variantDisplayName(i.variantId)} ×${i.quantity}`).join("، ")}</TD>
                   <TD>{c.isActive ? <Badge tone="success">نشط</Badge> : <Badge tone="neutral">معطّل</Badge>}</TD>
                   <TD>
+                    {canManage && (
+                    <>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -659,6 +696,8 @@ export function CatalogPage() {
                     >
                       {c.isActive ? "تعطيل" : "تفعيل"}
                     </Button>
+                    </>
+                    )}
                   </TD>
                 </TR>
               ))}
