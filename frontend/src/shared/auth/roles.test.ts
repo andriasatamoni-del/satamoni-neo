@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { can } from "./roles";
+import { isCompanyWide, can } from "./roles";
 import { PERMISSION } from "./permissions";
+import { seededUser } from "../../test/seedRoles";
 
 describe("can", () => {
   const user = { permissions: [PERMISSION.ORDERS_VIEW, PERMISSION.KITCHEN_VIEW] };
@@ -22,5 +23,17 @@ describe("can", () => {
     expect(can(null, PERMISSION.ORDERS_VIEW)).toBe(false);
     expect(can(undefined, PERMISSION.ORDERS_VIEW)).toBe(false);
     expect(can(user)).toBe(false);
+  });
+});
+
+describe("isCompanyWide", () => {
+  it("mirrors the backend branch scope: admin/accountant always, callcenter only without a branch", () => {
+    expect(isCompanyWide(seededUser("admin"))).toBe(true);
+    expect(isCompanyWide(seededUser("accountant"))).toBe(true);
+    expect(isCompanyWide(seededUser("callcenter"))).toBe(true);
+    expect(isCompanyWide({ ...seededUser("callcenter"), branchId: "branch-1" })).toBe(false);
+    expect(isCompanyWide(seededUser("branch_manager"))).toBe(false);
+    expect(isCompanyWide(seededUser("cashier"))).toBe(false);
+    expect(isCompanyWide(null)).toBe(false);
   });
 });

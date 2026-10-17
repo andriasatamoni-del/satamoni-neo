@@ -153,7 +153,7 @@ const BASE_TABS = [
   { key: "delays", label: "التأخيرات" },
   { key: "item-performance", label: "أداء الأصناف" },
   { key: "catalog", label: "قائمة الطعام" },
-  { key: "recipes", label: "الوصفات" },
+  { key: "recipes", label: "الوصفات", companyWideOnly: true },
   { key: "inventory-valuation", label: "تقييم المخزون" },
   { key: "stock-card", label: "كارت الصنف" },
   { key: "transfers", label: "التحويلات بين الفروع" },
@@ -167,16 +167,17 @@ const BASE_TABS = [
   { key: "purchases-report", label: "تقرير المشتريات النقدية" },
 ];
 // مقارنة شاملة بين كل الفروع - GET /reports/inventory-comparison محتاج reports.branch_health
-const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH };
+const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH, companyWideOnly: true };
 const PROCUREMENT_TABS = [
   { key: "purchase-orders", label: "أوامر الشراء" },
   { key: "purchase-receipts", label: "أذون الاستلام" },
-  { key: "purchase-price-history", label: "تاريخ سعر الصنف" },
+  { key: "purchase-price-history", label: "تاريخ سعر الصنف", companyWideOnly: true },
   { key: "purchase-price-variance", label: "فروق أسعار الشراء" },
-  { key: "supplier-performance", label: "أداء المورد" },
+  { key: "supplier-performance", label: "أداء المورد", companyWideOnly: true },
   { key: "outstanding-purchase-orders", label: "أوامر شراء مستنية" },
 ];
-// تقارير المبيعات/التشغيل محتاجة reports.view، وتقارير المشتريات purchasing.view
+// تقارير المبيعات/التشغيل محتاجة reports.view، وتقارير المشتريات purchasing.view.
+// companyWideOnly = الـendpoint عليه @CompanyWideOnly() في الباك (مقفول على اليوزر المربوط بفرع)
 const TABS = [
   ...BASE_TABS.map((t) => ({ ...t, perm: PERMISSION.REPORTS_VIEW })),
   BRANCH_HEALTH_TAB,

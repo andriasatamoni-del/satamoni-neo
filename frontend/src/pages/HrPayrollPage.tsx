@@ -9,7 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
-import { can, hasRole } from "../shared/auth/roles";
+import { can, hasRole, isCompanyWide } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
@@ -59,7 +59,7 @@ const TABS = [
   // الأقسام والمسميات بتتقري بـhr.employees.view/manage؛ الإضافة والتعديل محتاجين hr.organization.manage
   { key: "organization", label: "الهيكل التنظيمي", perm: [PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE] },
   { key: "leave", label: "طلبات الإجازة", perm: PERMISSION.HR_LEAVE_REVIEW },
-  { key: "adjustments", label: "سلف وجزاءات ومكافآت", perm: [PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE] },
+  { key: "adjustments", label: "سلف وجزاءات ومكافآت", perm: [PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE], companyWideOnly: true },
 ];
 
 export function HrPayrollPage() {
@@ -69,10 +69,12 @@ export function HrPayrollPage() {
   const canSeeEmployees = can(user, PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE);
   const canManageEmployees = can(user, PERMISSION.HR_EMPLOYEES_MANAGE);
   const canManageOrganization = can(user, PERMISSION.HR_ORGANIZATION_MANAGE);
-  const canSeePayroll = can(user, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE);
-  const canManagePayroll = can(user, PERMISSION.HR_PAYROLL_MANAGE);
-  const canApprovePayroll = can(user, PERMISSION.HR_PAYROLL_APPROVE);
-  const canManageAdjustments = can(user, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE);
+  // قوائم الرواتب والسلف/الجزاءات عليها @CompanyWideOnly() في الباك، فمدير الفرع مش بيشوفها حتى لو معاه hr.payroll.view
+  const companyWide = isCompanyWide(user);
+  const canSeePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE);
+  const canManagePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_MANAGE);
+  const canApprovePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_APPROVE);
+  const canManageAdjustments = companyWide && can(user, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE);
 
   // الموظفين والأقسام والمسميات بيتستخدموا في أكتر من تاب (أسامي وفورمات)، فبيتحمّلوا مع الصفحة
   const employeesQuery = useQuery({
