@@ -57,6 +57,7 @@ How the integration tests run:
 ```bash
 pnpm dev       # Vite on :5173; proxies /api/* -> http://localhost:4100 (override with VITE_API_PROXY_TARGET)
 pnpm build     # tsc && vite build (this is the typecheck; CI gate)
+pnpm test      # vitest (src/**/*.test.{ts,tsx}, jsdom); CI gate
 ```
 
 ## Backend architecture
@@ -135,7 +136,9 @@ The business day is the **Africa/Cairo calendar date**. The process and DB sessi
 
 - `src/App.tsx` holds the routes. Pages live in `src/pages/` (one page per backend context, plus `portal/` and `storefront/` for the customer-facing `/order` site).
 - `src/shared/api/client.ts`: the staff API client. It stores the JWT in localStorage (`satamoni-neo:token`) and uses `VITE_API_BASE_URL` as its base URL, falling back to `/api` so the Vite proxy handles requests in dev. `customerClient.ts` is the separate client for storefront customer auth.
-- `src/shared/auth/AuthContext.tsx`: auth state. The user from `/auth/me` carries `roles` and effective `permissions`; use `hasRole(user, ...)` / `can(user, "key")` from `src/shared/auth/roles.ts` to show or hide actions (the backend still enforces).
+- `src/shared/auth/AuthContext.tsx`: auth state. The user from `/auth/me` carries `roles` and effective `permissions`. Gate UI with `can(user, PERMISSION.X, ...)` (any one key, like `@RequirePermission`) or `useCan()`; use `hasRole` only for branch-scope decisions, which come from roles by design. The backend still enforces.
+- `src/routes.ts` (`STAFF_ROUTES`) is the single list of staff routes: `perm` holds the backend `@RequirePermission` keys of the page's endpoints. `App.tsx` wraps each route in `RequirePermission` (shows `NoAccess`; unknown URLs show `NotFound`) and the sidebar shows only the routes the user can open. A new page needs an entry there and in `STAFF_PAGES`.
+- Tabs take an optional `perm`; use `usePermittedTabs(TABS)` so hidden tabs never become active, and give each tab's query `enabled: <permission> && tab === "<key>"`. Action buttons are wrapped in the matching permission. Branch pickers use `useBranchOptions()` (`GET /branches` needs `branches.view`; without it the list is the user's own branch).
 - `src/shared/offline/`: offline cashier mode. IndexedDB queue plus `useOfflineSync`. `public/sw.js` caches the UI so the orders page can open without network.
 
 ## Legacy import & operations

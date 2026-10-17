@@ -34,10 +34,20 @@ export function hasRole(user: { roles: readonly Role[] } | null | undefined, ...
   return !!user && wanted.some((r) => user.roles.includes(r));
 }
 
-export function can(user: { permissions: readonly Permission[] } | null | undefined, permission: Permission): boolean {
-  return !!user && user.permissions.includes(permission);
+// أي صلاحية واحدة من اللي متبعتة كفاية - نفس معنى @RequirePermission(...keys) في الباك.
+// can(user) من غير مفاتيح = false (مفيش حاجة تتسمح من غير مفتاح صريح).
+export function can(user: { permissions: readonly Permission[] } | null | undefined, ...permissions: Permission[]): boolean {
+  return !!user && permissions.some((p) => user.permissions.includes(p));
 }
 
 export function roleLabels(roles: readonly Role[]): string {
   return roles.map((r) => ROLE_LABELS[r] ?? r).join("، ");
+}
+
+// نفس branchScopeOf في الباك (backend/src/shared/authorization/branch-scope.ts): الأدمن والمحاسب على مستوى الشركة،
+// والكول سنتر بس لو مالوش فرع. اللي غيرهم مربوط بفرعه، فالـendpoints اللي عليها @CompanyWideOnly() بترجعله 403.
+export function isCompanyWide(user: { roles: readonly Role[]; branchId?: string | null } | null | undefined): boolean {
+  if (!user) return false;
+  if (hasRole(user, ROLE.ADMIN, ROLE.ACCOUNTANT)) return true;
+  return hasRole(user, ROLE.CALLCENTER) && !user.branchId;
 }

@@ -106,3 +106,7 @@ jobs:
       - name: Typecheck and build
         working-directory: frontend
         run: pnpm run build
+      # Reads backend/drizzle/0002_seed_role_permissions.sql to check the sidebar per seeded role.
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm run test

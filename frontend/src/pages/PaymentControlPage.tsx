@@ -1,13 +1,16 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface PaymentMethod { id: string; name: string; kind: string; settlementChannel: string | null; isActive: boolean; }
 interface Payment { id: string; orderId: string; branchId: string; methodKind: string; settlementChannel: string | null; amount: number; lockedAt: string; }
@@ -52,18 +55,23 @@ const TABS = [
   { key: "adjustments", label: "طلبات التعديل" },
   { key: "reconciliation", label: "المطابقة" },
   { key: "exceptions", label: "الاستثناءات" },
-  { key: "audit", label: "سجل التدقيق" },
+  // GET /audit-logs محتاج audit.view
+  { key: "audit", label: "سجل التدقيق", perm: PERMISSION.AUDIT_VIEW },
 ];
 
 export function PaymentControlPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("overview");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const allowed = useCan();
+  const canRequestAdjustment = allowed(PERMISSION.PAYMENT_CONTROL_ADJUSTMENT_REQUEST);
+  const canDecideAdjustment = allowed(PERMISSION.PAYMENT_CONTROL_ADJUSTMENT_APPROVE, PERMISSION.PAYMENT_CONTROL_ADJUSTMENT_APPROVE_HIGH);
+  const canReconcile = allowed(PERMISSION.PAYMENT_CONTROL_RECONCILIATION_ENTER);
   const methodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
   const paymentsQuery = useQuery({ queryKey: ["payment-control", "payments"], queryFn: () => apiRequest<Payment[]>("/payment-control/payments") });
   const requestsQuery = useQuery({ queryKey: ["payment-control", "requests"], queryFn: () => apiRequest<AdjustmentRequest[]>("/payment-control/adjustment-requests") });
   const recordsQuery = useQuery({ queryKey: ["payment-control", "records"], queryFn: () => apiRequest<ReconciliationRecord[]>("/payment-control/reconciliation-records") });
   const exceptionsQuery = useQuery({ queryKey: ["payment-control", "exceptions"], queryFn: () => apiRequest<PaymentException[]>("/payment-control/exceptions") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const { branches } = useBranchOptions<Branch>(tab === "overview");
 
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportBranchId, setReportBranchId] = useState("");
@@ -226,7 +234,7 @@ export function PaymentControlPage() {
   return (
     <div>
       <PageHeader title="التحكم في المدفوعات والمطابقة" description="الدفعات، طلبات التعديل، والمطابقة مع كشوف الحساب" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "overview" && (
         <div className="space-y-6">
@@ -239,7 +247,7 @@ export function PaymentControlPage() {
                 <Field label="الفرع">
                   <Select value={reportBranchId} onChange={(e) => setReportBranchId(e.target.value)} className="max-w-[220px]">
                     <option value="">كل الفروع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -316,35 +324,37 @@ export function PaymentControlPage() {
 
       {tab === "adjustments" && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>طلب تعديل دفعة</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAdjustment.mutate(); }} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Field label="الدفعة">
-                    <Select required value={adjustmentForm.paymentId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, paymentId: e.target.value })}>
-                      <option value="">اختر دفعة</option>
-                      {payments.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="الطريقة المقترحة">
-                    <Select value={adjustmentForm.proposedPaymentMethodId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedPaymentMethodId: e.target.value })}>
-                      <option value="">نفس الطريقة (تصحيح مبلغ بس)</option>
-                      {methodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="المبلغ المقترح">
-                    <Input required type="number" value={adjustmentForm.proposedAmount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedAmount: e.target.value })} />
-                  </Field>
-                  <Field label="السبب">
-                    <Input value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} />
-                  </Field>
-                </div>
-                {adjustmentError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
-                <Button type="submit" disabled={createAdjustment.isPending}>طلب</Button>
-              </form>
-            </CardBody>
-          </Card>
+          {canRequestAdjustment && (
+            <Card>
+              <CardHeader><CardTitle>طلب تعديل دفعة</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAdjustment.mutate(); }} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="الدفعة">
+                      <Select required value={adjustmentForm.paymentId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, paymentId: e.target.value })}>
+                        <option value="">اختر دفعة</option>
+                        {payments.map((p) => <option key={p.id} value={p.id}>{p.orderId.slice(0, 8)} - {p.amount}ج</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="الطريقة المقترحة">
+                      <Select value={adjustmentForm.proposedPaymentMethodId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedPaymentMethodId: e.target.value })}>
+                        <option value="">نفس الطريقة (تصحيح مبلغ بس)</option>
+                        {methodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="المبلغ المقترح">
+                      <Input required type="number" value={adjustmentForm.proposedAmount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, proposedAmount: e.target.value })} />
+                    </Field>
+                    <Field label="السبب">
+                      <Input value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} />
+                    </Field>
+                  </div>
+                  {adjustmentError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
+                  <Button type="submit" disabled={createAdjustment.isPending}>طلب</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>الطلبات ({requests.length})</CardTitle></CardHeader>
@@ -362,7 +372,7 @@ export function PaymentControlPage() {
                       <TD>{r.reason ?? "-"}</TD>
                       <TD><StatusBadge status={STATUS_LABELS[r.status] ?? r.status} /></TD>
                       <TD>
-                        {r.status === "PENDING" && (
+                        {r.status === "PENDING" && canDecideAdjustment && (
                           <div className="flex gap-1.5">
                             <Button size="sm" onClick={() => decideAdjustment.mutate({ id: r.id, action: "approve" })} disabled={decideAdjustment.isPending}>اعتماد</Button>
                             <Button size="sm" variant="danger" onClick={() => decideAdjustment.mutate({ id: r.id, action: "reject" })} disabled={decideAdjustment.isPending}>رفض</Button>
@@ -381,114 +391,118 @@ export function PaymentControlPage() {
 
       {tab === "reconciliation" && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>تسجيل سطر مطابقة</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRecord.mutate(); }} className="mb-4 space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {canReconcile && (
+            <Card>
+              <CardHeader><CardTitle>تسجيل سطر مطابقة</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRecord.mutate(); }} className="mb-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="المصدر">
+                      <Select value={recordForm.source} onChange={(e) => setRecordForm({ ...recordForm, source: e.target.value })}>
+                        {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="المبلغ">
+                      <Input required type="number" value={recordForm.externalAmount} onChange={(e) => setRecordForm({ ...recordForm, externalAmount: e.target.value })} />
+                    </Field>
+                    <Field label="التاريخ">
+                      <Input required type="date" value={recordForm.externalDate} onChange={(e) => setRecordForm({ ...recordForm, externalDate: e.target.value })} />
+                    </Field>
+                    <Field label="مرجع خارجي">
+                      <Input value={recordForm.externalReference} onChange={(e) => setRecordForm({ ...recordForm, externalReference: e.target.value })} />
+                    </Field>
+                  </div>
+                  <Button type="submit" disabled={createRecord.isPending}>تسجيل</Button>
+                </form>
+                <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+                  <Button variant="secondary" onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending}>
+                    مطابقة تلقائية (إنستاباي/أورانج كاش)
+                  </Button>
+                  {autoMatch.data && (
+                    <span className="text-sm text-slate-600">
+                      اتطابق: <strong>{autoMatch.data.matched}</strong> | فضل غير متطابق: <strong>{autoMatch.data.leftUnmatched}</strong>
+                    </span>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
+          {canReconcile && (
+            <Card>
+              <CardHeader><CardTitle>استيراد كشف حساب (CSV)</CardTitle></CardHeader>
+              <CardBody className="space-y-4">
+                <div className="flex flex-wrap items-end gap-3">
                   <Field label="المصدر">
-                    <Select value={recordForm.source} onChange={(e) => setRecordForm({ ...recordForm, source: e.target.value })}>
+                    <Select value={importSource} onChange={(e) => setImportSource(e.target.value)} className="max-w-[220px]">
                       {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </Select>
                   </Field>
-                  <Field label="المبلغ">
-                    <Input required type="number" value={recordForm.externalAmount} onChange={(e) => setRecordForm({ ...recordForm, externalAmount: e.target.value })} />
-                  </Field>
-                  <Field label="التاريخ">
-                    <Input required type="date" value={recordForm.externalDate} onChange={(e) => setRecordForm({ ...recordForm, externalDate: e.target.value })} />
-                  </Field>
-                  <Field label="مرجع خارجي">
-                    <Input value={recordForm.externalReference} onChange={(e) => setRecordForm({ ...recordForm, externalReference: e.target.value })} />
+                  <Field label="ملف CSV">
+                    <input type="file" accept=".csv,text/csv" onChange={handleImportFile} className="text-sm" />
                   </Field>
                 </div>
-                <Button type="submit" disabled={createRecord.isPending}>تسجيل</Button>
-              </form>
-              <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
-                <Button variant="secondary" onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending}>
-                  مطابقة تلقائية (إنستاباي/أورانج كاش)
-                </Button>
-                {autoMatch.data && (
-                  <span className="text-sm text-slate-600">
-                    اتطابق: <strong>{autoMatch.data.matched}</strong> | فضل غير متطابق: <strong>{autoMatch.data.leftUnmatched}</strong>
-                  </span>
+
+                {importRows.length > 0 && (
+                  <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+                    <p className="text-xs text-slate-500">حدد أي عمود التاريخ/المبلغ/المرجع من صفوف الملف (عيّنة أول 5 صفوف تحت)</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Field label="عمود التاريخ">
+                        <Select value={importDateCol ?? ""} onChange={(e) => setImportDateCol(e.target.value === "" ? null : Number(e.target.value))}>
+                          <option value="">- اختر -</option>
+                          {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="عمود المبلغ">
+                        <Select value={importAmountCol ?? ""} onChange={(e) => setImportAmountCol(e.target.value === "" ? null : Number(e.target.value))}>
+                          <option value="">- اختر -</option>
+                          {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="عمود المرجع (اختياري)">
+                        <Select value={importRefCol ?? ""} onChange={(e) => setImportRefCol(e.target.value === "" ? null : Number(e.target.value))}>
+                          <option value="">- بدون -</option>
+                          {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
+                        </Select>
+                      </Field>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {importRows.slice(0, 5).map((row, ri) => (
+                            <tr key={ri} className="border-b border-slate-100">
+                              {row.map((cell, ci) => <td key={ci} className="px-2 py-1 text-slate-600">{cell}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Button
+                        size="sm"
+                        disabled={importDateCol === null || importAmountCol === null || commitImport.isPending}
+                        onClick={() => commitImport.mutate()}
+                      >
+                        استيراد {parsedImportPreview.length} سطر
+                      </Button>
+                    </div>
+                    {importError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{importError}</p>}
+                  </div>
                 )}
-              </div>
-            </CardBody>
-          </Card>
 
-          <Card>
-            <CardHeader><CardTitle>استيراد كشف حساب (CSV)</CardTitle></CardHeader>
-            <CardBody className="space-y-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <Field label="المصدر">
-                  <Select value={importSource} onChange={(e) => setImportSource(e.target.value)} className="max-w-[220px]">
-                    {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </Select>
-                </Field>
-                <Field label="ملف CSV">
-                  <input type="file" accept=".csv,text/csv" onChange={handleImportFile} className="text-sm" />
-                </Field>
-              </div>
-
-              {importRows.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500">حدد أي عمود التاريخ/المبلغ/المرجع من صفوف الملف (عيّنة أول 5 صفوف تحت)</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field label="عمود التاريخ">
-                      <Select value={importDateCol ?? ""} onChange={(e) => setImportDateCol(e.target.value === "" ? null : Number(e.target.value))}>
-                        <option value="">- اختر -</option>
-                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="عمود المبلغ">
-                      <Select value={importAmountCol ?? ""} onChange={(e) => setImportAmountCol(e.target.value === "" ? null : Number(e.target.value))}>
-                        <option value="">- اختر -</option>
-                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="عمود المرجع (اختياري)">
-                      <Select value={importRefCol ?? ""} onChange={(e) => setImportRefCol(e.target.value === "" ? null : Number(e.target.value))}>
-                        <option value="">- بدون -</option>
-                        {importRows[0]?.map((_, i) => <option key={i} value={i}>عمود {i + 1}</option>)}
-                      </Select>
-                    </Field>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <tbody>
-                        {importRows.slice(0, 5).map((row, ri) => (
-                          <tr key={ri} className="border-b border-slate-100">
-                            {row.map((cell, ci) => <td key={ci} className="px-2 py-1 text-slate-600">{cell}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      size="sm"
-                      disabled={importDateCol === null || importAmountCol === null || commitImport.isPending}
-                      onClick={() => commitImport.mutate()}
-                    >
-                      استيراد {parsedImportPreview.length} سطر
+                {lastImportBatch && (
+                  <div className="flex items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                    <span>تم استيراد {lastImportBatch.count} سطر بنجاح.</span>
+                    <Button size="sm" variant="ghost" onClick={() => cancelImportBatch.mutate(lastImportBatch.batchId)} disabled={cancelImportBatch.isPending}>
+                      تراجع عن الدفعة دي
                     </Button>
                   </div>
-                  {importError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{importError}</p>}
-                </div>
-              )}
-
-              {lastImportBatch && (
-                <div className="flex items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                  <span>تم استيراد {lastImportBatch.count} سطر بنجاح.</span>
-                  <Button size="sm" variant="ghost" onClick={() => cancelImportBatch.mutate(lastImportBatch.batchId)} disabled={cancelImportBatch.isPending}>
-                    تراجع عن الدفعة دي
-                  </Button>
-                </div>
-              )}
-            </CardBody>
-          </Card>
+                )}
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>سطور المطابقة ({records.length})</CardTitle></CardHeader>
@@ -506,7 +520,7 @@ export function PaymentControlPage() {
                       <TD>{new Date(r.externalDate).toLocaleDateString("ar-EG")}</TD>
                       <TD><StatusBadge status={MATCH_STATUS_LABELS[r.matchStatus] ?? r.matchStatus} /></TD>
                       <TD>
-                        {r.matchStatus === "UNMATCHED" && (
+                        {r.matchStatus === "UNMATCHED" && canReconcile && (
                           <div className="flex items-center gap-2">
                             <Select
                               className="w-auto"

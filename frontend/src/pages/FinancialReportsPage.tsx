@@ -5,9 +5,10 @@ import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { hasRole } from "../shared/auth/roles";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
 
 interface Account {
   id: string;
@@ -106,11 +107,14 @@ interface BranchHealthReport {
   branches: BranchHealthRow[];
 }
 
-const BASE_TABS = [
-  { key: "income-statement", label: "قائمة الدخل" },
-  { key: "trial-balance", label: "ميزان المراجعة" },
-  { key: "general-ledger", label: "دفتر الأستاذ" },
-  { key: "food-cost", label: "تكلفة الطعام" },
+const ACCOUNTING_READ = [PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE];
+const TABS = [
+  { key: "income-statement", label: "قائمة الدخل", perm: ACCOUNTING_READ },
+  { key: "trial-balance", label: "ميزان المراجعة", perm: ACCOUNTING_READ },
+  { key: "general-ledger", label: "دفتر الأستاذ", perm: ACCOUNTING_READ },
+  { key: "food-cost", label: "تكلفة الطعام", perm: PERMISSION.REPORTS_VIEW },
+  // مقارنة شاملة بين كل الفروع (مدير الفرع مقفول على فرعه، مش له معنى يقارن فروع تانية)
+  { key: "branch-health", label: "صحة الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH, companyWideOnly: true },
 ];
 
 function fmt(n: number): string {
@@ -129,13 +133,12 @@ function monthAgoStr(): string {
 
 export function FinancialReportsPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState("income-statement");
-  const accountsQuery = useQuery({ queryKey: ["accounting", "accounts"], queryFn: () => apiRequest<Account[]>("/accounting/accounts") });
-
-  // بطاقة صحة الفروع مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
-  // في الباك إند بالظبط (مدير الفرع مقفول على فرعه، مش له معنى يقارن فروع تانية)
-  const canSeeBranchHealth = hasRole(user, "admin", "accountant");
-  const tabs = canSeeBranchHealth ? [...BASE_TABS, { key: "branch-health", label: "صحة الفروع" }] : BASE_TABS;
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const accountsQuery = useQuery({
+    queryKey: ["accounting", "accounts"],
+    queryFn: () => apiRequest<Account[]>("/accounting/accounts"),
+    enabled: tab === "general-ledger" && can(user, ...ACCOUNTING_READ),
+  });
 
   return (
     <div>
@@ -145,7 +148,7 @@ export function FinancialReportsPage() {
       {tab === "trial-balance" && <TrialBalanceTab />}
       {tab === "general-ledger" && <GeneralLedgerTab accounts={accountsQuery.data ?? []} />}
       {tab === "food-cost" && <FoodCostTab />}
-      {tab === "branch-health" && canSeeBranchHealth && <BranchHealthTab />}
+      {tab === "branch-health" && <BranchHealthTab />}
     </div>
   );
 }

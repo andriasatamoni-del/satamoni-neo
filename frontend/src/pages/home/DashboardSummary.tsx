@@ -5,7 +5,8 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Select } from "../../shared/ui/Field";
 import { Badge, type Tone } from "../../shared/ui/Badge";
-import { hasRole } from "../../shared/auth/roles";
+import { can, hasRole } from "../../shared/auth/roles";
+import { PERMISSION } from "../../shared/auth/permissions";
 
 interface Branch { id: string; name: string; }
 interface DashboardSummary {
@@ -50,11 +51,13 @@ export function DashboardSummary() {
   const from = toDateStr(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000));
 
   // مدير الفرع مقفول على فرعه من السيرفر أصلًا (نفس نطاق الريبو القديم) - فلتر الفرع هنا للأدمن/المحاسب بس
-  const showBranchFilter = hasRole(user, "admin", "accountant");
+  // (نطاق الفرع من الأدوار by design؛ ولستة الفروع نفسها محتاجة branches.view)
+  const canSeeDashboard = can(user, PERMISSION.REPORTS_VIEW);
+  const showBranchFilter = hasRole(user, "admin", "accountant") && can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiRequest<Branch[]>("/branches"),
-    enabled: showBranchFilter,
+    enabled: canSeeDashboard && showBranchFilter,
   });
 
   const summaryQuery = useQuery({
@@ -62,11 +65,12 @@ export function DashboardSummary() {
     queryFn: () =>
       apiRequest<DashboardSummary>(`/reports/dashboard?from=${from}&to=${to}${branchId ? `&branchId=${branchId}` : ""}`),
     retry: false,
+    enabled: canSeeDashboard,
   });
 
-  // كاشير/كول سنتر/سائق معندهمش reports.view - السيرفر بيرجع 403 وإحنا هنا بنتعامل مع ده بإخفاء
-  // اللوحة كلها بدل ما نعرض رسالة خطأ (نفس أسلوب ShiftReviewPanel بالظبط)
-  if (summaryQuery.isError) return null;
+  // كاشير/كول سنتر/سائق معندهمش reports.view - اللوحة مش بتظهر خالص ومفيش طلب بيتبعت.
+  // الخطأ (مثلًا الصلاحية اتشالت بعد آخر /auth/me) برضه بيخفي اللوحة بدل رسالة خطأ.
+  if (!canSeeDashboard || summaryQuery.isError) return null;
 
   const data = summaryQuery.data;
   const maxDailyRevenue = Math.max(1, ...(data?.dailyTrend.map((d) => d.revenue) ?? [0]));

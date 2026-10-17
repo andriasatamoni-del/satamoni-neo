@@ -9,7 +9,8 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
-import { hasRole } from "../shared/auth/roles";
+import { can } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
 
 interface Reward {
   id: string;
@@ -35,13 +36,31 @@ const EMPTY_FORM = { name: "", description: "", imageUrl: "", pointsCost: "", ki
 // على موقع الطلب (خصم / بيتزا هدية / فطيرة حلو هدية / كومبو هدية)
 export function LoyaltyPage() {
   const { user } = useAuth();
-  const canManage = hasRole(user, "admin");
+  const canManage = can(user, PERMISSION.LOYALTY_MANAGE);
+  // نسبة الكسب جزء من إعدادات النظام (PATCH /pos-settings)
+  const canManageRate = can(user, PERMISSION.POS_SETTINGS_MANAGE);
+  const canSeeSettings = can(user, PERMISSION.POS_SETTINGS_VIEW, PERMISSION.POS_SETTINGS_MANAGE);
+  // أصناف/عروض فورم المكافأة - بتتحمّل بس لمين يقدر يعدّل المكافآت
+  const canPickTargets = canManage && can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
   const queryClient = useQueryClient();
 
-  const settingsQuery = useQuery({ queryKey: ["pos-settings"], queryFn: () => apiRequest<{ loyaltyPointsPerEgp: number }>("/pos-settings") });
+  const settingsQuery = useQuery({
+    queryKey: ["pos-settings"],
+    queryFn: () => apiRequest<{ loyaltyPointsPerEgp: number }>("/pos-settings"),
+    enabled: canSeeSettings,
+  });
   const rewardsQuery = useQuery({ queryKey: ["loyalty", "rewards"], queryFn: () => apiRequest<Reward[]>("/loyalty/rewards") });
-  const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
-  const combosQuery = useQuery({ queryKey: ["catalog", "combos", "all"], queryFn: () => apiRequest<Combo[]>("/catalog/combos/all") });
+  const itemsQuery = useQuery({
+    queryKey: ["catalog", "items"],
+    queryFn: () => apiRequest<MenuItem[]>("/catalog/items"),
+    enabled: canPickTargets,
+  });
+  // العروض النشطة بس (الفورم مش بيعرض غيرها) - /catalog/combos/all محتاج catalog.items.manage
+  const combosQuery = useQuery({
+    queryKey: ["catalog", "combos"],
+    queryFn: () => apiRequest<Combo[]>("/catalog/combos"),
+    enabled: canPickTargets,
+  });
 
   // الإدارة بتكتب "كل كام جنيه = نقطة" (أوضح من 0.1 نقطة لكل جنيه)
   const [egpPerPoint, setEgpPerPoint] = useState("");
@@ -107,32 +126,34 @@ export function LoyaltyPage() {
     <div>
       <PageHeader title="نقاط الولاء" description="العميل بيكسب نقاط على كل طلب بعد ما يتسلّم، ويصرفها في مكافأة وهو بيطلب من الموقع" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>نسبة الكسب</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <form
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              saveRate.mutate();
-            }}
-          >
-            <Field label="كل كام جنيه = نقطة واحدة (صفر = الكسب واقف)">
-              <Input type="number" min="0" step="any" value={egpPerPoint} onChange={(e) => setEgpPerPoint(e.target.value)} disabled={!canManage} data-testid="egp-per-point" />
-            </Field>
-            {canManage && (
-              <Button type="submit" disabled={saveRate.isPending}>
-                حفظ
-              </Button>
-            )}
-            <p className="text-sm text-slate-500">
-              {rate > 0 ? `طلب بـ200 جنيه = ${Math.floor(200 * rate)} نقطة. النقاط بتتضاف لما الطلب يتقفل (اتسلّم)، لأي طلب برقم عميل عنده حساب.` : "الكسب واقف دلوقتي."}
-            </p>
-          </form>
-        </CardBody>
-      </Card>
+      {canSeeSettings && (
+        <Card>
+          <CardHeader>
+            <CardTitle>نسبة الكسب</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                saveRate.mutate();
+              }}
+            >
+              <Field label="كل كام جنيه = نقطة واحدة (صفر = الكسب واقف)">
+                <Input type="number" min="0" step="any" value={egpPerPoint} onChange={(e) => setEgpPerPoint(e.target.value)} disabled={!canManageRate} data-testid="egp-per-point" />
+              </Field>
+              {canManageRate && (
+                <Button type="submit" disabled={saveRate.isPending}>
+                  حفظ
+                </Button>
+              )}
+              <p className="text-sm text-slate-500">
+                {rate > 0 ? `طلب بـ200 جنيه = ${Math.floor(200 * rate)} نقطة. النقاط بتتضاف لما الطلب يتقفل (اتسلّم)، لأي طلب برقم عميل عنده حساب.` : "الكسب واقف دلوقتي."}
+              </p>
+            </form>
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="mt-6">
         <CardHeader>

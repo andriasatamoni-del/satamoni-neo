@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
+import { useCan } from "../../shared/auth/AuthContext";
+import { PERMISSION } from "../../shared/auth/permissions";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../../shared/ui/Table";
@@ -14,14 +16,18 @@ interface Shift {
   cashVariance: number | null;
 }
 
-// بتظهر بس للأدوار اللي عندها shifts.view_branch (مدير فرع/محاسب/أدمن) - لو المستخدم مالوش الصلاحية
-// دي، الـAPI بيرجّع 403 والاستعلام بيفشل بهدوء فمكوّن مايظهرش خالص (مفيش داعي لفحص صلاحيات هنا كمان)
+// بتظهر بس للي عنده shifts.view_branch (مدير فرع/محاسب/أدمن)، وأزرار المراجعة لـshifts.review.
+// من غير الصلاحية المكوّن مش بيظهر ومفيش طلب بيتبعت؛ لو الطلب فشل برضه بيختفي بهدوء.
 export function ShiftReviewPanel() {
   const queryClient = useQueryClient();
+  const allowed = useCan();
+  const canSee = allowed(PERMISSION.SHIFTS_VIEW_BRANCH);
+  const canReview = allowed(PERMISSION.SHIFTS_REVIEW);
   const shiftsQuery = useQuery({
     queryKey: ["shifts", "pending-review"],
     queryFn: () => apiRequest<Shift[]>("/shifts?status=PENDING_REVIEW"),
     retry: false,
+    enabled: canSee,
   });
 
   const review = useMutation({
@@ -33,7 +39,7 @@ export function ShiftReviewPanel() {
     },
   });
 
-  if (shiftsQuery.isError || !shiftsQuery.data || shiftsQuery.data.length === 0) return null;
+  if (!canSee || shiftsQuery.isError || !shiftsQuery.data || shiftsQuery.data.length === 0) return null;
 
   return (
     <Card className="mb-6 border-amber-300">
@@ -54,10 +60,12 @@ export function ShiftReviewPanel() {
                 <TD>{s.expectedCash}ج</TD>
                 <TD className="font-bold text-red-600">{s.cashVariance}ج</TD>
                 <TD>
-                  <div className="flex gap-1.5">
-                    <Button size="sm" onClick={() => review.mutate({ id: s.id, decision: "approve" })} disabled={review.isPending}>اعتماد</Button>
-                    <Button size="sm" variant="secondary" onClick={() => review.mutate({ id: s.id, decision: "acknowledge" })} disabled={review.isPending}>إقرار</Button>
-                  </div>
+                  {canReview && (
+                    <div className="flex gap-1.5">
+                      <Button size="sm" onClick={() => review.mutate({ id: s.id, decision: "approve" })} disabled={review.isPending}>اعتماد</Button>
+                      <Button size="sm" variant="secondary" onClick={() => review.mutate({ id: s.id, decision: "acknowledge" })} disabled={review.isPending}>إقرار</Button>
+                    </div>
+                  )}
                 </TD>
               </TR>
             ))}

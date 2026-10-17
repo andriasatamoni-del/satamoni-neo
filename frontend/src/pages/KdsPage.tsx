@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { can } from "../shared/auth/roles";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -49,21 +52,32 @@ const TONE_CLASSES: Record<string, string> = {
 export function KdsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const canSeeCatalog = can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
+  const canAdvance = can(user, PERMISSION.KITCHEN_ADVANCE);
+  const { branches, canListBranches } = useBranchOptions<Branch>();
   const [branchId, setBranchId] = useState(user?.branchId ?? "");
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!branchId && branchesQuery.data?.length) setBranchId(branchesQuery.data[0].id);
-  }, [branchId, branchesQuery.data]);
+    if (!branchId && branches.length) setBranchId(branches[0].id);
+  }, [branchId, branches]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(interval);
   }, []);
 
-  const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
-  const combosQuery = useQuery({ queryKey: ["catalog", "combos"], queryFn: () => apiRequest<Combo[]>("/catalog/combos") });
+  // أسامي الأصناف للعرض بس - من غير صلاحية القائمة الكارت بيعرض "صنف"
+  const menuItemsQuery = useQuery({
+    queryKey: ["catalog", "items"],
+    queryFn: () => apiRequest<MenuItem[]>("/catalog/items"),
+    enabled: canSeeCatalog,
+  });
+  const combosQuery = useQuery({
+    queryKey: ["catalog", "combos"],
+    queryFn: () => apiRequest<Combo[]>("/catalog/combos"),
+    enabled: canSeeCatalog,
+  });
   const boardQuery = useQuery({
     queryKey: ["kds-board", branchId],
     queryFn: () => apiRequest<KdsOrder[]>(`/orders/kitchen-board?branchId=${branchId}`),
@@ -98,18 +112,20 @@ export function KdsPage() {
     <div>
       <PageHeader title="شاشة المطبخ (KDS)" description="متابعة الطلبات لحظة بلحظة أثناء التحضير" />
 
-      <Card className="mb-6">
-        <CardBody>
-          <div className="max-w-xs">
-            <Field label="الفرع">
-              <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                <option value="">اختر فرع</option>
-                {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
-            </Field>
-          </div>
-        </CardBody>
-      </Card>
+      {canListBranches && (
+        <Card className="mb-6">
+          <CardBody>
+            <div className="max-w-xs">
+              <Field label="الفرع">
+                <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                  <option value="">اختر فرع</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </Field>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {!branchId ? (
         <Card><CardBody><EmptyState>اختر فرع الأول عشان تشوف طلباته</EmptyState></CardBody></Card>
@@ -146,7 +162,7 @@ export function KdsPage() {
                         {order.customerNotes && (
                           <p className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">📝 {order.customerNotes}</p>
                         )}
-                        {status !== "READY" && (
+                        {status !== "READY" && canAdvance && (
                           <Button
                             size="sm"
                             className="w-full"

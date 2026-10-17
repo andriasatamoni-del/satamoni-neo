@@ -10,6 +10,7 @@ import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { can } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface PurchaseLine {
   inventoryItemId: string; quantity: number; unit: string | null; unitPrice: number; lineTotal: number;
@@ -38,12 +39,21 @@ export function PurchasesPage() {
   const { user } = useAuth();
   const isCashier = !can(user, PERMISSION.PURCHASES_CREATE);
   const queryClient = useQueryClient();
+  const canCreate = can(user, PERMISSION.PURCHASES_CREATE, PERMISSION.PURCHASES_CREATE_OWN_DAILY);
+  const canReview = can(user, PERMISSION.PURCHASES_REVIEW);
+  const canSeeSuppliers = can(user, PERMISSION.PROCUREMENT_SUPPLIERS_VIEW, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE);
 
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
-  const suppliersQuery = useQuery({ queryKey: ["procurement", "suppliers"], queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers") });
+  const { branches } = useBranchOptions<Branch>(!isCashier);
+  // أسامي الموردين في السجل - من غير صلاحية الموردين العمود بيعرض "-"
+  const suppliersQuery = useQuery({
+    queryKey: ["procurement", "suppliers"],
+    queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers"),
+    enabled: canSeeSuppliers,
+  });
   const rawItemsQuery = useQuery({
     queryKey: ["inventory", "items", "raw"],
     queryFn: async () => (await apiRequest<InventoryItem[]>("/inventory/items")).filter((i) => i.itemType === "raw"),
+    enabled: !isCashier && can(user, PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE),
   });
 
   const [filterBranchId, setFilterBranchId] = useState("");
@@ -125,10 +135,10 @@ export function PurchasesPage() {
   const purchases = purchasesQuery.data ?? [];
 
   function branchName(id: string): string {
-    return branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
+    return branches.find((b) => b.id === id)?.name ?? id;
   }
   function supplierName(id: string | null): string {
-    if (!id) return "-";
+    if (!id || !canSeeSuppliers) return "-";
     return suppliersQuery.data?.find((s) => s.id === id)?.name ?? id;
   }
   function itemName(id: string): string {
@@ -140,97 +150,99 @@ export function PurchasesPage() {
       <PageHeader title="المشتريات النقدية" description="تسجيل مشتريات نقدية طارئة (فرع/سنتر كيتشن) من غير أمر شراء رسمي" />
 
       <div className="mt-6 space-y-6">
-        <Card>
-          <CardHeader><CardTitle>تسجيل مشترى جديد</CardTitle></CardHeader>
-          <CardBody>
-            <p className="mb-4 text-sm text-slate-500">
-              {isCashier
-                ? "هيتسجّل على فرعك والنهاردة، وحالته دايمًا بانتظار المراجعة - محتاج مراجعة مدير الفرع أو المحاسب قبل ما يترحّل."
-                : "التسجيل هنا هو الاعتماد نفسه: هيترحّل فورًا. مشترى بمبلغ حر (من غير بنود) مبيرحّلش أي حركة مخزون أو قيد محاسبي - مجرد سجل. مشترى ببنود مواد خام حقيقية بيرحّل حركة مخزون وقيد محاسبي (1400/1100) فورًا."}
-            </p>
-            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createPurchase.mutate(undefined); }} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {!isCashier && (
-                  <Field label="الفرع">
-                    <Select required value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                )}
-                {!isCashier && (
-                  <Field label="التاريخ">
-                    <Input required type="date" value={form.businessDate} onChange={(e) => setForm({ ...form, businessDate: e.target.value })} />
-                  </Field>
-                )}
-                {!isCashier && (
-                  <Field label="نوع المشترى">
-                    <Select value={mode} onChange={(e) => setMode(e.target.value as "amount" | "items")}>
-                      <option value="amount">مبلغ حر (من غير بنود)</option>
-                      <option value="items">بنود مواد خام</option>
-                    </Select>
-                  </Field>
-                )}
-                {mode === "amount" && (
-                  <Field label="المبلغ">
-                    <Input required type="number" min="0.01" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-                  </Field>
-                )}
-                {!isCashier && (
-                  <Field label="على ذمة مورد (اختياري)">
-                    <Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-                      <option value="">بدون مورد</option>
-                      {suppliersQuery.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </Select>
-                  </Field>
-                )}
-                {!isCashier && form.supplierId && (
-                  <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">
-                    <Input value={form.supplierDocumentNumber} onChange={(e) => setForm({ ...form, supplierDocumentNumber: e.target.value })} />
-                  </Field>
-                )}
-              </div>
-
-              {!isCashier && mode === "items" && (
-                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                  {itemRows.map((row, idx) => (
-                    <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:items-end">
-                      <Field label="الصنف">
-                        <Select value={row.inventoryItemId} onChange={(e) => updateItemRow(idx, { inventoryItemId: e.target.value })}>
-                          <option value="">اختر صنف خام</option>
-                          {rawItemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                        </Select>
-                      </Field>
-                      <Field label="الكمية">
-                        <Input type="number" min="0.01" step="any" value={row.quantity} onChange={(e) => updateItemRow(idx, { quantity: e.target.value })} />
-                      </Field>
-                      <Field label="سعر الوحدة">
-                        <Input type="number" min="0" step="any" value={row.unitPrice} onChange={(e) => updateItemRow(idx, { unitPrice: e.target.value })} />
-                      </Field>
-                      <Button type="button" variant="secondary" size="sm" onClick={() => removeItemRow(idx)}>حذف</Button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="secondary" size="sm" onClick={addItemRow}>+ بند تاني</Button>
-                </div>
-              )}
-
-              <Field label="ملاحظات (اختياري)">
-                <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-              </Field>
-              {formError && (
-                <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-                  <p>{formError}</p>
-                  {duplicateWarning && (
-                    <Button type="button" size="sm" variant="danger" onClick={() => createPurchase.mutate(true)}>
-                      تسجيل برضه (مش تكرار)
-                    </Button>
+        {canCreate && (
+          <Card>
+            <CardHeader><CardTitle>تسجيل مشترى جديد</CardTitle></CardHeader>
+            <CardBody>
+              <p className="mb-4 text-sm text-slate-500">
+                {isCashier
+                  ? "هيتسجّل على فرعك والنهاردة، وحالته دايمًا بانتظار المراجعة - محتاج مراجعة مدير الفرع أو المحاسب قبل ما يترحّل."
+                  : "التسجيل هنا هو الاعتماد نفسه: هيترحّل فورًا. مشترى بمبلغ حر (من غير بنود) مبيرحّلش أي حركة مخزون أو قيد محاسبي - مجرد سجل. مشترى ببنود مواد خام حقيقية بيرحّل حركة مخزون وقيد محاسبي (1400/1100) فورًا."}
+              </p>
+              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createPurchase.mutate(undefined); }} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {!isCashier && (
+                    <Field label="الفرع">
+                      <Select required value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+                  {!isCashier && (
+                    <Field label="التاريخ">
+                      <Input required type="date" value={form.businessDate} onChange={(e) => setForm({ ...form, businessDate: e.target.value })} />
+                    </Field>
+                  )}
+                  {!isCashier && (
+                    <Field label="نوع المشترى">
+                      <Select value={mode} onChange={(e) => setMode(e.target.value as "amount" | "items")}>
+                        <option value="amount">مبلغ حر (من غير بنود)</option>
+                        <option value="items">بنود مواد خام</option>
+                      </Select>
+                    </Field>
+                  )}
+                  {mode === "amount" && (
+                    <Field label="المبلغ">
+                      <Input required type="number" min="0.01" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                    </Field>
+                  )}
+                  {!isCashier && (
+                    <Field label="على ذمة مورد (اختياري)">
+                      <Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
+                        <option value="">بدون مورد</option>
+                        {suppliersQuery.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+                  {!isCashier && form.supplierId && (
+                    <Field label="رقم مستند المورد (اختياري - لفحص التكرار)">
+                      <Input value={form.supplierDocumentNumber} onChange={(e) => setForm({ ...form, supplierDocumentNumber: e.target.value })} />
+                    </Field>
                   )}
                 </div>
-              )}
-              <Button type="submit" disabled={createPurchase.isPending}>تسجيل</Button>
-            </form>
-          </CardBody>
-        </Card>
+
+                {!isCashier && mode === "items" && (
+                  <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                    {itemRows.map((row, idx) => (
+                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:items-end">
+                        <Field label="الصنف">
+                          <Select value={row.inventoryItemId} onChange={(e) => updateItemRow(idx, { inventoryItemId: e.target.value })}>
+                            <option value="">اختر صنف خام</option>
+                            {rawItemsQuery.data?.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="الكمية">
+                          <Input type="number" min="0.01" step="any" value={row.quantity} onChange={(e) => updateItemRow(idx, { quantity: e.target.value })} />
+                        </Field>
+                        <Field label="سعر الوحدة">
+                          <Input type="number" min="0" step="any" value={row.unitPrice} onChange={(e) => updateItemRow(idx, { unitPrice: e.target.value })} />
+                        </Field>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => removeItemRow(idx)}>حذف</Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="secondary" size="sm" onClick={addItemRow}>+ بند تاني</Button>
+                  </div>
+                )}
+
+                <Field label="ملاحظات (اختياري)">
+                  <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                </Field>
+                {formError && (
+                  <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                    <p>{formError}</p>
+                    {duplicateWarning && (
+                      <Button type="button" size="sm" variant="danger" onClick={() => createPurchase.mutate(true)}>
+                        تسجيل برضه (مش تكرار)
+                      </Button>
+                    )}
+                  </div>
+                )}
+                <Button type="submit" disabled={createPurchase.isPending}>تسجيل</Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle>سجل المشتريات ({purchases.length})</CardTitle></CardHeader>
@@ -240,7 +252,7 @@ export function PurchasesPage() {
                 <Field label="فلترة حسب فرع (اختياري)">
                   <Select value={filterBranchId} onChange={(e) => setFilterBranchId(e.target.value)}>
                     <option value="">كل الفروع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -273,7 +285,7 @@ export function PurchasesPage() {
                       {p.status === "REJECTED" && p.rejectionReason && <div className="mt-1 text-xs text-slate-500">{p.rejectionReason}</div>}
                     </TD>
                     <TD>
-                      {p.status === "PENDING" && !isCashier && (
+                      {p.status === "PENDING" && canReview && (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Button size="sm" onClick={() => confirmPurchase.mutate(p.id)} disabled={confirmPurchase.isPending}>اعتماد</Button>
                           <Input

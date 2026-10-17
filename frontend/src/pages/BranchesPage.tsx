@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -19,6 +21,7 @@ interface Branch {
 
 export function BranchesPage() {
   const queryClient = useQueryClient();
+  const allowed = useCan();
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
 
   const [name, setName] = useState("");
@@ -47,25 +50,27 @@ export function BranchesPage() {
     <div>
       <PageHeader title="الفروع" description="إدارة فروع المطعم" />
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>إضافة فرع</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="الاسم">
-                <Input required value={name} onChange={(e) => setName(e.target.value)} />
-              </Field>
-              <Field label="العنوان">
-                <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-              </Field>
-            </div>
-            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-            <Button type="submit" disabled={createBranch.isPending}>إضافة</Button>
-          </form>
-        </CardBody>
-      </Card>
+      {allowed(PERMISSION.BRANCHES_MANAGE) && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>إضافة فرع</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="الاسم">
+                  <Input required value={name} onChange={(e) => setName(e.target.value)} />
+                </Field>
+                <Field label="العنوان">
+                  <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+                </Field>
+              </div>
+              {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
+              <Button type="submit" disabled={createBranch.isPending}>إضافة</Button>
+            </form>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
