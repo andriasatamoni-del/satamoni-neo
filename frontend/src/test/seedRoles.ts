@@ -1,9 +1,12 @@
 // Default role → permissions as seeded by the backend migration, so tests check the UI against the real seed
 // instead of a hand-copied list. admin always has every permission (backend rule).
-import seedSql from "../../../backend/drizzle/0002_seed_role_permissions.sql?raw";
+// Every migration is read, since each new permission ships its own role_permissions insert.
 import { PERMISSION, type Permission } from "../shared/auth/permissions";
 import { ROLES, type Role } from "../shared/auth/roles";
 import type { CurrentUser } from "../shared/auth/AuthContext";
+
+const MIGRATIONS = import.meta.glob<string>("../../../backend/drizzle/*.sql", { query: "?raw", import: "default", eager: true });
+const seedSql = Object.keys(MIGRATIONS).sort().map((file) => MIGRATIONS[file]).join("\n");
 
 const ALL_PERMISSIONS = Object.values(PERMISSION) as Permission[];
 

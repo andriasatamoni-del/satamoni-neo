@@ -4,6 +4,7 @@ import { App } from "./App";
 import { renderWithAuth } from "./test/render";
 import { apiMock } from "./test/apiMock";
 import { seededUser } from "./test/seedRoles";
+import { PERMISSION } from "./shared/auth/permissions";
 
 vi.mock("./shared/api/client", async (importOriginal) => {
   const { mockApiClient } = await import("./test/apiMock");
@@ -21,8 +22,12 @@ describe("App routing", () => {
   });
 
   it("renders the page when the user has one of the route's permissions", async () => {
-    renderWithAuth(<App />, { user: seededUser("admin"), route: "/audit-log" });
-    expect(await screen.findByRole("heading", { name: "سجل التدقيق" })).toBeInTheDocument();
+    // /purchases accepts purchases.view or purchases.view_own_daily; the cashier only has the second one
+    const cashier = seededUser("cashier");
+    expect(cashier.permissions).toContain(PERMISSION.PURCHASES_VIEW_OWN_DAILY);
+    expect(cashier.permissions).not.toContain(PERMISSION.PURCHASES_VIEW);
+    renderWithAuth(<App />, { user: cashier, route: "/purchases" });
+    expect(await screen.findByRole("heading", { name: "المشتريات النقدية" })).toBeInTheDocument();
   });
 
   it("shows NotFound for an unknown URL", async () => {
