@@ -114,7 +114,7 @@ const TABS = [
   { key: "general-ledger", label: "دفتر الأستاذ", perm: ACCOUNTING_READ },
   { key: "food-cost", label: "تكلفة الطعام", perm: PERMISSION.REPORTS_VIEW },
   // مقارنة شاملة بين كل الفروع (مدير الفرع مقفول على فرعه، مش له معنى يقارن فروع تانية)
-  { key: "branch-health", label: "صحة الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH },
+  { key: "branch-health", label: "صحة الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH, companyWideOnly: true },
 ];
 
 function fmt(n: number): string {

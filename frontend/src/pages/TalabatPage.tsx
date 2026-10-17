@@ -43,9 +43,9 @@ const ORDER_STATUS_TONES: Record<string, "neutral" | "warning" | "success" | "da
 const TABS = [
   { key: "dashboard", label: "لوحة التحكم", perm: PERMISSION.TALABAT_VIEW },
   { key: "orders", label: "أوردرات Talabat", perm: PERMISSION.TALABAT_VIEW },
-  { key: "errors", label: "أخطاء التكامل", perm: PERMISSION.TALABAT_VIEW },
+  { key: "errors", label: "أخطاء التكامل", perm: PERMISSION.TALABAT_VIEW, companyWideOnly: true },
   { key: "mapping", label: "الربط", perm: PERMISSION.TALABAT_MAPPING_MANAGE },
-  { key: "payment-control", label: "Payment Control", perm: PERMISSION.TALABAT_RECONCILIATION },
+  { key: "payment-control", label: "Payment Control", perm: PERMISSION.TALABAT_RECONCILIATION, companyWideOnly: true },
 ];
 
 export function TalabatPage() {

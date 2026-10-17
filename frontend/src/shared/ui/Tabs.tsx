@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { can } from "../auth/roles";
+import { can, isCompanyWide, type Role } from "../auth/roles";
 import type { Permission } from "../auth/permissions";
 
 export interface TabItem {
@@ -8,9 +8,14 @@ export interface TabItem {
   label: string;
   // أي صلاحية واحدة كفاية عشان التاب يظهر. من غيرها التاب ظاهر لأي حد يقدر يفتح الصفحة.
   perm?: Permission | readonly Permission[];
+  // الـendpoint عليه @CompanyWideOnly(): اليوزر المربوط بفرع بياخد 403 حتى لو معاه الصلاحية
+  companyWideOnly?: boolean;
 }
 
-export function isTabAllowed(user: { permissions: readonly Permission[] } | null | undefined, tab: TabItem): boolean {
+type TabUser = { permissions: readonly Permission[]; roles: readonly Role[]; branchId?: string | null };
+
+export function isTabAllowed(user: TabUser | null | undefined, tab: TabItem): boolean {
+  if (tab.companyWideOnly && !isCompanyWide(user)) return false;
   if (!tab.perm) return true;
   return can(user, ...(typeof tab.perm === "string" ? [tab.perm] : tab.perm));
 }

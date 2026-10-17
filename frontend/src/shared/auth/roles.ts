@@ -43,3 +43,11 @@ export function can(user: { permissions: readonly Permission[] } | null | undefi
 export function roleLabels(roles: readonly Role[]): string {
   return roles.map((r) => ROLE_LABELS[r] ?? r).join("، ");
 }
+
+// نفس branchScopeOf في الباك (backend/src/shared/authorization/branch-scope.ts): الأدمن والمحاسب على مستوى الشركة،
+// والكول سنتر بس لو مالوش فرع. اللي غيرهم مربوط بفرعه، فالـendpoints اللي عليها @CompanyWideOnly() بترجعله 403.
+export function isCompanyWide(user: { roles: readonly Role[]; branchId?: string | null } | null | undefined): boolean {
+  if (!user) return false;
+  if (hasRole(user, ROLE.ADMIN, ROLE.ACCOUNTANT)) return true;
+  return hasRole(user, ROLE.CALLCENTER) && !user.branchId;
+}

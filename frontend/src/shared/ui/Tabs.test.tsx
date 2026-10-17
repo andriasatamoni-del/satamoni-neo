@@ -36,6 +36,13 @@ describe("isTabAllowed", () => {
     expect(isTabAllowed(cashier, TABS[1])).toBe(true);
     expect(isTabAllowed(cashier, TABS[2])).toBe(true);
   });
+
+  it("hides companyWideOnly tabs from branch-bound users even when they hold the permission", () => {
+    const tab: TabItem = { key: "errors", label: "Errors", perm: PERMISSION.TALABAT_VIEW, companyWideOnly: true };
+    expect(isTabAllowed(seededUser("branch_manager"), tab)).toBe(false);
+    expect(isTabAllowed(seededUser("cashier"), tab)).toBe(false);
+    expect(isTabAllowed(seededUser("accountant"), tab)).toBe(true);
+  });
 });
 
 describe("Tabs + usePermittedTabs", () => {
