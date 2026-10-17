@@ -9,7 +9,7 @@ satamoni-neo is a restaurant ERP. It rebuilds the legacy `satamoni-backend` syst
 - `backend/`: NestJS 10 + Drizzle ORM + PostgreSQL. A DDD **modular monolith**.
 - `frontend/`: React 18 + Vite 6 + React Router 7 + TanStack Query + Tailwind 4. An SPA.
 
-Code comments and docs are mostly in Egyptian Arabic. Newer Phase 3.1 code is commented in English. Match the language of the file you edit. User-facing strings and permission labels are in Arabic.
+**Don't add comments to code.** Use clear names instead. Leave existing comments alone unless your change makes them wrong. Existing comments and docs are mostly in Egyptian Arabic, with Phase 3.1 code in English. User-facing strings and permission labels are in Arabic.
 
 ## Commands
 
@@ -18,6 +18,12 @@ pnpm is the package manager. Its version is pinned in the root `package.json` (`
 From the root: `pnpm dev` starts the local Postgres (Docker), applies migrations, then runs backend + frontend + a frontend typecheck together, with a status/log dashboard at http://localhost:4300 (`scripts/dev.mjs`; `DEV_DASHBOARD_PORT` to change; `DEV_SKIP_DOCKER=1` to use your own Postgres). It creates `backend/.env` from `.env.example` if missing.
 
 Local database: `docker-compose.yml` runs `postgres:17` on `127.0.0.1:5432` (user `postgres`, password `test123`) with the `satamoni_neo` dev database plus `satamoni_neo_test` and `satamoni_legacy_fixture_test` for the integration tests (`docker/postgres/init/`). Data persists in the `pgdata` volume. `pnpm db:up`, `pnpm db:down`, `pnpm db:reset` (wipes the volume and re-migrates). Stopping `pnpm dev` leaves the container running.
+
+Several worktrees can run their dev stacks side by side:
+- Inside a git worktree, run `pnpm worktree:setup` once. It runs `pnpm install` if needed and creates a database named after the worktree folder (`satamoni_neo_<folder>`) on the same Postgres container. It also picks a free port slot N (backend 4100+N, frontend 5173+N, dashboard 4300+N), writes the worktree's `backend/.env` and `.dev-worktree.json` (gitignored), and runs the migrations.
+- After setup, `pnpm dev` in that worktree runs its own stack, and `pnpm seed:dev` / `pnpm migrate` target its database.
+- `pnpm worktree:teardown` drops that database and removes the config.
+- In a worktree that hasn't been set up, `pnpm dev` refuses to start. The main checkout keeps the default stack.
 
 Also `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm build`, `pnpm typecheck`, `pnpm test:unit`.
 

@@ -8,6 +8,8 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "worktree:setup": "node scripts/worktree.mjs setup",
+    "worktree:teardown": "node scripts/worktree.mjs teardown",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait postgres && pnpm --filter satamoni-neo-backend migrate",

@@ -13,6 +13,14 @@
 import { spawn, execSync } from "node:child_process";
 import { createServer } from "node:http";
 import { copyFileSync, existsSync } from "node:fs";
+import { isLinkedWorktree, readWorktreeConfig, worktreeEnv } from "./worktree.mjs";
+
+const worktree = isLinkedWorktree() ? readWorktreeConfig() : null;
+if (isLinkedWorktree() && !worktree) {
+  console.error("This is a git worktree without its own dev stack. Run `pnpm worktree:setup` first.");
+  process.exit(1);
+}
+if (worktree) Object.assign(process.env, worktreeEnv(worktree));
 
 const DASHBOARD_PORT = Number(process.env.DEV_DASHBOARD_PORT || 4300);
 const MAX_LINES = 2000;
@@ -27,10 +35,14 @@ const SERVICES = [
     id: "database",
     label: "Database (Postgres)",
     color: 34,
-    note: skipDocker ? "external DATABASE_URL" : "docker · localhost:5432",
+    note: worktree ? `database ${worktree.database}` : skipDocker ? "external DATABASE_URL" : "docker · localhost:5432",
     // One-shot: start the container, wait for its healthcheck, apply migrations, exit.
     oneShot: true,
-    command: skipDocker ? `${BACKEND} migrate` : `docker compose up -d --wait postgres && ${BACKEND} migrate`,
+    command: worktree
+      ? `node scripts/worktree.mjs db-up && ${BACKEND} migrate`
+      : skipDocker
+        ? `${BACKEND} migrate`
+        : `docker compose up -d --wait postgres && ${BACKEND} migrate`,
     detect(line, s) {
       if (/Running migrations/i.test(line)) return setState(s, "building");
       if (/Cannot connect to the Docker daemon|error during connect|docker.*not recognized|dockerDesktopLinuxEngine/i.test(line)) {
@@ -70,7 +82,7 @@ const SERVICES = [
     id: "frontend",
     label: "Frontend (Vite)",
     color: 35,
-    url: "http://localhost:5173",
+    url: `http://localhost:${process.env.VITE_PORT || 5173}`,
     command: `${FRONTEND} dev`,
     detect(line, s) {
       if (/ready in/i.test(line)) return setState(s, "running");
@@ -312,7 +324,7 @@ const PAGE = /* html */ `<!doctype html>
   #log { flex:1; margin:0 16px 16px; background:#0a0c10; border:1px solid var(--line); border-radius:8px; overflow:auto; padding:10px; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-word }
   #log .e { color:var(--err) } #log .w { color:var(--warn) }
 </style></head><body>
-<header><h1>satamoni-neo · dev</h1><span id="overall">connecting…</span></header>
+<header><h1>satamoni-neo · dev${worktree ? ` · ${worktree.name}` : ""}</h1><span id="overall">connecting…</span></header>
 <div class="cards" id="cards"></div>
 <div class="logbar"><span id="logtitle"></span><label><input type="checkbox" id="onlyErr"> errors only</label><label><input type="checkbox" id="follow" checked> follow</label></div>
 <pre id="log"></pre>
