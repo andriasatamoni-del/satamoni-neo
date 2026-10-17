@@ -10,6 +10,7 @@ import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { can, ROLE, ROLES, ROLE_LABELS, type Role } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface Branch { id: string; name: string; }
 interface AppUser {
@@ -52,9 +53,11 @@ export function UsersPage() {
   const queryClient = useQueryClient();
   const canManageUsers = can(currentUser, PERMISSION.IDENTITY_USERS_MANAGE);
   const canManageRoles = can(currentUser, PERMISSION.IDENTITY_ROLES_MANAGE);
+  // الصفحة بتفتح بـidentity.roles.manage لوحدها كمان (محرر صلاحيات الأدوار بس)
+  const canSeeUsers = can(currentUser, PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE);
 
-  const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => apiRequest<AppUser[]>("/users") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => apiRequest<AppUser[]>("/users"), enabled: canSeeUsers });
+  const { branches } = useBranchOptions<Branch>(canSeeUsers);
   const catalogQuery = useQuery({
     queryKey: ["users", "permissions-catalog"],
     queryFn: () => apiRequest<PermissionsCatalog>("/users/permissions-catalog"),
@@ -123,7 +126,7 @@ export function UsersPage() {
 
   function branchName(branchId: string | null) {
     if (!branchId) return "-";
-    return branchesQuery.data?.find((b) => b.id === branchId)?.name ?? branchId;
+    return branches.find((b) => b.id === branchId)?.name ?? branchId;
   }
 
   const users = usersQuery.data ?? [];
@@ -157,7 +160,7 @@ export function UsersPage() {
                 <Field label="الفرع (اختياري)">
                   <Select value={createForm.branchId} onChange={(e) => setCreateForm({ ...createForm, branchId: e.target.value })}>
                     <option value="">- بدون -</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -181,7 +184,7 @@ export function UsersPage() {
               <Field label="الفرع">
                 <Select value={editForm.branchId} onChange={(e) => setEditForm({ ...editForm, branchId: e.target.value })}>
                   <option value="">- بدون -</option>
-                  {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </Field>
               <Field label="الحالة">
@@ -215,54 +218,56 @@ export function UsersPage() {
         </Card>
       )}
 
-      <Card className="mb-6">
-        <CardHeader><CardTitle>المستخدمين ({users.length})</CardTitle></CardHeader>
-        <CardBody className="p-0">
-          <Table>
-            <THead>
-              <TR>
-                <TH>الاسم</TH>
-                <TH>الإيميل</TH>
-                <TH>الأدوار</TH>
-                <TH>الفرع</TH>
-                <TH>الحالة</TH>
-                <TH>إجراء</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {users.map((u) => (
-                <TR key={u.id}>
-                  <TD className="font-semibold text-slate-900">{u.name}</TD>
-                  <TD>{u.email}</TD>
-                  <TD>
-                    <div className="flex flex-wrap gap-1">
-                      {u.roles.map((r) => <Badge key={r} tone="neutral">{ROLE_LABELS[r] ?? r}</Badge>)}
-                    </div>
-                  </TD>
-                  <TD>{branchName(u.branchId)}</TD>
-                  <TD><Badge tone={u.isActive ? "success" : "danger"}>{u.isActive ? "نشط" : "متوقف"}</Badge></TD>
-                  <TD>
-                    {canManageUsers && (
-                      <div className="flex flex-wrap gap-1.5">
-                        <Button size="sm" variant="secondary" onClick={() => openEdit(u)}>تعديل</Button>
-                        <Button
-                          size="sm"
-                          variant={u.isActive ? "danger" : "primary"}
-                          disabled={quickToggleActive.isPending}
-                          onClick={() => quickToggleActive.mutate({ id: u.id, isActive: !u.isActive })}
-                        >
-                          {u.isActive ? "تعطيل" : "تفعيل"}
-                        </Button>
-                      </div>
-                    )}
-                  </TD>
+      {canSeeUsers && (
+        <Card className="mb-6">
+          <CardHeader><CardTitle>المستخدمين ({users.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>الاسم</TH>
+                  <TH>الإيميل</TH>
+                  <TH>الأدوار</TH>
+                  <TH>الفرع</TH>
+                  <TH>الحالة</TH>
+                  <TH>إجراء</TH>
                 </TR>
-              ))}
-            </TBody>
-          </Table>
-          {users.length === 0 && <EmptyState>مفيش مستخدمين لسه</EmptyState>}
-        </CardBody>
-      </Card>
+              </THead>
+              <TBody>
+                {users.map((u) => (
+                  <TR key={u.id}>
+                    <TD className="font-semibold text-slate-900">{u.name}</TD>
+                    <TD>{u.email}</TD>
+                    <TD>
+                      <div className="flex flex-wrap gap-1">
+                        {u.roles.map((r) => <Badge key={r} tone="neutral">{ROLE_LABELS[r] ?? r}</Badge>)}
+                      </div>
+                    </TD>
+                    <TD>{branchName(u.branchId)}</TD>
+                    <TD><Badge tone={u.isActive ? "success" : "danger"}>{u.isActive ? "نشط" : "متوقف"}</Badge></TD>
+                    <TD>
+                      {canManageUsers && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button size="sm" variant="secondary" onClick={() => openEdit(u)}>تعديل</Button>
+                          <Button
+                            size="sm"
+                            variant={u.isActive ? "danger" : "primary"}
+                            disabled={quickToggleActive.isPending}
+                            onClick={() => quickToggleActive.mutate({ id: u.id, isActive: !u.isActive })}
+                          >
+                            {u.isActive ? "تعطيل" : "تفعيل"}
+                          </Button>
+                        </div>
+                      )}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {users.length === 0 && <EmptyState>مفيش مستخدمين لسه</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
 
       {canManageRoles && catalogQuery.data && <RolePermissionsEditor catalog={catalogQuery.data} />}
     </div>

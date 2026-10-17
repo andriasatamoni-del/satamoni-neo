@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -29,6 +31,12 @@ type LineInput = { accountId: string; debit: string; credit: string };
 
 export function AccountingPage() {
   const queryClient = useQueryClient();
+  const allowed = useCan();
+  const canManage = allowed(PERMISSION.ACCOUNTING_MANAGE);
+  const canCreateEntry = allowed(PERMISSION.ACCOUNTING_CREATE);
+  const canPostEntry = allowed(PERMISSION.ACCOUNTING_POST);
+  const canClosePeriod = allowed(PERMISSION.ACCOUNTING_CLOSE_PERIOD);
+  const canCloseYear = allowed(PERMISSION.ACCOUNTING_CLOSE_YEAR);
   const accountsQuery = useQuery({ queryKey: ["accounting", "accounts"], queryFn: () => apiRequest<Account[]>("/accounting/accounts") });
   const entriesQuery = useQuery({ queryKey: ["accounting", "journal-entries"], queryFn: () => apiRequest<JournalEntry[]>("/accounting/journal-entries") });
 
@@ -142,31 +150,33 @@ export function AccountingPage() {
     <div>
       <PageHeader title="المحاسبة" description="دليل الحسابات والقيود اليومية" />
 
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>إضافة حساب لدليل الحسابات</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Field label="الكود">
-                  <Input required value={accountForm.code} onChange={(e) => setAccountForm({ ...accountForm, code: e.target.value })} />
-                </Field>
-                <Field label="اسم الحساب">
-                  <Input required value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
-                </Field>
-                <Field label="النوع">
-                  <Select value={accountForm.accountType} onChange={(e) => setAccountForm({ ...accountForm, accountType: e.target.value })}>
-                    {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
-                  </Select>
-                </Field>
-              </div>
-              {accountError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{accountError}</p>}
-              <Button type="submit" disabled={createAccount.isPending}>إضافة</Button>
-            </form>
-          </CardBody>
-        </Card>
+      <div className={`mb-6 grid grid-cols-1 gap-6 ${canManage ? "lg:grid-cols-2" : ""}`}>
+        {canManage && (
+          <Card>
+            <CardHeader>
+              <CardTitle>إضافة حساب لدليل الحسابات</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Field label="الكود">
+                    <Input required value={accountForm.code} onChange={(e) => setAccountForm({ ...accountForm, code: e.target.value })} />
+                  </Field>
+                  <Field label="اسم الحساب">
+                    <Input required value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
+                  </Field>
+                  <Field label="النوع">
+                    <Select value={accountForm.accountType} onChange={(e) => setAccountForm({ ...accountForm, accountType: e.target.value })}>
+                      {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+                {accountError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{accountError}</p>}
+                <Button type="submit" disabled={createAccount.isPending}>إضافة</Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -192,49 +202,51 @@ export function AccountingPage() {
         </Card>
       </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>قيد يدوي جديد</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <p className="mb-4 text-sm text-slate-500">
-            القيد بيتسجّل مسودة (DRAFT) الأول - لازم يترحّل بعد كده من جدول "القيود اليومية" تحت (صلاحية منفصلة) قبل ما يظهر في التقارير المحاسبية.
-          </p>
-          <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEntry.mutate(); }} className="space-y-4">
-            <Field label="البيان (اختياري)">
-              <Input value={entryDescription} onChange={(e) => setEntryDescription(e.target.value)} />
-            </Field>
+      {canCreateEntry && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>قيد يدوي جديد</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="mb-4 text-sm text-slate-500">
+              القيد بيتسجّل مسودة (DRAFT) الأول - لازم يترحّل بعد كده من جدول "القيود اليومية" تحت (صلاحية منفصلة) قبل ما يظهر في التقارير المحاسبية.
+            </p>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEntry.mutate(); }} className="space-y-4">
+              <Field label="البيان (اختياري)">
+                <Input value={entryDescription} onChange={(e) => setEntryDescription(e.target.value)} />
+              </Field>
 
-            <div className="space-y-2">
-              {lines.map((line, i) => (
-                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
-                  <Select required value={line.accountId} onChange={(e) => updateLine(i, { accountId: e.target.value })}>
-                    <option value="">اختر حساب</option>
-                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-                  </Select>
-                  <Input type="number" placeholder="مدين" value={line.debit} onChange={(e) => updateLine(i, { debit: e.target.value, credit: e.target.value ? "" : line.credit })} />
-                  <Input type="number" placeholder="دائن" value={line.credit} onChange={(e) => updateLine(i, { credit: e.target.value, debit: e.target.value ? "" : line.debit })} />
-                </div>
-              ))}
-            </div>
+              <div className="space-y-2">
+                {lines.map((line, i) => (
+                  <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1fr]">
+                    <Select required value={line.accountId} onChange={(e) => updateLine(i, { accountId: e.target.value })}>
+                      <option value="">اختر حساب</option>
+                      {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                    </Select>
+                    <Input type="number" placeholder="مدين" value={line.debit} onChange={(e) => updateLine(i, { debit: e.target.value, credit: e.target.value ? "" : line.credit })} />
+                    <Input type="number" placeholder="دائن" value={line.credit} onChange={(e) => updateLine(i, { credit: e.target.value, debit: e.target.value ? "" : line.debit })} />
+                  </div>
+                ))}
+              </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Button type="button" variant="secondary" size="sm" onClick={() => setLines((prev) => [...prev, { accountId: "", debit: "", credit: "" }])}>
-                + سطر
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button type="button" variant="secondary" size="sm" onClick={() => setLines((prev) => [...prev, { accountId: "", debit: "", credit: "" }])}>
+                  + سطر
+                </Button>
+                <span className={`text-sm font-semibold ${balanced ? "text-slate-600" : "text-red-600"}`}>
+                  مدين: {totalDebit} | دائن: {totalCredit} {!balanced && "(غير متزن)"}
+                </span>
+              </div>
+
+              {entryError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{entryError}</p>}
+
+              <Button type="submit" disabled={createEntry.isPending || !balanced || totalDebit === 0}>
+                تسجيل القيد
               </Button>
-              <span className={`text-sm font-semibold ${balanced ? "text-slate-600" : "text-red-600"}`}>
-                مدين: {totalDebit} | دائن: {totalCredit} {!balanced && "(غير متزن)"}
-              </span>
-            </div>
-
-            {entryError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{entryError}</p>}
-
-            <Button type="submit" disabled={createEntry.isPending || !balanced || totalDebit === 0}>
-              تسجيل القيد
-            </Button>
-          </form>
-        </CardBody>
-      </Card>
+            </form>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -261,12 +273,12 @@ export function AccountingPage() {
                     </TD>
                     <TD><Badge tone={meta.tone}>{meta.label}</Badge></TD>
                     <TD>
-                      {entry.status === "DRAFT" && (
+                      {entry.status === "DRAFT" && canPostEntry && (
                         <Button size="sm" onClick={() => postEntry.mutate(entry.id)} disabled={postEntry.isPending}>
                           ترحيل
                         </Button>
                       )}
-                      {entry.status === "POSTED" && (
+                      {entry.status === "POSTED" && canManage && (
                         <Button size="sm" variant="secondary" onClick={() => reverseEntry.mutate(entry.id)} disabled={reverseEntry.isPending}>
                           عكس القيد
                         </Button>
@@ -301,7 +313,7 @@ export function AccountingPage() {
                 <div key={month} className={`rounded-lg border p-3 text-center ${isClosed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
                   <p className="text-sm font-semibold text-slate-800">{label}</p>
                   <p className={`mt-1 text-xs ${isClosed ? "text-emerald-700" : "text-slate-400"}`}>{isClosed ? "مقفول" : "مفتوح"}</p>
-                  {!isClosed && (
+                  {!isClosed && canClosePeriod && (
                     <Button
                       size="sm"
                       variant="secondary"
@@ -322,7 +334,7 @@ export function AccountingPage() {
               <p className="text-sm font-semibold text-emerald-700">
                 سنة {closeYear} مقفولة بالفعل - صافي الربح: {fiscalYearClosingsQuery.data?.find((c) => c.year === closeYear)?.netIncome}ج
               </p>
-            ) : (
+            ) : canCloseYear && (
               <>
                 <Button onClick={() => closeFiscalYearMutation.mutate()} disabled={closeFiscalYearMutation.isPending || !allMonthsClosed}>
                   قفل السنة المالية {closeYear}

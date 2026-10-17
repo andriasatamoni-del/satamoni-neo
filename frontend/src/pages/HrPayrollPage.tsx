@@ -8,8 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
-import { hasRole } from "../shared/auth/roles";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { can, hasRole } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface Employee {
   id: string; name: string; departmentId: string | null; positionId: string | null; baseSalary: number; wageType: string;
@@ -49,21 +51,60 @@ const ADJUSTMENT_TYPE_LABELS: Record<string, string> = { advance: "سلفة", pe
 const ADJUSTMENT_STATUS_LABELS: Record<string, string> = { ACTIVE: "فعّال", CANCELLED: "ملغى" };
 
 const TABS = [
-  { key: "employees", label: "الموظفين والرواتب" },
-  { key: "organization", label: "الهيكل التنظيمي" },
-  { key: "leave", label: "طلبات الإجازة" },
-  { key: "adjustments", label: "سلف وجزاءات ومكافآت" },
+  {
+    key: "employees",
+    label: "الموظفين والرواتب",
+    perm: [PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE],
+  },
+  // الأقسام والمسميات بتتقري بـhr.employees.view/manage؛ الإضافة والتعديل محتاجين hr.organization.manage
+  { key: "organization", label: "الهيكل التنظيمي", perm: [PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE] },
+  { key: "leave", label: "طلبات الإجازة", perm: PERMISSION.HR_LEAVE_REVIEW },
+  { key: "adjustments", label: "سلف وجزاءات ومكافآت", perm: [PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE] },
 ];
 
 export function HrPayrollPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("employees");
-  const employeesQuery = useQuery({ queryKey: ["hr", "employees"], queryFn: () => apiRequest<Employee[]>("/hr/employees") });
-  const departmentsQuery = useQuery({ queryKey: ["hr", "departments"], queryFn: () => apiRequest<Department[]>("/hr/departments") });
-  const positionsQuery = useQuery({ queryKey: ["hr", "positions"], queryFn: () => apiRequest<Position[]>("/hr/positions") });
-  const payrollRunsQuery = useQuery({ queryKey: ["hr", "payroll-runs"], queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs") });
-  const leaveRequestsQuery = useQuery({ queryKey: ["hr", "leave-requests"], queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests") });
-  const adjustmentsQuery = useQuery({ queryKey: ["hr", "adjustments"], queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments") });
+  const { user } = useAuth();
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const canSeeEmployees = can(user, PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE);
+  const canManageEmployees = can(user, PERMISSION.HR_EMPLOYEES_MANAGE);
+  const canManageOrganization = can(user, PERMISSION.HR_ORGANIZATION_MANAGE);
+  const canSeePayroll = can(user, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE);
+  const canManagePayroll = can(user, PERMISSION.HR_PAYROLL_MANAGE);
+  const canApprovePayroll = can(user, PERMISSION.HR_PAYROLL_APPROVE);
+  const canManageAdjustments = can(user, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE);
+
+  // الموظفين والأقسام والمسميات بيتستخدموا في أكتر من تاب (أسامي وفورمات)، فبيتحمّلوا مع الصفحة
+  const employeesQuery = useQuery({
+    queryKey: ["hr", "employees"],
+    queryFn: () => apiRequest<Employee[]>("/hr/employees"),
+    enabled: canSeeEmployees,
+  });
+  const departmentsQuery = useQuery({
+    queryKey: ["hr", "departments"],
+    queryFn: () => apiRequest<Department[]>("/hr/departments"),
+    enabled: canSeeEmployees,
+  });
+  const positionsQuery = useQuery({
+    queryKey: ["hr", "positions"],
+    queryFn: () => apiRequest<Position[]>("/hr/positions"),
+    enabled: canSeeEmployees,
+  });
+  const payrollRunsQuery = useQuery({
+    queryKey: ["hr", "payroll-runs"],
+    queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs"),
+    enabled: canSeePayroll && tab === "employees",
+  });
+  const leaveRequestsQuery = useQuery({
+    queryKey: ["hr", "leave-requests"],
+    queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests"),
+    enabled: tab === "leave",
+  });
+  const adjustmentsQuery = useQuery({
+    queryKey: ["hr", "adjustments"],
+    queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments"),
+    enabled: tab === "adjustments",
+  });
 
   const reviewLeaveRequest = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
@@ -214,10 +255,9 @@ export function HrPayrollPage() {
     onError: (err) => setCancelAdjustmentError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  const { user } = useAuth();
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
-
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  // الفرع المقيّد في فورم تعديل الموظف
+  const { branches } = useBranchOptions<Branch>(canManageEmployees && !!selectedEmployeeId);
   const [editForm, setEditForm] = useState({ departmentId: "", positionId: "", restrictedBranchId: "", reason: "" });
   const [editError, setEditError] = useState<string | null>(null);
   const [statusReason, setStatusReason] = useState("");
@@ -285,7 +325,6 @@ export function HrPayrollPage() {
   const employees = employeesQuery.data ?? [];
   const departments = departmentsQuery.data ?? [];
   const positions = positionsQuery.data ?? [];
-  const branches = branchesQuery.data ?? [];
   const payrollRuns = payrollRunsQuery.data ?? [];
   const leaveRequests = leaveRequestsQuery.data ?? [];
   const adjustments = adjustmentsQuery.data ?? [];
@@ -316,40 +355,43 @@ export function HrPayrollPage() {
     <div>
       <PageHeader title="الموارد البشرية والرواتب" description="الموظفين وقوائم الرواتب الشهرية" />
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "employees" && (
       <>
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>إضافة موظف</CardTitle></CardHeader>
-          <CardBody>
-            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEmployee.mutate(); }} className="space-y-4">
-              <Field label="اسم الموظف">
-                <Input required value={employeeForm.name} onChange={(e) => setEmployeeForm({ ...employeeForm, name: e.target.value })} />
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="القسم (اختياري)">
-                  <Select value={employeeForm.departmentId} onChange={(e) => setEmployeeForm({ ...employeeForm, departmentId: e.target.value })}>
-                    <option value="">بدون قسم</option>
-                    {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </Select>
+      {canSeeEmployees && (
+      <div className={`mb-6 grid grid-cols-1 gap-6 ${canManageEmployees ? "lg:grid-cols-2" : ""}`}>
+        {canManageEmployees && (
+          <Card>
+            <CardHeader><CardTitle>إضافة موظف</CardTitle></CardHeader>
+            <CardBody>
+              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createEmployee.mutate(); }} className="space-y-4">
+                <Field label="اسم الموظف">
+                  <Input required value={employeeForm.name} onChange={(e) => setEmployeeForm({ ...employeeForm, name: e.target.value })} />
                 </Field>
-                <Field label="المسمى الوظيفي (اختياري)">
-                  <Select value={employeeForm.positionId} onChange={(e) => setEmployeeForm({ ...employeeForm, positionId: e.target.value })}>
-                    <option value="">بدون مسمى</option>
-                    {positions.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="الراتب الأساسي">
-                  <Input type="number" value={employeeForm.baseSalary} onChange={(e) => setEmployeeForm({ ...employeeForm, baseSalary: e.target.value })} />
-                </Field>
-              </div>
-              {employeeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{employeeError}</p>}
-              <Button type="submit" disabled={createEmployee.isPending}>إضافة</Button>
-            </form>
-          </CardBody>
-        </Card>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="القسم (اختياري)">
+                    <Select value={employeeForm.departmentId} onChange={(e) => setEmployeeForm({ ...employeeForm, departmentId: e.target.value })}>
+                      <option value="">بدون قسم</option>
+                      {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="المسمى الوظيفي (اختياري)">
+                    <Select value={employeeForm.positionId} onChange={(e) => setEmployeeForm({ ...employeeForm, positionId: e.target.value })}>
+                      <option value="">بدون مسمى</option>
+                      {positions.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الراتب الأساسي">
+                    <Input type="number" value={employeeForm.baseSalary} onChange={(e) => setEmployeeForm({ ...employeeForm, baseSalary: e.target.value })} />
+                  </Field>
+                </div>
+                {employeeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{employeeError}</p>}
+                <Button type="submit" disabled={createEmployee.isPending}>إضافة</Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle>الموظفين ({employees.length})</CardTitle></CardHeader>
@@ -377,6 +419,7 @@ export function HrPayrollPage() {
           </CardBody>
         </Card>
       </div>
+      )}
 
       {selectedEmployee && (
         <Card className="mb-6">
@@ -385,6 +428,7 @@ export function HrPayrollPage() {
             <button className="text-sm text-slate-400 hover:text-slate-700" onClick={() => setSelectedEmployeeId(null)}>إغلاق</button>
           </CardHeader>
           <CardBody className="space-y-6">
+            {canManageEmployees && (
             <div>
               <h3 className="mb-2 text-sm font-bold text-slate-700">تعديل القسم/الوظيفة/الفرع المقيّد</h3>
               <form
@@ -422,8 +466,9 @@ export function HrPayrollPage() {
                 </div>
               </form>
             </div>
+            )}
 
-            {selectedEmployee.status !== "terminated" && (
+            {selectedEmployee.status !== "terminated" && canManageEmployees && (
               <div>
                 <h3 className="mb-2 text-sm font-bold text-slate-700">حالة الموظف</h3>
                 <div className="flex flex-wrap items-end gap-3">
@@ -503,86 +548,94 @@ export function HrPayrollPage() {
         </Card>
       )}
 
-      <Card className="mb-6">
-        <CardHeader><CardTitle>قائمة رواتب جديدة</CardTitle></CardHeader>
-        <CardBody>
-          <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRun.mutate(); }} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 sm:max-w-xs">
-              <Field label="السنة">
-                <Input required type="number" value={runForm.year} onChange={(e) => setRunForm({ ...runForm, year: e.target.value })} />
-              </Field>
-              <Field label="الشهر">
-                <Input required type="number" min="1" max="12" value={runForm.month} onChange={(e) => setRunForm({ ...runForm, month: e.target.value })} />
-              </Field>
-            </div>
+      {canManagePayroll && (
+        <Card className="mb-6">
+          <CardHeader><CardTitle>قائمة رواتب جديدة</CardTitle></CardHeader>
+          <CardBody>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); createRun.mutate(); }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 sm:max-w-xs">
+                <Field label="السنة">
+                  <Input required type="number" value={runForm.year} onChange={(e) => setRunForm({ ...runForm, year: e.target.value })} />
+                </Field>
+                <Field label="الشهر">
+                  <Input required type="number" min="1" max="12" value={runForm.month} onChange={(e) => setRunForm({ ...runForm, month: e.target.value })} />
+                </Field>
+              </div>
 
-            <div className="space-y-2">
-              {lines.map((line, i) => (
-                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-                  <Select value={line.employeeId} onChange={(e) => updateLine(i, { employeeId: e.target.value })}>
-                    <option value="">اختر موظف</option>
-                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </Select>
-                  <Input type="number" placeholder="الراتب الإجمالي" value={line.grossPay} onChange={(e) => updateLine(i, { grossPay: e.target.value })} />
-                  <Input type="number" placeholder="سلف" value={line.advances} onChange={(e) => updateLine(i, { advances: e.target.value })} />
-                  <Input type="number" placeholder="خصومات" value={line.penalties} onChange={(e) => updateLine(i, { penalties: e.target.value })} />
-                  <Input type="number" placeholder="مكافآت" value={line.bonuses} onChange={(e) => updateLine(i, { bonuses: e.target.value })} />
-                </div>
-              ))}
-            </div>
+              <div className="space-y-2">
+                {lines.map((line, i) => (
+                  <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+                    <Select value={line.employeeId} onChange={(e) => updateLine(i, { employeeId: e.target.value })}>
+                      <option value="">اختر موظف</option>
+                      {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </Select>
+                    <Input type="number" placeholder="الراتب الإجمالي" value={line.grossPay} onChange={(e) => updateLine(i, { grossPay: e.target.value })} />
+                    <Input type="number" placeholder="سلف" value={line.advances} onChange={(e) => updateLine(i, { advances: e.target.value })} />
+                    <Input type="number" placeholder="خصومات" value={line.penalties} onChange={(e) => updateLine(i, { penalties: e.target.value })} />
+                    <Input type="number" placeholder="مكافآت" value={line.bonuses} onChange={(e) => updateLine(i, { bonuses: e.target.value })} />
+                  </div>
+                ))}
+              </div>
 
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setLines((prev) => [...prev, { employeeId: "", grossPay: "", advances: "", penalties: "", bonuses: "" }])}
-            >
-              + موظف
-            </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setLines((prev) => [...prev, { employeeId: "", grossPay: "", advances: "", penalties: "", bonuses: "" }])}
+              >
+                + موظف
+              </Button>
 
-            {runError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{runError}</p>}
+              {runError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{runError}</p>}
 
-            <div>
-              <Button type="submit" disabled={createRun.isPending}>تسجيل القائمة</Button>
-            </div>
-          </form>
-        </CardBody>
-      </Card>
+              <div>
+                <Button type="submit" disabled={createRun.isPending}>تسجيل القائمة</Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader><CardTitle>قوائم الرواتب ({payrollRuns.length})</CardTitle></CardHeader>
-        <CardBody className="p-0">
-          <Table>
-            <THead>
-              <TR><TH>الشهر</TH><TH>الموظفين</TH><TH>إجمالي صافي الرواتب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
-            </THead>
-            <TBody>
-              {payrollRuns.map((run) => (
-                <TR key={run.id}>
-                  <TD className="font-semibold text-slate-900">{run.month}/{run.year}</TD>
-                  <TD className="max-w-sm truncate">{run.employees.map((e) => `${e.employeeName} (${e.netPay})`).join("، ") || "-"}</TD>
-                  <TD className="font-bold text-slate-900">{run.totalNetPay}ج</TD>
-                  <TD><StatusBadge status={RUN_STATUS_LABELS[run.status] ?? run.status} /></TD>
-                  <TD>
-                    <div className="flex gap-1.5">
-                      {run.status === "DRAFT" && (
-                        <>
-                          <Button size="sm" onClick={() => approveRun.mutate(run.id)} disabled={approveRun.isPending}>اعتماد</Button>
-                          <Button size="sm" variant="danger" onClick={() => deleteDraftRun.mutate(run.id)} disabled={deleteDraftRun.isPending}>حذف</Button>
-                        </>
-                      )}
-                      {run.status === "APPROVED" && (
-                        <Button size="sm" variant="danger" onClick={() => cancelRun.mutate(run.id)} disabled={cancelRun.isPending}>إلغاء</Button>
-                      )}
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-          {payrollRuns.length === 0 && <EmptyState>مفيش قوائم رواتب لسه</EmptyState>}
-        </CardBody>
-      </Card>
+      {canSeePayroll && (
+        <Card>
+          <CardHeader><CardTitle>قوائم الرواتب ({payrollRuns.length})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <Table>
+              <THead>
+                <TR><TH>الشهر</TH><TH>الموظفين</TH><TH>إجمالي صافي الرواتب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
+              </THead>
+              <TBody>
+                {payrollRuns.map((run) => (
+                  <TR key={run.id}>
+                    <TD className="font-semibold text-slate-900">{run.month}/{run.year}</TD>
+                    <TD className="max-w-sm truncate">{run.employees.map((e) => `${e.employeeName} (${e.netPay})`).join("، ") || "-"}</TD>
+                    <TD className="font-bold text-slate-900">{run.totalNetPay}ج</TD>
+                    <TD><StatusBadge status={RUN_STATUS_LABELS[run.status] ?? run.status} /></TD>
+                    <TD>
+                      <div className="flex gap-1.5">
+                        {run.status === "DRAFT" && (
+                          <>
+                            {canApprovePayroll && (
+                              <Button size="sm" onClick={() => approveRun.mutate(run.id)} disabled={approveRun.isPending}>اعتماد</Button>
+                            )}
+                            {canManagePayroll && (
+                              <Button size="sm" variant="danger" onClick={() => deleteDraftRun.mutate(run.id)} disabled={deleteDraftRun.isPending}>حذف</Button>
+                            )}
+                          </>
+                        )}
+                        {run.status === "APPROVED" && canApprovePayroll && (
+                          <Button size="sm" variant="danger" onClick={() => cancelRun.mutate(run.id)} disabled={cancelRun.isPending}>إلغاء</Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            {payrollRuns.length === 0 && <EmptyState>مفيش قوائم رواتب لسه</EmptyState>}
+          </CardBody>
+        </Card>
+      )}
       </>
       )}
 
@@ -591,18 +644,20 @@ export function HrPayrollPage() {
           <Card>
             <CardHeader><CardTitle>الأقسام ({departments.length})</CardTitle></CardHeader>
             <CardBody>
-              <form
-                onSubmit={(e: FormEvent) => { e.preventDefault(); createDepartment.mutate(); }}
-                className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end"
-              >
-                <Field label="الكود">
-                  <Input required value={departmentForm.code} onChange={(e) => setDepartmentForm({ ...departmentForm, code: e.target.value })} />
-                </Field>
-                <Field label="اسم القسم">
-                  <Input required value={departmentForm.name} onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })} />
-                </Field>
-                <Button type="submit" disabled={createDepartment.isPending}>إضافة</Button>
-              </form>
+              {canManageOrganization && (
+                <form
+                  onSubmit={(e: FormEvent) => { e.preventDefault(); createDepartment.mutate(); }}
+                  className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end"
+                >
+                  <Field label="الكود">
+                    <Input required value={departmentForm.code} onChange={(e) => setDepartmentForm({ ...departmentForm, code: e.target.value })} />
+                  </Field>
+                  <Field label="اسم القسم">
+                    <Input required value={departmentForm.name} onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })} />
+                  </Field>
+                  <Button type="submit" disabled={createDepartment.isPending}>إضافة</Button>
+                </form>
+              )}
               {departmentError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{departmentError}</p>}
               <Table>
                 <THead>
@@ -615,14 +670,16 @@ export function HrPayrollPage() {
                       <TD className="font-semibold text-slate-900">{d.name}</TD>
                       <TD><StatusBadge status={d.status === "active" ? "فعّال" : "معطّل"} /></TD>
                       <TD>
-                        <Button
-                          size="sm"
-                          variant={d.status === "active" ? "secondary" : "primary"}
-                          onClick={() => toggleDepartmentStatus.mutate({ id: d.id, status: d.status === "active" ? "inactive" : "active" })}
-                          disabled={toggleDepartmentStatus.isPending}
-                        >
-                          {d.status === "active" ? "تعطيل" : "تفعيل"}
-                        </Button>
+                        {canManageOrganization && (
+                          <Button
+                            size="sm"
+                            variant={d.status === "active" ? "secondary" : "primary"}
+                            onClick={() => toggleDepartmentStatus.mutate({ id: d.id, status: d.status === "active" ? "inactive" : "active" })}
+                            disabled={toggleDepartmentStatus.isPending}
+                          >
+                            {d.status === "active" ? "تعطيل" : "تفعيل"}
+                          </Button>
+                        )}
                       </TD>
                     </TR>
                   ))}
@@ -635,26 +692,28 @@ export function HrPayrollPage() {
           <Card>
             <CardHeader><CardTitle>المسميات الوظيفية ({positions.length})</CardTitle></CardHeader>
             <CardBody>
-              <form
-                onSubmit={(e: FormEvent) => { e.preventDefault(); createPosition.mutate(); }}
-                className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
-              >
-                <Field label="الكود">
-                  <Input required value={positionForm.code} onChange={(e) => setPositionForm({ ...positionForm, code: e.target.value })} />
-                </Field>
-                <Field label="الاسم">
-                  <Input required value={positionForm.name} onChange={(e) => setPositionForm({ ...positionForm, name: e.target.value })} />
-                </Field>
-                <Field label="القسم (اختياري)">
-                  <Select value={positionForm.departmentId} onChange={(e) => setPositionForm({ ...positionForm, departmentId: e.target.value })}>
-                    <option value="">بدون قسم</option>
-                    {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </Select>
-                </Field>
-                <div className="flex items-end">
-                  <Button type="submit" disabled={createPosition.isPending}>إضافة</Button>
-                </div>
-              </form>
+              {canManageOrganization && (
+                <form
+                  onSubmit={(e: FormEvent) => { e.preventDefault(); createPosition.mutate(); }}
+                  className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
+                >
+                  <Field label="الكود">
+                    <Input required value={positionForm.code} onChange={(e) => setPositionForm({ ...positionForm, code: e.target.value })} />
+                  </Field>
+                  <Field label="الاسم">
+                    <Input required value={positionForm.name} onChange={(e) => setPositionForm({ ...positionForm, name: e.target.value })} />
+                  </Field>
+                  <Field label="القسم (اختياري)">
+                    <Select value={positionForm.departmentId} onChange={(e) => setPositionForm({ ...positionForm, departmentId: e.target.value })}>
+                      <option value="">بدون قسم</option>
+                      {departments.filter((d) => d.status === "active").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </Select>
+                  </Field>
+                  <div className="flex items-end">
+                    <Button type="submit" disabled={createPosition.isPending}>إضافة</Button>
+                  </div>
+                </form>
+              )}
               {positionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{positionError}</p>}
               <Table>
                 <THead>
@@ -668,14 +727,16 @@ export function HrPayrollPage() {
                       <TD>{departmentName(p.departmentId)}</TD>
                       <TD><StatusBadge status={p.status === "active" ? "فعّال" : "معطّل"} /></TD>
                       <TD>
-                        <Button
-                          size="sm"
-                          variant={p.status === "active" ? "secondary" : "primary"}
-                          onClick={() => togglePositionStatus.mutate({ id: p.id, status: p.status === "active" ? "inactive" : "active" })}
-                          disabled={togglePositionStatus.isPending}
-                        >
-                          {p.status === "active" ? "تعطيل" : "تفعيل"}
-                        </Button>
+                        {canManageOrganization && (
+                          <Button
+                            size="sm"
+                            variant={p.status === "active" ? "secondary" : "primary"}
+                            onClick={() => togglePositionStatus.mutate({ id: p.id, status: p.status === "active" ? "inactive" : "active" })}
+                            disabled={togglePositionStatus.isPending}
+                          >
+                            {p.status === "active" ? "تعطيل" : "تفعيل"}
+                          </Button>
+                        )}
                       </TD>
                     </TR>
                   ))}
@@ -729,42 +790,44 @@ export function HrPayrollPage() {
 
       {tab === "adjustments" && (
         <>
-          <Card className="mb-6">
-            <CardHeader><CardTitle>تسجيل سلفة / جزاء / مكافأة</CardTitle></CardHeader>
-            <CardBody>
-              <form
-                onSubmit={(e: FormEvent) => { e.preventDefault(); registerAdjustment.mutate(); }}
-                className="grid grid-cols-1 gap-4 sm:grid-cols-5"
-              >
-                <Field label="الموظف">
-                  <Select required value={adjustmentForm.employeeId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
-                    <option value="">اختر موظف</option>
-                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="التاريخ">
-                  <Input required type="date" value={adjustmentForm.entryDate} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, entryDate: e.target.value })} />
-                </Field>
-                <Field label="النوع">
-                  <Select value={adjustmentForm.adjustmentType} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustmentType: e.target.value })}>
-                    <option value="advance">سلفة</option>
-                    <option value="penalty">جزاء</option>
-                    <option value="bonus">مكافأة</option>
-                  </Select>
-                </Field>
-                <Field label="المبلغ">
-                  <Input required type="number" min="0" step="0.01" value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} />
-                </Field>
-                <Field label="ملاحظات (اختياري)">
-                  <Input value={adjustmentForm.notes} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, notes: e.target.value })} />
-                </Field>
-                <div className="sm:col-span-5">
-                  {adjustmentError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
-                  <Button type="submit" disabled={registerAdjustment.isPending}>تسجيل</Button>
-                </div>
-              </form>
-            </CardBody>
-          </Card>
+          {canManageAdjustments && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>تسجيل سلفة / جزاء / مكافأة</CardTitle></CardHeader>
+              <CardBody>
+                <form
+                  onSubmit={(e: FormEvent) => { e.preventDefault(); registerAdjustment.mutate(); }}
+                  className="grid grid-cols-1 gap-4 sm:grid-cols-5"
+                >
+                  <Field label="الموظف">
+                    <Select required value={adjustmentForm.employeeId} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
+                      <option value="">اختر موظف</option>
+                      {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="التاريخ">
+                    <Input required type="date" value={adjustmentForm.entryDate} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, entryDate: e.target.value })} />
+                  </Field>
+                  <Field label="النوع">
+                    <Select value={adjustmentForm.adjustmentType} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustmentType: e.target.value })}>
+                      <option value="advance">سلفة</option>
+                      <option value="penalty">جزاء</option>
+                      <option value="bonus">مكافأة</option>
+                    </Select>
+                  </Field>
+                  <Field label="المبلغ">
+                    <Input required type="number" min="0" step="0.01" value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} />
+                  </Field>
+                  <Field label="ملاحظات (اختياري)">
+                    <Input value={adjustmentForm.notes} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, notes: e.target.value })} />
+                  </Field>
+                  <div className="sm:col-span-5">
+                    {adjustmentError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{adjustmentError}</p>}
+                    <Button type="submit" disabled={registerAdjustment.isPending}>تسجيل</Button>
+                  </div>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>سجل السلف والجزاءات والمكافآت ({adjustments.length})</CardTitle></CardHeader>
@@ -791,7 +854,7 @@ export function HrPayrollPage() {
                         )}
                       </TD>
                       <TD>
-                        {a.status === "ACTIVE" && (
+                        {a.status === "ACTIVE" && canManageAdjustments && (
                           <div className="flex items-center gap-1.5">
                             <Input
                               placeholder="سبب الإلغاء"

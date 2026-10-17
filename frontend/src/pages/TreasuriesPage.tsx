@@ -8,8 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
-import { hasRole } from "../shared/auth/roles";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { can, hasRole } from "../shared/auth/roles";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface Branch { id: string; name: string; }
 interface Treasury { id: string; name: string; kind: "MAIN" | "BANK"; branchId: string | null; accountCode: string; balance: number; }
@@ -22,8 +24,8 @@ interface BankAccount {
 
 const KIND_LABELS: Record<string, string> = { MAIN: "خزينة رئيسية", BANK: "حساب بنكي" };
 const TABS = [
-  { key: "treasuries", label: "الخزائن" },
-  { key: "banks", label: "البنوك" },
+  { key: "treasuries", label: "الخزائن", perm: PERMISSION.TREASURIES_VIEW },
+  { key: "banks", label: "البنوك", perm: PERMISSION.BANKS_VIEW },
 ];
 
 function fmt(n: number): string {
@@ -33,25 +35,34 @@ function fmt(n: number): string {
 export function TreasuriesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("treasuries");
-  const canFilterByBranch = hasRole(user, "admin", "accountant");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const { branches, canListBranches } = useBranchOptions<Branch>();
+  // نطاق الفرع من الأدوار by design (الأدمن/المحاسب على مستوى الشركة)؛ ولستة الفروع نفسها محتاجة branches.view
+  const canFilterByBranch = hasRole(user, "admin", "accountant") && canListBranches;
+  const canManageTreasuries = can(user, PERMISSION.TREASURIES_MANAGE);
+  const canTransfer = can(user, PERMISSION.TREASURIES_TRANSFER);
+  const canManageBanks = can(user, PERMISSION.BANKS_MANAGE);
   const [branchId, setBranchId] = useState("");
 
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const treasuriesQuery = useQuery({
     queryKey: ["treasuries", branchId],
     queryFn: () => apiRequest<Treasury[]>(`/treasuries${branchId ? `?branchId=${branchId}` : ""}`),
+    enabled: tab === "treasuries",
   });
-  const banksQuery = useQuery({ queryKey: ["banks"], queryFn: () => apiRequest<Bank[]>("/banks") });
-  const bankAccountsQuery = useQuery({ queryKey: ["banks", "accounts"], queryFn: () => apiRequest<BankAccount[]>("/banks/accounts") });
+  const banksQuery = useQuery({ queryKey: ["banks"], queryFn: () => apiRequest<Bank[]>("/banks"), enabled: tab === "banks" });
+  const bankAccountsQuery = useQuery({
+    queryKey: ["banks", "accounts"],
+    queryFn: () => apiRequest<BankAccount[]>("/banks/accounts"),
+    enabled: tab === "banks",
+  });
 
-  const branchName = (id: string | null) => (id ? branchesQuery.data?.find((b) => b.id === id)?.name ?? id : "مشتركة");
+  const branchName = (id: string | null) => (id ? branches.find((b) => b.id === id)?.name ?? id : "مشتركة");
 
   // --- إنشاء خزينة رئيسية لفرع ناقصها (فروع اتستوردت من الريبو القديم قبل ما الإنشاء التلقائي يتفعّل) ---
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const provisionMainTreasury = useMutation({
     mutationFn: () => {
-      const branch = branchesQuery.data?.find((b) => b.id === branchId);
+      const branch = branches.find((b) => b.id === branchId);
       return apiRequest("/treasuries", { method: "POST", body: { name: `خزينة ${branch?.name ?? ""} الرئيسية`, branchId } });
     },
     onSuccess: () => {
@@ -124,7 +135,7 @@ export function TreasuriesPage() {
   return (
     <div>
       <PageHeader title="الخزائن والبنوك" description="متابعة أرصدة الخزائن والحسابات البنكية والتحويل بينها" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "treasuries" && (
         <>
@@ -136,11 +147,11 @@ export function TreasuriesPage() {
                     <Field label="الفرع">
                       <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
                         <option value="">كل الفروع</option>
-                        {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </Select>
                     </Field>
                   </div>
-                  {branchId && !treasuriesQuery.isLoading && !treasuries.some((t) => t.kind === "MAIN") && (
+                  {branchId && canManageTreasuries && !treasuriesQuery.isLoading && !treasuries.some((t) => t.kind === "MAIN") && (
                     <Button
                       type="button"
                       variant="secondary"
@@ -156,35 +167,37 @@ export function TreasuriesPage() {
             </Card>
           )}
 
-          <Card className="mb-6">
-            <CardHeader><CardTitle>تحويل بين خزينتين</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={(e: FormEvent) => { e.preventDefault(); transfer.mutate(); }} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Field label="من خزينة">
-                    <Select required value={transferForm.fromTreasuryId} onChange={(e) => setTransferForm({ ...transferForm, fromTreasuryId: e.target.value })}>
-                      <option value="">اختر خزينة</option>
-                      {treasuries.map((t) => <option key={t.id} value={t.id}>{t.name} ({fmt(t.balance)}ج)</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="لخزينة">
-                    <Select required value={transferForm.toTreasuryId} onChange={(e) => setTransferForm({ ...transferForm, toTreasuryId: e.target.value })}>
-                      <option value="">اختر خزينة</option>
-                      {treasuries.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="المبلغ">
-                    <Input required type="number" min="0.01" step="0.01" value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} />
-                  </Field>
-                  <Field label="ملاحظات (اختياري)">
-                    <Input value={transferForm.notes} onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })} />
-                  </Field>
-                </div>
-                {transferError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferError}</p>}
-                <Button type="submit" disabled={transfer.isPending}>{transfer.isPending ? "بيتحوّل..." : "تحويل"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+          {canTransfer && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>تحويل بين خزينتين</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={(e: FormEvent) => { e.preventDefault(); transfer.mutate(); }} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="من خزينة">
+                      <Select required value={transferForm.fromTreasuryId} onChange={(e) => setTransferForm({ ...transferForm, fromTreasuryId: e.target.value })}>
+                        <option value="">اختر خزينة</option>
+                        {treasuries.map((t) => <option key={t.id} value={t.id}>{t.name} ({fmt(t.balance)}ج)</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="لخزينة">
+                      <Select required value={transferForm.toTreasuryId} onChange={(e) => setTransferForm({ ...transferForm, toTreasuryId: e.target.value })}>
+                        <option value="">اختر خزينة</option>
+                        {treasuries.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="المبلغ">
+                      <Input required type="number" min="0.01" step="0.01" value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} />
+                    </Field>
+                    <Field label="ملاحظات (اختياري)">
+                      <Input value={transferForm.notes} onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })} />
+                    </Field>
+                  </div>
+                  {transferError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferError}</p>}
+                  <Button type="submit" disabled={transfer.isPending}>{transfer.isPending ? "بيتحوّل..." : "تحويل"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>الخزائن ({treasuries.length})</CardTitle></CardHeader>
@@ -219,19 +232,21 @@ export function TreasuriesPage() {
 
       {tab === "banks" && (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle>بنك جديد</CardTitle></CardHeader>
-              <CardBody>
-                <form onSubmit={(e: FormEvent) => { e.preventDefault(); createBank.mutate(); }} className="space-y-4">
-                  <Field label="اسم البنك">
-                    <Input required value={bankForm.name} onChange={(e) => setBankForm({ name: e.target.value })} />
-                  </Field>
-                  {bankError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{bankError}</p>}
-                  <Button type="submit" disabled={createBank.isPending}>إضافة البنك</Button>
-                </form>
-              </CardBody>
-            </Card>
+          <div className={`grid grid-cols-1 gap-6 ${canManageBanks ? "lg:grid-cols-2" : ""}`}>
+            {canManageBanks && (
+              <Card>
+                <CardHeader><CardTitle>بنك جديد</CardTitle></CardHeader>
+                <CardBody>
+                  <form onSubmit={(e: FormEvent) => { e.preventDefault(); createBank.mutate(); }} className="space-y-4">
+                    <Field label="اسم البنك">
+                      <Input required value={bankForm.name} onChange={(e) => setBankForm({ name: e.target.value })} />
+                    </Field>
+                    {bankError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{bankError}</p>}
+                    <Button type="submit" disabled={createBank.isPending}>إضافة البنك</Button>
+                  </form>
+                </CardBody>
+              </Card>
+            )}
 
             <Card>
               <CardHeader><CardTitle>البنوك ({banksQuery.data?.length ?? 0})</CardTitle></CardHeader>
@@ -244,10 +259,12 @@ export function TreasuriesPage() {
                         <TD className="font-semibold text-slate-900">{b.name}</TD>
                         <TD><Badge tone={b.isActive ? "success" : "danger"}>{b.isActive ? "نشط" : "متوقف"}</Badge></TD>
                         <TD>
-                          <Button size="sm" variant={b.isActive ? "danger" : "primary"} disabled={toggleBankActive.isPending}
-                            onClick={() => toggleBankActive.mutate({ id: b.id, isActive: !b.isActive })}>
-                            {b.isActive ? "تعطيل" : "تفعيل"}
-                          </Button>
+                          {canManageBanks && (
+                            <Button size="sm" variant={b.isActive ? "danger" : "primary"} disabled={toggleBankActive.isPending}
+                              onClick={() => toggleBankActive.mutate({ id: b.id, isActive: !b.isActive })}>
+                              {b.isActive ? "تعطيل" : "تفعيل"}
+                            </Button>
+                          )}
                         </TD>
                       </TR>
                     ))}
@@ -258,41 +275,43 @@ export function TreasuriesPage() {
             </Card>
           </div>
 
-          <Card className="my-6">
-            <CardHeader><CardTitle>حساب بنكي جديد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="البنك">
-                    <Select required value={accountForm.bankId} onChange={(e) => setAccountForm({ ...accountForm, bankId: e.target.value })}>
-                      <option value="">اختر بنك</option>
-                      {banksQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="اسم الحساب">
-                    <Input required placeholder="مثلًا: بنك مصر - فرع الجيزة" value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
-                  </Field>
-                  <Field label="رقم الحساب (اختياري)">
-                    <Input value={accountForm.accountNumber} onChange={(e) => setAccountForm({ ...accountForm, accountNumber: e.target.value })} />
-                  </Field>
-                  <Field label="IBAN (اختياري)">
-                    <Input value={accountForm.iban} onChange={(e) => setAccountForm({ ...accountForm, iban: e.target.value })} />
-                  </Field>
-                  <Field label="فرع البنك (اختياري)">
-                    <Input value={accountForm.bankBranchName} onChange={(e) => setAccountForm({ ...accountForm, bankBranchName: e.target.value })} />
-                  </Field>
-                  <Field label="ربط بفرع معيّن (اختياري)">
-                    <Select value={accountForm.branchId} onChange={(e) => setAccountForm({ ...accountForm, branchId: e.target.value })}>
-                      <option value="">- مشترك على مستوى الشركة -</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                </div>
-                {accountError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{accountError}</p>}
-                <Button type="submit" disabled={createAccount.isPending}>{createAccount.isPending ? "بيتسجّل..." : "إنشاء الحساب"}</Button>
-              </form>
-            </CardBody>
-          </Card>
+          {canManageBanks && (
+            <Card className="my-6">
+              <CardHeader><CardTitle>حساب بنكي جديد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={(e: FormEvent) => { e.preventDefault(); createAccount.mutate(); }} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field label="البنك">
+                      <Select required value={accountForm.bankId} onChange={(e) => setAccountForm({ ...accountForm, bankId: e.target.value })}>
+                        <option value="">اختر بنك</option>
+                        {banksQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="اسم الحساب">
+                      <Input required placeholder="مثلًا: بنك مصر - فرع الجيزة" value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
+                    </Field>
+                    <Field label="رقم الحساب (اختياري)">
+                      <Input value={accountForm.accountNumber} onChange={(e) => setAccountForm({ ...accountForm, accountNumber: e.target.value })} />
+                    </Field>
+                    <Field label="IBAN (اختياري)">
+                      <Input value={accountForm.iban} onChange={(e) => setAccountForm({ ...accountForm, iban: e.target.value })} />
+                    </Field>
+                    <Field label="فرع البنك (اختياري)">
+                      <Input value={accountForm.bankBranchName} onChange={(e) => setAccountForm({ ...accountForm, bankBranchName: e.target.value })} />
+                    </Field>
+                    <Field label="ربط بفرع معيّن (اختياري)">
+                      <Select value={accountForm.branchId} onChange={(e) => setAccountForm({ ...accountForm, branchId: e.target.value })}>
+                        <option value="">- مشترك على مستوى الشركة -</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                  </div>
+                  {accountError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{accountError}</p>}
+                  <Button type="submit" disabled={createAccount.isPending}>{createAccount.isPending ? "بيتسجّل..." : "إنشاء الحساب"}</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>الحسابات البنكية ({bankAccountsQuery.data?.length ?? 0})</CardTitle></CardHeader>

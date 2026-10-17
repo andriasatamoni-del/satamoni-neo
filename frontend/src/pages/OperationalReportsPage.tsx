@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
-import { useAuth } from "../shared/auth/AuthContext";
+import { useAuth, useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { hasRole } from "../shared/auth/roles";
 
@@ -144,7 +146,7 @@ interface PurchasesReport {
   trend: { period: string; total: number }[];
 }
 
-const TABS = [
+const BASE_TABS = [
   { key: "daily", label: "الملخّص اليومي" },
   { key: "sales-detail", label: "تفصيل المبيعات" },
   { key: "cancelled-orders", label: "الطلبات الملغاة" },
@@ -164,7 +166,8 @@ const TABS = [
   { key: "expenses-report", label: "تقرير المصروفات" },
   { key: "purchases-report", label: "تقرير المشتريات النقدية" },
 ];
-const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع" };
+// مقارنة شاملة بين كل الفروع - GET /reports/inventory-comparison محتاج reports.branch_health
+const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH };
 const PROCUREMENT_TABS = [
   { key: "purchase-orders", label: "أوامر الشراء" },
   { key: "purchase-receipts", label: "أذون الاستلام" },
@@ -172,6 +175,12 @@ const PROCUREMENT_TABS = [
   { key: "purchase-price-variance", label: "فروق أسعار الشراء" },
   { key: "supplier-performance", label: "أداء المورد" },
   { key: "outstanding-purchase-orders", label: "أوامر شراء مستنية" },
+];
+// تقارير المبيعات/التشغيل محتاجة reports.view، وتقارير المشتريات purchasing.view
+const TABS = [
+  ...BASE_TABS.map((t) => ({ ...t, perm: PERMISSION.REPORTS_VIEW })),
+  BRANCH_HEALTH_TAB,
+  ...PROCUREMENT_TABS.map((t) => ({ ...t, perm: PERMISSION.PURCHASING_VIEW })),
 ];
 
 function fmt(n: number): string {
@@ -206,17 +215,7 @@ function DateRangeFields({ from, setFrom, to, setTo }: { from: string; setFrom: 
 }
 
 export function OperationalReportsPage() {
-  const [tab, setTab] = useState("daily");
-  const { user } = useAuth();
-  // مقارنة شاملة بين كل الفروع - أدمن/محاسب بس، نفس صلاحية reports.branch_health
-  const canSeeBranchHealth = hasRole(user, "admin", "accountant");
-  // نفس أدوار purchasing.view بالظبط (راجع procurement.module.ts) - أدمن/مدير فرع/محاسب
-  const canSeeProcurement = hasRole(user, "admin", "branch_manager", "accountant");
-  const tabs = [
-    ...TABS,
-    ...(canSeeBranchHealth ? [BRANCH_HEALTH_TAB] : []),
-    ...(canSeeProcurement ? PROCUREMENT_TABS : []),
-  ];
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
 
   return (
     <div>
@@ -234,13 +233,13 @@ export function OperationalReportsPage() {
       {tab === "transfers" && <TransfersTab />}
       {tab === "negative-stock" && <NegativeStockTab />}
       {tab === "expiring-batches" && <ExpiringBatchesTab />}
-      {tab === "inventory-comparison" && canSeeBranchHealth && <InventoryComparisonTab />}
-      {tab === "purchase-orders" && canSeeProcurement && <PurchaseOrdersTab />}
-      {tab === "purchase-receipts" && canSeeProcurement && <PurchaseReceiptsTab />}
-      {tab === "purchase-price-history" && canSeeProcurement && <PurchasePriceHistoryTab />}
-      {tab === "purchase-price-variance" && canSeeProcurement && <PurchasePriceVarianceTab />}
-      {tab === "supplier-performance" && canSeeProcurement && <SupplierPerformanceTab />}
-      {tab === "outstanding-purchase-orders" && canSeeProcurement && <OutstandingPurchaseOrdersTab />}
+      {tab === "inventory-comparison" && <InventoryComparisonTab />}
+      {tab === "purchase-orders" && <PurchaseOrdersTab />}
+      {tab === "purchase-receipts" && <PurchaseReceiptsTab />}
+      {tab === "purchase-price-history" && <PurchasePriceHistoryTab />}
+      {tab === "purchase-price-variance" && <PurchasePriceVarianceTab />}
+      {tab === "supplier-performance" && <SupplierPerformanceTab />}
+      {tab === "outstanding-purchase-orders" && <OutstandingPurchaseOrdersTab />}
       {tab === "drivers" && <DriversTab />}
       {tab === "delivery-service" && <DeliveryServiceTab />}
       {tab === "peak-hours" && <PeakHoursTab />}
@@ -550,11 +549,18 @@ function CatalogTab() {
   );
 }
 
+// اختيار الفرع في التقارير: من غير branches.view القايمة فرع المستخدم بس (أو فاضية لو ملوش فرع)
 function useBranches() {
-  return useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const { branches } = useBranchOptions<Branch>();
+  return { data: branches };
 }
 function useInventoryItems() {
-  return useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
+  const allowed = useCan()(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE);
+  return useQuery({
+    queryKey: ["inventory", "items"],
+    queryFn: () => apiRequest<InventoryItem[]>("/inventory/items"),
+    enabled: allowed,
+  });
 }
 
 function BranchSelect({ value, onChange, branches }: { value: string; onChange: (v: string) => void; branches: Branch[] }) {
@@ -868,7 +874,12 @@ function InventoryComparisonTab() {
 }
 
 function useSuppliers() {
-  return useQuery({ queryKey: ["procurement", "suppliers"], queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers") });
+  const allowed = useCan()(PERMISSION.PROCUREMENT_SUPPLIERS_VIEW, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE);
+  return useQuery({
+    queryKey: ["procurement", "suppliers"],
+    queryFn: () => apiRequest<Supplier[]>("/procurement/suppliers"),
+    enabled: allowed,
+  });
 }
 
 function SupplierSelect({ value, onChange, suppliers, allowEmpty }: {

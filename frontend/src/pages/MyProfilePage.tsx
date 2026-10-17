@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { can } from "../shared/auth/roles";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface EmployeeProfile {
   id: string;
@@ -59,10 +63,10 @@ interface Branch {
 }
 
 const TABS = [
-  { key: "profile", label: "البروفايل" },
-  { key: "payslips", label: "قسائم الراتب" },
-  { key: "leave", label: "طلبات الإجازة" },
-  { key: "attendance", label: "الحضور" },
+  { key: "profile", label: "البروفايل", perm: PERMISSION.HR_SELF_VIEW },
+  { key: "payslips", label: "قسائم الراتب", perm: PERMISSION.HR_SELF_VIEW },
+  { key: "leave", label: "طلبات الإجازة", perm: PERMISSION.HR_SELF_LEAVE_MANAGE },
+  { key: "attendance", label: "الحضور", perm: PERMISSION.HR_SELF_VIEW },
 ];
 
 const LEAVE_STATUS_LABELS: Record<string, string> = {
@@ -77,13 +81,19 @@ function fmt(n: number): string {
 }
 
 export function MyProfilePage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("profile");
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const canSelfView = can(user, PERMISSION.HR_SELF_VIEW);
+  const canSelfLeave = can(user, PERMISSION.HR_SELF_LEAVE_MANAGE);
 
+  // /hr/self/profile محتاج hr.self.view. من غيره مش بنعرف إذا الحساب مربوط بموظف، فبنفترض إنه مربوط
+  // والسيرفر يرد بـ404 على باقي الطلبات لو مش مربوط.
   const profileQuery = useQuery({
     queryKey: ["hr", "self", "profile"],
     queryFn: () => apiRequest<EmployeeProfile>("/hr/self/profile"),
     retry: false,
+    enabled: canSelfView,
   });
 
   const notLinked = profileQuery.isError && profileQuery.error instanceof ApiError && profileQuery.error.status === 404;
@@ -91,22 +101,23 @@ export function MyProfilePage() {
   const payslipsQuery = useQuery({
     queryKey: ["hr", "self", "payslips"],
     queryFn: () => apiRequest<Payslip[]>("/hr/self/payslips"),
-    enabled: !notLinked,
+    enabled: !notLinked && canSelfView && tab === "payslips",
   });
 
   const leaveRequestsQuery = useQuery({
     queryKey: ["hr", "self", "leave-requests"],
     queryFn: () => apiRequest<LeaveRequest[]>("/hr/self/leave-requests"),
-    enabled: !notLinked,
+    enabled: !notLinked && canSelfLeave && tab === "leave",
   });
 
   const attendanceQuery = useQuery({
     queryKey: ["hr", "self", "attendance"],
     queryFn: () => apiRequest<AttendanceShift[]>("/hr/self/attendance"),
-    enabled: !notLinked,
+    enabled: !notLinked && canSelfView && tab === "attendance",
   });
 
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  // فروع تسجيل الحضور: من غير branches.view الموظف بيسجّل حضور في فرعه بس
+  const { branches: checkInBranches, canListBranches } = useBranchOptions<Branch>(tab === "attendance");
 
   const [leaveForm, setLeaveForm] = useState({ leaveType: "", startDate: "", endDate: "", reason: "" });
   const [leaveError, setLeaveError] = useState<string | null>(null);
@@ -134,7 +145,7 @@ export function MyProfilePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hr", "self", "leave-requests"] }),
   });
 
-  const [checkInBranchId, setCheckInBranchId] = useState("");
+  const [checkInBranchId, setCheckInBranchId] = useState(canListBranches ? "" : (user?.branchId ?? ""));
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
   const checkIn = useMutation({
     mutationFn: () => apiRequest("/hr/self/attendance/check-in", { method: "POST", body: { branchId: checkInBranchId } }),
@@ -178,7 +189,7 @@ export function MyProfilePage() {
         </Card>
       ) : (
         <>
-          <Tabs tabs={TABS} active={tab} onChange={setTab} />
+          <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
           {tab === "profile" && profile && (
             <Card>
@@ -319,7 +330,7 @@ export function MyProfilePage() {
                       <Field label="الفرع">
                         <Select required value={checkInBranchId} onChange={(e) => setCheckInBranchId(e.target.value)}>
                           <option value="">اختر فرع</option>
-                          {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          {checkInBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                         </Select>
                       </Field>
                       <Button type="submit" disabled={checkIn.isPending}>تسجيل حضور</Button>

@@ -1,6 +1,10 @@
+import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./shared/auth/AuthContext";
+import { RequirePermission } from "./shared/auth/RequirePermission";
 import { AppShell } from "./shared/ui/AppShell";
+import { NotFound } from "./shared/ui/NoAccess";
+import { STAFF_ROUTES, navItemsFor, type StaffPath } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { CrmPage } from "./pages/CrmPage";
@@ -20,7 +24,6 @@ import { UsersPage } from "./pages/UsersPage";
 import { TreasuriesPage } from "./pages/TreasuriesPage";
 import { MyProfilePage } from "./pages/MyProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
-import { RateOrderPage } from "./pages/RateOrderPage";
 import { PrintingPage } from "./pages/PrintingPage";
 import { PosSettingsPage } from "./pages/PosSettingsPage";
 import { BranchDayPage } from "./pages/BranchDayPage";
@@ -29,13 +32,45 @@ import { OperationalReportsPage } from "./pages/OperationalReportsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { TalabatPage } from "./pages/TalabatPage";
+import { LoyaltyPage } from "./pages/LoyaltyPage";
+import { RateOrderPage } from "./pages/RateOrderPage";
 import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage";
 import { CustomerPortalRegisterPage } from "./pages/portal/CustomerPortalRegisterPage";
 import { CustomerPortalProfilePage } from "./pages/portal/CustomerPortalProfilePage";
 import { StorefrontPage } from "./pages/storefront/StorefrontPage";
-import { LoyaltyPage } from "./pages/LoyaltyPage";
 import { TrackOrderPage } from "./pages/storefront/TrackOrderPage";
 import { MyOrdersPage } from "./pages/storefront/MyOrdersPage";
+
+// صفحة كل راوت في STAFF_ROUTES - Record بيخلّي الكومبايلر يفشل لو راوت اتضاف هناك من غير صفحة هنا.
+const STAFF_PAGES: Record<StaffPath, ComponentType> = {
+  "/": HomePage,
+  "/me": MyProfilePage,
+  "/orders": OrdersPage,
+  "/kds": KdsPage,
+  "/crm": CrmPage,
+  "/whatsapp": WhatsappPage,
+  "/branches": BranchesPage,
+  "/inventory": InventoryPage,
+  "/catalog": CatalogPage,
+  "/production": ProductionPage,
+  "/procurement": ProcurementPage,
+  "/delivery": DeliveryPage,
+  "/branch-day": BranchDayPage,
+  "/accounting": AccountingPage,
+  "/expenses": ExpensesPage,
+  "/purchases": PurchasesPage,
+  "/talabat": TalabatPage,
+  "/financial-reports": FinancialReportsPage,
+  "/operational-reports": OperationalReportsPage,
+  "/treasuries": TreasuriesPage,
+  "/payment-control": PaymentControlPage,
+  "/hr-payroll": HrPayrollPage,
+  "/printing": PrintingPage,
+  "/users": UsersPage,
+  "/audit-log": AuditLogPage,
+  "/loyalty": LoyaltyPage,
+  "/pos-settings": PosSettingsPage,
+};
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -47,7 +82,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  return <AppShell>{children}</AppShell>;
+  return <AppShell navItems={navItemsFor(user)}>{children}</AppShell>;
 }
 
 export function App() {
@@ -61,219 +96,28 @@ export function App() {
       <Route path="/order" element={<StorefrontPage />} />
       <Route path="/order/track/:orderId" element={<TrackOrderPage />} />
       <Route path="/order/orders" element={<MyOrdersPage />} />
+      {/* راوتات الموظفين من STAFF_ROUTES (routes.tsx) - نفس الصلاحيات اللي بتفلتر القائمة الجانبية */}
+      {STAFF_ROUTES.map(({ path, perm }) => {
+        const Page = STAFF_PAGES[path];
+        return (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <RequireAuth>
+                <RequirePermission anyOf={perm}>
+                  <Page />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+        );
+      })}
       <Route
-        path="/"
+        path="*"
         element={
           <RequireAuth>
-            <HomePage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/crm"
-        element={
-          <RequireAuth>
-            <CrmPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/whatsapp"
-        element={
-          <RequireAuth>
-            <WhatsappPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/branches"
-        element={
-          <RequireAuth>
-            <BranchesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/inventory"
-        element={
-          <RequireAuth>
-            <InventoryPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/catalog"
-        element={
-          <RequireAuth>
-            <CatalogPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/production"
-        element={
-          <RequireAuth>
-            <ProductionPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/procurement"
-        element={
-          <RequireAuth>
-            <ProcurementPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/orders"
-        element={
-          <RequireAuth>
-            <OrdersPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/kds"
-        element={
-          <RequireAuth>
-            <KdsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/delivery"
-        element={
-          <RequireAuth>
-            <DeliveryPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/accounting"
-        element={
-          <RequireAuth>
-            <AccountingPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/expenses"
-        element={
-          <RequireAuth>
-            <ExpensesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/purchases"
-        element={
-          <RequireAuth>
-            <PurchasesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/talabat"
-        element={
-          <RequireAuth>
-            <TalabatPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/treasuries"
-        element={
-          <RequireAuth>
-            <TreasuriesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/payment-control"
-        element={
-          <RequireAuth>
-            <PaymentControlPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/hr-payroll"
-        element={
-          <RequireAuth>
-            <HrPayrollPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/printing"
-        element={
-          <RequireAuth>
-            <PrintingPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/users"
-        element={
-          <RequireAuth>
-            <UsersPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/me"
-        element={
-          <RequireAuth>
-            <MyProfilePage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/audit-log"
-        element={
-          <RequireAuth>
-            <AuditLogPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/loyalty"
-        element={
-          <RequireAuth>
-            <LoyaltyPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/pos-settings"
-        element={
-          <RequireAuth>
-            <PosSettingsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/branch-day"
-        element={
-          <RequireAuth>
-            <BranchDayPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/financial-reports"
-        element={
-          <RequireAuth>
-            <FinancialReportsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/operational-reports"
-        element={
-          <RequireAuth>
-            <OperationalReportsPage />
+            <NotFound />
           </RequireAuth>
         }
       />

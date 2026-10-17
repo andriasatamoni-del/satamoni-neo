@@ -16,6 +16,6 @@
     "dev:frontend": "pnpm --filter satamoni-neo-frontend dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm --filter satamoni-neo-backend exec tsc --noEmit -p tsconfig.json && pnpm --filter satamoni-neo-frontend build",
-    "test:unit": "pnpm --filter satamoni-neo-backend test:unit"
+    "test:unit": "pnpm --filter satamoni-neo-backend test:unit && pnpm --filter satamoni-neo-frontend test"
   }
 }

@@ -1,13 +1,16 @@
 import { Fragment, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface InventoryItem { id: string; name: string; unit: string; itemType: "raw" | "manufactured"; }
 interface Branch { id: string; name: string; }
@@ -43,9 +46,10 @@ interface RawMaterialRow { inventoryItemId: string; itemName: string | null; uni
 interface RawMaterialRequirementResponse { hasRecipe: boolean; raw: RawMaterialRow[]; }
 
 const TABS = [
-  { key: "orders", label: "أوامر التحويل" },
-  { key: "recipes", label: "الوصفات" },
-  { key: "planning", label: "تخطيط التصنيع" },
+  { key: "orders", label: "أوامر التحويل", perm: PERMISSION.PRODUCTION_VIEW },
+  // GET /catalog/recipes محتاج catalog.items.view أو catalog.recipes.manage
+  { key: "recipes", label: "الوصفات", perm: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE] },
+  { key: "planning", label: "تخطيط التصنيع", perm: PERMISSION.PRODUCTION_VIEW },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -58,15 +62,31 @@ function fmt(n: number): string {
 
 export function ProductionPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("orders");
+  const allowed = useCan();
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const canSeeProduction = allowed(PERMISSION.PRODUCTION_VIEW);
+  const canCreateOrder = allowed(PERMISSION.PRODUCTION_CREATE);
+  const canApproveOrder = allowed(PERMISSION.PRODUCTION_APPROVE);
+  const canCompleteOrder = allowed(PERMISSION.PRODUCTION_COMPLETE);
+  const canCancelOrder = allowed(PERMISSION.PRODUCTION_CANCEL);
+  const canManageRecipes = allowed(PERMISSION.CATALOG_RECIPES_MANAGE);
 
-  const itemsQuery = useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const itemsQuery = useQuery({
+    queryKey: ["inventory", "items"],
+    queryFn: () => apiRequest<InventoryItem[]>("/inventory/items"),
+    enabled: allowed(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE),
+  });
+  const { branches } = useBranchOptions<Branch>(tab !== "recipes");
   const recipesQuery = useQuery({
     queryKey: ["catalog", "recipes", "manufactured_item"],
     queryFn: () => apiRequest<Recipe[]>("/catalog/recipes?recipeType=manufactured_item"),
+    enabled: tab === "recipes",
   });
-  const ordersQuery = useQuery({ queryKey: ["production", "orders"], queryFn: () => apiRequest<ConversionOrder[]>("/production") });
+  const ordersQuery = useQuery({
+    queryKey: ["production", "orders"],
+    queryFn: () => apiRequest<ConversionOrder[]>("/production"),
+    enabled: canSeeProduction && tab === "orders",
+  });
 
   const items = itemsQuery.data ?? [];
   const manufacturedItems = items.filter((i) => i.itemType === "manufactured");
@@ -220,28 +240,30 @@ export function ProductionPage() {
     <div>
       <PageHeader title="التصنيع والتعبئة" description="وصفات التحويل وأوامر التصنيع/التعبئة" />
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "recipes" && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>وصفة تحويل جديدة</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handleRecipeSubmit} className="flex flex-wrap items-end gap-3">
-                <Field label="الصنف الناتج (لازم يكون نوعه مصنّع)">
-                  <Select required value={newRecipeOutputId} onChange={(e) => setNewRecipeOutputId(e.target.value)}>
-                    <option value="">اختر صنف مصنّع</option>
-                    {manufacturedItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                  </Select>
-                </Field>
-                <Button type="submit" disabled={createRecipe.isPending}>إنشاء وصفة</Button>
-              </form>
-              {manufacturedItems.length === 0 && (
-                <p className="mt-3 text-sm text-slate-400">مفيش أصناف "مصنّعة" لسه - أضف صنف جديد من تبويب المخزون واختار نوعه "مصنّع".</p>
-              )}
-              {recipeError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{recipeError}</p>}
-            </CardBody>
-          </Card>
+          {canManageRecipes && (
+            <Card>
+              <CardHeader><CardTitle>وصفة تحويل جديدة</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handleRecipeSubmit} className="flex flex-wrap items-end gap-3">
+                  <Field label="الصنف الناتج (لازم يكون نوعه مصنّع)">
+                    <Select required value={newRecipeOutputId} onChange={(e) => setNewRecipeOutputId(e.target.value)}>
+                      <option value="">اختر صنف مصنّع</option>
+                      {manufacturedItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                    </Select>
+                  </Field>
+                  <Button type="submit" disabled={createRecipe.isPending}>إنشاء وصفة</Button>
+                </form>
+                {manufacturedItems.length === 0 && (
+                  <p className="mt-3 text-sm text-slate-400">مفيش أصناف "مصنّعة" لسه - أضف صنف جديد من تبويب المخزون واختار نوعه "مصنّع".</p>
+                )}
+                {recipeError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{recipeError}</p>}
+              </CardBody>
+            </Card>
+          )}
 
           {recipes.map((recipe) => {
             const activeVersion = recipe.versions.find((v) => v.status === "ACTIVE");
@@ -262,6 +284,8 @@ export function ProductionPage() {
                     <p className="mb-4 text-sm text-slate-400">مفيش نسخة نشطة لسه - أضف مكوّنات وفعّل نسخة عشان تقدر تستخدمها في أمر تحويل.</p>
                   )}
 
+                  {canManageRecipes && (
+                  <>
                   <p className="mb-2 text-xs font-semibold text-slate-500">نسخة جديدة (هتتفعّل فورًا)</p>
                   <div className="space-y-2">
                     {linesFor(recipe.id).map((line, i) => (
@@ -283,6 +307,8 @@ export function ProductionPage() {
                     </Button>
                   </div>
                   {versionError[recipe.id] && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{versionError[recipe.id]}</p>}
+                  </>
+                  )}
                 </CardBody>
               </Card>
             );
@@ -295,33 +321,35 @@ export function ProductionPage() {
 
       {tab === "orders" && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>أمر تحويل جديد</CardTitle></CardHeader>
-            <CardBody>
-              <form onSubmit={handleOrderSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-end">
-                <Field label="الفرع">
-                  <Select required value={orderForm.branchId} onChange={(e) => setOrderForm({ ...orderForm, branchId: e.target.value })}>
-                    <option value="">اختر فرع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="الوصفة">
-                  <Select required value={orderForm.recipeId} onChange={(e) => setOrderForm({ ...orderForm, recipeId: e.target.value })}>
-                    <option value="">اختر وصفة (بنسخة نشطة)</option>
-                    {recipesWithActiveVersion.map((r) => <option key={r.id} value={r.id}>{itemName(r.inventoryItemId ?? "")}</option>)}
-                  </Select>
-                </Field>
-                <Field label="الكمية المخططة">
-                  <Input required type="number" step="any" value={orderForm.plannedOutputQuantity} onChange={(e) => setOrderForm({ ...orderForm, plannedOutputQuantity: e.target.value })} />
-                </Field>
-                <Button type="submit" disabled={createOrder.isPending}>إنشاء</Button>
-              </form>
-              {recipesWithActiveVersion.length === 0 && (
-                <p className="mt-3 text-sm text-slate-400">مفيش وصفة بنسخة نشطة لسه - فعّل وصفة الأول من تبويب "الوصفات".</p>
-              )}
-              {orderError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{orderError}</p>}
-            </CardBody>
-          </Card>
+          {canCreateOrder && (
+            <Card>
+              <CardHeader><CardTitle>أمر تحويل جديد</CardTitle></CardHeader>
+              <CardBody>
+                <form onSubmit={handleOrderSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-end">
+                  <Field label="الفرع">
+                    <Select required value={orderForm.branchId} onChange={(e) => setOrderForm({ ...orderForm, branchId: e.target.value })}>
+                      <option value="">اختر فرع</option>
+                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الوصفة">
+                    <Select required value={orderForm.recipeId} onChange={(e) => setOrderForm({ ...orderForm, recipeId: e.target.value })}>
+                      <option value="">اختر وصفة (بنسخة نشطة)</option>
+                      {recipesWithActiveVersion.map((r) => <option key={r.id} value={r.id}>{itemName(r.inventoryItemId ?? "")}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الكمية المخططة">
+                    <Input required type="number" step="any" value={orderForm.plannedOutputQuantity} onChange={(e) => setOrderForm({ ...orderForm, plannedOutputQuantity: e.target.value })} />
+                  </Field>
+                  <Button type="submit" disabled={createOrder.isPending}>إنشاء</Button>
+                </form>
+                {recipesWithActiveVersion.length === 0 && (
+                  <p className="mt-3 text-sm text-slate-400">مفيش وصفة بنسخة نشطة لسه - فعّل وصفة الأول من تبويب "الوصفات".</p>
+                )}
+                {orderError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{orderError}</p>}
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>أوامر التحويل ({orders.length})</CardTitle></CardHeader>
@@ -340,28 +368,23 @@ export function ProductionPage() {
                         <TD><StatusBadge status={STATUS_LABELS[order.status] ?? order.status} /></TD>
                         <TD>
                           <div className="flex flex-wrap gap-1.5">
-                            {order.status === "DRAFT" && (
-                              <>
-                                <Button size="sm" onClick={() => approveOrder.mutate(order.id)} disabled={approveOrder.isPending}>اعتماد</Button>
-                                <Button size="sm" variant="danger" onClick={() => cancelOrder.mutate(order.id)} disabled={cancelOrder.isPending}>إلغاء</Button>
-                              </>
+                            {/* بدء التنفيذ = POST /production/:id/start ومحتاج production.create */}
+                            {order.status === "DRAFT" && canApproveOrder && (
+                              <Button size="sm" onClick={() => approveOrder.mutate(order.id)} disabled={approveOrder.isPending}>اعتماد</Button>
                             )}
-                            {order.status === "APPROVED" && (
-                              <>
-                                <Button size="sm" onClick={() => startOrder.mutate(order.id)} disabled={startOrder.isPending}>بدء التنفيذ</Button>
-                                <Button size="sm" variant="danger" onClick={() => cancelOrder.mutate(order.id)} disabled={cancelOrder.isPending}>إلغاء</Button>
-                              </>
+                            {order.status === "APPROVED" && canCreateOrder && (
+                              <Button size="sm" onClick={() => startOrder.mutate(order.id)} disabled={startOrder.isPending}>بدء التنفيذ</Button>
                             )}
-                            {order.status === "IN_PROGRESS" && (
-                              <>
-                                <Button size="sm" onClick={() => setCompleteOpenId(completeOpenId === order.id ? null : order.id)}>إكمال</Button>
-                                <Button size="sm" variant="danger" onClick={() => cancelOrder.mutate(order.id)} disabled={cancelOrder.isPending}>إلغاء</Button>
-                              </>
+                            {order.status === "IN_PROGRESS" && canCompleteOrder && (
+                              <Button size="sm" onClick={() => setCompleteOpenId(completeOpenId === order.id ? null : order.id)}>إكمال</Button>
+                            )}
+                            {["DRAFT", "APPROVED", "IN_PROGRESS"].includes(order.status) && canCancelOrder && (
+                              <Button size="sm" variant="danger" onClick={() => cancelOrder.mutate(order.id)} disabled={cancelOrder.isPending}>إلغاء</Button>
                             )}
                           </div>
                         </TD>
                       </TR>
-                      {completeOpenId === order.id && (
+                      {completeOpenId === order.id && canCompleteOrder && (
                         <TR>
                           <TD colSpan={5}>
                             <div className="flex flex-wrap items-end gap-3">
@@ -412,7 +435,7 @@ export function ProductionPage() {
                     onChange={(e) => { setPlanCkBranchId(e.target.value); setRawMaterialOpenItemId(null); }}
                   >
                     <option value="">اختر فرع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
                 <Field label="من تاريخ">

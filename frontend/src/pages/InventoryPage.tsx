@@ -1,13 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useCan } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { Tabs } from "../shared/ui/Tabs";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 
 interface InventoryItem {
   id: string;
@@ -141,7 +144,8 @@ const MOVEMENT_TYPES = [
 
 const TABS = [
   { key: "items", label: "الأصناف والحركات" },
-  { key: "stocktake", label: "الجرد الفعلي" },
+  // GET /inventory/stocktakes* محتاج inventory.items.view بالذات (مش manage)
+  { key: "stocktake", label: "الجرد الفعلي", perm: PERMISSION.INVENTORY_ITEMS_VIEW },
   { key: "low-stock", label: "حدود المخزون والتنبيهات" },
   { key: "transfers", label: "طلبات التحويل بين الفروع" },
   { key: "batches", label: "الدفعات" },
@@ -153,9 +157,13 @@ function fmt(n: number): string {
 
 export function InventoryPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("items");
+  const allowed = useCan();
+  const canManageItems = allowed(PERMISSION.INVENTORY_ITEMS_MANAGE);
+  const canRecordMovements = allowed(PERMISSION.INVENTORY_MOVEMENTS_RECORD);
+  const canManageBatches = allowed(PERMISSION.INVENTORY_BATCHES_MANAGE);
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
   const itemsQuery = useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
+  const { branches } = useBranchOptions<Branch>();
 
   const [newItemName, setNewItemName] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("");
@@ -314,6 +322,7 @@ export function InventoryPage() {
       apiRequest<TransferRequest[]>(
         transferFilterBranchId ? `/inventory/transfer-requests?fromBranchId=${transferFilterBranchId}` : "/inventory/transfer-requests"
       ),
+    enabled: tab === "transfers",
   });
 
   const createTransferRequest = useMutation({
@@ -403,7 +412,7 @@ export function InventoryPage() {
   const transferRequests = transferRequestsQuery.data ?? [];
 
   function branchName(id: string): string {
-    return branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
+    return branches.find((b) => b.id === id)?.name ?? id;
   }
   function itemName(id: string): string {
     return items.find((i) => i.id === id)?.name ?? id;
@@ -413,73 +422,79 @@ export function InventoryPage() {
     <div>
       <PageHeader title="المخزون" description="الأصناف وحركات المخزون والجرد الفعلي" />
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "items" && (
         <>
-          <div className="mb-6 mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>إضافة صنف</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <form onSubmit={handleItemSubmit} className="space-y-4">
-                  <Field label="اسم الصنف">
-                    <Input required value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
-                  </Field>
-                  <Field label="الوحدة (كيلو/لتر/قطعة)">
-                    <Input required value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} />
-                  </Field>
-                  <Field label="نوع الصنف">
-                    <Select value={newItemType} onChange={(e) => setNewItemType(e.target.value)}>
-                      <option value="raw">خام</option>
-                      <option value="manufactured">مصنّع (ناتج تصنيع/تعبئة)</option>
-                    </Select>
-                  </Field>
-                  {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
-                  <Button type="submit" disabled={createItem.isPending}>إضافة</Button>
-                </form>
-              </CardBody>
-            </Card>
+          {(canManageItems || canRecordMovements) && (
+            <div className="mb-6 mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {canManageItems && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>إضافة صنف</CardTitle>
+                  </CardHeader>
+                  <CardBody>
+                    <form onSubmit={handleItemSubmit} className="space-y-4">
+                      <Field label="اسم الصنف">
+                        <Input required value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
+                      </Field>
+                      <Field label="الوحدة (كيلو/لتر/قطعة)">
+                        <Input required value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} />
+                      </Field>
+                      <Field label="نوع الصنف">
+                        <Select value={newItemType} onChange={(e) => setNewItemType(e.target.value)}>
+                          <option value="raw">خام</option>
+                          <option value="manufactured">مصنّع (ناتج تصنيع/تعبئة)</option>
+                        </Select>
+                      </Field>
+                      {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
+                      <Button type="submit" disabled={createItem.isPending}>إضافة</Button>
+                    </form>
+                  </CardBody>
+                </Card>
+              )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>تسجيل حركة مخزون</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <form onSubmit={handleMovementSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field label="الصنف">
-                      <Select required value={movementForm.inventoryItemId} onChange={(e) => setMovementForm({ ...movementForm, inventoryItemId: e.target.value })}>
-                        <option value="">اختر صنف</option>
-                        {items.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="الفرع">
-                      <Select required value={movementForm.branchId} onChange={(e) => setMovementForm({ ...movementForm, branchId: e.target.value })}>
-                        <option value="">اختر فرع</option>
-                        {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="نوع الحركة">
-                      <Select value={movementForm.movementType} onChange={(e) => setMovementForm({ ...movementForm, movementType: e.target.value })}>
-                        {MOVEMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="الكمية (سالبة للخصم)">
-                      <Input required type="number" step="any" value={movementForm.quantityDelta} onChange={(e) => setMovementForm({ ...movementForm, quantityDelta: e.target.value })} />
-                    </Field>
-                  </div>
-                  <Field label="السبب (اختياري)">
-                    <Input value={movementForm.reason} onChange={(e) => setMovementForm({ ...movementForm, reason: e.target.value })} />
-                  </Field>
-                  {movementError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{movementError}</p>}
-                  {movementResult && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{movementResult}</p>}
-                  <Button type="submit" disabled={recordMovement.isPending}>تسجيل</Button>
-                </form>
-              </CardBody>
-            </Card>
-          </div>
+              {canRecordMovements && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>تسجيل حركة مخزون</CardTitle>
+                  </CardHeader>
+                  <CardBody>
+                    <form onSubmit={handleMovementSubmit} className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field label="الصنف">
+                          <Select required value={movementForm.inventoryItemId} onChange={(e) => setMovementForm({ ...movementForm, inventoryItemId: e.target.value })}>
+                            <option value="">اختر صنف</option>
+                            {items.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="الفرع">
+                          <Select required value={movementForm.branchId} onChange={(e) => setMovementForm({ ...movementForm, branchId: e.target.value })}>
+                            <option value="">اختر فرع</option>
+                            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="نوع الحركة">
+                          <Select value={movementForm.movementType} onChange={(e) => setMovementForm({ ...movementForm, movementType: e.target.value })}>
+                            {MOVEMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="الكمية (سالبة للخصم)">
+                          <Input required type="number" step="any" value={movementForm.quantityDelta} onChange={(e) => setMovementForm({ ...movementForm, quantityDelta: e.target.value })} />
+                        </Field>
+                      </div>
+                      <Field label="السبب (اختياري)">
+                        <Input value={movementForm.reason} onChange={(e) => setMovementForm({ ...movementForm, reason: e.target.value })} />
+                      </Field>
+                      {movementError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{movementError}</p>}
+                      {movementResult && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{movementResult}</p>}
+                      <Button type="submit" disabled={recordMovement.isPending}>تسجيل</Button>
+                    </form>
+                  </CardBody>
+                </Card>
+              )}
+            </div>
+          )}
 
           <Card>
             <CardHeader>
@@ -511,70 +526,72 @@ export function InventoryPage() {
 
       {tab === "stocktake" && (
         <div className="mt-6 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>جرد فعلي جديد</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <form onSubmit={handleStocktakeSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="الفرع">
-                    <Select
-                      required
-                      value={stocktakeBranchId}
-                      onChange={(e) => {
-                        setStocktakeBranchId(e.target.value);
-                        setActualQuantities({});
-                        setStocktakeResult(null);
-                        setStocktakeError(null);
-                      }}
-                    >
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="ملاحظات (اختياري)">
-                    <Input value={stocktakeNotes} onChange={(e) => setStocktakeNotes(e.target.value)} />
-                  </Field>
-                </div>
+          {canRecordMovements && (
+            <Card>
+              <CardHeader>
+                <CardTitle>جرد فعلي جديد</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <form onSubmit={handleStocktakeSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label="الفرع">
+                      <Select
+                        required
+                        value={stocktakeBranchId}
+                        onChange={(e) => {
+                          setStocktakeBranchId(e.target.value);
+                          setActualQuantities({});
+                          setStocktakeResult(null);
+                          setStocktakeError(null);
+                        }}
+                      >
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="ملاحظات (اختياري)">
+                      <Input value={stocktakeNotes} onChange={(e) => setStocktakeNotes(e.target.value)} />
+                    </Field>
+                  </div>
 
-                {stocktakeBranchId && (
-                  <Table>
-                    <THead>
-                      <TR>
-                        <TH>الصنف</TH><TH>الوحدة</TH><TH>رصيد النظام</TH><TH>الكمية الفعلية</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {board.map((row) => (
-                        <TR key={row.inventoryItemId}>
-                          <TD className="font-semibold text-slate-900">{row.name}</TD>
-                          <TD>{row.unit}</TD>
-                          <TD>{fmt(row.systemQuantity)}</TD>
-                          <TD>
-                            <Input
-                              type="number"
-                              step="any"
-                              placeholder={fmt(row.systemQuantity)}
-                              value={actualQuantities[row.inventoryItemId] ?? ""}
-                              onChange={(e) =>
-                                setActualQuantities({ ...actualQuantities, [row.inventoryItemId]: e.target.value })
-                              }
-                            />
-                          </TD>
+                  {stocktakeBranchId && (
+                    <Table>
+                      <THead>
+                        <TR>
+                          <TH>الصنف</TH><TH>الوحدة</TH><TH>رصيد النظام</TH><TH>الكمية الفعلية</TH>
                         </TR>
-                      ))}
-                    </TBody>
-                  </Table>
-                )}
-                {stocktakeBranchId && board.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+                      </THead>
+                      <TBody>
+                        {board.map((row) => (
+                          <TR key={row.inventoryItemId}>
+                            <TD className="font-semibold text-slate-900">{row.name}</TD>
+                            <TD>{row.unit}</TD>
+                            <TD>{fmt(row.systemQuantity)}</TD>
+                            <TD>
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder={fmt(row.systemQuantity)}
+                                value={actualQuantities[row.inventoryItemId] ?? ""}
+                                onChange={(e) =>
+                                  setActualQuantities({ ...actualQuantities, [row.inventoryItemId]: e.target.value })
+                                }
+                              />
+                            </TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )}
+                  {stocktakeBranchId && board.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
 
-                {stocktakeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{stocktakeError}</p>}
-                {stocktakeResult && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{stocktakeResult}</p>}
-                <Button type="submit" disabled={createStocktake.isPending || !stocktakeBranchId}>حفظ الجرد</Button>
-              </form>
-            </CardBody>
-          </Card>
+                  {stocktakeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{stocktakeError}</p>}
+                  {stocktakeResult && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{stocktakeResult}</p>}
+                  <Button type="submit" disabled={createStocktake.isPending || !stocktakeBranchId}>حفظ الجرد</Button>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -651,7 +668,7 @@ export function InventoryPage() {
               <Field label="الفرع">
                 <Select value={lowStockBranchId} onChange={(e) => setLowStockBranchId(e.target.value)}>
                   <option value="">اختر فرع</option>
-                  {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </Field>
             </CardBody>
@@ -659,47 +676,49 @@ export function InventoryPage() {
 
           {lowStockBranchId && (
             <>
-              <Card>
-                <CardHeader><CardTitle>ضبط حد إعادة الطلب</CardTitle></CardHeader>
-                <CardBody className="p-0">
-                  <Table>
-                    <THead>
-                      <TR><TH>الصنف</TH><TH>الوحدة</TH><TH>حد إعادة الطلب</TH><TH></TH></TR>
-                    </THead>
-                    <TBody>
-                      {items.map((item) => {
-                        const existing = lowStockQuery.data?.find((r) => r.inventoryItemId === item.id);
-                        const draft = reorderPointDrafts[item.id] ?? (existing?.reorderPoint != null ? String(existing.reorderPoint) : "");
-                        return (
-                          <TR key={item.id}>
-                            <TD className="font-semibold text-slate-900">{item.name}</TD>
-                            <TD>{item.unit}</TD>
-                            <TD>
-                              <Input
-                                type="number"
-                                min="0"
-                                className="w-28"
-                                value={draft}
-                                onChange={(e) => setReorderPointDrafts({ ...reorderPointDrafts, [item.id]: e.target.value })}
-                              />
-                            </TD>
-                            <TD>
-                              <Button
-                                size="sm"
-                                disabled={updateThreshold.isPending || draft === ""}
-                                onClick={() => updateThreshold.mutate({ inventoryItemId: item.id, reorderPoint: Number(draft) })}
-                              >
-                                حفظ
-                              </Button>
-                            </TD>
-                          </TR>
-                        );
-                      })}
-                    </TBody>
-                  </Table>
-                  {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
-                </CardBody>
-              </Card>
+              {canManageItems && (
+                <Card>
+                  <CardHeader><CardTitle>ضبط حد إعادة الطلب</CardTitle></CardHeader>
+                  <CardBody className="p-0">
+                    <Table>
+                      <THead>
+                        <TR><TH>الصنف</TH><TH>الوحدة</TH><TH>حد إعادة الطلب</TH><TH></TH></TR>
+                      </THead>
+                      <TBody>
+                        {items.map((item) => {
+                          const existing = lowStockQuery.data?.find((r) => r.inventoryItemId === item.id);
+                          const draft = reorderPointDrafts[item.id] ?? (existing?.reorderPoint != null ? String(existing.reorderPoint) : "");
+                          return (
+                            <TR key={item.id}>
+                              <TD className="font-semibold text-slate-900">{item.name}</TD>
+                              <TD>{item.unit}</TD>
+                              <TD>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  className="w-28"
+                                  value={draft}
+                                  onChange={(e) => setReorderPointDrafts({ ...reorderPointDrafts, [item.id]: e.target.value })}
+                                />
+                              </TD>
+                              <TD>
+                                <Button
+                                  size="sm"
+                                  disabled={updateThreshold.isPending || draft === ""}
+                                  onClick={() => updateThreshold.mutate({ inventoryItemId: item.id, reorderPoint: Number(draft) })}
+                                >
+                                  حفظ
+                                </Button>
+                              </TD>
+                            </TR>
+                          );
+                        })}
+                      </TBody>
+                    </Table>
+                    {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+                  </CardBody>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader><CardTitle>تنبيهات المخزون المنخفض ({lowStockQuery.data?.length ?? 0})</CardTitle></CardHeader>
@@ -744,7 +763,7 @@ export function InventoryPage() {
                 <Field label="الفرع">
                   <Select required value={suggestionForm.branchId} onChange={(e) => setSuggestionForm({ ...suggestionForm, branchId: e.target.value })}>
                     <option value="">اختر فرع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
                 <Field label="الطلبية ليوم">
@@ -790,6 +809,7 @@ export function InventoryPage() {
                         </TBody>
                       </Table>
                       <div className="mt-3">
+                        {canRecordMovements && (
                         <Button
                           variant="secondary"
                           onClick={applySuggestionToTransferForm}
@@ -797,6 +817,7 @@ export function InventoryPage() {
                         >
                           انقل الاقتراح لطلب التحويل تحت
                         </Button>
+                        )}
                       </div>
                     </>
                   )}
@@ -805,66 +826,68 @@ export function InventoryPage() {
             </CardBody>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle>طلب تحويل جديد</CardTitle></CardHeader>
-            <CardBody>
-              <form
-                onSubmit={(e: FormEvent) => { e.preventDefault(); createTransferRequest.mutate(); }}
-                className="space-y-4"
-              >
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <Field label="من فرع (المصدر - غالبًا السنتر كيتشن)">
-                    <Select required value={transferForm.fromBranchId} onChange={(e) => setTransferForm({ ...transferForm, fromBranchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="لفرع (الطالب)">
-                    <Select required value={transferForm.toBranchId} onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}>
-                      <option value="">اختر فرع</option>
-                      {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="التاريخ المطلوب (اختياري)">
-                    <Input type="date" value={transferForm.requiredDate} onChange={(e) => setTransferForm({ ...transferForm, requiredDate: e.target.value })} />
-                  </Field>
-                </div>
-
-                <div className="space-y-2">
-                  {transferLines.map((line, i) => (
-                    <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <Select
-                        value={line.inventoryItemId}
-                        onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, inventoryItemId: e.target.value } : l)))}
-                      >
-                        <option value="">اختر صنف</option>
-                        {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
-                      </Select>
-                      <Input
-                        type="number"
-                        step="any"
-                        placeholder="الكمية المطلوبة"
-                        value={line.requestedQuantity}
-                        onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, requestedQuantity: e.target.value } : l)))}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setTransferLines((prev) => [...prev, { inventoryItemId: "", requestedQuantity: "" }])}
+          {canRecordMovements && (
+            <Card>
+              <CardHeader><CardTitle>طلب تحويل جديد</CardTitle></CardHeader>
+              <CardBody>
+                <form
+                  onSubmit={(e: FormEvent) => { e.preventDefault(); createTransferRequest.mutate(); }}
+                  className="space-y-4"
                 >
-                  + صنف
-                </Button>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <Field label="من فرع (المصدر - غالبًا السنتر كيتشن)">
+                      <Select required value={transferForm.fromBranchId} onChange={(e) => setTransferForm({ ...transferForm, fromBranchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="لفرع (الطالب)">
+                      <Select required value={transferForm.toBranchId} onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}>
+                        <option value="">اختر فرع</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="التاريخ المطلوب (اختياري)">
+                      <Input type="date" value={transferForm.requiredDate} onChange={(e) => setTransferForm({ ...transferForm, requiredDate: e.target.value })} />
+                    </Field>
+                  </div>
 
-                {transferError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferError}</p>}
-                <div><Button type="submit" disabled={createTransferRequest.isPending}>إرسال الطلب</Button></div>
-              </form>
-            </CardBody>
-          </Card>
+                  <div className="space-y-2">
+                    {transferLines.map((line, i) => (
+                      <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Select
+                          value={line.inventoryItemId}
+                          onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, inventoryItemId: e.target.value } : l)))}
+                        >
+                          <option value="">اختر صنف</option>
+                          {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
+                        </Select>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="الكمية المطلوبة"
+                          value={line.requestedQuantity}
+                          onChange={(e) => setTransferLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, requestedQuantity: e.target.value } : l)))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setTransferLines((prev) => [...prev, { inventoryItemId: "", requestedQuantity: "" }])}
+                  >
+                    + صنف
+                  </Button>
+
+                  {transferError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{transferError}</p>}
+                  <div><Button type="submit" disabled={createTransferRequest.isPending}>إرسال الطلب</Button></div>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>سجل طلبات التحويل ({transferRequests.length})</CardTitle></CardHeader>
@@ -873,7 +896,7 @@ export function InventoryPage() {
                 <Field label="فلترة حسب فرع المصدر (اختياري)">
                   <Select value={transferFilterBranchId} onChange={(e) => setTransferFilterBranchId(e.target.value)}>
                     <option value="">كل الفروع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -896,6 +919,7 @@ export function InventoryPage() {
                         {r.status === "CANCELLED" && r.cancellationReason && <div className="mt-1 text-xs text-slate-500">{r.cancellationReason}</div>}
                       </TD>
                       <TD>
+                        {canRecordMovements && (
                         <div className="flex flex-wrap items-center gap-1.5">
                           {r.status === "SUBMITTED" && (
                             <>
@@ -937,6 +961,7 @@ export function InventoryPage() {
                             <Button size="sm" onClick={() => receiveTransferRequest.mutate(r.id)} disabled={receiveTransferRequest.isPending}>استلام</Button>
                           )}
                         </div>
+                        )}
                       </TD>
                     </TR>
                   ))}
@@ -969,7 +994,7 @@ export function InventoryPage() {
                 <Field label="الفرع">
                   <Select value={batchesBranchId} onChange={(e) => setBatchesBranchId(e.target.value)}>
                     <option value="">اختر فرع</option>
-                    {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -992,6 +1017,7 @@ export function InventoryPage() {
                         <TD>{BATCH_SOURCE_LABELS[b.sourceType] ?? b.sourceType}</TD>
                         <TD><Badge tone={b.status === "active" ? "success" : "neutral"}>{BATCH_STATUS_LABELS[b.status] ?? b.status}</Badge></TD>
                         <TD>
+                          {canManageBatches && (
                           <div className="flex items-center gap-1.5">
                             <Input
                               type="number"
@@ -1017,6 +1043,7 @@ export function InventoryPage() {
                               انتهت الصلاحية
                             </Button>
                           </div>
+                          )}
                         </TD>
                       </TR>
                     ))}

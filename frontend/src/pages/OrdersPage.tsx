@@ -1,6 +1,10 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
+import { useAuth } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
+import { can } from "../shared/auth/roles";
+import { OWN_BRANCH_LABEL } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
@@ -116,18 +120,53 @@ const MENU_GROUP_LABELS: Record<string, string> = { regular: "عادي", fasting
 export function OrdersPage() {
   const queryClient = useQueryClient();
   const offlineSync = useOfflineSync();
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches") });
+  // الصلاحيات من آخر /auth/me (والكاشير الأوفلاين بيفضل شايف نفس الصلاحيات من الواجهة المتكاشة)
+  const { user } = useAuth();
+  const canCreateOrders = can(user, PERMISSION.ORDERS_CREATE);
+  const canManageOrders = can(user, PERMISSION.ORDERS_MANAGE);
+  const canSeeCatalog = can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
+  const canSeePaymentMethods = can(user, PERMISSION.PAYMENT_CONTROL_VIEW);
+  const canListBranches = can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches"),
+    enabled: canListBranches,
+  });
+  // من غير branches.view (الكاشير) الفرع الوحيد هو فرع المستخدم - ومن غيره زرار تسجيل الطلب بيفضل مقفول
+  const branches: Branch[] = canListBranches
+    ? (branchesQuery.data ?? [])
+    : user?.branchId
+      ? [{ id: user.branchId, name: OWN_BRANCH_LABEL }]
+      : [];
   // الأقسام والترتيب بقوا الأساس لشاشة الأصناف، فلازم يتخزنوا للكاشير الأوفلاين زي الأصناف والعروض
-  const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => offlineFallbackQuery<MenuCategory[]>("/catalog/categories", "catalog-categories") });
-  const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => offlineFallbackQuery<{ combosPosition: number }>("/catalog/layout", "catalog-layout") });
-  const menuItemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items") });
-  const combosQuery = useQuery({ queryKey: ["catalog", "combos"], queryFn: () => offlineFallbackQuery<Combo[]>("/catalog/combos", "catalog-combos") });
+  const categoriesQuery = useQuery({
+    queryKey: ["catalog", "categories"],
+    queryFn: () => offlineFallbackQuery<MenuCategory[]>("/catalog/categories", "catalog-categories"),
+    enabled: canSeeCatalog,
+  });
+  const layoutQuery = useQuery({
+    queryKey: ["catalog", "layout"],
+    queryFn: () => offlineFallbackQuery<{ combosPosition: number }>("/catalog/layout", "catalog-layout"),
+    enabled: canSeeCatalog,
+  });
+  const menuItemsQuery = useQuery({
+    queryKey: ["catalog", "items"],
+    queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items"),
+    enabled: canSeeCatalog,
+  });
+  const combosQuery = useQuery({
+    queryKey: ["catalog", "combos"],
+    queryFn: () => offlineFallbackQuery<Combo[]>("/catalog/combos", "catalog-combos"),
+    enabled: canSeeCatalog,
+  });
+  // طريقة الدفع اختيارية في الطلب؛ من غير payment_control.view الاختيار مش بيظهر
   const paymentMethodsQuery = useQuery({
     queryKey: ["payment-control", "methods"],
     queryFn: () => offlineFallbackQuery<PaymentMethod[]>("/payment-control/payment-methods", "payment-methods"),
+    enabled: canCreateOrders && canSeePaymentMethods,
   });
 
-  const [branchId, setBranchId] = useState("");
+  const [branchId, setBranchId] = useState(canListBranches ? "" : (user?.branchId ?? ""));
   const ordersQuery = useQuery({
     queryKey: ["orders", branchId],
     queryFn: () => apiRequest<Order[]>(`/orders${branchId ? `?branchId=${branchId}` : ""}`),
@@ -372,212 +411,216 @@ export function OrdersPage() {
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="الفرع">
           <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="max-w-[220px]">
-            <option value="">كل الفروع</option>
-            {branchesQuery.data?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {canListBranches && <option value="">كل الفروع</option>}
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>
         </Field>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
-          {/* Category/item grid */}
-          <Card>
-            <CardBody>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <Input
-                  placeholder="بحث عن صنف..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="max-w-[220px]"
-                />
-                {hasFastingMenu && (
-                  <div className="flex gap-1">
-                    {(["all", "regular", "fasting"] as const).map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        onClick={() => { setMenuGroup(g); setSelectedTab(null); }}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                          menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {g === "all" ? "الكل" : MENU_GROUP_LABELS[g]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* أزرار الأقسام فقط (مفيش "كل الأصناف"): الضغط على قسم بيعرض أصنافه. ترتيبها من إعدادات قائمة الطعام */}
-              <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
-                {tabs.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => { setSelectedTab(t.key); setSearch(""); }}
-                    className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                      !searching && activeTab === t.key ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-                {tabs.length === 0 && (
-                  <p className="text-sm text-slate-500">مفيش أقسام نشطة. فعّل أو أضف قسم من شاشة "قائمة الطعام".</p>
-                )}
-              </div>
-
-              {combos.length > 0 && activeTab === "combos" && !searching && (
-                <div className="mb-4">
-                  <p className="mb-2 text-xs font-semibold text-slate-500">العروض</p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                    {combos.map((combo) => {
-                      const inCartQty = cart.filter((l) => l.comboId === combo.id).reduce((sum, l) => sum + l.quantity, 0);
-                      return (
+      {canCreateOrders && (
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+            {/* Category/item grid */}
+            <Card>
+              <CardBody>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Input
+                    placeholder="بحث عن صنف..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="max-w-[220px]"
+                  />
+                  {hasFastingMenu && (
+                    <div className="flex gap-1">
+                      {(["all", "regular", "fasting"] as const).map((g) => (
                         <button
-                          key={combo.id}
+                          key={g}
                           type="button"
-                          onClick={() => addComboToCart(combo)}
-                          className="relative flex flex-col items-start gap-1 rounded-xl border border-brand-300 bg-brand-50/50 p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                          onClick={() => { setMenuGroup(g); setSelectedTab(null); }}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
                         >
-                          {inCartQty > 0 && (
-                            <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
-                              {inCartQty}
-                            </span>
-                          )}
-                          <Badge tone="warning" className="mb-0.5">عرض</Badge>
-                          <p className="text-sm font-bold text-slate-900">{combo.name}</p>
-                          <p className="text-sm font-semibold text-brand-700">{combo.price}ج</p>
+                          {g === "all" ? "الكل" : MENU_GROUP_LABELS[g]}
                         </button>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {visibleItems.map((item) => {
-                  const minPrice = item.variants.reduce((min, v) => Math.min(min, v.price), Infinity);
-                  const inCartQty = cart
-                    .filter((l) => item.variants.some((v) => v.id === l.variantId))
-                    .reduce((sum, l) => sum + l.quantity, 0);
-                  return (
+                {/* أزرار الأقسام فقط (مفيش "كل الأصناف"): الضغط على قسم بيعرض أصنافه. ترتيبها من إعدادات قائمة الطعام */}
+                <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
+                  {tabs.map((t) => (
                     <button
-                      key={item.id}
+                      key={t.key}
                       type="button"
-                      onClick={() => handleItemClick(item)}
-                      className="relative flex flex-col items-start gap-1 rounded-xl border border-slate-200 bg-white p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                      onClick={() => { setSelectedTab(t.key); setSearch(""); }}
+                      className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                        !searching && activeTab === t.key ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
                     >
-                      {inCartQty > 0 && (
-                        <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
-                          {inCartQty}
-                        </span>
-                      )}
-                      {item.isBest && <Badge tone="warning" className="mb-0.5">الأكثر طلبًا</Badge>}
-                      <p className="text-sm font-bold text-slate-900">{item.name}</p>
-                      <p className="text-sm font-semibold text-brand-700">
-                        {item.variants.length > 1 ? `من ${minPrice}ج` : `${minPrice === Infinity ? "-" : minPrice}ج`}
-                      </p>
+                      {t.label}
                     </button>
-                  );
-                })}
-                {visibleItems.length === 0 && !(activeTab === "combos" && !searching) && (
-                  <p className="col-span-full py-8 text-center text-sm text-slate-400">{searching ? "مفيش أصناف مطابقة للبحث" : "مفيش أصناف في القسم ده"}</p>
-                )}
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Cart panel */}
-          <Card className="h-fit lg:sticky lg:top-20">
-            <CardHeader>
-              <CardTitle>السلة ({cart.length})</CardTitle>
-            </CardHeader>
-            <CardBody className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {ORDER_TYPES.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setOrderType(t.value)}
-                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                      orderType === t.value ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              {orderType === "dinein" && (
-                <Field label="رقم الترابيزة">
-                  <Input value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} />
-                </Field>
-              )}
-              {(orderType === "delivery" || orderType === "takeaway") && (
-                <>
-                  <Field label="اسم العميل (اختياري)">
-                    <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-                  </Field>
-                  <Field label="رقم الموبايل (اختياري)">
-                    <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-                  </Field>
-                </>
-              )}
-              {orderType === "delivery" && (
-                <Field label="العنوان">
-                  <Textarea rows={2} value={addressDetails} onChange={(e) => setAddressDetails(e.target.value)} />
-                </Field>
-              )}
-
-              <div className="max-h-64 space-y-2 overflow-y-auto border-t border-slate-100 pt-3">
-                {cart.map((line) => (
-                  <div key={line.key} className="flex items-center gap-2 text-sm">
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-800">{line.itemName}</p>
-                      {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
-                      {line.modifiers.length > 0 && (
-                        <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => changeQuantity(line.key, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
-                      <span className="w-5 text-center font-semibold">{line.quantity}</span>
-                      <button type="button" onClick={() => changeQuantity(line.key, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
-                    </div>
-                    <span className="w-14 text-end font-bold text-slate-900">{line.unitPrice * line.quantity}ج</span>
-                    <button type="button" onClick={() => removeLine(line.key)} className="text-red-500 hover:text-red-700">×</button>
-                  </div>
-                ))}
-                {cart.length === 0 && <p className="py-6 text-center text-sm text-slate-400">السلة فاضية</p>}
-              </div>
-
-              <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">الإجمالي الفرعي</span><span className="font-semibold">{subtotal}ج</span></div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">الخصم</span>
-                  <Input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} className="max-w-[100px] py-1 text-end" />
+                  ))}
+                  {tabs.length === 0 && (
+                    <p className="text-sm text-slate-500">مفيش أقسام نشطة. فعّل أو أضف قسم من شاشة "قائمة الطعام".</p>
+                  )}
                 </div>
-                <div className="flex justify-between text-base font-bold text-slate-900"><span>الإجمالي</span><span>{total}ج</span></div>
-              </div>
 
-              <Field label="طريقة الدفع (اختياري)">
-                <Select value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
-                  <option value="">- بدون -</option>
-                  {paymentMethodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </Select>
-              </Field>
+                {combos.length > 0 && activeTab === "combos" && !searching && (
+                  <div className="mb-4">
+                    <p className="mb-2 text-xs font-semibold text-slate-500">العروض</p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                      {combos.map((combo) => {
+                        const inCartQty = cart.filter((l) => l.comboId === combo.id).reduce((sum, l) => sum + l.quantity, 0);
+                        return (
+                          <button
+                            key={combo.id}
+                            type="button"
+                            onClick={() => addComboToCart(combo)}
+                            className="relative flex flex-col items-start gap-1 rounded-xl border border-brand-300 bg-brand-50/50 p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                          >
+                            {inCartQty > 0 && (
+                              <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+                                {inCartQty}
+                              </span>
+                            )}
+                            <Badge tone="warning" className="mb-0.5">عرض</Badge>
+                            <p className="text-sm font-bold text-slate-900">{combo.name}</p>
+                            <p className="text-sm font-semibold text-brand-700">{combo.price}ج</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-              {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  {visibleItems.map((item) => {
+                    const minPrice = item.variants.reduce((min, v) => Math.min(min, v.price), Infinity);
+                    const inCartQty = cart
+                      .filter((l) => item.variants.some((v) => v.id === l.variantId))
+                      .reduce((sum, l) => sum + l.quantity, 0);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleItemClick(item)}
+                        className="relative flex flex-col items-start gap-1 rounded-xl border border-slate-200 bg-white p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
+                      >
+                        {inCartQty > 0 && (
+                          <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+                            {inCartQty}
+                          </span>
+                        )}
+                        {item.isBest && <Badge tone="warning" className="mb-0.5">الأكثر طلبًا</Badge>}
+                        <p className="text-sm font-bold text-slate-900">{item.name}</p>
+                        <p className="text-sm font-semibold text-brand-700">
+                          {item.variants.length > 1 ? `من ${minPrice}ج` : `${minPrice === Infinity ? "-" : minPrice}ج`}
+                        </p>
+                      </button>
+                    );
+                  })}
+                  {visibleItems.length === 0 && !(activeTab === "combos" && !searching) && (
+                    <p className="col-span-full py-8 text-center text-sm text-slate-400">{searching ? "مفيش أصناف مطابقة للبحث" : "مفيش أصناف في القسم ده"}</p>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
 
-              <Button type="submit" className="w-full" disabled={createOrder.isPending || cart.length === 0 || !branchId}>
-                {createOrder.isPending ? "بيتسجّل..." : "تسجيل الطلب"}
-              </Button>
-              {!branchId && <p className="text-center text-xs text-amber-600">اختار الفرع الأول</p>}
-            </CardBody>
-          </Card>
-        </div>
-      </form>
+            {/* Cart panel */}
+            <Card className="h-fit lg:sticky lg:top-20">
+              <CardHeader>
+                <CardTitle>السلة ({cart.length})</CardTitle>
+              </CardHeader>
+              <CardBody className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {ORDER_TYPES.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setOrderType(t.value)}
+                      className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                        orderType === t.value ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {orderType === "dinein" && (
+                  <Field label="رقم الترابيزة">
+                    <Input value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} />
+                  </Field>
+                )}
+                {(orderType === "delivery" || orderType === "takeaway") && (
+                  <>
+                    <Field label="اسم العميل (اختياري)">
+                      <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                    </Field>
+                    <Field label="رقم الموبايل (اختياري)">
+                      <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                    </Field>
+                  </>
+                )}
+                {orderType === "delivery" && (
+                  <Field label="العنوان">
+                    <Textarea rows={2} value={addressDetails} onChange={(e) => setAddressDetails(e.target.value)} />
+                  </Field>
+                )}
+
+                <div className="max-h-64 space-y-2 overflow-y-auto border-t border-slate-100 pt-3">
+                  {cart.map((line) => (
+                    <div key={line.key} className="flex items-center gap-2 text-sm">
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-800">{line.itemName}</p>
+                        {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
+                        {line.modifiers.length > 0 && (
+                          <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => changeQuantity(line.key, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
+                        <span className="w-5 text-center font-semibold">{line.quantity}</span>
+                        <button type="button" onClick={() => changeQuantity(line.key, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
+                      </div>
+                      <span className="w-14 text-end font-bold text-slate-900">{line.unitPrice * line.quantity}ج</span>
+                      <button type="button" onClick={() => removeLine(line.key)} className="text-red-500 hover:text-red-700">×</button>
+                    </div>
+                  ))}
+                  {cart.length === 0 && <p className="py-6 text-center text-sm text-slate-400">السلة فاضية</p>}
+                </div>
+
+                <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">الإجمالي الفرعي</span><span className="font-semibold">{subtotal}ج</span></div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-500">الخصم</span>
+                    <Input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} className="max-w-[100px] py-1 text-end" />
+                  </div>
+                  <div className="flex justify-between text-base font-bold text-slate-900"><span>الإجمالي</span><span>{total}ج</span></div>
+                </div>
+
+                {canSeePaymentMethods && (
+                  <Field label="طريقة الدفع (اختياري)">
+                    <Select value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
+                      <option value="">- بدون -</option>
+                      {paymentMethodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </Select>
+                  </Field>
+                )}
+
+                {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
+
+                <Button type="submit" className="w-full" disabled={createOrder.isPending || cart.length === 0 || !branchId}>
+                  {createOrder.isPending ? "بيتسجّل..." : "تسجيل الطلب"}
+                </Button>
+                {!branchId && <p className="text-center text-xs text-amber-600">اختار الفرع الأول</p>}
+              </CardBody>
+            </Card>
+          </div>
+        </form>
+      )}
 
       {pickerItem && (() => {
         const activeModifiers = pickerItem.modifiers.filter((m) => m.isActive);
@@ -685,7 +728,7 @@ export function OrdersPage() {
                   <TD className="font-bold text-slate-900">{o.total}ج</TD>
                   <TD><StatusBadge status={STATUS_LABELS[o.status] ?? o.status} /></TD>
                   <TD>
-                    {o.status === "preparing" && (
+                    {o.status === "preparing" && canManageOrders && (
                       <Button size="sm" variant="secondary" onClick={() => completeOrder.mutate(o.id)} disabled={completeOrder.isPending}>
                         إتمام
                       </Button>

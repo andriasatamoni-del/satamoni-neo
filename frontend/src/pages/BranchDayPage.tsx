@@ -2,13 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
+import { PERMISSION } from "../shared/auth/permissions";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Select, Textarea } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "../shared/ui/Table";
-import { hasRole } from "../shared/auth/roles";
+import { can } from "../shared/auth/roles";
+import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
 interface Branch {
   id: string;
@@ -57,13 +59,10 @@ export function BranchDayPage() {
   const [managerNotes, setManagerNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState(user?.branchId ?? "");
-  const canClose = hasRole(user, "admin", "branch_manager");
+  const canClose = can(user, PERMISSION.BRANCH_DAY_CLOSE);
 
-  const branchesQuery = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => apiRequest<Branch[]>("/branches"),
-    enabled: !user?.branchId,
-  });
+  // اختيار الفرع للي ملوش فرع
+  const { branches } = useBranchOptions<Branch>(!user?.branchId);
 
   const branchId = user?.branchId ?? selectedBranchId;
 
@@ -102,7 +101,7 @@ export function BranchDayPage() {
             <Field label="الفرع">
               <Select value={selectedBranchId} onChange={(e) => setSelectedBranchId(e.target.value)}>
                 <option value="">اختار الفرع</option>
-                {branchesQuery.data?.map((b) => (
+                {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>

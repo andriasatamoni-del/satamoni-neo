@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiRequest, getToken, setToken } from "../api/client";
-import type { Role } from "./roles";
+import { can, type Role } from "./roles";
 import type { Permission } from "./permissions";
 
 export interface CurrentUser {
@@ -64,4 +64,10 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth لازم يتنادى جوه AuthProvider");
   return ctx;
+}
+
+// اختصار لـcan(user, ...) بالمستخدم الحالي: const allowed = useCan(); allowed(PERMISSION.X, PERMISSION.Y)
+export function useCan(): (...permissions: Permission[]) => boolean {
+  const { user } = useAuth();
+  return useCallback((...permissions: Permission[]) => can(user, ...permissions), [user]);
 }

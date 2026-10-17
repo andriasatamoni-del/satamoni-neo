@@ -1,70 +1,20 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { roleLabels } from "../auth/roles";
-import {
-  BoxIcon,
-  BookIcon,
-  BuildingIcon,
-  CardIcon,
-  CartIcon,
-  ChatBubbleIcon,
-  ClipboardIcon,
-  CloseIcon,
-  CoinsIcon,
-  FactoryIcon,
-  FireIcon,
-  GearIcon,
-  HomeIcon,
-  IdCardIcon,
-  LogoutIcon,
-  MenuIcon,
-  ChartIcon,
-  ListSearchIcon,
-  LockIcon,
-  PrinterIcon,
-  ReceiptIcon,
-  ShieldUserIcon,
-  TruckIcon,
-  UserCircleIcon,
-  UsersIcon,
-  VaultIcon,
-} from "./icons";
+import { CloseIcon, LogoutIcon, MenuIcon } from "./icons";
 
-const NAV_ITEMS = [
-  { to: "/", label: "الرئيسية", icon: HomeIcon, end: true },
-  { to: "/me", label: "بياناتي", icon: UserCircleIcon },
-  { to: "/orders", label: "الطلبات (POS)", icon: CartIcon },
-  { to: "/kds", label: "شاشة المطبخ", icon: FireIcon },
-  { to: "/crm", label: "متابعة العملاء والشكاوى", icon: UsersIcon },
-  { to: "/whatsapp", label: "بوابة واتساب", icon: ChatBubbleIcon },
-  { to: "/branches", label: "الفروع", icon: BuildingIcon },
-  { to: "/inventory", label: "المخزون", icon: BoxIcon },
-  { to: "/catalog", label: "قائمة الطعام", icon: BookIcon },
-  { to: "/production", label: "التصنيع والتعبئة", icon: FactoryIcon },
-  { to: "/procurement", label: "المشتريات والموردين", icon: ClipboardIcon },
-  { to: "/delivery", label: "التوصيل والسائقين", icon: TruckIcon },
-  { to: "/branch-day", label: "قفل يوم الفرع", icon: LockIcon },
-  { to: "/accounting", label: "المحاسبة", icon: CoinsIcon },
-  { to: "/expenses", label: "المصروفات", icon: ReceiptIcon },
-  { to: "/purchases", label: "المشتريات النقدية", icon: CartIcon },
-  { to: "/talabat", label: "تكامل Talabat", icon: TruckIcon },
-  { to: "/financial-reports", label: "التقارير المحاسبية", icon: ChartIcon },
-  { to: "/operational-reports", label: "تقارير المبيعات والتشغيل", icon: ListSearchIcon },
-  { to: "/treasuries", label: "الخزائن والبنوك", icon: VaultIcon },
-  { to: "/payment-control", label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
-  { to: "/hr-payroll", label: "الموارد البشرية والرواتب", icon: IdCardIcon },
-  { to: "/printing", label: "الطباعة", icon: PrinterIcon },
-  { to: "/users", label: "المستخدمين", icon: ShieldUserIcon },
-  { to: "/audit-log", label: "سجل التدقيق", icon: ListSearchIcon },
-  { to: "/loyalty", label: "نقاط الولاء", icon: CoinsIcon },
-  { to: "/pos-settings", label: "إعدادات النظام", icon: GearIcon },
-];
+export interface NavItem {
+  to: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  end?: boolean;
+}
 
-function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+function NavContent({ items, onNavigate }: { items: readonly NavItem[]; onNavigate?: () => void }) {
   return (
     <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-      {NAV_ITEMS.map(({ to, label, icon: ItemIcon, end }) => (
+      {items.map(({ to, label, icon: ItemIcon, end }) => (
         <NavLink
           key={to}
           to={to}
@@ -84,7 +34,8 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+// navItems: الروابط اللي المستخدم يقدر يفتحها بس (App.tsx بيفلترها من STAFF_ROUTES بنفس صلاحيات الراوت).
+export function AppShell({ navItems, children }: { navItems: readonly NavItem[]; children: ReactNode }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -98,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <span className="text-lg font-extrabold text-white">ستاموني</span>
         </div>
-        <NavContent />
+        <NavContent items={navItems} />
       </aside>
 
       {/* Sidebar - mobile drawer */}
@@ -112,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <CloseIcon className="h-6 w-6" />
               </button>
             </div>
-            <NavContent onNavigate={() => setMobileOpen(false)} />
+            <NavContent items={navItems} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
