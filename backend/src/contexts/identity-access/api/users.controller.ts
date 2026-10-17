@@ -14,6 +14,8 @@ import { toPublicUser } from "./auth.controller";
 import type { AuthenticatedUser } from "./types";
 import { hasAnyRole, ROLE } from "../domain/role";
 import { PERMISSION } from "../domain/permission";
+import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
 
 @Controller("users")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -34,12 +36,13 @@ export class UsersController {
 
   @Get()
   @RequirePermission(PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE)
-  async list(@Req() req: Request & { user: AuthenticatedUser }, @Query("branchId") branchId?: string) {
+  async list(@Req() req: Request & { user: AuthenticatedUser }, @Query() query: ListUsersQueryDto) {
+    const { page, filter } = splitListQuery(query);
     // نفس نطاق GET /api/users في الريبو القديم: أدمن يشوف كل حاجة (أو فرع محدد لو حدده)، أي حد
     // تاني بيتقفل على فرعه هو بس تلقائيًا
-    const scopedBranchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? branchId ?? null : req.user.branchId;
-    const users = await this.listUsers.execute(scopedBranchId !== null ? { branchId: scopedBranchId } : undefined);
-    return users.map(toPublicUser);
+    const scopedBranchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? filter.branchId ?? null : req.user.branchId;
+    const { users, total } = await this.listUsers.execute({ ...filter, branchId: scopedBranchId ?? undefined }, page);
+    return listResponse(users.map(toPublicUser), total, page);
   }
 
   @Post()

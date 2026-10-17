@@ -5,7 +5,9 @@ import { rolePermissions, users } from "../../../src/contexts/identity-access/in
 import { auditLogs } from "../../../src/shared/database/shared.tables";
 import { employees } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 import { stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
-import { goodsReceipts } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { goodsReceipts, purchaseOrders } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
+import { drivers } from "../../../src/contexts/delivery/infrastructure/persistence/delivery.tables";
+import { cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
 import { paymentAdjustmentRequests } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
@@ -155,6 +157,30 @@ describe("Phase 3.1 - branch isolation matrix", () => {
       expect(requests.some((r) => r.id === ids.adjB)).toBe(false);
       const transfers = (await get("/inventory/transfer-requests", w.tokens.managerA)).body as Array<{ id: string }>;
       expect(transfers.some((t) => t.id === ids.transferBC)).toBe(false); // B -> C: branch A is neither side
+    });
+
+    // NEO-6: paginated envelopes are scoped in SQL, so neither the rows nor the total can reveal branch B
+    test("paginated collections ({ items, total }) are filtered in the query: no branch-B row and a branch-A-only total", async () => {
+      const paged: Array<[string, typeof orders | typeof goodsReceipts | typeof purchaseOrders | typeof drivers | typeof cashierShifts]> = [
+        ["/orders", orders],
+        ["/procurement/goods-receipts", goodsReceipts],
+        ["/procurement/purchase-orders", purchaseOrders],
+        ["/delivery/drivers", drivers],
+        ["/shifts", cashierShifts],
+      ];
+      for (const [path, table] of paged) {
+        const res = await get(`${path}?paginate=1&limit=200`, w.tokens.managerA);
+        expect([path, res.status]).toEqual([path, 200]);
+        const rows = res.body.items as Array<{ branchId: string }>;
+        expect([path, rows.filter((r) => r.branchId !== w.branchA)]).toEqual([path, []]);
+        const inA = await w.db.select({ n: count() }).from(table).where(eq(table.branch_id, w.branchA));
+        expect([path, res.body.total]).toEqual([path, Number(inA[0].n)]);
+        expect([path, (await get(`${path}?paginate=1&branchId=${w.branchB}`, w.tokens.managerA)).status]).toEqual([path, 403]);
+      }
+      // the admin's total includes branch B
+      const all = await get("/orders?paginate=1&limit=1", w.tokens.admin);
+      const allOrders = await w.db.select({ n: count() }).from(orders);
+      expect(all.body.total).toBe(Number(allOrders[0].n));
     });
 
     test("employees: only the manager's own branch, WITHOUT salary data; payroll & adjustments are company-wide only (403)", async () => {

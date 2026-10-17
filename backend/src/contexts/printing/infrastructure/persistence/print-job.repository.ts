@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, sql, type SQL } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
 import { PrintJob, type PrintType, type PrintJobStatus } from "../../domain/print-job.aggregate";
 import type { PrintJobRepositoryPort } from "../../domain/ports/print-job-repository.port";
 import { printJobs } from "./printing.tables";
@@ -64,17 +66,14 @@ export class PrintJobRepository implements PrintJobRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter: { branchId: string; status?: string; orderId?: string; limit?: number }): Promise<PrintJob[]> {
+  async list(filter: { branchId: string; status?: string; orderId?: string }, page: PageRequest): Promise<{ jobs: PrintJob[]; total: number }> {
     const conditions: SQL[] = [eq(printJobs.branch_id, filter.branchId)];
     if (filter.status) conditions.push(eq(printJobs.status, filter.status));
     if (filter.orderId) conditions.push(eq(printJobs.order_id, filter.orderId));
-    const rows = await this.db
-      .select()
-      .from(printJobs)
-      .where(and(...conditions))
-      .orderBy(asc(printJobs.created_at))
-      .limit(Math.min(filter.limit ?? 100, 300));
-    return rows.map((r) => this.toDomain(r));
+    const where = and(...conditions);
+    const query = this.db.select().from(printJobs).where(where).orderBy(asc(printJobs.created_at), asc(printJobs.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(printJobs).where(where)));
+    return { jobs: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(job: PrintJob): typeof printJobs.$inferInsert {

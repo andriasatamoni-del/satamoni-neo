@@ -59,6 +59,8 @@ import type { LeaveRequest } from "../domain/leave-request.aggregate";
 import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shift.aggregate";
 import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListEmployeesQueryDto, ListLeaveRequestsQueryDto, ListPayrollRunsQueryDto } from "./dto/list-hr-query.dto";
 
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -99,13 +101,17 @@ export class HrPayrollController {
   @BranchScoped()
   @Get("employees")
   @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
-  async employees(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
+  async employees(@Req() req: Request & { user: AuthenticatedUser }, @Query() query: ListEmployeesQueryDto) {
+    const { page, filter } = splitListQuery(query);
     const scope = branchScopeOf(req.user);
-    const all = await this.listEmployees.execute({ status });
-    if (scope.kind === "all") return all.map((e) => toPublicEmployee(e));
+    if (scope.kind === "none") return listResponse([], 0, page);
+    if (scope.kind === "all") {
+      const { employees, total } = await this.listEmployees.execute(filter, page);
+      return listResponse(employees.map((e) => toPublicEmployee(e)), total, page);
+    }
     // branch-bound: only the employees restricted to the caller's own branch, WITHOUT any salary data
-    const own = scope.kind === "branch" ? all.filter((e) => e.restrictedBranchId === scope.branchId) : [];
-    return own.map((e) => toPublicEmployee(e, true));
+    const { employees, total } = await this.listEmployees.execute({ ...filter, restrictedBranchId: scope.branchId }, page);
+    return listResponse(employees.map((e) => toPublicEmployee(e, true)), total, page);
   }
 
   @BranchScoped()
@@ -203,8 +209,10 @@ export class HrPayrollController {
   @CompanyWideOnly()
   @Get("payroll-runs")
   @RequirePermission(PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE)
-  async payrollRuns(@Query("status") status?: string) {
-    return (await this.listPayrollRuns.execute({ status })).map(toPublicPayrollRun);
+  async payrollRuns(@Query() query: ListPayrollRunsQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { runs, total } = await this.listPayrollRuns.execute({ status: filter.status, year: filter.year }, page);
+    return listResponse(runs.map(toPublicPayrollRun), total, page);
   }
 
   @CompanyWideOnly()
@@ -301,15 +309,16 @@ export class HrPayrollController {
   @BranchScoped()
   @Get("leave-requests")
   @RequirePermission(PERMISSION.HR_LEAVE_REVIEW)
-  async leaveRequests(@Req() req: Request & { user: AuthenticatedUser }, @Query("status") status?: string) {
-    const requests = await this.listLeaveRequests.execute({ status });
+  async leaveRequests(@Req() req: Request & { user: AuthenticatedUser }, @Query() query: ListLeaveRequestsQueryDto) {
+    const { page, filter } = splitListQuery(query);
     const scope = branchScopeOf(req.user);
-    if (scope.kind === "all") return requests.map(toPublicLeaveRequest);
+    if (scope.kind === "none") return listResponse([], 0, page);
     // branch-bound: only requests of employees restricted to the caller's own branch
-    const own = new Set(
-      scope.kind === "branch" ? (await this.listEmployees.execute({})).filter((e) => e.restrictedBranchId === scope.branchId).map((e) => e.id) : []
+    const { requests, total } = await this.listLeaveRequests.execute(
+      { status: filter.status, employeeId: filter.employeeId, from: filter.from, to: filter.to, restrictedBranchId: scope.kind === "branch" ? scope.branchId : undefined },
+      page
     );
-    return requests.filter((r) => own.has(r.employeeId)).map(toPublicLeaveRequest);
+    return listResponse(requests.map(toPublicLeaveRequest), total, page);
   }
 
   @BranchScoped()

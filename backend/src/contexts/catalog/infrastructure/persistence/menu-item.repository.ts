@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, notInArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { MenuItem } from "../../domain/menu-item.aggregate";
-import type { MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
+import type { MenuItemListFilter, MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { menuItemModifiers, menuItemModifierVariantPrices, menuItems, menuItemVariants } from "./catalog.tables";
 
 type ModifierWithPrices = {
@@ -107,8 +109,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
 
   async findById(id: string): Promise<MenuItem | null> {
     const [row] = await this.db.select().from(menuItems).where(eq(menuItems.id, id)).limit(1);
-    if (!row) return null;
-    return this.toDomain(row, await this.loadVariants(id), await this.loadModifiers(id));
+    return row ? (await this.withChildren([row]))[0] : null;
   }
 
   async findByVariantId(variantId: string): Promise<MenuItem | null> {
@@ -122,38 +123,54 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
 
   async findByLegacyMenuItemId(legacyId: number): Promise<MenuItem | null> {
     const [row] = await this.db.select().from(menuItems).where(eq(menuItems.legacy_menu_item_id, legacyId)).limit(1);
-    if (!row) return null;
-    return this.toDomain(row, await this.loadVariants(row.id), await this.loadModifiers(row.id));
+    return row ? (await this.withChildren([row]))[0] : null;
   }
 
   async list(): Promise<MenuItem[]> {
-    const rows = await this.db.select().from(menuItems).orderBy(asc(menuItems.name));
-    const items: MenuItem[] = [];
-    for (const row of rows) {
-      items.push(this.toDomain(row, await this.loadVariants(row.id), await this.loadModifiers(row.id)));
-    }
-    return items;
+    return this.withChildren(await this.db.select().from(menuItems).orderBy(asc(menuItems.name)));
   }
 
-  private async loadVariants(itemId: string): Promise<(typeof menuItemVariants.$inferSelect)[]> {
-    return this.db.select().from(menuItemVariants).where(eq(menuItemVariants.item_id, itemId)).orderBy(asc(menuItemVariants.label));
-  }
-
-  private async loadModifiers(itemId: string): Promise<ModifierWithPrices[]> {
-    const modifierRows = await this.db
+  async search(filter: MenuItemListFilter, page?: PageRequest): Promise<{ items: MenuItem[]; total: number }> {
+    const where = and(
+      filter.categoryId === "none" ? isNull(menuItems.category_id) : filter.categoryId ? eq(menuItems.category_id, filter.categoryId) : undefined,
+      filter.status ? eq(menuItems.is_active, filter.status === "active") : undefined,
+      filter.isBest !== undefined ? eq(menuItems.is_best, filter.isBest) : undefined,
+      businessDayRangeCondition(menuItems.created_at, filter.from, filter.to),
+      searchCondition(filter.q, menuItems.name, menuItems.description)
+    );
+    const query = this.db
       .select()
-      .from(menuItemModifiers)
-      .where(eq(menuItemModifiers.item_id, itemId))
-      .orderBy(asc(menuItemModifiers.name));
-    const result: ModifierWithPrices[] = [];
-    for (const row of modifierRows) {
-      const variantPrices = await this.db
-        .select()
-        .from(menuItemModifierVariantPrices)
-        .where(eq(menuItemModifierVariantPrices.modifier_id, row.id));
-      result.push({ row, variantPrices });
+      .from(menuItems)
+      .where(where)
+      .orderBy(...orderByOf({ name: menuItems.name, createdAt: menuItems.created_at }, filter.sort, filter.order, { key: "name", order: "asc" }, menuItems.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(menuItems).where(where)));
+    return { items: await this.withChildren(rows), total };
+  }
+
+  // NEO-6: variants, modifiers and modifier prices of many items in three batched queries instead of one per item/modifier
+  private async withChildren(rows: (typeof menuItems.$inferSelect)[]): Promise<MenuItem[]> {
+    if (rows.length === 0) return [];
+    const variantRows: (typeof menuItemVariants.$inferSelect)[] = [];
+    const modifierRows: (typeof menuItemModifiers.$inferSelect)[] = [];
+    for (const ids of inListChunks(rows.map((r) => r.id))) {
+      variantRows.push(...(await this.db.select().from(menuItemVariants).where(inArray(menuItemVariants.item_id, ids)).orderBy(asc(menuItemVariants.label))));
+      modifierRows.push(...(await this.db.select().from(menuItemModifiers).where(inArray(menuItemModifiers.item_id, ids)).orderBy(asc(menuItemModifiers.name))));
     }
-    return result;
+    const priceRows: (typeof menuItemModifierVariantPrices.$inferSelect)[] = [];
+    for (const ids of inListChunks(modifierRows.map((m) => m.id))) {
+      priceRows.push(...(await this.db.select().from(menuItemModifierVariantPrices).where(inArray(menuItemModifierVariantPrices.modifier_id, ids))));
+    }
+    const variantsByItem = groupBy(variantRows, (v) => v.item_id);
+    const modifiersByItem = groupBy(modifierRows, (m) => m.item_id);
+    const pricesByModifier = groupBy(priceRows, (p) => p.modifier_id);
+    return rows.map((row) =>
+      this.toDomain(
+        row,
+        variantsByItem.get(row.id) ?? [],
+        (modifiersByItem.get(row.id) ?? []).map((m) => ({ row: m, variantPrices: pricesByModifier.get(m.id) ?? [] }))
+      )
+    );
   }
 
   private toDomain(

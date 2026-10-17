@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PayrollRun, type PayrollRunStatus } from "../../domain/payroll-run.aggregate";
 import type { PayrollRunRepositoryPort } from "../../domain/ports/payroll-run-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { groupBy, inListChunks, paginate, totalOf } from "../../../../shared/database/pagination";
 import { payrollRunEmployees, payrollRuns } from "./hr-payroll.tables";
 
 @Injectable()
@@ -91,15 +93,17 @@ export class PayrollRunRepository implements PayrollRunRepositoryPort {
     return this.toDomain(row, await this.loadLines(row.id));
   }
 
-  async list(filter?: { status?: string }): Promise<PayrollRun[]> {
-    const rows = await this.db
-      .select()
-      .from(payrollRuns)
-      .where(filter?.status ? eq(payrollRuns.status, filter.status) : undefined)
-      .orderBy(desc(payrollRuns.year), desc(payrollRuns.month));
-    const runs: PayrollRun[] = [];
-    for (const row of rows) runs.push(this.toDomain(row, await this.loadLines(row.id)));
-    return runs;
+  async list(filter?: { status?: string; year?: number }, page?: PageRequest): Promise<{ runs: PayrollRun[]; total: number }> {
+    const where = and(filter?.status ? eq(payrollRuns.status, filter.status) : undefined, filter?.year ? eq(payrollRuns.year, filter.year) : undefined);
+    const query = this.db.select().from(payrollRuns).where(where).orderBy(desc(payrollRuns.year), desc(payrollRuns.month), desc(payrollRuns.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(payrollRuns).where(where)));
+    // NEO-6: the employee lines of every run on the page in one query per 1000 runs instead of one per run
+    const lines: (typeof payrollRunEmployees.$inferSelect)[] = [];
+    for (const ids of inListChunks(rows.map((r) => r.id))) {
+      lines.push(...(await this.db.select().from(payrollRunEmployees).where(inArray(payrollRunEmployees.payroll_run_id, ids))));
+    }
+    const byRun = groupBy(lines, (l) => l.payroll_run_id);
+    return { runs: rows.map((row) => this.toDomain(row, byRun.get(row.id) ?? [])), total };
   }
 
   // بيمسح السطور الأول (وهي لسه DRAFT فمسموح بالتريجر) قبل ما يمسح القائمة نفسها - ترتيب متعمّد عشان

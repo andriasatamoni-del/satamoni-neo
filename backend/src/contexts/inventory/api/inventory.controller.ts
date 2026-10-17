@@ -46,6 +46,8 @@ import type { BranchStockThreshold } from "../domain/branch-stock-threshold.aggr
 import type { TransferRequest } from "../domain/transfer-request.aggregate";
 import type { InventoryBatch } from "../domain/inventory-batch.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListInventoryItemsQueryDto } from "./dto/list-inventory-items-query.dto";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -77,9 +79,10 @@ export class InventoryController {
 
   @Get("items")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
-  async list() {
-    const items = await this.listItems.execute();
-    return items.map(toPublicItem);
+  async list(@Query() query: ListInventoryItemsQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { items, total } = await this.listItems.execute(filter, page);
+    return listResponse(items.map(toPublicItem), total, page);
   }
 
   @Post("items")

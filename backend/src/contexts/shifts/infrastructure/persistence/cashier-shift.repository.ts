@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { CashierShift, type ShiftStatus, type VarianceStatus } from "../../domain/cashier-shift.aggregate";
-import type { CashierShiftRepositoryPort } from "../../domain/ports/cashier-shift-repository.port";
+import type { CashierShiftRepositoryPort, ShiftListFilter } from "../../domain/ports/cashier-shift-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, paginate, totalOf } from "../../../../shared/database/pagination";
 import { cashierShifts } from "./shifts.tables";
 
 @Injectable()
@@ -62,14 +64,15 @@ export class CashierShiftRepository implements CashierShiftRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter: { branchId: string; status?: string }): Promise<CashierShift[]> {
-    const rows = await this.db
-      .select()
-      .from(cashierShifts)
-      .where(and(eq(cashierShifts.branch_id, filter.branchId), filter.status ? eq(cashierShifts.status, filter.status) : undefined))
-      .orderBy(desc(cashierShifts.opened_at))
-      .limit(200);
-    return rows.map((row) => this.toDomain(row));
+  async list(filter: ShiftListFilter, page: PageRequest): Promise<{ shifts: CashierShift[]; total: number }> {
+    const where = and(
+      eq(cashierShifts.branch_id, filter.branchId),
+      filter.status ? eq(cashierShifts.status, filter.status) : undefined,
+      businessDayRangeCondition(cashierShifts.opened_at, filter.from, filter.to)
+    );
+    const query = this.db.select().from(cashierShifts).where(where).orderBy(desc(cashierShifts.opened_at), desc(cashierShifts.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(cashierShifts).where(where)));
+    return { shifts: rows.map((row) => this.toDomain(row)), total };
   }
 
   private toDomain(row: typeof cashierShifts.$inferSelect): CashierShift {

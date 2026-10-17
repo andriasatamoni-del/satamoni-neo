@@ -82,6 +82,7 @@ export const deliveryAssignments = pgTable("delivery_assignments", {
   settlement_id: uuid(),
 }, (table) => [
   index("idx_delivery_assignments_driver").using("btree", table.driver_id.asc().nullsLast()),
+  index("idx_delivery_assignments_branch_assigned_at").using("btree", table.branch_id.asc().nullsLast(), table.assigned_at.desc().nullsFirst()),
   foreignKey({
       columns: [table.assigned_by],
       foreignColumns: [users.id],

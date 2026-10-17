@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Employee, type WageType, type EmployeeStatus } from "../../domain/employee.aggregate";
-import type { EmployeeRepositoryPort } from "../../domain/ports/employee-repository.port";
+import type { EmployeeListFilter, EmployeeRepositoryPort } from "../../domain/ports/employee-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { employees } from "./hr-payroll.tables";
 
 @Injectable()
@@ -59,6 +61,23 @@ export class EmployeeRepository implements EmployeeRepositoryPort {
       .where(filter?.status ? eq(employees.status, filter.status) : undefined)
       .orderBy(asc(employees.name));
     return rows.map((r) => this.toDomain(r));
+  }
+
+  async search(filter: EmployeeListFilter, page?: PageRequest): Promise<{ employees: Employee[]; total: number }> {
+    const where = and(
+      filter.status ? eq(employees.status, filter.status) : undefined,
+      filter.departmentId ? eq(employees.department_id, filter.departmentId) : undefined,
+      filter.restrictedBranchId ? eq(employees.restricted_branch_id, filter.restrictedBranchId) : undefined,
+      searchCondition(filter.q, employees.name, employees.employee_code, employees.phone)
+    );
+    const query = this.db
+      .select()
+      .from(employees)
+      .where(where)
+      .orderBy(...orderByOf({ name: employees.name, hireDate: employees.hire_date }, filter.sort, filter.order, { key: "name", order: "asc" }, employees.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(employees).where(where)));
+    return { employees: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(employee: Employee) {

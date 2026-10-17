@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { DeliveryAssignment, type DispatchStatus } from "../../domain/delivery-assignment.aggregate";
-import type { DeliveryAssignmentRepositoryPort } from "../../domain/ports/delivery-assignment-repository.port";
+import type { DeliveryAssignmentListFilter, DeliveryAssignmentRepositoryPort } from "../../domain/ports/delivery-assignment-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, paginate, totalOf } from "../../../../shared/database/pagination";
 import { deliveryAssignments } from "./delivery.tables";
 
 @Injectable()
@@ -48,6 +50,23 @@ export class DeliveryAssignmentRepository implements DeliveryAssignmentRepositor
       )
       .orderBy(desc(deliveryAssignments.assigned_at));
     return rows.map((r) => this.toDomain(r));
+  }
+
+  async search(filter: DeliveryAssignmentListFilter, page?: PageRequest): Promise<{ assignments: DeliveryAssignment[]; total: number }> {
+    const where = and(
+      filter.branchId ? eq(deliveryAssignments.branch_id, filter.branchId) : undefined,
+      filter.driverId ? eq(deliveryAssignments.driver_id, filter.driverId) : undefined,
+      filter.status ? eq(deliveryAssignments.status, filter.status) : undefined,
+      businessDayRangeCondition(deliveryAssignments.assigned_at, filter.from, filter.to)
+    );
+    const query = this.db
+      .select()
+      .from(deliveryAssignments)
+      .where(where)
+      .orderBy(desc(deliveryAssignments.assigned_at), desc(deliveryAssignments.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(deliveryAssignments).where(where)));
+    return { assignments: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(assignment: DeliveryAssignment): typeof deliveryAssignments.$inferInsert {

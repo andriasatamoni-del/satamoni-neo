@@ -8,6 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs } from "../shared/ui/Tabs";
 import { hasRole } from "../shared/auth/roles";
 
@@ -44,6 +48,8 @@ const FIELD_NAME_LABELS: Record<string, string> = {
   department_id: "القسم", position_id: "المسمى الوظيفي", restricted_branch_id: "الفرع المقيّد", status: "الحالة",
 };
 const RUN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", APPROVED: "معتمدة", CANCELLED: "ملغاة" };
+// قايمة فلتر السنة في قوائم الرواتب: السنة الحالية والخمس سنين اللي قبلها
+const RECENT_YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
 const LEAVE_STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", APPROVED: "معتمد", REJECTED: "مرفوض", CANCELLED: "ملغى" };
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = { advance: "سلفة", penalty: "جزاء", bonus: "مكافأة" };
 const ADJUSTMENT_STATUS_LABELS: Record<string, string> = { ACTIVE: "فعّال", CANCELLED: "ملغى" };
@@ -61,8 +67,13 @@ export function HrPayrollPage() {
   const employeesQuery = useQuery({ queryKey: ["hr", "employees"], queryFn: () => apiRequest<Employee[]>("/hr/employees") });
   const departmentsQuery = useQuery({ queryKey: ["hr", "departments"], queryFn: () => apiRequest<Department[]>("/hr/departments") });
   const positionsQuery = useQuery({ queryKey: ["hr", "positions"], queryFn: () => apiRequest<Position[]>("/hr/positions") });
-  const payrollRunsQuery = useQuery({ queryKey: ["hr", "payroll-runs"], queryFn: () => apiRequest<PayrollRun[]>("/hr/payroll-runs") });
-  const leaveRequestsQuery = useQuery({ queryKey: ["hr", "leave-requests"], queryFn: () => apiRequest<LeaveRequest[]>("/hr/leave-requests") });
+  // NEO-6: جداول الموظفين والرواتب والإجازات صفحات من السيرفر؛ قائمة الموظفين الكاملة فوق لسه للقوايم المنسدلة
+  const employeesList = useListState(["q", "status"] as const, { prefix: "emp." });
+  const employeesPageQuery = usePaginatedQuery<Employee>(["hr", "employees"], "/hr/employees", employeesList.params);
+  const payrollRunsList = useListState(["status", "year"] as const, { prefix: "runs." });
+  const payrollRunsQuery = usePaginatedQuery<PayrollRun>(["hr", "payroll-runs"], "/hr/payroll-runs", payrollRunsList.params);
+  const leaveRequestsList = useListState(["status", "employeeId", "from", "to"] as const, { prefix: "leave." });
+  const leaveRequestsQuery = usePaginatedQuery<LeaveRequest>(["hr", "leave-requests"], "/hr/leave-requests", leaveRequestsList.params);
   const adjustmentsQuery = useQuery({ queryKey: ["hr", "adjustments"], queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments") });
 
   const reviewLeaveRequest = useMutation({
@@ -286,8 +297,9 @@ export function HrPayrollPage() {
   const departments = departmentsQuery.data ?? [];
   const positions = positionsQuery.data ?? [];
   const branches = branchesQuery.data ?? [];
-  const payrollRuns = payrollRunsQuery.data ?? [];
-  const leaveRequests = leaveRequestsQuery.data ?? [];
+  const pageEmployees = employeesPageQuery.data?.items ?? [];
+  const payrollRuns = payrollRunsQuery.data?.items ?? [];
+  const leaveRequests = leaveRequestsQuery.data?.items ?? [];
   const adjustments = adjustmentsQuery.data ?? [];
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId) ?? null;
 
@@ -352,14 +364,19 @@ export function HrPayrollPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>الموظفين ({employees.length})</CardTitle></CardHeader>
-          <CardBody className="max-h-72 overflow-y-auto p-0">
+          <CardHeader><CardTitle>الموظفين ({employeesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
+          <CardBody className="p-0">
+            <ListFilters
+              state={employeesList}
+              search={{ placeholder: "الاسم أو الكود أو التليفون" }}
+              selects={[{ name: "status", label: "الحالة", options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) }]}
+            />
             <Table>
               <THead>
                 <TR><TH>الاسم</TH><TH>القسم</TH><TH>المسمى الوظيفي</TH><TH>الراتب</TH><TH>الحالة</TH></TR>
               </THead>
               <TBody>
-                {employees.map((e) => (
+                {pageEmployees.map((e) => (
                   <TR
                     key={e.id}
                     onClick={() => selectEmployee(e)}
@@ -374,6 +391,14 @@ export function HrPayrollPage() {
                 ))}
               </TBody>
             </Table>
+            {pageEmployees.length === 0 && !employeesPageQuery.isLoading && <EmptyState>مفيش موظفين بالفلاتر دي</EmptyState>}
+            <Pagination
+              total={employeesPageQuery.data?.total ?? 0}
+              limit={employeesList.limit}
+              offset={employeesList.offset}
+              onPageChange={employeesList.setPage}
+              isFetching={employeesPageQuery.isFetching}
+            />
           </CardBody>
         </Card>
       </div>
@@ -550,8 +575,15 @@ export function HrPayrollPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>قوائم الرواتب ({payrollRuns.length})</CardTitle></CardHeader>
+        <CardHeader><CardTitle>قوائم الرواتب ({payrollRunsQuery.data?.total ?? 0})</CardTitle></CardHeader>
         <CardBody className="p-0">
+          <ListFilters
+            state={payrollRunsList}
+            selects={[
+              { name: "status", label: "الحالة", options: Object.entries(RUN_STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+              { name: "year", label: "السنة", options: RECENT_YEARS.map((y) => ({ value: String(y), label: String(y) })) },
+            ]}
+          />
           <Table>
             <THead>
               <TR><TH>الشهر</TH><TH>الموظفين</TH><TH>إجمالي صافي الرواتب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
@@ -580,7 +612,14 @@ export function HrPayrollPage() {
               ))}
             </TBody>
           </Table>
-          {payrollRuns.length === 0 && <EmptyState>مفيش قوائم رواتب لسه</EmptyState>}
+          {payrollRuns.length === 0 && !payrollRunsQuery.isLoading && <EmptyState>مفيش قوائم رواتب بالفلاتر دي</EmptyState>}
+          <Pagination
+            total={payrollRunsQuery.data?.total ?? 0}
+            limit={payrollRunsList.limit}
+            offset={payrollRunsList.offset}
+            onPageChange={payrollRunsList.setPage}
+            isFetching={payrollRunsQuery.isFetching}
+          />
         </CardBody>
       </Card>
       </>
@@ -689,8 +728,16 @@ export function HrPayrollPage() {
 
       {tab === "leave" && (
         <Card>
-          <CardHeader><CardTitle>طلبات الإجازة ({leaveRequests.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>طلبات الإجازة ({leaveRequestsQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
+            <ListFilters
+              state={leaveRequestsList}
+              dateRange
+              selects={[
+                { name: "status", label: "الحالة", options: Object.entries(LEAVE_STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+                { name: "employeeId", label: "الموظف", options: employees.map((e) => ({ value: e.id, label: e.name })) },
+              ]}
+            />
             <Table>
               <THead>
                 <TR><TH>الموظف</TH><TH>النوع</TH><TH>من</TH><TH>إلى</TH><TH>الأيام</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
@@ -722,7 +769,14 @@ export function HrPayrollPage() {
                 ))}
               </TBody>
             </Table>
-            {leaveRequests.length === 0 && <EmptyState>مفيش طلبات إجازة لسه</EmptyState>}
+            {leaveRequests.length === 0 && !leaveRequestsQuery.isLoading && <EmptyState>مفيش طلبات إجازة بالفلاتر دي</EmptyState>}
+            <Pagination
+              total={leaveRequestsQuery.data?.total ?? 0}
+              limit={leaveRequestsList.limit}
+              offset={leaveRequestsList.offset}
+              onPageChange={leaveRequestsList.setPage}
+              isFetching={leaveRequestsQuery.isFetching}
+            />
           </CardBody>
         </Card>
       )}

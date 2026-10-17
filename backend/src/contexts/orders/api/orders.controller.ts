@@ -13,7 +13,16 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
+import {
+  BranchScopeGuard,
+  BranchScoped,
+  BranchResource,
+  CurrentBranchScope,
+  scopedBranchId,
+  type BranchScope,
+} from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { OrdersDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Order } from "../domain/order.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
@@ -34,8 +43,10 @@ export class OrdersController {
 
   @Get()
   @RequirePermission(PERMISSION.ORDERS_VIEW, PERMISSION.ORDERS_CREATE)
-  async list(@Query("branchId") branchId?: string) {
-    return (await this.listOrders.execute(branchId ? { branchId } : undefined)).map(toPublicOrder);
+  async list(@Query() query: ListOrdersQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { orders, total } = await this.listOrders.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(orders.map(toPublicOrder), total, page);
   }
 
   @Get("kitchen-board")

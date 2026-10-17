@@ -26,7 +26,17 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, BranchResources } from "../../../shared/authorization/branch-scope";
+import {
+  BranchScopeGuard,
+  BranchScoped,
+  BranchResource,
+  BranchResources,
+  CurrentBranchScope,
+  scopedBranchId,
+  type BranchScope,
+} from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListDeliveryAssignmentsQueryDto, ListDriversQueryDto } from "./dto/list-delivery-query.dto";
 import { DeliveryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Driver } from "../domain/driver.aggregate";
 import type { DeliveryAssignment } from "../domain/delivery-assignment.aggregate";
@@ -59,8 +69,10 @@ export class DeliveryController {
   @BranchScoped()
   @Get("drivers")
   @RequirePermission(PERMISSION.DELIVERY_DRIVERS_VIEW, PERMISSION.DELIVERY_DRIVERS_MANAGE)
-  async drivers(@Query("branchId") branchId?: string) {
-    return (await this.listDrivers.execute(branchId ? { branchId } : undefined)).map(toPublicDriver);
+  async drivers(@Query() query: ListDriversQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { drivers, total } = await this.listDrivers.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(drivers.map(toPublicDriver), total, page);
   }
 
   @BranchScoped()
@@ -73,8 +85,10 @@ export class DeliveryController {
   @BranchScoped()
   @Get("assignments")
   @RequirePermission(PERMISSION.DELIVERY_ASSIGNMENTS_VIEW, PERMISSION.DELIVERY_ASSIGNMENTS_MANAGE)
-  async assignments(@Query("branchId") branchId?: string, @Query("driverId") driverId?: string) {
-    return (await this.listAssignments.execute({ branchId, driverId })).map(toPublicAssignment);
+  async assignments(@Query() query: ListDeliveryAssignmentsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { assignments, total } = await this.listAssignments.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(assignments.map(toPublicAssignment), total, page);
   }
 
   @BranchScoped()

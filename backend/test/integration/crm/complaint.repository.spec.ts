@@ -46,10 +46,10 @@ describe("ComplaintRepository", () => {
     await repo.save(open);
     await repo.save(resolved);
 
-    const openOnly = await repo.list({ status: "open" });
+    const { complaints: openOnly } = await repo.list({ status: "open" });
     expect(openOnly.map((c) => c.id)).toEqual([open.id]);
 
-    const resolvedOnly = await repo.list({ status: "resolved" });
+    const { complaints: resolvedOnly } = await repo.list({ status: "resolved" });
     expect(resolvedOnly.map((c) => c.id)).toEqual([resolved.id]);
   });
 

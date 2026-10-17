@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
@@ -8,6 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs } from "../shared/ui/Tabs";
 import { hasRole } from "../shared/auth/roles";
 
@@ -159,7 +163,12 @@ export function ProcurementPage() {
   const paymentsQuery = useQuery({ queryKey: ["procurement", "supplier-payments"], queryFn: () => apiRequest<SupplierPayment[]>("/procurement/supplier-payments") });
   const purchaseRequestsQuery = useQuery({ queryKey: ["procurement", "purchase-requests"], queryFn: () => apiRequest<PurchaseRequest[]>("/procurement/purchase-requests") });
   const purchaseReturnsQuery = useQuery({ queryKey: ["procurement", "purchase-returns"], queryFn: () => apiRequest<PurchaseReturn[]>("/procurement/purchase-returns") });
-  const purchaseOrdersQuery = useQuery({ queryKey: ["procurement", "purchase-orders"], queryFn: () => apiRequest<PurchaseOrder[]>("/procurement/purchase-orders") });
+  // أوامر الشراء وجدول أذون الاستلام صفحات من السيرفر (NEO-6)؛ قائمة الأذون الكاملة فوق لسه لفورم الفواتير والمرتجعات
+  const purchaseOrdersList = useListState(["q", "status", "from", "to"] as const, { prefix: "po." });
+  const purchaseOrdersQuery = usePaginatedQuery<PurchaseOrder>(["procurement", "purchase-orders"], "/procurement/purchase-orders", purchaseOrdersList.params);
+  const receiptsList = useListState(["q", "status", "from", "to"] as const, { prefix: "gr." });
+  const receiptsPageQuery = usePaginatedQuery<GoodsReceipt>(["procurement", "goods-receipts"], "/procurement/goods-receipts", receiptsList.params);
+  const pageReceipts = receiptsPageQuery.data?.items ?? [];
 
   const [newSupplierName, setNewSupplierName] = useState("");
   const createSupplier = useMutation({
@@ -491,7 +500,12 @@ export function ProcurementPage() {
   );
   const purchaseRequests = purchaseRequestsQuery.data ?? [];
   const purchaseReturns = purchaseReturnsQuery.data ?? [];
-  const purchaseOrders = purchaseOrdersQuery.data ?? [];
+  const purchaseOrders = purchaseOrdersQuery.data?.items ?? [];
+  // NEO-6: the table shows one page; keep the order being received even when it leaves that page (paging, a filter, a refetch)
+  const receivingOrderRef = useRef<(typeof purchaseOrders)[number] | null>(null);
+  const receivingOrder = receivingOrderId
+    ? (receivingOrderRef.current = purchaseOrders.find((o) => o.id === receivingOrderId) ?? (receivingOrderRef.current?.id === receivingOrderId ? receivingOrderRef.current : null))
+    : null;
   const confirmedReceiptsForReturnForm = receipts.filter(
     (r) => r.status === "CONFIRMED" && (!purchaseReturnForm.supplierId || r.supplierId === purchaseReturnForm.supplierId)
   );
@@ -609,9 +623,15 @@ export function ProcurementPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>أذون الاستلام ({receipts.length})</CardTitle>
+              <CardTitle>أذون الاستلام ({receiptsPageQuery.data?.total ?? 0})</CardTitle>
             </CardHeader>
             <CardBody className="p-0">
+              <ListFilters
+                state={receiptsList}
+                search={{ placeholder: "اسم المورد أو رقم مستند المورد" }}
+                dateRange
+                selects={[{ name: "status", label: "الحالة", options: [{ value: "DRAFT", label: "مسودة" }, { value: "CONFIRMED", label: "اتأكد" }] }]}
+              />
               <Table>
                 <THead>
                   <TR>
@@ -619,7 +639,7 @@ export function ProcurementPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {receipts.map((r) => (
+                  {pageReceipts.map((r) => (
                     <TR key={r.id}>
                       <TD>{supplierName(r.supplierId)}</TD>
                       <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
@@ -636,7 +656,14 @@ export function ProcurementPage() {
                   ))}
                 </TBody>
               </Table>
-              {receipts.length === 0 && <EmptyState>مفيش أذون استلام لسه</EmptyState>}
+              {pageReceipts.length === 0 && !receiptsPageQuery.isLoading && <EmptyState>مفيش أذون استلام بالفلاتر دي</EmptyState>}
+              <Pagination
+                total={receiptsPageQuery.data?.total ?? 0}
+                limit={receiptsList.limit}
+                offset={receiptsList.offset}
+                onPageChange={receiptsList.setPage}
+                isFetching={receiptsPageQuery.isFetching}
+              />
             </CardBody>
           </Card>
         </>
@@ -945,8 +972,14 @@ export function ProcurementPage() {
 
       {tab === "purchase-orders" && (
         <Card>
-          <CardHeader><CardTitle>أوامر الشراء ({purchaseOrders.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>أوامر الشراء ({purchaseOrdersQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
+            <ListFilters
+              state={purchaseOrdersList}
+              search={{ placeholder: "اسم المورد" }}
+              dateRange
+              selects={[{ name: "status", label: "الحالة", options: Object.entries(PO_STATUS_LABELS).map(([value, label]) => ({ value, label })) }]}
+            />
             <Table>
               <THead>
                 <TR>
@@ -980,9 +1013,16 @@ export function ProcurementPage() {
                 ))}
               </TBody>
             </Table>
-            {purchaseOrders.length === 0 && <EmptyState>مفيش أوامر شراء لسه - بتتعمل من تحويل طلب شراء معتمد</EmptyState>}
+            {purchaseOrders.length === 0 && !purchaseOrdersQuery.isLoading && <EmptyState>مفيش أوامر شراء - بتتعمل من تحويل طلب شراء معتمد</EmptyState>}
+            <Pagination
+              total={purchaseOrdersQuery.data?.total ?? 0}
+              limit={purchaseOrdersList.limit}
+              offset={purchaseOrdersList.offset}
+              onPageChange={purchaseOrdersList.setPage}
+              isFetching={purchaseOrdersQuery.isFetching}
+            />
             {receivingOrderId && (() => {
-              const order = purchaseOrders.find((o) => o.id === receivingOrderId);
+              const order = receivingOrder;
               if (!order) return null;
               const progress = receiptProgressQuery.data ?? [];
               return (

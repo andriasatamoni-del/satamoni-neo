@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Driver, type DriverStatus } from "../../domain/driver.aggregate";
-import type { DriverRepositoryPort } from "../../domain/ports/driver-repository.port";
+import type { DriverListFilter, DriverRepositoryPort } from "../../domain/ports/driver-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { drivers } from "./delivery.tables";
 
 @Injectable()
@@ -34,6 +36,22 @@ export class DriverRepository implements DriverRepositoryPort {
       .where(filter?.branchId ? eq(drivers.branch_id, filter.branchId) : undefined)
       .orderBy(asc(drivers.name));
     return rows.map((r) => this.toDomain(r));
+  }
+
+  async search(filter: DriverListFilter, page?: PageRequest): Promise<{ drivers: Driver[]; total: number }> {
+    const where = and(
+      filter.branchId ? eq(drivers.branch_id, filter.branchId) : undefined,
+      filter.status ? eq(drivers.status, filter.status) : undefined,
+      searchCondition(filter.q, drivers.name, drivers.phone)
+    );
+    const query = this.db
+      .select()
+      .from(drivers)
+      .where(where)
+      .orderBy(...orderByOf({ name: drivers.name, createdAt: drivers.created_at }, filter.sort, filter.order, { key: "name", order: "asc" }, drivers.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(drivers).where(where)));
+    return { drivers: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(driver: Driver): typeof drivers.$inferInsert {

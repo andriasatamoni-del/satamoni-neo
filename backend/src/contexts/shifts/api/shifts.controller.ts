@@ -21,6 +21,8 @@ import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/
 import { ShiftsDomainErrorFilter } from "./filters/domain-error.filter";
 import type { CashierShift } from "../domain/cashier-shift.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { cappedPage, listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListShiftsQueryDto } from "./dto/list-shifts-query.dto";
 
 type Req_ = Request & { user: AuthenticatedUser };
 
@@ -86,10 +88,13 @@ export class ShiftsController {
   @BranchScoped()
   @Get()
   @RequirePermission(PERMISSION.SHIFTS_VIEW_BRANCH)
-  async list(@Query("branchId") branchId: string | undefined, @Query("status") status: string | undefined, @Req() req: Req_) {
-    const effectiveBranchId = branchId || req.user.branchId;
-    if (!effectiveBranchId) return [];
-    return (await this.listShifts.execute({ branchId: effectiveBranchId, status })).map(toPublicShift);
+  async list(@Query() query: ListShiftsQueryDto, @Req() req: Req_) {
+    const { page, filter } = splitListQuery(query);
+    const effectiveBranchId = filter.branchId || req.user.branchId;
+    if (!effectiveBranchId) return listResponse([], 0, page);
+    // unpaged: the latest 200 shifts, as before NEO-6
+    const { shifts, total } = await this.listShifts.execute({ ...filter, branchId: effectiveBranchId }, cappedPage(query, page, 200, 200));
+    return listResponse(shifts.map(toPublicShift), total, page);
   }
 
   @BranchScoped()

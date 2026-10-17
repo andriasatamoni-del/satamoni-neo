@@ -71,6 +71,7 @@ export const cashierShifts = pgTable("cashier_shifts", {
   cash_purchases_total: numeric().default('0').notNull().$type<number>(),
 }, (table) => [
   uniqueIndex("idx_cashier_shifts_one_active_per_user").using("btree", table.user_id.asc().nullsLast()).where(sql`(status = 'ACTIVE'::text)`),
+  index("idx_cashier_shifts_branch_opened_at").using("btree", table.branch_id.asc().nullsLast(), table.opened_at.desc().nullsFirst()),
   foreignKey({
       columns: [table.branch_id],
       foreignColumns: [branches.id],

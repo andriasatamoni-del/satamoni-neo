@@ -55,6 +55,7 @@ export const complaints = pgTable("complaints", {
   legacy_source: text(),
 }, (table) => [
   index("idx_complaints_open").using("btree", table.status.asc().nullsLast()).where(sql`(status <> 'resolved'::text)`),
+  index("idx_complaints_created_at").using("btree", table.created_at.desc().nullsFirst()),
   index("idx_complaints_phone").using("btree", table.customer_phone.asc().nullsLast()),
   foreignKey({
       columns: [table.assigned_to],

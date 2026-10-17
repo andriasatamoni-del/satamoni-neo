@@ -14,6 +14,6 @@ export class ListOwnLeaveRequestsHandler {
   async execute(userId: string): Promise<LeaveRequest[]> {
     const employee = await this.employees.findByUserId(userId);
     if (!employee) throw new EmployeeProfileNotLinkedError();
-    return this.leaveRequests.list({ employeeId: employee.id });
+    return (await this.leaveRequests.list({ employeeId: employee.id })).requests;
   }
 }

@@ -1,4 +1,17 @@
 import type { JournalEntry } from "../journal-entry.aggregate";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+
+// NEO-6: filters of the journal entries list. `from`/`to` are inclusive dates on entry_date; `q` matches the number or description.
+export interface JournalEntryListFilter {
+  branchId?: string;
+  sourceType?: string;
+  status?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  sort?: string;
+  order?: "asc" | "desc";
+}
 
 export interface JournalEntryRepositoryPort {
   // بيسجّل القيد لأول مرة، بيحدد entryNumber من الـsequence، وبيرجّع نفس الـaggregate بعد ما
@@ -13,6 +26,7 @@ export interface JournalEntryRepositoryPort {
   postEntry(entryId: string, postedAt: Date, postedBy: string | null): Promise<void>;
   findById(id: string): Promise<JournalEntry | null>;
   list(filter?: { branchId?: string; sourceType?: string }): Promise<JournalEntry[]>;
+  search(filter: JournalEntryListFilter, page?: PageRequest): Promise<{ entries: JournalEntry[]; total: number }>;
   // Phase 3.1: indexed lookup of the entries produced by one business transaction (idempotent posting / reversal)
   findBySource(sourceType: string, sourceId: string): Promise<JournalEntry[]>;
 }

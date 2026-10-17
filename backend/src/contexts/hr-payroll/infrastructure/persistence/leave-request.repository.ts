@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { LeaveRequest, type LeaveRequestStatus } from "../../domain/leave-request.aggregate";
-import type { LeaveRequestRepositoryPort } from "../../domain/ports/leave-request-repository.port";
-import { employeeLeaveRequests } from "./hr-payroll.tables";
+import type { LeaveRequestListFilter, LeaveRequestRepositoryPort } from "../../domain/ports/leave-request-repository.port";
+import { employeeLeaveRequests, employees } from "./hr-payroll.tables";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { dateRangeCondition, paginate, totalOf } from "../../../../shared/database/pagination";
 
 @Injectable()
 export class LeaveRequestRepository implements LeaveRequestRepositoryPort {
@@ -30,18 +32,26 @@ export class LeaveRequestRepository implements LeaveRequestRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter?: { employeeId?: string; status?: string }): Promise<LeaveRequest[]> {
-    const rows = await this.db
+  async list(filter: LeaveRequestListFilter = {}, page?: PageRequest): Promise<{ requests: LeaveRequest[]; total: number }> {
+    const where = and(
+      filter.employeeId ? eq(employeeLeaveRequests.employee_id, filter.employeeId) : undefined,
+      filter.status ? eq(employeeLeaveRequests.status, filter.status) : undefined,
+      filter.restrictedBranchId
+        ? inArray(
+            employeeLeaveRequests.employee_id,
+            this.db.select({ id: employees.id }).from(employees).where(eq(employees.restricted_branch_id, filter.restrictedBranchId))
+          )
+        : undefined,
+      dateRangeCondition(employeeLeaveRequests.start_date, filter.from, filter.to)
+    );
+    const query = this.db
       .select()
       .from(employeeLeaveRequests)
-      .where(
-        and(
-          filter?.employeeId ? eq(employeeLeaveRequests.employee_id, filter.employeeId) : undefined,
-          filter?.status ? eq(employeeLeaveRequests.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(employeeLeaveRequests.created_at));
-    return rows.map((r) => this.toDomain(r));
+      .where(where)
+      .orderBy(desc(employeeLeaveRequests.created_at), desc(employeeLeaveRequests.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(employeeLeaveRequests).where(where)));
+    return { requests: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(request: LeaveRequest) {

@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Order, type OrderStatus, type KitchenStatus, type OrderType, type OrderSource } from "../../domain/order.aggregate";
-import type { OrderRepositoryPort } from "../../domain/ports/order-repository.port";
+import type { OrderListFilter, OrderRepositoryPort } from "../../domain/ports/order-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { orderItemModifiers, orderItems, orders } from "./orders.tables";
 
 type ItemWithModifiers = { item: typeof orderItems.$inferSelect; modifiers: (typeof orderItemModifiers.$inferSelect)[] };
@@ -107,19 +109,52 @@ export class OrderRepository implements OrderRepositoryPort {
       .from(orders)
       .where(filter?.branchId ? eq(orders.branch_id, filter.branchId) : undefined)
       .orderBy(desc(orders.created_at));
-    const result: Order[] = [];
-    for (const row of rows) result.push(this.toDomain(row, await this.loadItems(row.id)));
-    return result;
+    return this.withItems(rows);
+  }
+
+  async search(filter: OrderListFilter, page?: PageRequest): Promise<{ orders: Order[]; total: number }> {
+    const where = and(
+      filter.branchId ? eq(orders.branch_id, filter.branchId) : undefined,
+      filter.status ? eq(orders.status, filter.status) : undefined,
+      filter.orderType ? eq(orders.order_type, filter.orderType) : undefined,
+      filter.source ? eq(orders.source, filter.source) : undefined,
+      businessDayRangeCondition(orders.created_at, filter.from, filter.to),
+      searchCondition(filter.q, orders.customer_name, orders.customer_phone, orders.table_number, sql`${orders.id}::text`)
+    );
+    const query = this.db
+      .select()
+      .from(orders)
+      .where(where)
+      .orderBy(...orderByOf({ createdAt: orders.created_at, total: orders.total }, filter.sort, filter.order, { key: "createdAt", order: "desc" }, orders.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(orders).where(where)));
+    return { orders: await this.withItems(rows), total };
   }
 
   private async loadItems(orderId: string): Promise<ItemWithModifiers[]> {
-    const itemRows = await this.db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
-    const result: ItemWithModifiers[] = [];
-    for (const item of itemRows) {
-      const modifiers = await this.db.select().from(orderItemModifiers).where(eq(orderItemModifiers.order_item_id, item.id));
-      result.push({ item, modifiers });
+    return (await this.loadItemsFor([orderId])).get(orderId) ?? [];
+  }
+
+  // NEO-6: items and modifiers of many orders in two queries per 1000 orders/items, instead of one per order and item (N+1)
+  private async loadItemsFor(orderIds: string[]): Promise<Map<string, ItemWithModifiers[]>> {
+    const byOrder = new Map<string, ItemWithModifiers[]>();
+    if (orderIds.length === 0) return byOrder;
+    const itemRows: (typeof orderItems.$inferSelect)[] = [];
+    for (const ids of inListChunks(orderIds)) itemRows.push(...(await this.db.select().from(orderItems).where(inArray(orderItems.order_id, ids))));
+    const modifierRows: (typeof orderItemModifiers.$inferSelect)[] = [];
+    for (const ids of inListChunks(itemRows.map((i) => i.id))) {
+      modifierRows.push(...(await this.db.select().from(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, ids))));
     }
-    return result;
+    const modifiersByItem = groupBy(modifierRows, (m) => m.order_item_id);
+    for (const [orderId, items] of groupBy(itemRows, (i) => i.order_id)) {
+      byOrder.set(orderId, items.map((item) => ({ item, modifiers: modifiersByItem.get(item.id) ?? [] })));
+    }
+    return byOrder;
+  }
+
+  private async withItems(rows: (typeof orders.$inferSelect)[]): Promise<Order[]> {
+    const items = await this.loadItemsFor(rows.map((r) => r.id));
+    return rows.map((row) => this.toDomain(row, items.get(row.id) ?? []));
   }
 
   private toDomain(row: typeof orders.$inferSelect, itemRows: ItemWithModifiers[]): Order {

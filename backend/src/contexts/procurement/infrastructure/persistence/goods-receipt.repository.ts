@@ -1,9 +1,12 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { GoodsReceipt, type GoodsReceiptStatus } from "../../domain/goods-receipt.aggregate";
 import type { GoodsReceiptRepositoryPort } from "../../domain/ports/goods-receipt-repository.port";
-import { goodsReceiptItems, goodsReceipts } from "./procurement.tables";
+import type { ProcurementDocumentListFilter } from "../../domain/ports/purchase-order-repository.port";
+import { goodsReceiptItems, goodsReceipts, suppliers } from "./procurement.tables";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 
 @Injectable()
 export class GoodsReceiptRepository implements GoodsReceiptRepositoryPort {
@@ -67,9 +70,42 @@ export class GoodsReceiptRepository implements GoodsReceiptRepositoryPort {
         )
       )
       .orderBy(desc(goodsReceipts.created_at));
-    const receipts: GoodsReceipt[] = [];
-    for (const row of rows) receipts.push(this.toDomain(row, await this.loadLines(row.id)));
-    return receipts;
+    return this.withLines(rows);
+  }
+
+  async search(filter: ProcurementDocumentListFilter, page?: PageRequest): Promise<{ receipts: GoodsReceipt[]; total: number }> {
+    const supplierSearch = searchCondition(filter.q, suppliers.name);
+    const where = and(
+      filter.branchId ? eq(goodsReceipts.branch_id, filter.branchId) : undefined,
+      filter.status ? eq(goodsReceipts.status, filter.status) : undefined,
+      filter.supplierId ? eq(goodsReceipts.supplier_id, filter.supplierId) : undefined,
+      businessDayRangeCondition(goodsReceipts.created_at, filter.from, filter.to),
+      // a receipt matches by its supplier name or by the supplier document number
+      supplierSearch
+        ? or(
+            searchCondition(filter.q, goodsReceipts.supplier_document_number),
+            inArray(goodsReceipts.supplier_id, this.db.select({ id: suppliers.id }).from(suppliers).where(supplierSearch))
+          )
+        : undefined
+    );
+    const query = this.db
+      .select()
+      .from(goodsReceipts)
+      .where(where)
+      .orderBy(...orderByOf({ createdAt: goodsReceipts.created_at }, filter.sort, filter.order, { key: "createdAt", order: "desc" }, goodsReceipts.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(goodsReceipts).where(where)));
+    return { receipts: await this.withLines(rows), total };
+  }
+
+  // NEO-6: the lines of many receipts in one query per 1000 receipts instead of one per receipt
+  private async withLines(rows: (typeof goodsReceipts.$inferSelect)[]): Promise<GoodsReceipt[]> {
+    const lines: (typeof goodsReceiptItems.$inferSelect)[] = [];
+    for (const ids of inListChunks(rows.map((r) => r.id))) {
+      lines.push(...(await this.db.select().from(goodsReceiptItems).where(inArray(goodsReceiptItems.goods_receipt_id, ids))));
+    }
+    const byReceipt = groupBy(lines, (l) => l.goods_receipt_id);
+    return rows.map((row) => this.toDomain(row, byReceipt.get(row.id) ?? []));
   }
 
   private loadLines(receiptId: string): Promise<(typeof goodsReceiptItems.$inferSelect)[]> {

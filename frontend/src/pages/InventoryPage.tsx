@@ -7,6 +7,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs } from "../shared/ui/Tabs";
 
 interface InventoryItem {
@@ -155,6 +159,10 @@ export function InventoryPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("items");
   const itemsQuery = useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
+  // جدول الأصناف صفحات من السيرفر (NEO-6)؛ القائمة الكاملة فوق لسه للقوايم المنسدلة
+  const itemsList = useListState(["q", "itemType"] as const, { prefix: "items." });
+  const itemsPageQuery = usePaginatedQuery<InventoryItem>(["inventory", "items"], "/inventory/items", itemsList.params);
+  const pageItems = itemsPageQuery.data?.items ?? [];
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
 
   const [newItemName, setNewItemName] = useState("");
@@ -483,9 +491,14 @@ export function InventoryPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>الأصناف ({items.length})</CardTitle>
+              <CardTitle>الأصناف ({itemsPageQuery.data?.total ?? 0})</CardTitle>
             </CardHeader>
             <CardBody className="p-0">
+              <ListFilters
+                state={itemsList}
+                search={{ placeholder: "اسم الصنف" }}
+                selects={[{ name: "itemType", label: "النوع", options: [{ value: "raw", label: "خام" }, { value: "manufactured", label: "مصنّع" }] }]}
+              />
               <Table>
                 <THead>
                   <TR>
@@ -493,7 +506,7 @@ export function InventoryPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {items.map((i) => (
+                  {pageItems.map((i) => (
                     <TR key={i.id}>
                       <TD className="font-semibold text-slate-900">{i.name}</TD>
                       <TD>{i.unit}</TD>
@@ -503,7 +516,14 @@ export function InventoryPage() {
                   ))}
                 </TBody>
               </Table>
-              {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+              {pageItems.length === 0 && !itemsPageQuery.isLoading && <EmptyState>مفيش أصناف بالفلاتر دي</EmptyState>}
+              <Pagination
+                total={itemsPageQuery.data?.total ?? 0}
+                limit={itemsList.limit}
+                offset={itemsList.offset}
+                onPageChange={itemsList.setPage}
+                isFetching={itemsPageQuery.isFetching}
+              />
             </CardBody>
           </Card>
         </>

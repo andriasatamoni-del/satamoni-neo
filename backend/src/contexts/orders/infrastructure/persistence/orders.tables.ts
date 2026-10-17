@@ -108,6 +108,8 @@ export const orders = pgTable("orders", {
   customer_notes: text(),
 }, (table) => [
   index("idx_orders_branch_created_at").using("btree", table.branch_id.asc().nullsLast(), table.created_at.asc().nullsLast()),
+  index("idx_orders_created_at").using("btree", table.created_at.desc().nullsFirst()),
+  index("idx_orders_status_created_at").using("btree", table.status.asc().nullsLast(), table.created_at.desc().nullsFirst()),
   uniqueIndex("orders_client_request_id_unique").using("btree", table.client_request_id.asc().nullsLast()).where(sql`(client_request_id IS NOT NULL)`),
   index("orders_customer_phone_idx").using("btree", table.customer_phone.asc().nullsLast(), table.created_at.desc().nullsFirst()).where(sql`(customer_phone IS NOT NULL)`),
   foreignKey({
