@@ -6,6 +6,10 @@ import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
 import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { ShiftBanner } from "./orders/ShiftBanner";
 import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
@@ -128,10 +132,9 @@ export function OrdersPage() {
   });
 
   const [branchId, setBranchId] = useState("");
-  const ordersQuery = useQuery({
-    queryKey: ["orders", branchId],
-    queryFn: () => apiRequest<Order[]>(`/orders${branchId ? `?branchId=${branchId}` : ""}`),
-  });
+  // قائمة الطلبات بقت صفحات من السيرفر (NEO-6): البحث والفلاتر والصفحة في الـURL، والفرع من اختيار الكاشير فوق
+  const ordersList = useListState(["q", "status", "orderType", "source", "from", "to"] as const, { prefix: "orders." });
+  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...ordersList.params, branchId });
 
   const [menuGroup, setMenuGroup] = useState<"all" | "regular" | "fasting">("all");
   // التبويب المختار: id قسم، أو "combos" (العروض)، أو "none" (أصناف من غير قسم). فاضي = أول تبويب تلقائيًا
@@ -335,7 +338,7 @@ export function OrdersPage() {
   };
   const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
   const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
-  const orders = ordersQuery.data ?? [];
+  const orders = ordersQuery.data?.items ?? [];
   // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه) - الفلتر فوق في `combos`
 
   return (
@@ -648,9 +651,19 @@ export function OrdersPage() {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>الطلبات الجارية ({orders.length})</CardTitle>
+          <CardTitle>الطلبات ({ordersQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
+          <ListFilters
+            state={ordersList}
+            search={{ placeholder: "اسم العميل أو التليفون أو الترابيزة" }}
+            dateRange
+            selects={[
+              { name: "status", label: "الحالة", options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+              { name: "orderType", label: "النوع", options: ORDER_TYPES },
+              { name: "source", label: "المصدر", options: [{ value: "pos", label: "الكاشير" }, ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))] },
+            ]}
+          />
           <Table>
             <THead>
               <TR>
@@ -695,7 +708,14 @@ export function OrdersPage() {
               ))}
             </TBody>
           </Table>
-          {orders.length === 0 && <EmptyState>مفيش طلبات لسه</EmptyState>}
+          {orders.length === 0 && !ordersQuery.isLoading && <EmptyState>مفيش طلبات بالفلاتر دي</EmptyState>}
+          <Pagination
+            total={ordersQuery.data?.total ?? 0}
+            limit={ordersList.limit}
+            offset={ordersList.offset}
+            onPageChange={ordersList.setPage}
+            isFetching={ordersQuery.isFetching}
+          />
         </CardBody>
       </Card>
     </div>

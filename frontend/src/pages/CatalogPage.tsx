@@ -7,6 +7,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
 
 interface MenuCategory {
@@ -68,7 +72,10 @@ const PRICE_FIELD_LABELS: Record<string, string> = { price: "السعر", talaba
 export function CatalogPage() {
   const queryClient = useQueryClient();
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
+  // القائمة الكاملة لسه لازمة لاختيار الأحجام في العروض وأسماء الأصناف؛ جدول الأصناف نفسه صفحات من السيرفر (NEO-6)
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
+  const itemsList = useListState(["q", "categoryId", "status"] as const, { prefix: "items." });
+  const itemsPageQuery = usePaginatedQuery<MenuItem>(["catalog", "items"], "/catalog/items", itemsList.params);
   const combosQuery = useQuery({ queryKey: ["catalog", "combos", "all"], queryFn: () => apiRequest<Combo[]>("/catalog/combos/all") });
   const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => apiRequest<{ combosPosition: number }>("/catalog/layout") });
   const archivedQuery = useQuery({ queryKey: ["catalog", "categories", "archived"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories?archived=true") });
@@ -289,6 +296,7 @@ export function CatalogPage() {
     if (window.confirm(`إلغاء قسم "${c.name}"؟\nهيختفي من الكاشير والإعدادات، والأصناف والطلبات القديمة هتفضل سليمة، وتقدر ترجّعه من "الأقسام المؤرشفة".`)) archiveCategory.mutate(c.id);
   }
   const items = itemsQuery.data ?? [];
+  const pageItems = itemsPageQuery.data?.items ?? [];
   const combos = combosQuery.data ?? [];
   const categoryName_ = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "بدون قسم";
 
@@ -419,9 +427,21 @@ export function CatalogPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>الأصناف ({items.length})</CardTitle>
+          <CardTitle>الأصناف ({itemsPageQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
+          <ListFilters
+            state={itemsList}
+            search={{ placeholder: "اسم الصنف أو الوصف" }}
+            selects={[
+              {
+                name: "categoryId",
+                label: "القسم",
+                options: [...categories.map((c) => ({ value: c.id, label: c.name })), { value: "none", label: "بدون قسم" }],
+              },
+              { name: "status", label: "الحالة", options: [{ value: "active", label: "نشط" }, { value: "inactive", label: "موقوف" }] },
+            ]}
+          />
           <Table>
             <THead>
               <TR>
@@ -429,7 +449,7 @@ export function CatalogPage() {
               </TR>
             </THead>
             <TBody>
-              {items.map((i) => (
+              {pageItems.map((i) => (
                 <TR key={i.id}>
                   <TD>
                     <ImageUploadButton
@@ -543,7 +563,14 @@ export function CatalogPage() {
               ))}
             </TBody>
           </Table>
-          {items.length === 0 && <EmptyState>مفيش أصناف لسه</EmptyState>}
+          {pageItems.length === 0 && !itemsPageQuery.isLoading && <EmptyState>مفيش أصناف بالفلاتر دي</EmptyState>}
+          <Pagination
+            total={itemsPageQuery.data?.total ?? 0}
+            limit={itemsList.limit}
+            offset={itemsList.offset}
+            onPageChange={itemsList.setPage}
+            isFetching={itemsPageQuery.isFetching}
+          />
         </CardBody>
       </Card>
 

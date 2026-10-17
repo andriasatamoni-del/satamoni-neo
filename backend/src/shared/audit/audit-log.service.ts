@@ -1,7 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../database/database.token";
 import { auditLogs } from "../database/shared.tables";
+import { businessDayRangeCondition, paginate, totalOf } from "../database/pagination";
+import type { PageRequest } from "../http/list-query.dto";
 
 export interface AuditLogEntry {
   actorUserId?: string | null;
@@ -34,8 +36,10 @@ export interface AuditLogFilter {
   entityId?: string;
   branchId?: string;
   action?: string;
-  limit?: number;
   outcome?: string;
+  /** inclusive Cairo business dates on created_at */
+  from?: string;
+  to?: string;
 }
 
 // AuditLogService - سجل تدقيق عام (fire-and-forget، مش أجريجيت دومين له قواعد عمل - مجرد حقائق ثابتة
@@ -59,25 +63,21 @@ export class AuditLogService {
     });
   }
 
-  async list(filter?: AuditLogFilter): Promise<AuditLogRecord[]> {
-    const limit = Math.min(Math.max(filter?.limit ?? 100, 1), 500);
-    const rows = await this.db
-      .select()
-      .from(auditLogs)
-      .where(
-        and(
-          filter?.actorUserId ? eq(auditLogs.actor_user_id, filter.actorUserId) : undefined,
-          filter?.entityType ? eq(auditLogs.entity_type, filter.entityType) : undefined,
-          filter?.entityId ? eq(auditLogs.entity_id, filter.entityId) : undefined,
-          filter?.branchId ? eq(auditLogs.branch_id, filter.branchId) : undefined,
-          filter?.action ? eq(auditLogs.action, filter.action) : undefined,
-          filter?.outcome ? eq(auditLogs.outcome, filter.outcome as "SUCCESS" | "DENIED" | "FAILED") : undefined
-        )
-      )
-      .orderBy(desc(auditLogs.created_at))
-      .limit(limit);
+  // NEO-6: one page of the log with its total; `offset` reaches rows past the old 500-row cap
+  async list(filter: AuditLogFilter, page: PageRequest): Promise<{ records: AuditLogRecord[]; total: number }> {
+    const where = and(
+      filter.actorUserId ? eq(auditLogs.actor_user_id, filter.actorUserId) : undefined,
+      filter.entityType ? eq(auditLogs.entity_type, filter.entityType) : undefined,
+      filter.entityId ? eq(auditLogs.entity_id, filter.entityId) : undefined,
+      filter.branchId ? eq(auditLogs.branch_id, filter.branchId) : undefined,
+      filter.action ? eq(auditLogs.action, filter.action) : undefined,
+      filter.outcome ? eq(auditLogs.outcome, filter.outcome as "SUCCESS" | "DENIED" | "FAILED") : undefined,
+      businessDayRangeCondition(auditLogs.created_at, filter.from, filter.to)
+    );
+    const query = this.db.select().from(auditLogs).where(where).orderBy(desc(auditLogs.created_at), desc(auditLogs.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(auditLogs).where(where)));
 
-    return rows.map((r) => ({
+    const records = rows.map((r) => ({
       id: r.id,
       actorUserId: r.actor_user_id,
       action: r.action,
@@ -89,5 +89,6 @@ export class AuditLogService {
       outcome: r.outcome,
       httpStatus: r.http_status,
     }));
+    return { records, total };
   }
 }

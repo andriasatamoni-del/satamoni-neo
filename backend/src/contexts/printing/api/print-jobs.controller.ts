@@ -16,6 +16,8 @@ import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { PrintJob } from "../domain/print-job.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { cappedPage, listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListPrintJobsQueryDto } from "./dto/list-print-jobs-query.dto";
 
 function toPublicJob(job: PrintJob) {
   return {
@@ -45,18 +47,16 @@ export class PrintJobsController {
   @BranchScoped()
   @Get()
   @RequirePermission(PERMISSION.PRINT_JOBS_VIEW, PERMISSION.PRINT_JOBS_MANAGE_QUEUE)
-  async list(
-    @Query("branchId") branchId: string | undefined,
-    @Query("status") status: string | undefined,
-    @Query("orderId") orderId: string | undefined,
-    @Query("limit") limit: string | undefined,
-    @Req() req: Request & { user: AuthenticatedUser }
-  ) {
-    const effectiveBranchId = branchId || req.user.branchId;
-    if (!effectiveBranchId) return [];
-    return (await this.listPrintJobs.execute({ branchId: effectiveBranchId, status, orderId, limit: limit ? Number(limit) : undefined })).map(
-      toPublicJob
+  async list(@Query() query: ListPrintJobsQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const { page, filter } = splitListQuery(query);
+    const effectiveBranchId = filter.branchId || req.user.branchId;
+    if (!effectiveBranchId) return listResponse([], 0, page);
+    // unpaged (the print agent): the oldest `limit` jobs, default 100 and at most 300, as before NEO-6
+    const { jobs, total } = await this.listPrintJobs.execute(
+      { branchId: effectiveBranchId, status: filter.status, orderId: filter.orderId },
+      cappedPage(query, page, 100, 300)
     );
+    return listResponse(jobs.map(toPublicJob), total, page);
   }
 
   @BranchScoped()

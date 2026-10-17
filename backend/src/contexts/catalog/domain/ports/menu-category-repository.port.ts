@@ -1,4 +1,15 @@
 import type { MenuCategory } from "../menu-category.aggregate";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+
+// NEO-6: filters of the categories list
+export interface MenuCategoryListFilter {
+  archived?: boolean;
+  q?: string;
+  menuGroup?: string;
+  status?: "active" | "inactive";
+  sort?: string;
+  order?: "asc" | "desc";
+}
 
 export interface MenuCategoryRepositoryPort {
   save(category: MenuCategory): Promise<void>;
@@ -6,6 +17,7 @@ export interface MenuCategoryRepositoryPort {
   findByLegacyCategoryId(legacyId: number): Promise<MenuCategory | null>;
   // archived: undefined = الكل (للمستهلكين القدام زي الطباعة)، false = غير المؤرشف، true = المؤرشف بس
   list(opts?: { archived?: boolean }): Promise<MenuCategory[]>;
+  search(filter: MenuCategoryListFilter, page?: PageRequest): Promise<{ categories: MenuCategory[]; total: number }>;
 }
 
 export const MENU_CATEGORY_REPOSITORY = Symbol("MENU_CATEGORY_REPOSITORY");

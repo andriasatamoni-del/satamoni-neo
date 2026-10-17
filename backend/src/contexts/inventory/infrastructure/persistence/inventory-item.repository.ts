@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { InventoryItem, type ItemType, type NegativeStockPolicy } from "../../domain/inventory-item.aggregate";
-import type { InventoryItemRepositoryPort } from "../../domain/ports/inventory-item-repository.port";
+import type { InventoryItemListFilter, InventoryItemRepositoryPort } from "../../domain/ports/inventory-item-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { inventoryItems } from "./inventory.tables";
 
 @Injectable()
@@ -57,6 +59,26 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
   async list(): Promise<InventoryItem[]> {
     const rows = await this.db.select().from(inventoryItems).orderBy(asc(inventoryItems.name));
     return rows.map((r) => this.toDomain(r));
+  }
+
+  async search(filter: InventoryItemListFilter, page?: PageRequest): Promise<{ items: InventoryItem[]; total: number }> {
+    const where = and(filter.itemType ? eq(inventoryItems.item_type, filter.itemType) : undefined, searchCondition(filter.q, inventoryItems.name));
+    const query = this.db
+      .select()
+      .from(inventoryItems)
+      .where(where)
+      .orderBy(
+        ...orderByOf(
+          { name: inventoryItems.name, createdAt: inventoryItems.created_at, unitCost: inventoryItems.unit_cost },
+          filter.sort,
+          filter.order,
+          { key: "name", order: "asc" },
+          inventoryItems.id
+        )
+      )
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(inventoryItems).where(where)));
+    return { items: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(item: InventoryItem) {

@@ -335,6 +335,7 @@ export const goodsReceipts = pgTable("goods_receipts", {
   supplier_document_number: text(),
 }, (table) => [
   index("idx_goods_receipts_supplier_doc").using("btree", table.supplier_id.asc().nullsLast(), table.supplier_document_number.asc().nullsLast()),
+  index("idx_goods_receipts_branch_created_at").using("btree", table.branch_id.asc().nullsLast(), table.created_at.desc().nullsFirst()),
   foreignKey({
       columns: [table.branch_id],
       foreignColumns: [branches.id],
@@ -388,6 +389,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
   legacy_purchase_order_id: integer(),
 }, (table) => [
+  index("idx_purchase_orders_branch_created_at").using("btree", table.branch_id.asc().nullsLast(), table.created_at.desc().nullsFirst()),
   foreignKey({
       columns: [table.branch_id],
       foreignColumns: [branches.id],

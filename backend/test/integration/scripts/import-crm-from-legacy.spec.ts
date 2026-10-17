@@ -104,7 +104,7 @@ describe("importCrmFromLegacy", () => {
     expect(followup).not.toBeNull();
     expect(followup!.calledBy).toBe(calledById);
 
-    const complaints = await complaintRepo.list();
+    const { complaints } = await complaintRepo.list();
     expect(complaints).toHaveLength(1);
     expect(complaints[0].channel).toBe("phone_followup");
     expect(complaints[0].createdBy).toBe(calledById);
@@ -135,7 +135,7 @@ describe("importCrmFromLegacy", () => {
     const result = await importCrmFromLegacy(legacyPool, neoDb);
     expect(result.whatsappComplaints).toEqual({ created: 1, updated: 0, skipped: 0 });
 
-    const complaints = await complaintRepo.list();
+    const { complaints } = await complaintRepo.list();
     expect(complaints).toHaveLength(1);
     expect(complaints[0].channel).toBe("whatsapp");
     expect(complaints[0].assignedTo).toBe(calledById);
@@ -167,7 +167,7 @@ describe("importCrmFromLegacy", () => {
     expect(result.phoneComplaints.created).toBe(1);
     expect(result.whatsappComplaints.created).toBe(1);
 
-    const complaints = await complaintRepo.list();
+    const { complaints } = await complaintRepo.list();
     expect(complaints).toHaveLength(2);
     expect(new Set(complaints.map((c) => c.channel))).toEqual(new Set(["phone_followup", "whatsapp"]));
   });

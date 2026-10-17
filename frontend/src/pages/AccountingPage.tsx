@@ -7,6 +7,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 
 interface Account { id: string; code: string; name: string; accountType: string; isActive: boolean; }
 interface JournalEntryLine { accountId: string; debit: number; credit: number; description: string | null; }
@@ -30,7 +34,9 @@ type LineInput = { accountId: string; debit: string; credit: string };
 export function AccountingPage() {
   const queryClient = useQueryClient();
   const accountsQuery = useQuery({ queryKey: ["accounting", "accounts"], queryFn: () => apiRequest<Account[]>("/accounting/accounts") });
-  const entriesQuery = useQuery({ queryKey: ["accounting", "journal-entries"], queryFn: () => apiRequest<JournalEntry[]>("/accounting/journal-entries") });
+  // القيود صفحات من السيرفر (NEO-6): البحث والفلاتر والصفحة في الـURL
+  const entriesList = useListState(["q", "status", "sourceType", "from", "to"] as const, { prefix: "je." });
+  const entriesQuery = usePaginatedQuery<JournalEntry>(["accounting", "journal-entries"], "/accounting/journal-entries", entriesList.params);
 
   const [accountForm, setAccountForm] = useState({ code: "", name: "", accountType: "ASSET" });
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -130,7 +136,7 @@ export function AccountingPage() {
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const balanced = totalDebit === totalCredit;
   const accounts = accountsQuery.data ?? [];
-  const entries = entriesQuery.data ?? [];
+  const entries = entriesQuery.data?.items ?? [];
 
   const STATUS_META: Record<string, { label: string; tone: "success" | "danger" | "neutral" }> = {
     POSTED: { label: "مرحّل", tone: "success" },
@@ -238,9 +244,18 @@ export function AccountingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>القيود اليومية ({entries.length})</CardTitle>
+          <CardTitle>القيود اليومية ({entriesQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
+          <ListFilters
+            state={entriesList}
+            search={{ placeholder: "رقم القيد أو البيان" }}
+            dateRange
+            selects={[
+              { name: "status", label: "الحالة", options: [{ value: "DRAFT", label: "مسودة" }, { value: "POSTED", label: "مرحّل" }, { value: "REVERSED", label: "معكوس" }] },
+              { name: "sourceType", label: "المصدر", options: [{ value: "manual", label: "يدوي" }, { value: "order_sale", label: "مبيعات" }, { value: "goods_receipt", label: "استلام بضاعة" }, { value: "payroll_run", label: "مرتبات" }] },
+            ]}
+          />
           {postError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{postError}</p>}
           <Table>
             <THead>
@@ -277,7 +292,14 @@ export function AccountingPage() {
               })}
             </TBody>
           </Table>
-          {entries.length === 0 && <EmptyState>مفيش قيود لسه</EmptyState>}
+          {entries.length === 0 && !entriesQuery.isLoading && <EmptyState>مفيش قيود بالفلاتر دي</EmptyState>}
+          <Pagination
+            total={entriesQuery.data?.total ?? 0}
+            limit={entriesList.limit}
+            offset={entriesList.offset}
+            onPageChange={entriesList.setPage}
+            isFetching={entriesQuery.isFetching}
+          />
         </CardBody>
       </Card>
 

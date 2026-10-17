@@ -1,4 +1,5 @@
 import type { PrintJob } from "../print-job.aggregate";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 
 export interface PrintJobRepositoryPort {
   // upsert على idempotency_key - INSERT ... ON CONFLICT DO NOTHING RETURNING بالظبط زي الريبو القديم:
@@ -6,7 +7,7 @@ export interface PrintJobRepositoryPort {
   // فلسفة "أي إعادة إنشاء لنفس الحدث بترجع نفس الصف" في كل idempotency_key تاني في المشروع
   queue(job: PrintJob): Promise<PrintJob>;
   findById(id: string): Promise<PrintJob | null>;
-  list(filter: { branchId: string; status?: string; orderId?: string; limit?: number }): Promise<PrintJob[]>;
+  list(filter: { branchId: string; status?: string; orderId?: string }, page: PageRequest): Promise<{ jobs: PrintJob[]; total: number }>;
 
   // الأربعة دول كل واحدة UPDATE ذرّي بشرط الحالة الحالية (WHERE status = 'X') على مستوى الداتابيز نفسها
   // - مش "حمّل الأجريجيت، عدّله، احفظه" عادي - نفس فلسفة "قفل الصف" في كل route تاني في المشروع (orders/

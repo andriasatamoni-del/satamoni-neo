@@ -11,7 +11,18 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, branchScopeOf } from "../../../shared/authorization/branch-scope";
+import {
+  BranchScopeGuard,
+  BranchScoped,
+  BranchResource,
+  BranchFilteredList,
+  branchScopeOf,
+  CurrentBranchScope,
+  scopedBranchId,
+  type BranchScope,
+} from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListComplaintsQueryDto } from "./dto/list-complaints-query.dto";
 import { CrmDomainErrorFilter } from "./filters/domain-error.filter";
 import { Complaint } from "../domain/complaint.aggregate";
 import { CustomerFollowup } from "../domain/customer-followup.aggregate";
@@ -75,9 +86,10 @@ export class CrmController {
   @BranchFilteredList()
   @Get("complaints")
   @RequirePermission(PERMISSION.CRM_COMPLAINTS_VIEW)
-  async listOpenComplaints(@Query("status") status?: string) {
-    const complaints = await this.listComplaints.execute(status ? { status } : undefined);
-    return complaints.map(toPublicComplaint);
+  async listOpenComplaints(@Query() query: ListComplaintsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { complaints, total } = await this.listComplaints.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(complaints.map(toPublicComplaint), total, page);
   }
 
   @BranchScoped()

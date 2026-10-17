@@ -40,6 +40,8 @@ import { CreateRecipeVersionDto } from "./dto/create-recipe-version.dto";
 import { RegisterComboDto } from "./dto/register-combo.dto";
 import { UpdateComboDto } from "./dto/update-combo.dto";
 import { ReplaceComboItemsDto } from "./dto/replace-combo-items.dto";
+import { ListMenuCategoriesQueryDto, ListMenuItemsQueryDto } from "./dto/list-catalog-query.dto";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -93,8 +95,10 @@ export class CatalogController {
   // ?archived=true بيرجّع الأقسام المؤرشفة بس (قائمة الاسترجاع في الإعدادات)؛ الافتراضي غير المؤرشفة
   @Get("categories")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
-  async categories(@Query("archived") archived?: string) {
-    return (await this.listCategories.execute({ archived: archived === "true" })).map(toPublicCategory);
+  async categories(@Query() query: ListMenuCategoriesQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { categories, total } = await this.listCategories.execute(filter, page);
+    return listResponse(categories.map(toPublicCategory), total, page);
   }
 
   // مكان تبويب "العروض" وسط الأقسام
@@ -138,8 +142,10 @@ export class CatalogController {
 
   @Get("items")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
-  async items() {
-    return (await this.listItems.execute()).map(toPublicItem);
+  async items(@Query() query: ListMenuItemsQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { items, total } = await this.listItems.execute(filter, page);
+    return listResponse(items.map(toPublicItem), total, page);
   }
 
   @Post("items")

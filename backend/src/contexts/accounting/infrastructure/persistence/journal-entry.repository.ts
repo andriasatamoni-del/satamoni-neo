@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { DATABASE, type Database, type DatabaseTx } from "../../../../shared/database/database.token";
 import { JournalEntry, type JournalEntryStatus } from "../../domain/journal-entry.aggregate";
-import type { JournalEntryRepositoryPort } from "../../domain/ports/journal-entry-repository.port";
+import type { JournalEntryListFilter, JournalEntryRepositoryPort } from "../../domain/ports/journal-entry-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { dateRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { AccountingPeriodClosedError } from "../../domain/errors";
 import { accountingPeriods, journalEntries, journalEntryLines } from "./accounting.tables";
 
@@ -114,9 +116,43 @@ export class JournalEntryRepository implements JournalEntryRepositoryPort {
         )
       )
       .orderBy(desc(journalEntries.created_at));
-    const entries: JournalEntry[] = [];
-    for (const row of rows) entries.push(this.toDomain(row, await this.loadLines(row.id)));
-    return entries;
+    return this.withLines(rows);
+  }
+
+  async search(filter: JournalEntryListFilter, page?: PageRequest): Promise<{ entries: JournalEntry[]; total: number }> {
+    const where = and(
+      filter.branchId ? eq(journalEntries.branch_id, filter.branchId) : undefined,
+      filter.sourceType ? eq(journalEntries.source_type, filter.sourceType) : undefined,
+      filter.status ? eq(journalEntries.status, filter.status) : undefined,
+      dateRangeCondition(journalEntries.entry_date, filter.from, filter.to),
+      searchCondition(filter.q, journalEntries.entry_number, journalEntries.description)
+    );
+    const query = this.db
+      .select()
+      .from(journalEntries)
+      .where(where)
+      .orderBy(
+        ...orderByOf(
+          { createdAt: journalEntries.created_at, entryDate: journalEntries.entry_date },
+          filter.sort,
+          filter.order,
+          { key: "createdAt", order: "desc" },
+          journalEntries.id
+        )
+      )
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(journalEntries).where(where)));
+    return { entries: await this.withLines(rows), total };
+  }
+
+  // NEO-6: the lines of many entries in one query per 1000 entries instead of one per entry
+  private async withLines(rows: (typeof journalEntries.$inferSelect)[]): Promise<JournalEntry[]> {
+    const lines: (typeof journalEntryLines.$inferSelect)[] = [];
+    for (const ids of inListChunks(rows.map((r) => r.id))) {
+      lines.push(...(await this.db.select().from(journalEntryLines).where(inArray(journalEntryLines.journal_entry_id, ids))));
+    }
+    const byEntry = groupBy(lines, (l) => l.journal_entry_id);
+    return rows.map((row) => this.toDomain(row, byEntry.get(row.id) ?? []));
   }
 
   async findBySource(sourceType: string, sourceId: string): Promise<JournalEntry[]> {

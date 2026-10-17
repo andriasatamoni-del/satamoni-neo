@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
 import { pgErrorCode } from "../../../../shared/database/transaction-context";
 import { BranchDay } from "../../domain/branch-day.aggregate";
 import { BranchDayAlreadyClosedError } from "../../domain/errors";
@@ -39,14 +41,11 @@ export class BranchDayRepository implements BranchDayRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(branchId: string): Promise<BranchDay[]> {
-    const rows = await this.db
-      .select()
-      .from(branchDays)
-      .where(eq(branchDays.branch_id, branchId))
-      .orderBy(desc(branchDays.business_date))
-      .limit(90);
-    return rows.map((r) => this.toDomain(r));
+  async list(branchId: string, page: PageRequest): Promise<{ days: BranchDay[]; total: number }> {
+    const where = eq(branchDays.branch_id, branchId);
+    const query = this.db.select().from(branchDays).where(where).orderBy(desc(branchDays.business_date), desc(branchDays.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(branchDays).where(where)));
+    return { days: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof branchDays.$inferSelect): BranchDay {

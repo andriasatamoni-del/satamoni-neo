@@ -10,6 +10,7 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../identity-access/domain/ports/user-repository.port";
 import { BranchScopeGuard, BranchScoped } from "../../../shared/authorization/branch-scope";
+import { cappedPage, listResponse, ListQueryDto, splitListQuery } from "../../../shared/http/list-query.dto";
 import { BranchDayDomainErrorFilter } from "./filters/domain-error.filter";
 import type { BranchDay } from "../domain/branch-day.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
@@ -51,12 +52,18 @@ export class BranchDayController {
 
   @Get(":branchId/history")
   @RequirePermission(PERMISSION.BRANCH_DAY_VIEW, PERMISSION.BRANCH_DAY_CLOSE)
-  async history(@Param("branchId") branchId: string) {
-    const days = await this.listHistory.execute(branchId);
+  async history(@Param("branchId") branchId: string, @Query() query: ListQueryDto) {
+    const { page } = splitListQuery(query);
+    // unpaged: the latest 90 days, as before NEO-6
+    const { days, total } = await this.listHistory.execute(branchId, cappedPage(query, page, 90, 90));
     const closerIds = [...new Set(days.map((d) => d.closedBy))];
     const closers = await Promise.all(closerIds.map((id) => this.users.findById(id)));
     const nameById = new Map(closers.filter((u): u is NonNullable<typeof u> => u !== null).map((u) => [u.id, u.name]));
-    return days.map((d) => ({ ...toPublic(d), closedByName: nameById.get(d.closedBy) ?? null }));
+    return listResponse(
+      days.map((d) => ({ ...toPublic(d), closedByName: nameById.get(d.closedBy) ?? null })),
+      total,
+      page
+    );
   }
 }
 

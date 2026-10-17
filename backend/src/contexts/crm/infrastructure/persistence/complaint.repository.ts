@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Complaint, type ComplaintStatus } from "../../domain/complaint.aggregate";
-import type { ComplaintRepositoryPort } from "../../domain/ports/complaint-repository.port";
+import type { ComplaintListFilter, ComplaintRepositoryPort } from "../../domain/ports/complaint-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { complaints } from "./crm.tables";
 
 @Injectable()
@@ -37,13 +39,16 @@ export class ComplaintRepository implements ComplaintRepositoryPort {
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter?: { status?: ComplaintStatus }): Promise<Complaint[]> {
-    const rows = await this.db
-      .select()
-      .from(complaints)
-      .where(filter?.status ? eq(complaints.status, filter.status) : undefined)
-      .orderBy(desc(complaints.created_at));
-    return rows.map((r) => this.toDomain(r));
+  async list(filter: ComplaintListFilter = {}, page?: PageRequest): Promise<{ complaints: Complaint[]; total: number }> {
+    const where = and(
+      filter.status ? eq(complaints.status, filter.status) : undefined,
+      filter.branchId ? eq(complaints.branch_id, filter.branchId) : undefined,
+      businessDayRangeCondition(complaints.created_at, filter.from, filter.to),
+      searchCondition(filter.q, complaints.customer_phone, complaints.description)
+    );
+    const query = this.db.select().from(complaints).where(where).orderBy(desc(complaints.created_at), desc(complaints.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(complaints).where(where)));
+    return { complaints: rows.map((r) => this.toDomain(r)), total };
   }
 
   async findLatestByPhone(phone: string): Promise<Complaint | null> {

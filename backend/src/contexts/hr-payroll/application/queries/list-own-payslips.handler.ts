@@ -29,7 +29,7 @@ export class ListOwnPayslipsHandler {
     const employee = await this.employees.findByUserId(userId);
     if (!employee) throw new EmployeeProfileNotLinkedError();
 
-    const runs = await this.payrollRuns.list({ status: "APPROVED" });
+    const { runs } = await this.payrollRuns.list({ status: "APPROVED" });
     const payslips: OwnPayslip[] = [];
     for (const run of runs) {
       const line = run.employees.find((e) => e.employeeId === employee.id);

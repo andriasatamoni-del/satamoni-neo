@@ -1,10 +1,13 @@
 import { Fragment, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest, ApiError } from "../shared/api/client";
+import { ApiError } from "../shared/api/client";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { DebouncedInput, ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
 import { PageHeader } from "../shared/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Button } from "../shared/ui/Button";
-import { Field, Input } from "../shared/ui/Field";
+import { Field } from "../shared/ui/Field";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 
 interface AuditLogRecord {
@@ -19,23 +22,19 @@ interface AuditLogRecord {
 }
 
 export function AuditLogPage() {
-  const [filters, setFilters] = useState({ entityType: "", entityId: "", actorUserId: "", action: "" });
+  // NEO-6: الفلاتر والصفحة في الـURL، والسيرفر بيرجّع صفحة بصفحة - مفيش سقف 500 سجل زي الأول
+  const list = useListState(["entityType", "entityId", "actorUserId", "action", "outcome", "from", "to"] as const);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
 
-  const query = new URLSearchParams();
-  if (filters.entityType) query.set("entityType", filters.entityType);
-  if (filters.entityId) query.set("entityId", filters.entityId);
-  if (filters.actorUserId) query.set("actorUserId", filters.actorUserId);
-  if (filters.action) query.set("action", filters.action);
-  const qs = query.toString();
-
-  const logsQuery = useQuery({
-    queryKey: ["audit-logs", filters],
-    queryFn: () => apiRequest<AuditLogRecord[]>(`/audit-logs${qs ? `?${qs}` : ""}`),
-  });
+  const logsQuery = usePaginatedQuery<AuditLogRecord>(["audit-logs"], "/audit-logs", list.params);
 
   const notAllowed = logsQuery.isError && logsQuery.error instanceof ApiError && logsQuery.error.status === 403;
-  const logs = logsQuery.data ?? [];
+  const logs = logsQuery.data?.items ?? [];
+  const textFilter = (name: "entityType" | "entityId" | "actorUserId" | "action", label: string) => (
+    <Field label={label}>
+      <DebouncedInput value={list.filters[name]} placeholder="" onCommit={(value) => list.setFilter(name, value)} />
+    </Field>
+  );
 
   return (
     <div>
@@ -54,26 +53,24 @@ export function AuditLogPage() {
               <CardTitle>فلاتر</CardTitle>
             </CardHeader>
             <CardBody>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                <Field label="نوع الكيان (مثال: branches)">
-                  <Input value={filters.entityType} onChange={(e) => setFilters({ ...filters, entityType: e.target.value })} />
-                </Field>
-                <Field label="معرّف الكيان">
-                  <Input value={filters.entityId} onChange={(e) => setFilters({ ...filters, entityId: e.target.value })} />
-                </Field>
-                <Field label="معرّف المستخدم الفاعل">
-                  <Input value={filters.actorUserId} onChange={(e) => setFilters({ ...filters, actorUserId: e.target.value })} />
-                </Field>
-                <Field label="الإجراء (مثال: LOGIN_FAILED)">
-                  <Input value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })} />
-                </Field>
-              </div>
+              <ListFilters
+                state={list}
+                dateRange
+                selects={[
+                  { name: "outcome", label: "النتيجة", options: [{ value: "SUCCESS", label: "نجح" }, { value: "DENIED", label: "مرفوض" }, { value: "FAILED", label: "فشل" }] },
+                ]}
+              >
+                {textFilter("entityType", "نوع الكيان (مثال: branches)")}
+                {textFilter("entityId", "معرّف الكيان")}
+                {textFilter("actorUserId", "معرّف المستخدم الفاعل")}
+                {textFilter("action", "الإجراء (مثال: LOGIN_FAILED)")}
+              </ListFilters>
             </CardBody>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>السجلات ({logs.length})</CardTitle>
+              <CardTitle>السجلات ({logsQuery.data?.total ?? 0})</CardTitle>
             </CardHeader>
             <CardBody className="p-0">
               <Table>
@@ -109,7 +106,14 @@ export function AuditLogPage() {
                   ))}
                 </TBody>
               </Table>
-              {logs.length === 0 && <EmptyState>مفيش سجلات تدقيق مطابقة</EmptyState>}
+              {logs.length === 0 && !logsQuery.isLoading && <EmptyState>مفيش سجلات تدقيق مطابقة</EmptyState>}
+              <Pagination
+                total={logsQuery.data?.total ?? 0}
+                limit={list.limit}
+                offset={list.offset}
+                onPageChange={list.setPage}
+                isFetching={logsQuery.isFetching}
+              />
             </CardBody>
           </Card>
         </>

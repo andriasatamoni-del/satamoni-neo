@@ -16,7 +16,17 @@ import { ListFiscalYearClosingsHandler } from "../application/queries/list-fisca
 import { AccountingRepairService } from "../application/services/accounting-repair.service";
 import { RepairJournalsDto } from "./dto/repair-journals.dto";
 import type { GapKind } from "../infrastructure/persistence/journal-coverage";
-import { BranchScopeGuard, BranchScoped, BranchResource, requireCompanyWide } from "../../../shared/authorization/branch-scope";
+import {
+  BranchScopeGuard,
+  BranchScoped,
+  BranchResource,
+  CurrentBranchScope,
+  requireCompanyWide,
+  scopedBranchId,
+  type BranchScope,
+} from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListJournalEntriesQueryDto } from "./dto/list-journal-entries-query.dto";
 import { businessDate, businessDateString } from "../../../shared/time/business-date";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { RegisterJournalEntryDto } from "./dto/register-journal-entry.dto";
@@ -69,8 +79,10 @@ export class AccountingController {
   @Get("journal-entries")
   @BranchScoped()
   @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
-  async journalEntries(@Query("branchId") branchId?: string, @Query("sourceType") sourceType?: string) {
-    return (await this.listJournalEntries.execute({ branchId, sourceType })).map(toPublicEntry);
+  async journalEntries(@Query() query: ListJournalEntriesQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { entries, total } = await this.listJournalEntries.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(entries.map(toPublicEntry), total, page);
   }
 
   // قيد يدوي جديد - دايمًا DRAFT (sourceType مفروض "manual" من السيرفر، مش من العميل)، محتاج

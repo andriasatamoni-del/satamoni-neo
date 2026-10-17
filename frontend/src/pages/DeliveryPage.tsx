@@ -8,6 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs } from "../shared/ui/Tabs";
 import { hasRole } from "../shared/auth/roles";
 
@@ -68,8 +72,10 @@ export function DeliveryPage() {
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const driversQuery = useQuery({ queryKey: ["delivery", "drivers"], queryFn: () => apiRequest<Driver[]>("/delivery/drivers") });
-  const ordersQuery = useQuery({ queryKey: ["orders"], queryFn: () => apiRequest<Order[]>("/orders") });
-  const assignmentsQuery = useQuery({ queryKey: ["delivery", "assignments"], queryFn: () => apiRequest<Assignment[]>("/delivery/assignments") });
+  // NEO-6: بدل ما الصفحة تسحب كل الطلبات، قايمة الاختيار بتجيب آخر 200 طلب دليفري بس من السيرفر
+  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { orderType: "delivery", limit: 200, offset: 0 });
+  const assignmentsList = useListState(["status", "driverId", "from", "to"] as const, { prefix: "assignments." });
+  const assignmentsQuery = usePaginatedQuery<Assignment>(["delivery", "assignments"], "/delivery/assignments", assignmentsList.params);
   const settlementsQuery = useQuery({ queryKey: ["delivery", "settlements"], queryFn: () => apiRequest<DriverSettlement[]>("/delivery/settlements") });
   const shiftsQuery = useQuery({ queryKey: ["delivery", "attendance-shifts"], queryFn: () => apiRequest<DriverAttendanceShift[]>("/delivery/attendance-shifts") });
 
@@ -177,7 +183,7 @@ export function DeliveryPage() {
 
   const driverName_ = (id: string) => driversQuery.data?.find((d) => d.id === id)?.name ?? id;
   const branchName = (id: string) => branchesQuery.data?.find((b) => b.id === id)?.name ?? id;
-  const assignments = assignmentsQuery.data ?? [];
+  const assignments = assignmentsQuery.data?.items ?? [];
   const settlements = settlementsQuery.data ?? [];
   const shifts = shiftsQuery.data ?? [];
 
@@ -218,7 +224,7 @@ export function DeliveryPage() {
                   <Field label="طلب الدليفري">
                     <Select required value={assignForm.orderId} onChange={(e) => setAssignForm({ ...assignForm, orderId: e.target.value })}>
                       <option value="">اختر طلب دليفري</option>
-                      {ordersQuery.data?.filter((o) => o.orderType === "delivery").map((o) => (
+                      {ordersQuery.data?.items.map((o) => (
                         <option key={o.id} value={o.id}>{o.id.slice(0, 8)} - {o.total}ج</option>
                       ))}
                     </Select>
@@ -238,9 +244,17 @@ export function DeliveryPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>تكليفات التوصيل ({assignments.length})</CardTitle>
+              <CardTitle>تكليفات التوصيل ({assignmentsQuery.data?.total ?? 0})</CardTitle>
             </CardHeader>
             <CardBody className="p-0">
+              <ListFilters
+                state={assignmentsList}
+                dateRange
+                selects={[
+                  { name: "status", label: "الحالة", options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+                  { name: "driverId", label: "السائق", options: (driversQuery.data ?? []).map((d) => ({ value: d.id, label: d.name })) },
+                ]}
+              />
               <Table>
                 <THead>
                   <TR>
@@ -289,7 +303,14 @@ export function DeliveryPage() {
                   })}
                 </TBody>
               </Table>
-              {assignments.length === 0 && <EmptyState>مفيش تكليفات توصيل لسه</EmptyState>}
+              {assignments.length === 0 && !assignmentsQuery.isLoading && <EmptyState>مفيش تكليفات توصيل بالفلاتر دي</EmptyState>}
+              <Pagination
+                total={assignmentsQuery.data?.total ?? 0}
+                limit={assignmentsList.limit}
+                offset={assignmentsList.offset}
+                onPageChange={assignmentsList.setPage}
+                isFetching={assignmentsQuery.isFetching}
+              />
             </CardBody>
           </Card>
         </>

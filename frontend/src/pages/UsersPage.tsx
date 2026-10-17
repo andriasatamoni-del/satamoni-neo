@@ -8,6 +8,10 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { ListFilters } from "../shared/ui/ListFilters";
+import { Pagination } from "../shared/ui/Pagination";
+import { useListState } from "../shared/ui/useListState";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { can, ROLE, ROLES, ROLE_LABELS, type Role } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 
@@ -53,7 +57,9 @@ export function UsersPage() {
   const canManageUsers = can(currentUser, PERMISSION.IDENTITY_USERS_MANAGE);
   const canManageRoles = can(currentUser, PERMISSION.IDENTITY_ROLES_MANAGE);
 
-  const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => apiRequest<AppUser[]>("/users") });
+  // قائمة المستخدمين صفحات من السيرفر (NEO-6): البحث والفلاتر والصفحة في الـURL
+  const usersList = useListState(["q", "role", "status"] as const, { prefix: "users." });
+  const usersQuery = usePaginatedQuery<AppUser>(["users"], "/users", usersList.params);
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
   const catalogQuery = useQuery({
     queryKey: ["users", "permissions-catalog"],
@@ -126,7 +132,7 @@ export function UsersPage() {
     return branchesQuery.data?.find((b) => b.id === branchId)?.name ?? branchId;
   }
 
-  const users = usersQuery.data ?? [];
+  const users = usersQuery.data?.items ?? [];
 
   return (
     <div>
@@ -216,8 +222,16 @@ export function UsersPage() {
       )}
 
       <Card className="mb-6">
-        <CardHeader><CardTitle>المستخدمين ({users.length})</CardTitle></CardHeader>
+        <CardHeader><CardTitle>المستخدمين ({usersQuery.data?.total ?? 0})</CardTitle></CardHeader>
         <CardBody className="p-0">
+          <ListFilters
+            state={usersList}
+            search={{ placeholder: "الاسم أو الإيميل" }}
+            selects={[
+              { name: "role", label: "الدور", options: ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] })) },
+              { name: "status", label: "الحالة", options: [{ value: "active", label: "نشط" }, { value: "inactive", label: "موقوف" }] },
+            ]}
+          />
           <Table>
             <THead>
               <TR>
@@ -260,7 +274,14 @@ export function UsersPage() {
               ))}
             </TBody>
           </Table>
-          {users.length === 0 && <EmptyState>مفيش مستخدمين لسه</EmptyState>}
+          {users.length === 0 && !usersQuery.isLoading && <EmptyState>مفيش مستخدمين بالفلاتر دي</EmptyState>}
+          <Pagination
+            total={usersQuery.data?.total ?? 0}
+            limit={usersList.limit}
+            offset={usersList.offset}
+            onPageChange={usersList.setPage}
+            isFetching={usersQuery.isFetching}
+          />
         </CardBody>
       </Card>
 

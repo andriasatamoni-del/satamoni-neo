@@ -1,6 +1,7 @@
 import {
   CallHandler,
   CanActivate,
+  createParamDecorator,
   ExecutionContext,
   ForbiddenException,
   Inject,
@@ -236,12 +237,44 @@ export class BranchListFilterInterceptor implements NestInterceptor {
     return next.handle().pipe(
       map((data: unknown) => {
         const scope = req.branchScope;
-        if (!scope || scope.kind === "all" || !Array.isArray(data)) return data;
-        if (scope.kind === "none") return [];
-        return data.filter((item) => (item as Record<string, unknown>)?.[field] === scope.branchId);
+        if (!scope || scope.kind === "all") return data;
+        const keep = (item: unknown) => scope.kind === "branch" && (item as Record<string, unknown>)?.[field] === scope.branchId;
+        if (Array.isArray(data)) return data.filter(keep);
+        // NEO-6: a paginated envelope must not slip past the filter. Paginated routes already scope the query in SQL,
+        // so this is a safety net; if it ever drops a row, `total` is corrected so the response stays consistent.
+        if (isPageEnvelope(data)) {
+          const items = data.items.filter(keep);
+          return { ...data, items, total: Math.max(data.total - (data.items.length - items.length), 0) };
+        }
+        return data;
       })
     );
   }
+}
+
+function isPageEnvelope(data: unknown): data is { items: unknown[]; total: number } {
+  return typeof data === "object" && data !== null && Array.isArray((data as { items?: unknown }).items) && typeof (data as { total?: unknown }).total === "number";
+}
+
+/**
+ * The caller's branch scope. Set by BranchScopeGuard on @BranchScoped() routes; derived from the user otherwise, and
+ * `none` (fail closed) without a user.
+ */
+export const CurrentBranchScope = createParamDecorator((_data: unknown, context: ExecutionContext): BranchScope => {
+  const req = context.switchToHttp().getRequest<ScopedRequest>();
+  if (req.branchScope) return req.branchScope;
+  return req.user ? branchScopeOf(req.user) : { kind: "none" };
+});
+
+/**
+ * NEO-6: the branch a list query is filtered on, so paging and totals are computed in SQL rather than trimmed afterwards.
+ * A company-wide caller may narrow to `requested` (undefined = every branch); a branch-bound caller is always pinned to
+ * its own branch (the guard has already rejected a foreign `requested` with 403); a caller with no branch is refused.
+ */
+export function scopedBranchId(scope: BranchScope, requested?: string | null): string | undefined {
+  if (scope.kind === "all") return requested || undefined;
+  if (scope.kind === "branch") return scope.branchId;
+  throw new ForbiddenException("معندكش صلاحية على بيانات الفرع ده");
 }
 
 /** Throws 403 unless the user may act on `branchId` (used for branch ids found INSIDE a loaded resource or nested body fields). */

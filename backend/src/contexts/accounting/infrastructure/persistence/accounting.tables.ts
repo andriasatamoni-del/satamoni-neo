@@ -119,6 +119,8 @@ export const journalEntries = pgTable("journal_entries", {
   posted_by: uuid(),
 }, (table) => [
   index("idx_journal_entries_branch_date").using("btree", table.branch_id.asc().nullsLast(), table.entry_date.asc().nullsLast()),
+  index("idx_journal_entries_created_at").using("btree", table.created_at.desc().nullsFirst()),
+  index("idx_journal_entries_entry_date").using("btree", table.entry_date.asc().nullsLast()),
   index("idx_journal_entries_source").using("btree", table.source_type.asc().nullsLast(), table.source_id.asc().nullsLast()),
   uniqueIndex("uq_journal_entries_auto_source").using("btree", table.source_type.asc().nullsLast(), table.source_id.asc().nullsLast()).where(sql`((source_id IS NOT NULL) AND (source_type = ANY (ARRAY['order_sale'::text, 'order_cogs'::text, 'goods_receipt'::text, 'payroll_run'::text, 'payment_adjustment'::text, 'purchase'::text, 'cash_drawer_entry'::text, 'shift_variance'::text, 'driver_settlement'::text, 'driver_attendance_shift'::text, 'conversion_order'::text, 'stock_count'::text, 'supplier_invoice_variance'::text])) AND (created_at >= '2026-10-02 00:00:00+00'::timestamp with time zone))`),
   uniqueIndex("uq_journal_entries_single_reversal").using("btree", table.reversal_of_entry_id.asc().nullsLast()).where(sql`((reversal_of_entry_id IS NOT NULL) AND (created_at >= '2026-10-02 00:00:00+00'::timestamp with time zone))`),

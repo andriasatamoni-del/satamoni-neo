@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PurchaseOrder, type PurchaseOrderStatus } from "../../domain/purchase-order.aggregate";
-import type { PurchaseOrderRepositoryPort } from "../../domain/ports/purchase-order-repository.port";
-import { purchaseOrderItems, purchaseOrders } from "./procurement.tables";
+import type { ProcurementDocumentListFilter, PurchaseOrderRepositoryPort } from "../../domain/ports/purchase-order-repository.port";
+import { purchaseOrderItems, purchaseOrders, suppliers } from "./procurement.tables";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 
 @Injectable()
 export class PurchaseOrderRepository implements PurchaseOrderRepositoryPort {
@@ -52,10 +54,36 @@ export class PurchaseOrderRepository implements PurchaseOrderRepositoryPort {
   }
 
   async list(): Promise<PurchaseOrder[]> {
-    const rows = await this.db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.created_at));
-    const orders: PurchaseOrder[] = [];
-    for (const row of rows) orders.push(this.toDomain(row, await this.loadLines(row.id)));
-    return orders;
+    return this.withLines(await this.db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.created_at)));
+  }
+
+  async search(filter: ProcurementDocumentListFilter, page?: PageRequest): Promise<{ orders: PurchaseOrder[]; total: number }> {
+    const supplierSearch = searchCondition(filter.q, suppliers.name);
+    const where = and(
+      filter.branchId ? eq(purchaseOrders.branch_id, filter.branchId) : undefined,
+      filter.status ? eq(purchaseOrders.status, filter.status) : undefined,
+      filter.supplierId ? eq(purchaseOrders.supplier_id, filter.supplierId) : undefined,
+      businessDayRangeCondition(purchaseOrders.created_at, filter.from, filter.to),
+      supplierSearch ? inArray(purchaseOrders.supplier_id, this.db.select({ id: suppliers.id }).from(suppliers).where(supplierSearch)) : undefined
+    );
+    const query = this.db
+      .select()
+      .from(purchaseOrders)
+      .where(where)
+      .orderBy(...orderByOf({ createdAt: purchaseOrders.created_at }, filter.sort, filter.order, { key: "createdAt", order: "desc" }, purchaseOrders.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(purchaseOrders).where(where)));
+    return { orders: await this.withLines(rows), total };
+  }
+
+  // NEO-6: the lines of many orders in one query per 1000 orders instead of one per order
+  private async withLines(rows: (typeof purchaseOrders.$inferSelect)[]): Promise<PurchaseOrder[]> {
+    const lines: (typeof purchaseOrderItems.$inferSelect)[] = [];
+    for (const ids of inListChunks(rows.map((r) => r.id))) {
+      lines.push(...(await this.db.select().from(purchaseOrderItems).where(inArray(purchaseOrderItems.purchase_order_id, ids))));
+    }
+    const byOrder = groupBy(lines, (l) => l.purchase_order_id);
+    return rows.map((row) => this.toDomain(row, byOrder.get(row.id) ?? []));
   }
 
   private loadLines(orderId: string): Promise<(typeof purchaseOrderItems.$inferSelect)[]> {

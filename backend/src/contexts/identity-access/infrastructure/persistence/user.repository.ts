@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { User } from "../../domain/user.aggregate";
-import type { UserRepositoryPort } from "../../domain/ports/user-repository.port";
+import type { UserListFilter, UserRepositoryPort } from "../../domain/ports/user-repository.port";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
 import { ROLES, type Role } from "../../domain/role";
 import { userRoles, users } from "./identity-access.tables";
 
@@ -58,6 +60,23 @@ export class UserRepository implements UserRepositoryPort {
       filter?.branchId === undefined ? undefined : filter.branchId === null ? isNull(users.branch_id) : eq(users.branch_id, filter.branchId);
     const rows = await this.db.select().from(users).where(branchFilter).orderBy(asc(users.created_at));
     return this.toDomain(rows);
+  }
+
+  async search(filter: UserListFilter, page?: PageRequest): Promise<{ users: User[]; total: number }> {
+    const where = and(
+      filter.branchId === undefined ? undefined : filter.branchId === null ? isNull(users.branch_id) : eq(users.branch_id, filter.branchId),
+      filter.status ? eq(users.is_active, filter.status === "active") : undefined,
+      filter.role ? inArray(users.id, this.db.select({ id: userRoles.user_id }).from(userRoles).where(eq(userRoles.role, filter.role))) : undefined,
+      searchCondition(filter.q, users.name, users.email)
+    );
+    const query = this.db
+      .select()
+      .from(users)
+      .where(where)
+      .orderBy(...orderByOf({ createdAt: users.created_at, name: users.name, email: users.email }, filter.sort, filter.order, { key: "createdAt", order: "asc" }, users.id))
+      .$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(users).where(where)));
+    return { users: await this.toDomain(rows), total };
   }
 
   private toRow(user: User): typeof users.$inferInsert {

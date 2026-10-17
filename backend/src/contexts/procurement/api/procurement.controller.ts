@@ -45,7 +45,18 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, requireCompanyWide } from "../../../shared/authorization/branch-scope";
+import {
+  BranchScopeGuard,
+  BranchScoped,
+  BranchResource,
+  BranchFilteredList,
+  CurrentBranchScope,
+  requireCompanyWide,
+  scopedBranchId,
+  type BranchScope,
+} from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { ListGoodsReceiptsQueryDto, ListPurchaseOrdersQueryDto } from "./dto/list-procurement-documents-query.dto";
 import { ProcurementDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Supplier } from "../domain/supplier.aggregate";
 import type { PurchaseOrder } from "../domain/purchase-order.aggregate";
@@ -110,8 +121,10 @@ export class ProcurementController {
   @BranchFilteredList()
   @Get("purchase-orders")
   @RequirePermission(PERMISSION.PROCUREMENT_PURCHASE_ORDERS_VIEW, PERMISSION.PROCUREMENT_PURCHASE_ORDERS_MANAGE)
-  async purchaseOrders() {
-    return (await this.listPurchaseOrders.execute()).map(toPublicPurchaseOrder);
+  async purchaseOrders(@Query() query: ListPurchaseOrdersQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { orders, total } = await this.listPurchaseOrders.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(orders.map(toPublicPurchaseOrder), total, page);
   }
 
   @BranchScoped()
@@ -149,8 +162,10 @@ export class ProcurementController {
   @BranchFilteredList()
   @Get("goods-receipts")
   @RequirePermission(PERMISSION.PROCUREMENT_GOODS_RECEIPTS_VIEW, PERMISSION.PROCUREMENT_GOODS_RECEIPTS_MANAGE)
-  async goodsReceipts(@Query("branchId") branchId?: string) {
-    return (await this.listGoodsReceipts.execute(branchId ? { branchId } : undefined)).map(toPublicGoodsReceipt);
+  async goodsReceipts(@Query() query: ListGoodsReceiptsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const { page, filter } = splitListQuery(query);
+    const { receipts, total } = await this.listGoodsReceipts.execute({ ...filter, branchId: scopedBranchId(scope, filter.branchId) }, page);
+    return listResponse(receipts.map(toPublicGoodsReceipt), total, page);
   }
 
   @BranchScoped()
