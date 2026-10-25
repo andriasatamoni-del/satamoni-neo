@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { ReconciliationRecord, type MatchStatus, type ReconciliationSource } from "../../domain/reconciliation-record.aggregate";
 import type { ReconciliationRecordRepositoryPort } from "../../domain/ports/reconciliation-record-repository.port";
@@ -42,18 +44,18 @@ export class ReconciliationRecordRepository implements ReconciliationRecordRepos
   }
 
   async list(filter?: { branchId?: string; source?: string; matchStatus?: string }): Promise<ReconciliationRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(paymentReconciliationRecords)
-      .where(
-        and(
-          filter?.branchId ? eq(paymentReconciliationRecords.branch_id, filter.branchId) : undefined,
-          filter?.source ? eq(paymentReconciliationRecords.source, filter.source) : undefined,
-          filter?.matchStatus ? eq(paymentReconciliationRecords.match_status, filter.matchStatus) : undefined
-        )
-      )
-      .orderBy(desc(paymentReconciliationRecords.external_date));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; source?: string; matchStatus?: string }, page?: PageRequest): Promise<{ rows: ReconciliationRecord[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(paymentReconciliationRecords.branch_id, filter.branchId) : undefined,
+      filter?.source ? eq(paymentReconciliationRecords.source, filter.source) : undefined,
+      filter?.matchStatus ? eq(paymentReconciliationRecords.match_status, filter.matchStatus) : undefined
+    );
+    const query = this.db.select().from(paymentReconciliationRecords).where(where).orderBy(desc(paymentReconciliationRecords.external_date), desc(paymentReconciliationRecords.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(paymentReconciliationRecords).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   async listUnmatchedBySource(source: string): Promise<ReconciliationRecord[]> {

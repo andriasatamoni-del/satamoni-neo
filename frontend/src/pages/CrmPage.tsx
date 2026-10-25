@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
 import { PERMISSION } from "../shared/auth/permissions";
@@ -11,6 +11,9 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input, Select, Textarea } from "../shared/ui/Field";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { StatusBadge } from "../shared/ui/Badge";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Complaint {
   id: string;
@@ -66,7 +69,6 @@ const STATUS_LABELS: Record<string, string> = { open: "مفتوحة", in_progres
 export function CrmPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState("");
   const canSeeQueue = can(user, PERMISSION.CRM_FOLLOWUPS_VIEW);
   const canRecordFollowup = can(user, PERMISSION.CRM_FOLLOWUPS_RECORD);
   const canSeeComplaints = can(user, PERMISSION.CRM_COMPLAINTS_VIEW);
@@ -75,22 +77,16 @@ export function CrmPage() {
   // من غير branches.view الطابور بيفتح على فرع المستخدم بس
   const { branches, canListBranches } = useBranchOptions<Branch>(canSeeQueue);
   const [queueBranchId, setQueueBranchId] = useState(canListBranches ? "" : (user?.branchId ?? ""));
-  const followupQueueQuery = useQuery({
-    queryKey: ["crm", "followup-queue", queueBranchId],
-    queryFn: () => apiRequest<FollowupQueueRow[]>(`/crm/followup-queue?branchId=${queueBranchId}`),
-    enabled: canSeeQueue && !!queueBranchId,
-  });
+  const followupQueueList = useListState([] as const, { prefix: "queue." });
+  const followupQueuePageQuery = usePaginatedQuery<FollowupQueueRow>(["crm", "followup-queue"], "/crm/followup-queue", { ...followupQueueList.params, branchId: queueBranchId }, { enabled: canSeeQueue && !!queueBranchId });
   const quickFollowup = useMutation({
     mutationFn: (input: { orderId: string; customerPhone: string; callResult: string }) =>
       apiRequest("/crm/followups", { method: "POST", body: input }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["crm", "followup-queue"] }),
   });
 
-  const complaintsQuery = useQuery({
-    queryKey: ["crm", "complaints", statusFilter],
-    queryFn: () => apiRequest<Complaint[]>(`/crm/complaints${statusFilter ? `?status=${statusFilter}` : ""}`),
-    enabled: canSeeComplaints,
-  });
+  const complaintsList = useListState(["status"] as const, { prefix: "complaints." });
+  const complaintsPageQuery = usePaginatedQuery<Complaint>(["crm", "complaints"], "/crm/complaints", complaintsList.params, { enabled: canSeeComplaints });
 
   const updateStatus = useMutation({
     mutationFn: (input: { id: string; status?: string; resolutionNotes?: string }) =>
@@ -150,7 +146,6 @@ export function CrmPage() {
     recordFollowup.mutate();
   }
 
-  const complaints = complaintsQuery.data ?? [];
 
   return (
     <div>
@@ -159,8 +154,8 @@ export function CrmPage() {
       {canSeeQueue && (
         <Card className="mb-6">
           <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>طابور المتابعة ({followupQueueQuery.data?.length ?? 0})</CardTitle>
-            <Select className="w-auto" value={queueBranchId} onChange={(e) => setQueueBranchId(e.target.value)} disabled={!canListBranches}>
+            <CardTitle>طابور المتابعة ({followupQueuePageQuery.data?.total ?? 0})</CardTitle>
+            <Select className="w-auto" value={queueBranchId} onChange={(e) => { setQueueBranchId(e.target.value); followupQueueList.setPage(1); }} disabled={!canListBranches}>
               <option value="">اختر فرع</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
@@ -180,7 +175,7 @@ export function CrmPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {followupQueueQuery.data?.map((row) => (
+                  {(followupQueuePageQuery.data?.items ?? []).map((row) => (
                     <TR key={row.orderId}>
                       <TD className="font-semibold text-slate-900">{row.customerName ?? "-"}</TD>
                       <TD>{row.customerPhone ?? "-"}</TD>
@@ -213,7 +208,10 @@ export function CrmPage() {
                 </TBody>
               </Table>
             )}
-            {queueBranchId && followupQueueQuery.data?.length === 0 && <EmptyState>مفيش طلبات محتاجة متابعة دلوقتي</EmptyState>}
+            {queueBranchId && followupQueuePageQuery.data && (
+              <Pagination total={followupQueuePageQuery.data.total} limit={followupQueuePageQuery.data.limit} offset={followupQueuePageQuery.data.offset} onPageChange={followupQueueList.setPage} isFetching={followupQueuePageQuery.isFetching} />
+            )}
+            {queueBranchId && followupQueuePageQuery.data?.total === 0 && <EmptyState>مفيش طلبات محتاجة متابعة دلوقتي</EmptyState>}
           </CardBody>
         </Card>
       )}
@@ -310,8 +308,8 @@ export function CrmPage() {
       {canSeeComplaints && (
         <Card>
           <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>الشكاوى ({complaints.length})</CardTitle>
-            <Select className="w-auto" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <CardTitle>الشكاوى ({complaintsPageQuery.data?.total ?? 0})</CardTitle>
+            <Select className="w-auto" value={complaintsList.filters.status} onChange={(e) => complaintsList.setFilter("status", e.target.value)}>
               <option value="">كل الحالات</option>
               <option value="open">مفتوحة</option>
               <option value="in_progress">جاري الحل</option>
@@ -319,8 +317,8 @@ export function CrmPage() {
             </Select>
           </CardHeader>
           <CardBody className="p-0">
-            {complaintsQuery.isLoading && <p className="px-5 py-4 text-sm text-slate-400">بيتحمّل...</p>}
-            {complaintsQuery.isError && <p className="px-5 py-4 text-sm text-red-600">حصل خطأ في تحميل الشكاوى</p>}
+            {complaintsPageQuery.isLoading && <p className="px-5 py-4 text-sm text-slate-400">بيتحمّل...</p>}
+            {complaintsPageQuery.isError && <p className="px-5 py-4 text-sm text-red-600">حصل خطأ في تحميل الشكاوى</p>}
             <Table>
               <THead>
                 <TR>
@@ -333,7 +331,7 @@ export function CrmPage() {
                 </TR>
               </THead>
               <TBody>
-                {complaints.map((c) => (
+                {(complaintsPageQuery.data?.items ?? []).map((c) => (
                   <ComplaintRow
                     key={c.id}
                     complaint={c}
@@ -343,7 +341,10 @@ export function CrmPage() {
                 ))}
               </TBody>
             </Table>
-            {complaints.length === 0 && !complaintsQuery.isLoading && <EmptyState>مفيش شكاوى</EmptyState>}
+            {complaintsPageQuery.data && (
+              <Pagination total={complaintsPageQuery.data.total} limit={complaintsPageQuery.data.limit} offset={complaintsPageQuery.data.offset} onPageChange={complaintsList.setPage} isFetching={complaintsPageQuery.isFetching} />
+            )}
+            {complaintsPageQuery.data?.total === 0 && <EmptyState>مفيش شكاوى</EmptyState>}
           </CardBody>
         </Card>
       )}

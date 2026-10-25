@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Printer, type PrinterType, type ConnectionType } from "../../domain/printer.aggregate";
 import type { PrinterRepositoryPort } from "../../domain/ports/printer-repository.port";
@@ -51,12 +53,14 @@ export class PrinterRepository implements PrinterRepositoryPort {
   }
 
   async listByBranch(branchId: string): Promise<Printer[]> {
-    const rows = await this.db
-      .select()
-      .from(printers)
-      .where(eq(printers.branch_id, branchId))
-      .orderBy(asc(printers.printer_type), asc(printers.name));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listByBranchPage(branchId)).rows;
+  }
+
+  async listByBranchPage(branchId: string, page?: PageRequest): Promise<{ rows: Printer[]; total: number }> {
+    const where = eq(printers.branch_id, branchId);
+    const query = this.db.select().from(printers).where(where).orderBy(asc(printers.printer_type), asc(printers.name), desc(printers.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(printers).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   async resolveForType(branchId: string, printerType: PrinterType): Promise<Printer | null> {

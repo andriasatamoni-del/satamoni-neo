@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { ReconciliationRecord } from "../../domain/reconciliation-record.aggregate";
 import {
   RECONCILIATION_RECORD_REPOSITORY,
@@ -11,7 +12,7 @@ export class ListReconciliationRecordsHandler {
     @Inject(RECONCILIATION_RECORD_REPOSITORY) private readonly records: ReconciliationRecordRepositoryPort
   ) {}
 
-  async execute(filter?: { branchId?: string; source?: string; matchStatus?: string }): Promise<ReconciliationRecord[]> {
-    return this.records.list(filter);
+  async execute(filter?: { branchId?: string; source?: string; matchStatus?: string }, page?: PageRequest): Promise<{ rows: ReconciliationRecord[]; total: number }> {
+    return this.records.listPage(filter, page);
   }
 }

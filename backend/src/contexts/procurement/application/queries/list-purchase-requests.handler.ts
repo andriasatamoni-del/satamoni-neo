@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { PurchaseRequest } from "../../domain/purchase-request.aggregate";
 import {
   PURCHASE_REQUEST_REPOSITORY,
@@ -9,7 +10,7 @@ import {
 export class ListPurchaseRequestsHandler {
   constructor(@Inject(PURCHASE_REQUEST_REPOSITORY) private readonly requests: PurchaseRequestRepositoryPort) {}
 
-  execute(filter?: { branchId?: string; status?: string }): Promise<PurchaseRequest[]> {
-    return this.requests.list(filter);
+  execute(filter?: { branchId?: string; status?: string }, page?: PageRequest): Promise<{ rows: PurchaseRequest[]; total: number }> {
+    return this.requests.listPage(filter, page);
   }
 }

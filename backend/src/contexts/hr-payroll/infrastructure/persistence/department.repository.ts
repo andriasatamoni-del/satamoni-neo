@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, ne } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Department } from "../../domain/department.aggregate";
 import type { DepartmentRepositoryPort } from "../../domain/ports/department-repository.port";
@@ -46,12 +48,14 @@ export class DepartmentRepository implements DepartmentRepositoryPort {
   }
 
   async list(filter?: { status?: string }): Promise<Department[]> {
-    const rows = await this.db
-      .select()
-      .from(departments)
-      .where(filter?.status ? eq(departments.status, filter.status) : undefined)
-      .orderBy(asc(departments.name));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { status?: string }, page?: PageRequest): Promise<{ rows: Department[]; total: number }> {
+    const where = filter?.status ? eq(departments.status, filter.status) : undefined;
+    const query = this.db.select().from(departments).where(where).orderBy(asc(departments.name), desc(departments.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(departments).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(department: Department) {

@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, ne } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Combo } from "../../domain/combo.aggregate";
 import type { ComboRepositoryPort } from "../../domain/ports/combo-repository.port";
@@ -58,14 +60,16 @@ export class ComboRepository implements ComboRepositoryPort {
   }
 
   async list(filter?: { activeOnly?: boolean }): Promise<Combo[]> {
-    const rows = await this.db
-      .select()
-      .from(combos)
-      .where(filter?.activeOnly ? eq(combos.is_active, true) : undefined)
-      .orderBy(asc(combos.name));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { activeOnly?: boolean }, page?: PageRequest): Promise<{ rows: Combo[]; total: number }> {
+    const where = filter?.activeOnly ? eq(combos.is_active, true) : undefined;
+    const query = this.db.select().from(combos).where(where).orderBy(asc(combos.name), desc(combos.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(combos).where(where)));
     const result: Combo[] = [];
     for (const row of rows) result.push(this.toDomain(row, await this.loadItems(row.id)));
-    return result;
+    return { rows: result, total };
   }
 
   private loadItems(comboId: string): Promise<(typeof comboItems.$inferSelect)[]> {

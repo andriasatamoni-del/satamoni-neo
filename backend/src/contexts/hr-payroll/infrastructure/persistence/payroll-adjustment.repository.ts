@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PayrollAdjustment, type AdjustmentStatus, type AdjustmentType } from "../../domain/payroll-adjustment.aggregate";
 import type { PayrollAdjustmentRepositoryPort } from "../../domain/ports/payroll-adjustment-repository.port";
@@ -44,19 +46,19 @@ export class PayrollAdjustmentRepository implements PayrollAdjustmentRepositoryP
   }
 
   async list(filter?: { employeeId?: string; fromDate?: Date; toDate?: Date; status?: string }): Promise<PayrollAdjustment[]> {
-    const rows = await this.db
-      .select()
-      .from(payrollAdjustments)
-      .where(
-        and(
-          filter?.employeeId ? eq(payrollAdjustments.employee_id, filter.employeeId) : undefined,
-          filter?.status ? eq(payrollAdjustments.status, filter.status) : undefined,
-          filter?.fromDate ? gte(payrollAdjustments.entry_date, filter.fromDate) : undefined,
-          filter?.toDate ? lte(payrollAdjustments.entry_date, filter.toDate) : undefined
-        )
-      )
-      .orderBy(desc(payrollAdjustments.entry_date));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { employeeId?: string; fromDate?: Date; toDate?: Date; status?: string }, page?: PageRequest): Promise<{ rows: PayrollAdjustment[]; total: number }> {
+    const where = and(
+      filter?.employeeId ? eq(payrollAdjustments.employee_id, filter.employeeId) : undefined,
+      filter?.status ? eq(payrollAdjustments.status, filter.status) : undefined,
+      filter?.fromDate ? gte(payrollAdjustments.entry_date, filter.fromDate) : undefined,
+      filter?.toDate ? lte(payrollAdjustments.entry_date, filter.toDate) : undefined
+    );
+    const query = this.db.select().from(payrollAdjustments).where(where).orderBy(desc(payrollAdjustments.entry_date), desc(payrollAdjustments.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(payrollAdjustments).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   async listUnlinkedActiveForMonth(year: number, month: number, employeeIds?: string[]): Promise<PayrollAdjustment[]> {

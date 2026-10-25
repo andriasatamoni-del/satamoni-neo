@@ -15,6 +15,7 @@ import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { JournalEntry } from "../../accounting/domain/journal-entry.aggregate";
 import type { Treasury } from "../domain/treasury.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("treasuries")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -29,14 +30,16 @@ export class TreasuriesController {
   @BranchScoped()
   @Get()
   @RequirePermission(PERMISSION.TREASURIES_VIEW)
-  async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
+  async list(@Query("branchId") branchId: string | undefined, @Query() query: ListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const page = pageRequestOf(query);
     // نفس نطاق الريبو القديم بالظبط: مدير الفرع والمحاسب لفرعهم بس، أدمن لأي فرع أو كل الفروع
     const isBranchScoped = !hasAnyRole(req.user.roles, ROLE.ADMIN) && hasAnyRole(req.user.roles, ROLE.BRANCH_MANAGER, ROLE.ACCOUNTANT);
     const effectiveBranchId = isBranchScoped ? req.user.branchId : (branchId ?? null);
     if (isBranchScoped && !effectiveBranchId) {
       throw new BadRequestException("لازم تحدد الفرع");
     }
-    return this.listTreasuries.execute(effectiveBranchId ? { branchId: effectiveBranchId } : undefined);
+    const rows = await this.listTreasuries.execute(effectiveBranchId ? { branchId: effectiveBranchId } : undefined);
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 
   @BranchScoped()

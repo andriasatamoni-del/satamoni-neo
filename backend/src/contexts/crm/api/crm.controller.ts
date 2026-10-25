@@ -21,7 +21,7 @@ import {
   scopedBranchId,
   type BranchScope,
 } from "../../../shared/authorization/branch-scope";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { BranchListQueryDto, listResponse, pageRequestOf, splitListQuery } from "../../../shared/http/list-query.dto";
 import { ListComplaintsQueryDto } from "./dto/list-complaints-query.dto";
 import { CrmDomainErrorFilter } from "./filters/domain-error.filter";
 import { Complaint } from "../domain/complaint.aggregate";
@@ -43,9 +43,10 @@ export class CrmController {
   @BranchScoped()
   @Get("followup-queue")
   @RequirePermission(PERMISSION.CRM_FOLLOWUPS_VIEW)
-  async followupQueue(@Query("branchId") branchId?: string) {
-    const rows = await this.listFollowupQueue.execute(branchId);
-    return rows.map((r) => ({
+  async followupQueue(@Query() query: BranchListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listFollowupQueue.execute(query.branchId, page);
+    return listResponse(rows.map((r) => ({
       orderId: r.orderId,
       branchId: r.branchId,
       branchName: r.branchName,
@@ -57,7 +58,7 @@ export class CrmController {
       lastCallResult: r.lastCallResult,
       lastNotes: r.lastNotes,
       lastCalledAt: r.lastCalledAt,
-    }));
+    })), total, page);
   }
 
   @BranchScoped()

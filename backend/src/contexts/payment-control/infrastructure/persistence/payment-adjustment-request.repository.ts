@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { PaymentAdjustmentRequest, type AdjustmentRequestStatus } from "../../domain/payment-adjustment-request.aggregate";
 import type { PaymentAdjustmentRequestRepositoryPort } from "../../domain/ports/payment-adjustment-request-repository.port";
-import { paymentAdjustmentRequests } from "./payment-control.tables";
+import { paymentAdjustmentRequests, payments } from "./payment-control.tables";
 
 @Injectable()
 export class PaymentAdjustmentRequestRepository implements PaymentAdjustmentRequestRepositoryPort {
@@ -44,18 +46,21 @@ export class PaymentAdjustmentRequestRepository implements PaymentAdjustmentRequ
     return row ? this.toDomain(row) : null;
   }
 
-  async list(filter?: { paymentId?: string; status?: string }): Promise<PaymentAdjustmentRequest[]> {
-    const rows = await this.db
-      .select()
-      .from(paymentAdjustmentRequests)
-      .where(
-        and(
-          filter?.paymentId ? eq(paymentAdjustmentRequests.payment_id, filter.paymentId) : undefined,
-          filter?.status ? eq(paymentAdjustmentRequests.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(paymentAdjustmentRequests.requested_at));
-    return rows.map((r) => this.toDomain(r));
+  async list(filter?: { paymentId?: string; status?: string; branchId?: string }): Promise<PaymentAdjustmentRequest[]> {
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { paymentId?: string; status?: string; branchId?: string }, page?: PageRequest): Promise<{ rows: PaymentAdjustmentRequest[]; total: number }> {
+    const where = and(
+      filter?.paymentId ? eq(paymentAdjustmentRequests.payment_id, filter.paymentId) : undefined,
+      filter?.status ? eq(paymentAdjustmentRequests.status, filter.status) : undefined,
+      filter?.branchId
+        ? inArray(paymentAdjustmentRequests.payment_id, this.db.select({ id: payments.id }).from(payments).where(eq(payments.branch_id, filter.branchId)))
+        : undefined
+    );
+    const query = this.db.select().from(paymentAdjustmentRequests).where(where).orderBy(desc(paymentAdjustmentRequests.requested_at), desc(paymentAdjustmentRequests.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(paymentAdjustmentRequests).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(request: PaymentAdjustmentRequest) {

@@ -106,6 +106,8 @@ export function AccountingPage() {
     queryKey: ["accounting", "fiscal-year-closings"],
     queryFn: () => apiRequest<FiscalYearClosing[]>("/accounting/fiscal-year-closings"),
   });
+  const fiscalYearClosingsList = useListState([] as const, { prefix: "fiscalYearClosings." });
+  const fiscalYearClosingsPageQuery = usePaginatedQuery<FiscalYearClosing>(["accounting", "fiscal-year-closings"], "/accounting/fiscal-year-closings", fiscalYearClosingsList.params);
   const [closeError, setCloseError] = useState<string | null>(null);
 
   const closePeriodMutation = useMutation({
@@ -144,6 +146,8 @@ export function AccountingPage() {
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const balanced = totalDebit === totalCredit;
   const accounts = accountsQuery.data ?? [];
+  const accountsList = useListState([] as const, { prefix: "accounts." });
+  const accountsPageQuery = usePaginatedQuery<Account>(["accounting", "accounts"], "/accounting/accounts", accountsList.params);
   const entries = entriesQuery.data?.items ?? [];
 
   const STATUS_META: Record<string, { label: string; tone: "success" | "danger" | "neutral" }> = {
@@ -186,7 +190,7 @@ export function AccountingPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>دليل الحسابات ({accounts.length})</CardTitle>
+            <CardTitle>دليل الحسابات ({accountsPageQuery.data?.total ?? 0})</CardTitle>
           </CardHeader>
           <CardBody className="max-h-80 overflow-y-auto p-0">
             <Table>
@@ -194,7 +198,7 @@ export function AccountingPage() {
                 <TR><TH>الكود</TH><TH>الاسم</TH><TH>النوع</TH><TH>الحالة</TH></TR>
               </THead>
               <TBody>
-                {accounts.map((a) => (
+                {(accountsPageQuery.data?.items ?? []).map((a) => (
                   <TR key={a.id}>
                     <TD className="font-mono">{a.code}</TD>
                     <TD className="font-semibold text-slate-900">{a.name}</TD>
@@ -204,6 +208,9 @@ export function AccountingPage() {
                 ))}
               </TBody>
             </Table>
+            {accountsPageQuery.data && (
+              <Pagination total={accountsPageQuery.data.total} limit={accountsPageQuery.data.limit} offset={accountsPageQuery.data.offset} onPageChange={accountsList.setPage} isFetching={accountsPageQuery.isFetching} />
+            )}
           </CardBody>
         </Card>
       </div>
@@ -368,13 +375,13 @@ export function AccountingPage() {
 
           {closeError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{closeError}</p>}
 
-          {fiscalYearClosingsQuery.data && fiscalYearClosingsQuery.data.length > 0 && (
+          {(fiscalYearClosingsPageQuery.data?.total ?? 0) > 0 && (
             <div className="border-t border-slate-100 pt-4">
               <p className="mb-2 text-xs font-semibold text-slate-500">سنوات مقفولة سابقًا</p>
               <Table>
                 <THead><TR><TH>السنة</TH><TH>صافي الربح</TH><TH>تاريخ القفل</TH></TR></THead>
                 <TBody>
-                  {fiscalYearClosingsQuery.data.map((c) => (
+                  {(fiscalYearClosingsPageQuery.data?.items ?? []).map((c) => (
                     <TR key={c.id}>
                       <TD>{c.year}</TD>
                       <TD className="font-bold text-slate-900">{c.netIncome}ج</TD>
@@ -383,6 +390,9 @@ export function AccountingPage() {
                   ))}
                 </TBody>
               </Table>
+              {fiscalYearClosingsPageQuery.data && (
+                <Pagination total={fiscalYearClosingsPageQuery.data.total} limit={fiscalYearClosingsPageQuery.data.limit} offset={fiscalYearClosingsPageQuery.data.offset} onPageChange={fiscalYearClosingsList.setPage} isFetching={fiscalYearClosingsPageQuery.isFetching} />
+              )}
             </div>
           )}
         </CardBody>

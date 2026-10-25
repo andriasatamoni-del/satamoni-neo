@@ -1,3 +1,4 @@
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import type { Account } from "../account.aggregate";
 
 export interface AccountRepositoryPort {
@@ -7,6 +8,7 @@ export interface AccountRepositoryPort {
   existsByCode(code: string): Promise<boolean>;
   findByLegacyAccountId(legacyId: number): Promise<Account | null>;
   list(): Promise<Account[]>;
+  listPage(page?: PageRequest): Promise<{ rows: Account[]; total: number }>;
 }
 
 export const ACCOUNT_REPOSITORY = Symbol("ACCOUNT_REPOSITORY");

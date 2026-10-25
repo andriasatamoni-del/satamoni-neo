@@ -10,12 +10,14 @@ import { UpsertProductMappingDto } from "./dto/upsert-product-mapping.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
-import { BranchScopeGuard, BranchScoped, CompanyWideOnly } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, CompanyWideOnly, CurrentBranchScope, scopedBranchId, type BranchScope } from "../../../shared/authorization/branch-scope";
 import { TalabatDomainErrorFilter } from "./filters/domain-error.filter";
 import type { TalabatOrder } from "../domain/talabat-order.aggregate";
 import type { TalabatIntegrationError } from "../domain/talabat-integration-error.aggregate";
 import type { TalabatProductMapping } from "../domain/talabat-product-mapping.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { listResponse, pageRequestOf, ListQueryDto, pageOfRows } from "../../../shared/http/list-query.dto";
+import { ListTalabatOrdersQueryDto, ListTalabatIntegrationErrorsQueryDto } from "./dto/list-talabat-query.dto";
 
 // شاشات الإدارة - integration-errors (list/retry)، لوحة التحكم، إدارة الربط، تقرير Payment Control -
 // نفس مفهوم routes/talabat.js بالريبو القديم بالظبط (راجع docs/TALABAT-INTEGRATION.md قسم 10)
@@ -43,15 +45,19 @@ export class TalabatController {
   @BranchScoped()
   @Get("orders")
   @RequirePermission(PERMISSION.TALABAT_VIEW)
-  async orders(@Query("branchId") branchId?: string, @Query("status") status?: string) {
-    return (await this.listTalabatOrders.execute({ branchId, status })).map(toPublicTalabatOrder);
+  async orders(@Query() query: ListTalabatOrdersQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listTalabatOrders.execute({ branchId: scopedBranchId(scope, query.branchId), status: query.status }, page);
+    return listResponse(rows.map(toPublicTalabatOrder), total, page);
   }
 
   @CompanyWideOnly()
   @Get("integration-errors")
   @RequirePermission(PERMISSION.TALABAT_VIEW)
-  async integrationErrors(@Query("status") status?: string) {
-    return (await this.listIntegrationErrors.execute({ status })).map(toPublicIntegrationError);
+  async integrationErrors(@Query() query: ListTalabatIntegrationErrorsQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listIntegrationErrors.execute({ status: query.status }, page);
+    return listResponse(rows.map(toPublicIntegrationError), total, page);
   }
 
   @CompanyWideOnly()
@@ -87,8 +93,10 @@ export class TalabatController {
   @CompanyWideOnly()
   @Get("payment-control-report")
   @RequirePermission(PERMISSION.TALABAT_RECONCILIATION)
-  async paymentControlReport() {
-    return this.getPaymentOverrides.execute();
+  async paymentControlReport(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const rows = await this.getPaymentOverrides.execute();
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 }
 

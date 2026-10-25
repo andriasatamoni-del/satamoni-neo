@@ -1,10 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
 import { useCan } from "../../shared/auth/AuthContext";
 import { PERMISSION } from "../../shared/auth/permissions";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
-import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../../shared/ui/Table";
+import { TBody, TD, TH, THead, TR, Table } from "../../shared/ui/Table";
+import { Pagination } from "../../shared/ui/Pagination";
+import { usePaginatedQuery } from "../../shared/api/usePaginatedQuery";
+import { useListState } from "../../shared/ui/useListState";
 
 interface Shift {
   id: string;
@@ -23,12 +26,8 @@ export function ShiftReviewPanel() {
   const allowed = useCan();
   const canSee = allowed(PERMISSION.SHIFTS_VIEW_BRANCH);
   const canReview = allowed(PERMISSION.SHIFTS_REVIEW);
-  const shiftsQuery = useQuery({
-    queryKey: ["shifts", "pending-review"],
-    queryFn: () => apiRequest<Shift[]>("/shifts?status=PENDING_REVIEW"),
-    retry: false,
-    enabled: canSee,
-  });
+  const shiftsList = useListState([] as const, { prefix: "shifts." });
+  const shiftsPageQuery = usePaginatedQuery<Shift>(["shifts", "pending-review"], "/shifts", { ...shiftsList.params, status: "PENDING_REVIEW" }, { retry: false, enabled: canSee });
 
   const review = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approve" | "acknowledge" }) =>
@@ -39,12 +38,12 @@ export function ShiftReviewPanel() {
     },
   });
 
-  if (!canSee || shiftsQuery.isError || !shiftsQuery.data || shiftsQuery.data.length === 0) return null;
+  if (!canSee || shiftsPageQuery.isError || !shiftsPageQuery.data || shiftsPageQuery.data.total === 0) return null;
 
   return (
     <Card className="mb-6 border-amber-300">
       <CardHeader>
-        <CardTitle>شيفتات محتاجة مراجعة ({shiftsQuery.data.length})</CardTitle>
+        <CardTitle>شيفتات محتاجة مراجعة ({shiftsPageQuery.data.total})</CardTitle>
       </CardHeader>
       <CardBody className="p-0">
         <Table>
@@ -52,7 +51,7 @@ export function ShiftReviewPanel() {
             <TR><TH>وقت الفتح</TH><TH>الافتتاحي</TH><TH>الفعلي</TH><TH>المتوقع</TH><TH>الفرق</TH><TH>إجراء</TH></TR>
           </THead>
           <TBody>
-            {shiftsQuery.data.map((s) => (
+            {(shiftsPageQuery.data?.items ?? []).map((s) => (
               <TR key={s.id}>
                 <TD>{new Date(s.openedAt).toLocaleString("ar-EG")}</TD>
                 <TD>{s.openingCash}ج</TD>
@@ -71,7 +70,9 @@ export function ShiftReviewPanel() {
             ))}
           </TBody>
         </Table>
-        {shiftsQuery.data.length === 0 && <EmptyState>مفيش شيفتات محتاجة مراجعة</EmptyState>}
+        {shiftsPageQuery.data && (
+          <Pagination total={shiftsPageQuery.data.total} limit={shiftsPageQuery.data.limit} offset={shiftsPageQuery.data.offset} onPageChange={shiftsList.setPage} isFetching={shiftsPageQuery.isFetching} />
+        )}
       </CardBody>
     </Card>
   );

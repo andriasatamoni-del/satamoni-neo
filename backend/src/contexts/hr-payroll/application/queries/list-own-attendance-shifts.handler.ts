@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { EmployeeAttendanceShift } from "../../domain/employee-attendance-shift.aggregate";
 import {
   EMPLOYEE_ATTENDANCE_SHIFT_REPOSITORY,
@@ -14,9 +15,9 @@ export class ListOwnAttendanceShiftsHandler {
     @Inject(EMPLOYEE_REPOSITORY) private readonly employees: EmployeeRepositoryPort
   ) {}
 
-  async execute(userId: string): Promise<EmployeeAttendanceShift[]> {
+  async execute(userId: string, page?: PageRequest): Promise<{ rows: EmployeeAttendanceShift[]; total: number }> {
     const employee = await this.employees.findByUserId(userId);
     if (!employee) throw new EmployeeProfileNotLinkedError();
-    return this.shifts.list({ employeeId: employee.id });
+    return this.shifts.listPage({ employeeId: employee.id }, page);
   }
 }

@@ -12,6 +12,9 @@ import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { can, hasRole } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Branch { id: string; name: string; }
 interface Treasury { id: string; name: string; kind: "MAIN" | "BANK"; branchId: string | null; accountCode: string; balance: number; }
@@ -50,11 +53,10 @@ export function TreasuriesPage() {
     enabled: tab === "treasuries",
   });
   const banksQuery = useQuery({ queryKey: ["banks"], queryFn: () => apiRequest<Bank[]>("/banks"), enabled: tab === "banks" });
-  const bankAccountsQuery = useQuery({
-    queryKey: ["banks", "accounts"],
-    queryFn: () => apiRequest<BankAccount[]>("/banks/accounts"),
-    enabled: tab === "banks",
-  });
+  const banksList = useListState([] as const, { prefix: "banks." });
+  const banksPageQuery = usePaginatedQuery<Bank>(["banks", "list"], "/banks", banksList.params, { enabled: tab === "banks" });
+  const bankAccountsList = useListState([] as const, { prefix: "accounts." });
+  const bankAccountsPageQuery = usePaginatedQuery<BankAccount>(["banks", "accounts"], "/banks/accounts", bankAccountsList.params, { enabled: tab === "banks" });
 
   const branchName = (id: string | null) => (id ? branches.find((b) => b.id === id)?.name ?? id : "مشتركة");
 
@@ -131,6 +133,8 @@ export function TreasuriesPage() {
   });
 
   const treasuries = treasuriesQuery.data ?? [];
+  const treasuriesList = useListState([] as const, { prefix: "tr." });
+  const treasuriesPageQuery = usePaginatedQuery<Treasury>(["treasuries"], "/treasuries", { ...treasuriesList.params, branchId }, { enabled: tab === "treasuries" });
 
   return (
     <div>
@@ -200,7 +204,7 @@ export function TreasuriesPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>الخزائن ({treasuries.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>الخزائن ({treasuriesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -213,7 +217,7 @@ export function TreasuriesPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {treasuries.map((t) => (
+                  {(treasuriesPageQuery.data?.items ?? []).map((t) => (
                     <TR key={t.id}>
                       <TD className="font-semibold text-slate-900">{t.name}</TD>
                       <TD><Badge tone={t.kind === "MAIN" ? "brand" : "info"}>{KIND_LABELS[t.kind]}</Badge></TD>
@@ -224,7 +228,10 @@ export function TreasuriesPage() {
                   ))}
                 </TBody>
               </Table>
-              {treasuries.length === 0 && <EmptyState>مفيش خزائن لسه</EmptyState>}
+              {treasuriesPageQuery.data && (
+                <Pagination total={treasuriesPageQuery.data.total} limit={treasuriesPageQuery.data.limit} offset={treasuriesPageQuery.data.offset} onPageChange={treasuriesList.setPage} isFetching={treasuriesPageQuery.isFetching} />
+              )}
+              {treasuriesPageQuery.data?.total === 0 && <EmptyState>مفيش خزائن لسه</EmptyState>}
             </CardBody>
           </Card>
         </>
@@ -249,12 +256,12 @@ export function TreasuriesPage() {
             )}
 
             <Card>
-              <CardHeader><CardTitle>البنوك ({banksQuery.data?.length ?? 0})</CardTitle></CardHeader>
+              <CardHeader><CardTitle>البنوك ({banksPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
               <CardBody className="p-0">
                 <Table>
                   <THead><TR><TH>الاسم</TH><TH>الحالة</TH><TH>إجراء</TH></TR></THead>
                   <TBody>
-                    {banksQuery.data?.map((b) => (
+                    {(banksPageQuery.data?.items ?? []).map((b) => (
                       <TR key={b.id}>
                         <TD className="font-semibold text-slate-900">{b.name}</TD>
                         <TD><Badge tone={b.isActive ? "success" : "danger"}>{b.isActive ? "نشط" : "متوقف"}</Badge></TD>
@@ -270,7 +277,10 @@ export function TreasuriesPage() {
                     ))}
                   </TBody>
                 </Table>
-                {(banksQuery.data?.length ?? 0) === 0 && <EmptyState>مفيش بنوك لسه</EmptyState>}
+                {banksPageQuery.data && (
+                  <Pagination total={banksPageQuery.data.total} limit={banksPageQuery.data.limit} offset={banksPageQuery.data.offset} onPageChange={banksList.setPage} isFetching={banksPageQuery.isFetching} />
+                )}
+                {banksPageQuery.data?.total === 0 && <EmptyState>مفيش بنوك لسه</EmptyState>}
               </CardBody>
             </Card>
           </div>
@@ -314,7 +324,7 @@ export function TreasuriesPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>الحسابات البنكية ({bankAccountsQuery.data?.length ?? 0})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>الحسابات البنكية ({bankAccountsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -327,7 +337,7 @@ export function TreasuriesPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {bankAccountsQuery.data?.map((a) => (
+                  {(bankAccountsPageQuery.data?.items ?? []).map((a) => (
                     <TR key={a.id}>
                       <TD className="font-semibold text-slate-900">{a.bankName}</TD>
                       <TD className="font-mono text-xs">{a.accountNumber ?? "-"}</TD>
@@ -338,7 +348,10 @@ export function TreasuriesPage() {
                   ))}
                 </TBody>
               </Table>
-              {(bankAccountsQuery.data?.length ?? 0) === 0 && <EmptyState>مفيش حسابات بنكية لسه</EmptyState>}
+              {bankAccountsPageQuery.data && (
+                <Pagination total={bankAccountsPageQuery.data.total} limit={bankAccountsPageQuery.data.limit} offset={bankAccountsPageQuery.data.offset} onPageChange={bankAccountsList.setPage} isFetching={bankAccountsPageQuery.isFetching} />
+              )}
+              {bankAccountsPageQuery.data?.total === 0 && <EmptyState>مفيش حسابات بنكية لسه</EmptyState>}
             </CardBody>
           </Card>
         </>

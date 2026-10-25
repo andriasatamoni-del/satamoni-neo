@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { Department } from "../../domain/department.aggregate";
 import { DEPARTMENT_REPOSITORY, type DepartmentRepositoryPort } from "../../domain/ports/department-repository.port";
 
@@ -6,7 +7,7 @@ import { DEPARTMENT_REPOSITORY, type DepartmentRepositoryPort } from "../../doma
 export class ListDepartmentsHandler {
   constructor(@Inject(DEPARTMENT_REPOSITORY) private readonly departments: DepartmentRepositoryPort) {}
 
-  execute(filter?: { status?: string }): Promise<Department[]> {
-    return this.departments.list(filter);
+  execute(filter?: { status?: string }, page?: PageRequest): Promise<{ rows: Department[]; total: number }> {
+    return this.departments.listPage(filter, page);
   }
 }

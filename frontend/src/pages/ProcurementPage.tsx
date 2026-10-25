@@ -200,21 +200,6 @@ export function ProcurementPage() {
     queryFn: () => apiRequest<SupplierInvoice[]>("/procurement/supplier-invoices"),
     enabled: canSeePurchasing,
   });
-  const paymentsQuery = useQuery({
-    queryKey: ["procurement", "supplier-payments"],
-    queryFn: () => apiRequest<SupplierPayment[]>("/procurement/supplier-payments"),
-    enabled: canSeePurchasing && tab === "payments",
-  });
-  const purchaseRequestsQuery = useQuery({
-    queryKey: ["procurement", "purchase-requests"],
-    queryFn: () => apiRequest<PurchaseRequest[]>("/procurement/purchase-requests"),
-    enabled: canSeePurchasing && tab === "purchase-requests",
-  });
-  const purchaseReturnsQuery = useQuery({
-    queryKey: ["procurement", "purchase-returns"],
-    queryFn: () => apiRequest<PurchaseReturn[]>("/procurement/purchase-returns"),
-    enabled: canSeePurchasing && tab === "purchase-returns",
-  });
   // أوامر الشراء وجدول أذون الاستلام صفحات من السيرفر (NEO-6)؛ قائمة الأذون الكاملة فوق لسه لفورم الفواتير والمرتجعات
   const purchaseOrdersList = useListState(["q", "status", "from", "to"] as const, { prefix: "po." });
   const purchaseOrdersQuery = usePaginatedQuery<PurchaseOrder>(["procurement", "purchase-orders"], "/procurement/purchase-orders", purchaseOrdersList.params, {
@@ -547,15 +532,20 @@ export function ProcurementPage() {
   const suppliers = suppliersQuery.data ?? [];
   const receipts = receiptsQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
-  const payments = paymentsQuery.data ?? [];
+  const invoicesList = useListState([] as const, { prefix: "inv." });
+  const invoicesPageQuery = usePaginatedQuery<SupplierInvoice>(["procurement", "supplier-invoices"], "/procurement/supplier-invoices", invoicesList.params, { enabled: canSeePurchasing });
+  const paymentsList = useListState([] as const, { prefix: "pay." });
+  const paymentsPageQuery = usePaginatedQuery<SupplierPayment>(["procurement", "supplier-payments"], "/procurement/supplier-payments", paymentsList.params, { enabled: canSeePurchasing && tab === "payments" });
   const confirmedReceiptsForInvoiceForm = receipts.filter(
     (r) => r.status === "CONFIRMED" && (!invoiceForm.supplierId || r.supplierId === invoiceForm.supplierId)
   );
   const unpaidInvoicesForPaymentForm = invoices.filter(
     (i) => ["APPROVED", "MATCHED", "PARTIALLY_PAID"].includes(i.status) && (!paymentForm.supplierId || i.supplierId === paymentForm.supplierId)
   );
-  const purchaseRequests = purchaseRequestsQuery.data ?? [];
-  const purchaseReturns = purchaseReturnsQuery.data ?? [];
+  const purchaseRequestsList = useListState([] as const, { prefix: "pr." });
+  const purchaseRequestsPageQuery = usePaginatedQuery<PurchaseRequest>(["procurement", "purchase-requests"], "/procurement/purchase-requests", purchaseRequestsList.params, { enabled: canSeePurchasing && tab === "purchase-requests" });
+  const purchaseReturnsList = useListState([] as const, { prefix: "ret." });
+  const purchaseReturnsPageQuery = usePaginatedQuery<PurchaseReturn>(["procurement", "purchase-returns"], "/procurement/purchase-returns", purchaseReturnsList.params, { enabled: canSeePurchasing && tab === "purchase-returns" });
   const purchaseOrders = purchaseOrdersQuery.data?.items ?? [];
   // NEO-6: the table shows one page; keep the order being received even when it leaves that page (paging, a filter, a refetch)
   const receivingOrderRef = useRef<(typeof purchaseOrders)[number] | null>(null);
@@ -785,7 +775,7 @@ export function ProcurementPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>فواتير الموردين ({invoices.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>فواتير الموردين ({invoicesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -794,7 +784,7 @@ export function ProcurementPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {invoices.map((inv) => (
+                  {(invoicesPageQuery.data?.items ?? []).map((inv) => (
                     <TR key={inv.id}>
                       <TD className="font-semibold text-slate-900">{supplierName(inv.supplierId)}</TD>
                       <TD className="font-mono text-xs">{inv.supplierInvoiceNumber}</TD>
@@ -842,7 +832,10 @@ export function ProcurementPage() {
                   ))}
                 </TBody>
               </Table>
-              {invoices.length === 0 && <EmptyState>مفيش فواتير موردين لسه</EmptyState>}
+              {invoicesPageQuery.data && (
+                <Pagination total={invoicesPageQuery.data.total} limit={invoicesPageQuery.data.limit} offset={invoicesPageQuery.data.offset} onPageChange={invoicesList.setPage} isFetching={invoicesPageQuery.isFetching} />
+              )}
+              {invoicesPageQuery.data?.total === 0 && <EmptyState>مفيش فواتير موردين لسه</EmptyState>}
             </CardBody>
           </Card>
         </>
@@ -900,7 +893,7 @@ export function ProcurementPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>سدادات الموردين ({payments.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>سدادات الموردين ({paymentsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -909,7 +902,7 @@ export function ProcurementPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {payments.map((p) => (
+                  {(paymentsPageQuery.data?.items ?? []).map((p) => (
                     <TR key={p.id}>
                       <TD className="font-semibold text-slate-900">{supplierName(p.supplierId)}</TD>
                       <TD>{branchName(p.branchId)}</TD>
@@ -920,7 +913,10 @@ export function ProcurementPage() {
                   ))}
                 </TBody>
               </Table>
-              {payments.length === 0 && <EmptyState>مفيش سدادات لسه</EmptyState>}
+              {paymentsPageQuery.data && (
+                <Pagination total={paymentsPageQuery.data.total} limit={paymentsPageQuery.data.limit} offset={paymentsPageQuery.data.offset} onPageChange={paymentsList.setPage} isFetching={paymentsPageQuery.isFetching} />
+              )}
+              {paymentsPageQuery.data?.total === 0 && <EmptyState>مفيش سدادات لسه</EmptyState>}
             </CardBody>
           </Card>
         </>
@@ -961,7 +957,7 @@ export function ProcurementPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>طلبات الشراء ({purchaseRequests.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>طلبات الشراء ({purchaseRequestsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -970,7 +966,7 @@ export function ProcurementPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {purchaseRequests.map((r) => (
+                  {(purchaseRequestsPageQuery.data?.items ?? []).map((r) => (
                     <TR key={r.id}>
                       <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
                       <TD>{r.lines.map((l) => `${itemName(l.inventoryItemId)}: ${l.requestedQuantity}`).join("، ")}</TD>
@@ -1053,8 +1049,11 @@ export function ProcurementPage() {
                   ))}
                 </TBody>
               </Table>
+              {purchaseRequestsPageQuery.data && (
+                <Pagination total={purchaseRequestsPageQuery.data.total} limit={purchaseRequestsPageQuery.data.limit} offset={purchaseRequestsPageQuery.data.offset} onPageChange={purchaseRequestsList.setPage} isFetching={purchaseRequestsPageQuery.isFetching} />
+              )}
               {convertError && <p className="m-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{convertError}</p>}
-              {purchaseRequests.length === 0 && <EmptyState>مفيش طلبات شراء لسه</EmptyState>}
+              {purchaseRequestsPageQuery.data?.total === 0 && <EmptyState>مفيش طلبات شراء لسه</EmptyState>}
             </CardBody>
           </Card>
         </>
@@ -1231,7 +1230,7 @@ export function ProcurementPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>مرتجعات المشتريات ({purchaseReturns.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>مرتجعات المشتريات ({purchaseReturnsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -1240,7 +1239,7 @@ export function ProcurementPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {purchaseReturns.map((r) => (
+                  {(purchaseReturnsPageQuery.data?.items ?? []).map((r) => (
                     <TR key={r.id}>
                       <TD className="font-semibold text-slate-900">{branchName(r.branchId)}</TD>
                       <TD>{r.supplierId ? supplierName(r.supplierId) : "-"}</TD>
@@ -1264,7 +1263,10 @@ export function ProcurementPage() {
                   ))}
                 </TBody>
               </Table>
-              {purchaseReturns.length === 0 && <EmptyState>مفيش مرتجعات مشتريات لسه</EmptyState>}
+              {purchaseReturnsPageQuery.data && (
+                <Pagination total={purchaseReturnsPageQuery.data.total} limit={purchaseReturnsPageQuery.data.limit} offset={purchaseReturnsPageQuery.data.offset} onPageChange={purchaseReturnsList.setPage} isFetching={purchaseReturnsPageQuery.isFetching} />
+              )}
+              {purchaseReturnsPageQuery.data?.total === 0 && <EmptyState>مفيش مرتجعات مشتريات لسه</EmptyState>}
             </CardBody>
           </Card>
         </>

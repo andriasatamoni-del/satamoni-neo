@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { SupplierInvoice, type SupplierInvoiceStatus } from "../../domain/supplier-invoice.aggregate";
 import type { SupplierInvoiceRepositoryPort } from "../../domain/ports/supplier-invoice-repository.port";
@@ -84,20 +86,20 @@ export class SupplierInvoiceRepository implements SupplierInvoiceRepositoryPort 
   }
 
   async list(filter?: { supplierId?: string; branchId?: string; status?: string }): Promise<SupplierInvoice[]> {
-    const rows = await this.db
-      .select()
-      .from(supplierInvoices)
-      .where(
-        and(
-          filter?.supplierId ? eq(supplierInvoices.supplier_id, filter.supplierId) : undefined,
-          filter?.branchId ? eq(supplierInvoices.branch_id, filter.branchId) : undefined,
-          filter?.status ? eq(supplierInvoices.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(supplierInvoices.created_at));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { supplierId?: string; branchId?: string; status?: string }, page?: PageRequest): Promise<{ rows: SupplierInvoice[]; total: number }> {
+    const where = and(
+      filter?.supplierId ? eq(supplierInvoices.supplier_id, filter.supplierId) : undefined,
+      filter?.branchId ? eq(supplierInvoices.branch_id, filter.branchId) : undefined,
+      filter?.status ? eq(supplierInvoices.status, filter.status) : undefined
+    );
+    const query = this.db.select().from(supplierInvoices).where(where).orderBy(desc(supplierInvoices.created_at), desc(supplierInvoices.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(supplierInvoices).where(where)));
     const invoices: SupplierInvoice[] = [];
     for (const row of rows) invoices.push(this.toDomain(row, await this.loadLines(row.id)));
-    return invoices;
+    return { rows: invoices, total };
   }
 
   private loadLines(invoiceId: string): Promise<(typeof supplierInvoiceLines.$inferSelect)[]> {

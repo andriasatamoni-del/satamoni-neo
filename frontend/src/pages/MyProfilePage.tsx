@@ -12,6 +12,9 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface EmployeeProfile {
   id: string;
@@ -98,17 +101,7 @@ export function MyProfilePage() {
 
   const notLinked = profileQuery.isError && profileQuery.error instanceof ApiError && profileQuery.error.status === 404;
 
-  const payslipsQuery = useQuery({
-    queryKey: ["hr", "self", "payslips"],
-    queryFn: () => apiRequest<Payslip[]>("/hr/self/payslips"),
-    enabled: !notLinked && canSelfView && tab === "payslips",
-  });
 
-  const leaveRequestsQuery = useQuery({
-    queryKey: ["hr", "self", "leave-requests"],
-    queryFn: () => apiRequest<LeaveRequest[]>("/hr/self/leave-requests"),
-    enabled: !notLinked && canSelfLeave && tab === "leave",
-  });
 
   const attendanceQuery = useQuery({
     queryKey: ["hr", "self", "attendance"],
@@ -172,9 +165,13 @@ export function MyProfilePage() {
   }
 
   const profile = profileQuery.data;
-  const payslips = payslipsQuery.data ?? [];
-  const leaveRequests = leaveRequestsQuery.data ?? [];
+  const payslipsList = useListState([] as const, { prefix: "payslips." });
+  const payslipsPageQuery = usePaginatedQuery<Payslip>(["hr", "self", "payslips"], "/hr/self/payslips", payslipsList.params, { enabled: !notLinked && canSelfView && tab === "payslips"});
+  const leaveRequestsList = useListState([] as const, { prefix: "leaveRequests." });
+  const leaveRequestsPageQuery = usePaginatedQuery<LeaveRequest>(["hr", "self", "leave-requests"], "/hr/self/leave-requests", leaveRequestsList.params, { enabled: !notLinked && canSelfLeave && tab === "leave"});
   const attendanceShifts = attendanceQuery.data ?? [];
+  const attendanceShiftsList = useListState([] as const, { prefix: "attendanceShifts." });
+  const attendanceShiftsPageQuery = usePaginatedQuery<AttendanceShift>(["hr", "self", "attendance"], "/hr/self/attendance", attendanceShiftsList.params, { enabled: !notLinked && canSelfView && tab === "attendance"});
   const activeShift = attendanceShifts.find((s) => s.status === "ACTIVE");
 
   return (
@@ -222,7 +219,7 @@ export function MyProfilePage() {
           {tab === "payslips" && (
             <Card>
               <CardHeader>
-                <CardTitle>قسائم الراتب ({payslips.length})</CardTitle>
+                <CardTitle>قسائم الراتب ({payslipsPageQuery.data?.total ?? 0})</CardTitle>
               </CardHeader>
               <CardBody className="p-0">
                 <Table>
@@ -230,7 +227,7 @@ export function MyProfilePage() {
                     <TR><TH>الشهر</TH><TH>الإجمالي</TH><TH>سلف</TH><TH>خصومات</TH><TH>مكافآت</TH><TH>الصافي</TH></TR>
                   </THead>
                   <TBody>
-                    {payslips.map((p) => (
+                    {(payslipsPageQuery.data?.items ?? []).map((p) => (
                       <TR key={p.payrollRunId}>
                         <TD className="font-semibold text-slate-900">{p.month}/{p.year}</TD>
                         <TD>{fmt(p.grossPay)}</TD>
@@ -242,7 +239,10 @@ export function MyProfilePage() {
                     ))}
                   </TBody>
                 </Table>
-                {payslips.length === 0 && <EmptyState>مفيش قسائم راتب معتمدة لسه</EmptyState>}
+                {payslipsPageQuery.data && (
+                  <Pagination total={payslipsPageQuery.data.total} limit={payslipsPageQuery.data.limit} offset={payslipsPageQuery.data.offset} onPageChange={payslipsList.setPage} isFetching={payslipsPageQuery.isFetching} />
+                )}
+                {payslipsPageQuery.data?.total === 0 && <EmptyState>مفيش قسائم راتب معتمدة لسه</EmptyState>}
               </CardBody>
             </Card>
           )}
@@ -277,7 +277,7 @@ export function MyProfilePage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>طلباتي ({leaveRequests.length})</CardTitle>
+                  <CardTitle>طلباتي ({leaveRequestsPageQuery.data?.total ?? 0})</CardTitle>
                 </CardHeader>
                 <CardBody className="p-0">
                   <Table>
@@ -285,7 +285,7 @@ export function MyProfilePage() {
                       <TR><TH>النوع</TH><TH>من</TH><TH>إلى</TH><TH>الأيام</TH><TH>الحالة</TH><TH></TH></TR>
                     </THead>
                     <TBody>
-                      {leaveRequests.map((r) => (
+                      {(leaveRequestsPageQuery.data?.items ?? []).map((r) => (
                         <TR key={r.id}>
                           <TD className="font-semibold text-slate-900">{r.leaveType}</TD>
                           <TD>{r.startDate.slice(0, 10)}</TD>
@@ -303,7 +303,10 @@ export function MyProfilePage() {
                       ))}
                     </TBody>
                   </Table>
-                  {leaveRequests.length === 0 && <EmptyState>مفيش طلبات إجازة لسه</EmptyState>}
+                  {leaveRequestsPageQuery.data && (
+                    <Pagination total={leaveRequestsPageQuery.data.total} limit={leaveRequestsPageQuery.data.limit} offset={leaveRequestsPageQuery.data.offset} onPageChange={leaveRequestsList.setPage} isFetching={leaveRequestsPageQuery.isFetching} />
+                  )}
+                  {leaveRequestsPageQuery.data?.total === 0 && <EmptyState>مفيش طلبات إجازة لسه</EmptyState>}
                 </CardBody>
               </Card>
             </div>
@@ -342,7 +345,7 @@ export function MyProfilePage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>سجل الحضور ({attendanceShifts.length})</CardTitle>
+                  <CardTitle>سجل الحضور ({attendanceShiftsPageQuery.data?.total ?? 0})</CardTitle>
                 </CardHeader>
                 <CardBody className="p-0">
                   <Table>
@@ -350,7 +353,7 @@ export function MyProfilePage() {
                       <TR><TH>الدخول</TH><TH>الخروج</TH><TH>ساعات العمل</TH><TH>الحالة</TH></TR>
                     </THead>
                     <TBody>
-                      {attendanceShifts.map((s) => (
+                      {(attendanceShiftsPageQuery.data?.items ?? []).map((s) => (
                         <TR key={s.id}>
                           <TD>{new Date(s.checkedInAt).toLocaleString("en-US")}</TD>
                           <TD>{s.checkedOutAt ? new Date(s.checkedOutAt).toLocaleString("en-US") : "-"}</TD>
@@ -360,7 +363,10 @@ export function MyProfilePage() {
                       ))}
                     </TBody>
                   </Table>
-                  {attendanceShifts.length === 0 && <EmptyState>مفيش سجل حضور لسه</EmptyState>}
+                  {attendanceShiftsPageQuery.data && (
+                    <Pagination total={attendanceShiftsPageQuery.data.total} limit={attendanceShiftsPageQuery.data.limit} offset={attendanceShiftsPageQuery.data.offset} onPageChange={attendanceShiftsList.setPage} isFetching={attendanceShiftsPageQuery.isFetching} />
+                  )}
+                  {attendanceShiftsPageQuery.data?.total === 0 && <EmptyState>مفيش سجل حضور لسه</EmptyState>}
                 </CardBody>
               </Card>
             </div>

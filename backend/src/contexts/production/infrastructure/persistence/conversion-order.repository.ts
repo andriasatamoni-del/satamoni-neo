@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { ConversionOrder, type ConversionOrderStatus } from "../../domain/conversion-order.aggregate";
 import type { ConversionOrderRepositoryPort } from "../../domain/ports/conversion-order-repository.port";
@@ -87,19 +89,19 @@ export class ConversionOrderRepository implements ConversionOrderRepositoryPort 
   }
 
   async list(filter?: { branchId?: string; status?: string }): Promise<ConversionOrder[]> {
-    const rows = await this.db
-      .select()
-      .from(conversionOrders)
-      .where(
-        and(
-          filter?.branchId ? eq(conversionOrders.branch_id, filter.branchId) : undefined,
-          filter?.status ? eq(conversionOrders.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(conversionOrders.created_at));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; status?: string }, page?: PageRequest): Promise<{ rows: ConversionOrder[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(conversionOrders.branch_id, filter.branchId) : undefined,
+      filter?.status ? eq(conversionOrders.status, filter.status) : undefined
+    );
+    const query = this.db.select().from(conversionOrders).where(where).orderBy(desc(conversionOrders.created_at), desc(conversionOrders.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(conversionOrders).where(where)));
     const orders: ConversionOrder[] = [];
     for (const row of rows) orders.push(this.toDomain(row, await this.loadInputLines(row.id)));
-    return orders;
+    return { rows: orders, total };
   }
 
   private loadInputLines(conversionOrderId: string): Promise<(typeof conversionOrderInputLines.$inferSelect)[]> {

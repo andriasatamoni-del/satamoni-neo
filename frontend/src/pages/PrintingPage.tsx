@@ -12,6 +12,9 @@ import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { can, hasRole } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Branch { id: string; name: string; }
 interface Printer {
@@ -67,6 +70,8 @@ export function PrintingPage() {
     queryFn: () => apiRequest<Printer[]>(`/printing/printers?branchId=${effectiveBranchId}`),
     enabled: Boolean(effectiveBranchId) && canSeePrinters && (tab === "printers" || tab === "stations"),
   });
+  const printersList = useListState([] as const, { prefix: "printers." });
+  const printersPageQuery = usePaginatedQuery<Printer>(["printing", "printers"], "/printing/printers", { ...printersList.params, branchId: effectiveBranchId }, { enabled: Boolean(effectiveBranchId) && canSeePrinters && (tab === "printers" || tab === "stations")});
   const stationsQuery = useQuery({
     queryKey: ["printing", "stations", effectiveBranchId],
     queryFn: () => apiRequest<KitchenStation[]>(`/printing/kitchen-stations?branchId=${effectiveBranchId}`),
@@ -78,12 +83,8 @@ export function PrintingPage() {
     enabled: tab === "stations",
   });
   const [queueStatus, setQueueStatus] = useState("");
-  const printJobsQuery = useQuery({
-    queryKey: ["printing", "print-jobs", effectiveBranchId, queueStatus],
-    queryFn: () => apiRequest<PrintJob[]>(`/printing/print-jobs?branchId=${effectiveBranchId}${queueStatus ? `&status=${queueStatus}` : ""}`),
-    enabled: Boolean(effectiveBranchId) && tab === "queue",
-    refetchInterval: tab === "queue" ? 5000 : false,
-  });
+  const printJobsList = useListState([] as const, { prefix: "jobs." });
+  const printJobsPageQuery = usePaginatedQuery<PrintJob>(["printing", "print-jobs"], "/printing/print-jobs", { ...printJobsList.params, branchId: effectiveBranchId, status: queueStatus }, { enabled: Boolean(effectiveBranchId) && tab === "queue", refetchInterval: tab === "queue" ? 5000 : false });
 
   // --- إضافة طابعة ---
   const [printerForm, setPrinterForm] = useState({ name: "", printerType: "CASHIER", connectionType: "USB", osPrinterName: "", ipAddress: "" });
@@ -220,42 +221,47 @@ export function PrintingPage() {
           <Card>
             <CardHeader><CardTitle>طابعات الفرع</CardTitle></CardHeader>
             <CardBody>
-              {!printersQuery.data?.length ? (
+              {!printersPageQuery.data?.total ? (
                 <EmptyState>مفيش طابعات متسجلة لسه</EmptyState>
               ) : (
-                <Table>
-                  <THead><TR><TH>الاسم</TH><TH>النوع</TH><TH>الاتصال</TH><TH>الحالة</TH><TH>افتراضية</TH><TH></TH></TR></THead>
-                  <TBody>
-                    {printersQuery.data.map((p) => (
-                      <TR key={p.id}>
-                        <TD>{p.name}</TD>
-                        <TD>{PRINTER_TYPES.find((t) => t.value === p.printerType)?.label ?? p.printerType}</TD>
-                        <TD>{p.connectionType === "USB" ? p.osPrinterName : p.ipAddress}</TD>
-                        <TD>
-                          <button
-                            onClick={() => toggleEnabled.mutate({ id: p.id, isEnabled: !p.isEnabled })}
-                            disabled={!canManagePrinters}
-                            className="cursor-pointer disabled:cursor-default"
-                          >
-                            <Badge tone={p.isEnabled ? "success" : "neutral"}>{p.isEnabled ? "شغالة" : "معطّلة"}</Badge>
-                          </button>
-                        </TD>
-                        <TD>
-                          {p.isDefaultForType ? (
-                            <Badge tone="success">افتراضية</Badge>
-                          ) : canManagePrinters ? (
-                            <Button variant="ghost" size="sm" onClick={() => setDefaultForType.mutate(p.id)}>خليها الافتراضية</Button>
-                          ) : null}
-                        </TD>
-                        <TD>
-                          {canManagePrinters && (
-                            <Button variant="secondary" size="sm" onClick={() => testPrint.mutate(p.id)} disabled={!p.isEnabled}>طباعة تجريبية</Button>
-                          )}
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <>
+                  <Table>
+                    <THead><TR><TH>الاسم</TH><TH>النوع</TH><TH>الاتصال</TH><TH>الحالة</TH><TH>افتراضية</TH><TH></TH></TR></THead>
+                    <TBody>
+                      {(printersPageQuery.data?.items ?? []).map((p) => (
+                        <TR key={p.id}>
+                          <TD>{p.name}</TD>
+                          <TD>{PRINTER_TYPES.find((t) => t.value === p.printerType)?.label ?? p.printerType}</TD>
+                          <TD>{p.connectionType === "USB" ? p.osPrinterName : p.ipAddress}</TD>
+                          <TD>
+                            <button
+                              onClick={() => toggleEnabled.mutate({ id: p.id, isEnabled: !p.isEnabled })}
+                              disabled={!canManagePrinters}
+                              className="cursor-pointer disabled:cursor-default"
+                            >
+                              <Badge tone={p.isEnabled ? "success" : "neutral"}>{p.isEnabled ? "شغالة" : "معطّلة"}</Badge>
+                            </button>
+                          </TD>
+                          <TD>
+                            {p.isDefaultForType ? (
+                              <Badge tone="success">افتراضية</Badge>
+                            ) : canManagePrinters ? (
+                              <Button variant="ghost" size="sm" onClick={() => setDefaultForType.mutate(p.id)}>خليها الافتراضية</Button>
+                            ) : null}
+                          </TD>
+                          <TD>
+                            {canManagePrinters && (
+                              <Button variant="secondary" size="sm" onClick={() => testPrint.mutate(p.id)} disabled={!p.isEnabled}>طباعة تجريبية</Button>
+                            )}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {printersPageQuery.data && (
+                    <Pagination total={printersPageQuery.data.total} limit={printersPageQuery.data.limit} offset={printersPageQuery.data.offset} onPageChange={printersList.setPage} isFetching={printersPageQuery.isFetching} />
+                  )}
+                </>
               )}
             </CardBody>
           </Card>
@@ -366,35 +372,40 @@ export function PrintingPage() {
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle>طابور الطباعة</CardTitle>
-              <Select className="max-w-[180px]" value={queueStatus} onChange={(e) => setQueueStatus(e.target.value)}>
+              <Select className="max-w-[180px]" value={queueStatus} onChange={(e) => { setQueueStatus(e.target.value); printJobsList.setPage(1); }}>
                 <option value="">كل الحالات</option>
                 {Object.entries(STATUS_LABELS).map(([value, label]) => (<option key={value} value={value}>{label}</option>))}
               </Select>
             </div>
           </CardHeader>
           <CardBody>
-            {!printJobsQuery.data?.length ? (
+            {!printJobsPageQuery.data?.total ? (
               <EmptyState>مفيش أوامر طباعة</EmptyState>
             ) : (
-              <Table>
-                <THead><TR><TH>النوع</TH><TH>الطلب</TH><TH>الحالة</TH><TH>المحاولات</TH><TH>آخر خطأ</TH><TH></TH></TR></THead>
-                <TBody>
-                  {printJobsQuery.data.map((job) => (
-                    <TR key={job.id}>
-                      <TD>{PRINT_TYPE_LABELS[job.printType] ?? job.printType}</TD>
-                      <TD>{job.orderId ?? "-"}</TD>
-                      <TD><Badge tone={STATUS_TONE[job.status]}>{STATUS_LABELS[job.status] ?? job.status}</Badge></TD>
-                      <TD>{job.attempts}</TD>
-                      <TD className="max-w-xs truncate text-xs text-red-600">{job.lastError ?? "-"}</TD>
-                      <TD>
-                        {job.status === "FAILED" && canRetryJobs && (
-                          <Button variant="secondary" size="sm" onClick={() => retryJob.mutate(job.id)}>إعادة المحاولة</Button>
-                        )}
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
+              <>
+                <Table>
+                  <THead><TR><TH>النوع</TH><TH>الطلب</TH><TH>الحالة</TH><TH>المحاولات</TH><TH>آخر خطأ</TH><TH></TH></TR></THead>
+                  <TBody>
+                    {(printJobsPageQuery.data?.items ?? []).map((job) => (
+                      <TR key={job.id}>
+                        <TD>{PRINT_TYPE_LABELS[job.printType] ?? job.printType}</TD>
+                        <TD>{job.orderId ?? "-"}</TD>
+                        <TD><Badge tone={STATUS_TONE[job.status]}>{STATUS_LABELS[job.status] ?? job.status}</Badge></TD>
+                        <TD>{job.attempts}</TD>
+                        <TD className="max-w-xs truncate text-xs text-red-600">{job.lastError ?? "-"}</TD>
+                        <TD>
+                          {job.status === "FAILED" && canRetryJobs && (
+                            <Button variant="secondary" size="sm" onClick={() => retryJob.mutate(job.id)}>إعادة المحاولة</Button>
+                          )}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+                {printJobsPageQuery.data && (
+                  <Pagination total={printJobsPageQuery.data.total} limit={printJobsPageQuery.data.limit} offset={printJobsPageQuery.data.offset} onPageChange={printJobsList.setPage} isFetching={printJobsPageQuery.isFetching} />
+                )}
+              </>
             )}
           </CardBody>
         </Card>

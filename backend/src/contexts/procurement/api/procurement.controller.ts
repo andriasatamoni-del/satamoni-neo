@@ -45,17 +45,8 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import {
-  BranchScopeGuard,
-  BranchScoped,
-  BranchResource,
-  BranchFilteredList,
-  CurrentBranchScope,
-  requireCompanyWide,
-  scopedBranchId,
-  type BranchScope,
-} from "../../../shared/authorization/branch-scope";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { BranchScopeGuard, BranchScoped, BranchResource, BranchFilteredList, CurrentBranchScope, requireCompanyWide, scopedBranchId, type BranchScope } from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery, pageRequestOf } from "../../../shared/http/list-query.dto";
 import { ListGoodsReceiptsQueryDto, ListPurchaseOrdersQueryDto } from "./dto/list-procurement-documents-query.dto";
 import { ProcurementDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Supplier } from "../domain/supplier.aggregate";
@@ -66,6 +57,7 @@ import type { SupplierPayment } from "../domain/supplier-payment.aggregate";
 import type { PurchaseRequest } from "../domain/purchase-request.aggregate";
 import type { PurchaseReturn } from "../domain/purchase-return.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListSupplierInvoicesQueryDto, ListSupplierPaymentsQueryDto, ListPurchaseRequestsQueryDto, ListPurchaseReturnsQueryDto } from "./dto/list-procurement-lists-query.dto";
 
 @Controller("procurement")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -198,8 +190,10 @@ export class ProcurementController {
   @BranchScoped()
   @Get("supplier-invoices")
   @RequirePermission(PERMISSION.PURCHASING_VIEW)
-  async supplierInvoices(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string, @Query("status") status?: string) {
-    return (await this.listSupplierInvoices.execute({ supplierId, branchId, status })).map(toPublicSupplierInvoice);
+  async supplierInvoices(@Query() query: ListSupplierInvoicesQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listSupplierInvoices.execute({ supplierId: query.supplierId, branchId: scopedBranchId(scope, query.branchId), status: query.status }, page);
+    return listResponse(rows.map(toPublicSupplierInvoice), total, page);
   }
 
   @BranchScoped()
@@ -245,8 +239,10 @@ export class ProcurementController {
   @BranchScoped()
   @Get("supplier-payments")
   @RequirePermission(PERMISSION.PURCHASING_VIEW)
-  async supplierPayments(@Query("supplierId") supplierId?: string, @Query("branchId") branchId?: string) {
-    return (await this.listSupplierPayments.execute({ supplierId, branchId })).map(toPublicSupplierPayment);
+  async supplierPayments(@Query() query: ListSupplierPaymentsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listSupplierPayments.execute({ supplierId: query.supplierId, branchId: scopedBranchId(scope, query.branchId) }, page);
+    return listResponse(rows.map(toPublicSupplierPayment), total, page);
   }
 
   @BranchScoped()
@@ -271,8 +267,10 @@ export class ProcurementController {
   @BranchScoped()
   @Get("purchase-requests")
   @RequirePermission(PERMISSION.PURCHASING_VIEW)
-  async purchaseRequests(@Query("branchId") branchId?: string, @Query("status") status?: string) {
-    return (await this.listPurchaseRequests.execute({ branchId, status })).map(toPublicPurchaseRequest);
+  async purchaseRequests(@Query() query: ListPurchaseRequestsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPurchaseRequests.execute({ branchId: scopedBranchId(scope, query.branchId), status: query.status }, page);
+    return listResponse(rows.map(toPublicPurchaseRequest), total, page);
   }
 
   @BranchScoped()
@@ -346,8 +344,10 @@ export class ProcurementController {
   @BranchScoped()
   @Get("purchase-returns")
   @RequirePermission(PERMISSION.PURCHASING_VIEW)
-  async purchaseReturns(@Query("branchId") branchId?: string, @Query("supplierId") supplierId?: string, @Query("status") status?: string) {
-    return (await this.listPurchaseReturns.execute({ branchId, supplierId, status })).map(toPublicPurchaseReturn);
+  async purchaseReturns(@Query() query: ListPurchaseReturnsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPurchaseReturns.execute({ branchId: scopedBranchId(scope, query.branchId), supplierId: query.supplierId, status: query.status }, page);
+    return listResponse(rows.map(toPublicPurchaseReturn), total, page);
   }
 
   @BranchScoped()

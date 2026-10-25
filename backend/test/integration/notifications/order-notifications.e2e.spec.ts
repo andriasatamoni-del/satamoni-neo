@@ -195,5 +195,16 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     expect(res.body.gatewayConfigured).toBe(true);
     expect(res.body.notifications.length).toBeGreaterThan(0);
     expect(res.body.notifications.length).toBeLessThanOrEqual(5);
+    expect(res.body).toMatchObject({ limit: 5, offset: 0 });
+    expect(res.body.total).toBeGreaterThanOrEqual(res.body.notifications.length);
+  });
+
+  test("GET /order-notifications: pages through the log without repeating a row", async () => {
+    const first = await request(server()).get("/order-notifications?limit=1&offset=0").set(auth());
+    const second = await request(server()).get("/order-notifications?limit=1&offset=1").set(auth());
+    expect(first.status).toBe(200);
+    expect(first.body.total).toBeGreaterThan(1);
+    expect(second.body).toMatchObject({ total: first.body.total, limit: 1, offset: 1 });
+    expect(second.body.notifications[0].id).not.toBe(first.body.notifications[0].id);
   });
 });

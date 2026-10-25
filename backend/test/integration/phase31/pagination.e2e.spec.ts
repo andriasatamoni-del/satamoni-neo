@@ -7,6 +7,7 @@ import { auditLogs } from "../../../src/shared/database/shared.tables";
 import { cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { DEFAULT_PAGE_LIMIT } from "../../../src/shared/http/list-query.dto";
 
 // NEO-6: the shared list contract. `paginate=1` returns { items, total, limit, offset } with the default limit applied; without it
 // the endpoints keep their bare-array responses. Filters run in SQL (Cairo business-day bounds for dates), totals match what the
@@ -44,7 +45,7 @@ describe("NEO-6 - server-side pagination and filtering", () => {
     test("paginate=1 returns the envelope with the default limit", async () => {
       const res = await get(`/orders?paginate=1&branchId=${w.branchA}`);
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ total: 5, limit: 50, offset: 0 });
+      expect(res.body).toMatchObject({ total: 5, limit: DEFAULT_PAGE_LIMIT, offset: 0 });
       expect(res.body.items).toHaveLength(5);
     });
 

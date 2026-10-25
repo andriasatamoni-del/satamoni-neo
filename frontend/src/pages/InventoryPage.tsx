@@ -245,27 +245,26 @@ export function InventoryPage() {
     queryFn: () => apiRequest<LowStockRow[]>(`/inventory/low-stock?branchId=${lowStockBranchId}`),
     enabled: !!lowStockBranchId,
   });
+  const lowStockList = useListState([] as const, { prefix: "low." });
+  const lowStockPageQuery = usePaginatedQuery<LowStockRow>(["inventory", "low-stock"], "/inventory/low-stock", { ...lowStockList.params, branchId: lowStockBranchId }, { enabled: !!lowStockBranchId });
   const updateThreshold = useMutation({
     mutationFn: ({ inventoryItemId, reorderPoint }: { inventoryItemId: string; reorderPoint: number }) =>
       apiRequest("/inventory/stock-thresholds", {
         method: "PATCH",
         body: { branchId: lowStockBranchId, inventoryItemId, reorderPoint },
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "low-stock", lowStockBranchId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "low-stock"] }),
   });
 
   const [batchesItemId, setBatchesItemId] = useState("");
   const [batchesBranchId, setBatchesBranchId] = useState("");
   const [writeOffDrafts, setWriteOffDrafts] = useState<Record<string, string>>({});
-  const batchesQuery = useQuery({
-    queryKey: ["inventory", "batches", batchesItemId, batchesBranchId],
-    queryFn: () => apiRequest<InventoryBatch[]>(`/inventory/items/${batchesItemId}/batches?branchId=${batchesBranchId}`),
-    enabled: !!batchesItemId && !!batchesBranchId,
-  });
+  const batchesList = useListState([] as const, { prefix: "batch." });
+  const batchesPageQuery = usePaginatedQuery<InventoryBatch>(["inventory", "batches"], `/inventory/items/${batchesItemId}/batches`, { ...batchesList.params, branchId: batchesBranchId }, { enabled: !!batchesItemId && !!batchesBranchId });
   const writeOffBatch = useMutation({
     mutationFn: ({ id, quantity, markExpired }: { id: string; quantity?: number; markExpired?: boolean }) =>
       apiRequest(`/inventory/batches/${id}/write-off`, { method: "POST", body: { quantity, markExpired } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "batches", batchesItemId, batchesBranchId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory", "batches"] }),
   });
 
   const boardQuery = useQuery({
@@ -274,11 +273,6 @@ export function InventoryPage() {
     enabled: !!stocktakeBranchId,
   });
 
-  const stocktakesQuery = useQuery({
-    queryKey: ["inventory", "stocktakes", stocktakeBranchId],
-    queryFn: () => apiRequest<Stocktake[]>(`/inventory/stocktakes?branchId=${stocktakeBranchId}`),
-    enabled: !!stocktakeBranchId,
-  });
 
   const createStocktake = useMutation({
     mutationFn: () =>
@@ -314,24 +308,16 @@ export function InventoryPage() {
   }
 
   const board = boardQuery.data ?? [];
-  const stocktakes = stocktakesQuery.data ?? [];
-  const openStocktake = stocktakes.find((s) => s.id === openStocktakeId) ?? null;
+  const stocktakesList = useListState([] as const, { prefix: "st." });
+  const stocktakesPageQuery = usePaginatedQuery<Stocktake>(["inventory", "stocktakes"], "/inventory/stocktakes", { ...stocktakesList.params, branchId: stocktakeBranchId }, { enabled: !!stocktakeBranchId });
+  const openStocktake = (stocktakesPageQuery.data?.items ?? []).find((s) => s.id === openStocktakeId) ?? null;
 
   const [transferForm, setTransferForm] = useState({ fromBranchId: "", toBranchId: "", requiredDate: "" });
   const [transferLines, setTransferLines] = useState<{ inventoryItemId: string; requestedQuantity: string }[]>([
     { inventoryItemId: "", requestedQuantity: "" },
   ]);
   const [transferError, setTransferError] = useState<string | null>(null);
-  const [transferFilterBranchId, setTransferFilterBranchId] = useState("");
 
-  const transferRequestsQuery = useQuery({
-    queryKey: ["inventory", "transfer-requests", transferFilterBranchId],
-    queryFn: () =>
-      apiRequest<TransferRequest[]>(
-        transferFilterBranchId ? `/inventory/transfer-requests?fromBranchId=${transferFilterBranchId}` : "/inventory/transfer-requests"
-      ),
-    enabled: tab === "transfers",
-  });
 
   const createTransferRequest = useMutation({
     mutationFn: () =>
@@ -417,7 +403,8 @@ export function InventoryPage() {
     onError: (err) => setTransferActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  const transferRequests = transferRequestsQuery.data ?? [];
+  const transferRequestsList = useListState(["fromBranchId"] as const, { prefix: "tr." });
+  const transferRequestsPageQuery = usePaginatedQuery<TransferRequest>(["inventory", "transfer-requests"], "/inventory/transfer-requests", transferRequestsList.params, { enabled: tab === "transfers" });
 
   function branchName(id: string): string {
     return branches.find((b) => b.id === id)?.name ?? id;
@@ -560,6 +547,7 @@ export function InventoryPage() {
                         value={stocktakeBranchId}
                         onChange={(e) => {
                           setStocktakeBranchId(e.target.value);
+                          stocktakesList.setPage(1);
                           setActualQuantities({});
                           setStocktakeResult(null);
                           setStocktakeError(null);
@@ -615,7 +603,7 @@ export function InventoryPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>سجل الجرد ({stocktakes.length})</CardTitle>
+              <CardTitle>سجل الجرد ({stocktakesPageQuery.data?.total ?? 0})</CardTitle>
             </CardHeader>
             <CardBody className="p-0">
               <Table>
@@ -625,7 +613,7 @@ export function InventoryPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {stocktakes.map((s) => (
+                  {(stocktakesPageQuery.data?.items ?? []).map((s) => (
                     <TR key={s.id}>
                       <TD>{new Date(s.createdAt).toLocaleString("en-US")}</TD>
                       <TD>{s.notes ?? "-"}</TD>
@@ -642,7 +630,10 @@ export function InventoryPage() {
                   ))}
                 </TBody>
               </Table>
-              {stocktakeBranchId && stocktakes.length === 0 && <EmptyState>مفيش جرد لسه</EmptyState>}
+              {stocktakesPageQuery.data && (
+                <Pagination total={stocktakesPageQuery.data.total} limit={stocktakesPageQuery.data.limit} offset={stocktakesPageQuery.data.offset} onPageChange={stocktakesList.setPage} isFetching={stocktakesPageQuery.isFetching} />
+              )}
+              {stocktakeBranchId && stocktakesPageQuery.data?.total === 0 && <EmptyState>مفيش جرد لسه</EmptyState>}
               {!stocktakeBranchId && <EmptyState>اختر فرع لعرض سجل الجرد</EmptyState>}
             </CardBody>
           </Card>
@@ -686,7 +677,7 @@ export function InventoryPage() {
           <Card>
             <CardBody>
               <Field label="الفرع">
-                <Select value={lowStockBranchId} onChange={(e) => setLowStockBranchId(e.target.value)}>
+                <Select value={lowStockBranchId} onChange={(e) => { setLowStockBranchId(e.target.value); lowStockList.setPage(1); }}>
                   <option value="">اختر فرع</option>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
@@ -741,14 +732,14 @@ export function InventoryPage() {
               )}
 
               <Card>
-                <CardHeader><CardTitle>تنبيهات المخزون المنخفض ({lowStockQuery.data?.length ?? 0})</CardTitle></CardHeader>
+                <CardHeader><CardTitle>تنبيهات المخزون المنخفض ({lowStockPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
                 <CardBody className="p-0">
                   <Table>
                     <THead>
                       <TR><TH>الصنف</TH><TH>الرصيد الحالي</TH><TH>حد إعادة الطلب</TH><TH>الحالة</TH></TR>
                     </THead>
                     <TBody>
-                      {lowStockQuery.data?.map((r) => (
+                      {(lowStockPageQuery.data?.items ?? []).map((r) => (
                         <TR key={r.inventoryItemId}>
                           <TD className="font-semibold text-slate-900">{r.itemName}</TD>
                           <TD>{fmt(r.quantity)} {r.unit}</TD>
@@ -758,7 +749,10 @@ export function InventoryPage() {
                       ))}
                     </TBody>
                   </Table>
-                  {lowStockQuery.data?.length === 0 && <EmptyState>مفيش أصناف منخفضة دلوقتي - كل حاجة تمام</EmptyState>}
+                  {lowStockPageQuery.data && (
+                    <Pagination total={lowStockPageQuery.data.total} limit={lowStockPageQuery.data.limit} offset={lowStockPageQuery.data.offset} onPageChange={lowStockList.setPage} isFetching={lowStockPageQuery.isFetching} />
+                  )}
+                  {lowStockPageQuery.data?.total === 0 && <EmptyState>مفيش أصناف منخفضة دلوقتي - كل حاجة تمام</EmptyState>}
                 </CardBody>
               </Card>
             </>
@@ -910,11 +904,11 @@ export function InventoryPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>سجل طلبات التحويل ({transferRequests.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>سجل طلبات التحويل ({transferRequestsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <div className="border-b border-slate-100 p-4">
                 <Field label="فلترة حسب فرع المصدر (اختياري)">
-                  <Select value={transferFilterBranchId} onChange={(e) => setTransferFilterBranchId(e.target.value)}>
+                  <Select value={transferRequestsList.filters.fromBranchId} onChange={(e) => transferRequestsList.setFilter("fromBranchId", e.target.value)}>
                     <option value="">كل الفروع</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
@@ -926,7 +920,7 @@ export function InventoryPage() {
                   <TR><TH>من</TH><TH>لـ</TH><TH>البنود</TH><TH>التاريخ المطلوب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {transferRequests.map((r) => (
+                  {(transferRequestsPageQuery.data?.items ?? []).map((r) => (
                     <TR key={r.id}>
                       <TD className="font-semibold text-slate-900">{branchName(r.fromBranchId)}</TD>
                       <TD>{branchName(r.toBranchId)}</TD>
@@ -987,7 +981,10 @@ export function InventoryPage() {
                   ))}
                 </TBody>
               </Table>
-              {transferRequests.length === 0 && <EmptyState>مفيش طلبات تحويل لسه</EmptyState>}
+              {transferRequestsPageQuery.data && (
+                <Pagination total={transferRequestsPageQuery.data.total} limit={transferRequestsPageQuery.data.limit} offset={transferRequestsPageQuery.data.offset} onPageChange={transferRequestsList.setPage} isFetching={transferRequestsPageQuery.isFetching} />
+              )}
+              {transferRequestsPageQuery.data?.total === 0 && <EmptyState>مفيش طلبات تحويل لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>
@@ -1006,69 +1003,74 @@ export function InventoryPage() {
               </p>
               <div className="mb-4 flex flex-wrap items-end gap-3">
                 <Field label="الصنف">
-                  <Select value={batchesItemId} onChange={(e) => setBatchesItemId(e.target.value)}>
+                  <Select value={batchesItemId} onChange={(e) => { setBatchesItemId(e.target.value); batchesList.setPage(1); }}>
                     <option value="">اختر صنف</option>
                     {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </Select>
                 </Field>
                 <Field label="الفرع">
-                  <Select value={batchesBranchId} onChange={(e) => setBatchesBranchId(e.target.value)}>
+                  <Select value={batchesBranchId} onChange={(e) => { setBatchesBranchId(e.target.value); batchesList.setPage(1); }}>
                     <option value="">اختر فرع</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </Field>
               </div>
 
-              {batchesQuery.isLoading && <p className="text-xs text-slate-400">بيتحمّل...</p>}
-              {batchesQuery.data && batchesQuery.data.length === 0 && <EmptyState>مفيش دفعات نشطة لهذا الصنف/الفرع</EmptyState>}
-              {batchesQuery.data && batchesQuery.data.length > 0 && (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>رقم الدفعة</TH><TH>المتبقي</TH><TH>الصلاحية</TH><TH>المصدر</TH><TH>الحالة</TH><TH>إجراء</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {batchesQuery.data.map((b) => (
-                      <TR key={b.id}>
-                        <TD className="font-mono text-xs">{b.batchNumber}</TD>
-                        <TD>{fmt(b.remainingQuantity)} / {fmt(b.receivedQuantity)}</TD>
-                        <TD>{b.expiryDate ? b.expiryDate.slice(0, 10) : "-"}</TD>
-                        <TD>{BATCH_SOURCE_LABELS[b.sourceType] ?? b.sourceType}</TD>
-                        <TD><Badge tone={b.status === "active" ? "success" : "neutral"}>{BATCH_STATUS_LABELS[b.status] ?? b.status}</Badge></TD>
-                        <TD>
-                          {canManageBatches && (
-                          <div className="flex items-center gap-1.5">
-                            <Input
-                              type="number"
-                              placeholder="كمية"
-                              className="w-20 py-1 text-xs"
-                              value={writeOffDrafts[b.id] ?? ""}
-                              onChange={(e) => setWriteOffDrafts({ ...writeOffDrafts, [b.id]: e.target.value })}
-                            />
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={writeOffBatch.isPending || !(writeOffDrafts[b.id] ?? "").trim()}
-                              onClick={() => writeOffBatch.mutate({ id: b.id, quantity: Number(writeOffDrafts[b.id]) })}
-                            >
-                              تلف/هالك
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              disabled={writeOffBatch.isPending}
-                              onClick={() => writeOffBatch.mutate({ id: b.id, markExpired: true })}
-                            >
-                              انتهت الصلاحية
-                            </Button>
-                          </div>
-                          )}
-                        </TD>
+              {batchesPageQuery.isLoading && <p className="text-xs text-slate-400">بيتحمّل...</p>}
+              {batchesPageQuery.data?.total === 0 && <EmptyState>مفيش دفعات نشطة لهذا الصنف/الفرع</EmptyState>}
+              {!!batchesPageQuery.data?.total && (
+                <>
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>رقم الدفعة</TH><TH>المتبقي</TH><TH>الصلاحية</TH><TH>المصدر</TH><TH>الحالة</TH><TH>إجراء</TH>
                       </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                    </THead>
+                    <TBody>
+                      {(batchesPageQuery.data?.items ?? []).map((b) => (
+                        <TR key={b.id}>
+                          <TD className="font-mono text-xs">{b.batchNumber}</TD>
+                          <TD>{fmt(b.remainingQuantity)} / {fmt(b.receivedQuantity)}</TD>
+                          <TD>{b.expiryDate ? b.expiryDate.slice(0, 10) : "-"}</TD>
+                          <TD>{BATCH_SOURCE_LABELS[b.sourceType] ?? b.sourceType}</TD>
+                          <TD><Badge tone={b.status === "active" ? "success" : "neutral"}>{BATCH_STATUS_LABELS[b.status] ?? b.status}</Badge></TD>
+                          <TD>
+                            {canManageBatches && (
+                              <div className="flex items-center gap-1.5">
+                                <Input
+                                  type="number"
+                                  placeholder="كمية"
+                                  className="w-20 py-1 text-xs"
+                                  value={writeOffDrafts[b.id] ?? ""}
+                                  onChange={(e) => setWriteOffDrafts({ ...writeOffDrafts, [b.id]: e.target.value })}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={writeOffBatch.isPending || !(writeOffDrafts[b.id] ?? "").trim()}
+                                  onClick={() => writeOffBatch.mutate({ id: b.id, quantity: Number(writeOffDrafts[b.id]) })}
+                                >
+                                  تلف/هالك
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={writeOffBatch.isPending}
+                                  onClick={() => writeOffBatch.mutate({ id: b.id, markExpired: true })}
+                                >
+                                  انتهت الصلاحية
+                                </Button>
+                              </div>
+                            )}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {batchesPageQuery.data && (
+                    <Pagination total={batchesPageQuery.data.total} limit={batchesPageQuery.data.limit} offset={batchesPageQuery.data.offset} onPageChange={batchesList.setPage} isFetching={batchesPageQuery.isFetching} />
+                  )}
+                </>
               )}
             </CardBody>
           </Card>

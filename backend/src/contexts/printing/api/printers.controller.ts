@@ -15,6 +15,7 @@ import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/
 import { PrintingDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Printer } from "../domain/printer.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { BranchListQueryDto, listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 function toPublicPrinter(printer: Printer) {
   return {
@@ -47,10 +48,12 @@ export class PrintersController {
   @BranchScoped()
   @Get()
   @RequirePermission(PERMISSION.PRINTERS_VIEW, PERMISSION.PRINTERS_MANAGE)
-  async list(@Query("branchId") branchId: string | undefined, @Req() req: Request & { user: AuthenticatedUser }) {
-    const effectiveBranchId = branchId || req.user.branchId;
-    if (!effectiveBranchId) return [];
-    return (await this.listPrinters.execute(effectiveBranchId)).map(toPublicPrinter);
+  async list(@Query() query: BranchListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const page = pageRequestOf(query);
+    const effectiveBranchId = query.branchId || req.user.branchId;
+    if (!effectiveBranchId) return listResponse([], 0, page);
+    const { rows, total } = await this.listPrinters.execute(effectiveBranchId, page);
+    return listResponse(rows.map(toPublicPrinter), total, page);
   }
 
   @BranchScoped()

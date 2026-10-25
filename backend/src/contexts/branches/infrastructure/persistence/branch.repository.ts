@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Branch } from "../../domain/branch.aggregate";
 import type { BranchRepositoryPort } from "../../domain/ports/branch-repository.port";
@@ -46,8 +48,13 @@ export class BranchRepository implements BranchRepositoryPort {
   }
 
   async list(): Promise<Branch[]> {
-    const rows = await this.db.select().from(branches).orderBy(asc(branches.name));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage()).rows;
+  }
+
+  async listPage(page?: PageRequest): Promise<{ rows: Branch[]; total: number }> {
+    const query = this.db.select().from(branches).orderBy(asc(branches.name), desc(branches.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(branches)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(branch: Branch): typeof branches.$inferInsert {

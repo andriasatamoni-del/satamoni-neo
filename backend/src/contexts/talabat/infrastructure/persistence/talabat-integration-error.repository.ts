@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import {
   TalabatIntegrationError,
@@ -37,12 +39,14 @@ export class TalabatIntegrationErrorRepository implements TalabatIntegrationErro
   }
 
   async list(filter?: { status?: string }): Promise<TalabatIntegrationError[]> {
-    const rows = await this.db
-      .select()
-      .from(talabatIntegrationErrors)
-      .where(filter?.status ? eq(talabatIntegrationErrors.status, filter.status) : undefined)
-      .orderBy(desc(talabatIntegrationErrors.created_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { status?: string }, page?: PageRequest): Promise<{ rows: TalabatIntegrationError[]; total: number }> {
+    const where = filter?.status ? eq(talabatIntegrationErrors.status, filter.status) : undefined;
+    const query = this.db.select().from(talabatIntegrationErrors).where(where).orderBy(desc(talabatIntegrationErrors.created_at), desc(talabatIntegrationErrors.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(talabatIntegrationErrors).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   // context is jsonb: Drizzle serialises it.

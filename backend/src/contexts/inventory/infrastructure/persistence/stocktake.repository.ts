@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Stocktake } from "../../domain/stocktake.aggregate";
 import type { StocktakeRepositoryPort } from "../../domain/ports/stocktake-repository.port";
@@ -51,14 +53,16 @@ export class StocktakeRepository implements StocktakeRepositoryPort {
   }
 
   async list(filter?: { branchId?: string }): Promise<Stocktake[]> {
-    const rows = await this.db
-      .select()
-      .from(stocktakes)
-      .where(filter?.branchId ? eq(stocktakes.branch_id, filter.branchId) : undefined)
-      .orderBy(desc(stocktakes.created_at));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string }, page?: PageRequest): Promise<{ rows: Stocktake[]; total: number }> {
+    const where = filter?.branchId ? eq(stocktakes.branch_id, filter.branchId) : undefined;
+    const query = this.db.select().from(stocktakes).where(where).orderBy(desc(stocktakes.created_at), desc(stocktakes.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(stocktakes).where(where)));
     const result: Stocktake[] = [];
     for (const row of rows) result.push(this.toDomain(row, await this.loadLines(row.id)));
-    return result;
+    return { rows: result, total };
   }
 
   private loadLines(stocktakeId: string): Promise<(typeof stocktakeLines.$inferSelect)[]> {

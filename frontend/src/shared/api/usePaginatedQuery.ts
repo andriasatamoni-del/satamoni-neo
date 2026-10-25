@@ -26,11 +26,13 @@ export function toQueryString(params: ListParams): string {
  * One page of a server-side paginated list. `key` is the query-key prefix the page's mutations already invalidate
  * (e.g. ["orders"]), so a refetch after a change still happens; the previous page stays on screen while the next loads.
  */
-export function usePaginatedQuery<T>(key: QueryKey, path: string, params: ListParams, options: { enabled?: boolean } = {}) {
+export function usePaginatedQuery<T>(key: QueryKey, path: string, params: ListParams, options: { enabled?: boolean; refetchInterval?: number | false; retry?: boolean } = {}) {
   return useQuery({
     queryKey: [...key, "page", params],
     queryFn: () => apiRequest<Paginated<T>>(`${path}${toQueryString({ ...params, paginate: 1 })}`),
     placeholderData: keepPreviousData,
     enabled: options.enabled,
+    refetchInterval: options.refetchInterval,
+    retry: options.retry,
   });
 }

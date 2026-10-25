@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { FiscalYearClosing } from "../../domain/fiscal-year-closing.aggregate";
 import type { FiscalYearClosingRepositoryPort } from "../../domain/ports/fiscal-year-closing-repository.port";
@@ -26,8 +28,13 @@ export class FiscalYearClosingRepository implements FiscalYearClosingRepositoryP
   }
 
   async list(): Promise<FiscalYearClosing[]> {
-    const rows = await this.db.select().from(fiscalYearClosings).orderBy(desc(fiscalYearClosings.year));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage()).rows;
+  }
+
+  async listPage(page?: PageRequest): Promise<{ rows: FiscalYearClosing[]; total: number }> {
+    const query = this.db.select().from(fiscalYearClosings).orderBy(desc(fiscalYearClosings.year), desc(fiscalYearClosings.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(fiscalYearClosings)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof fiscalYearClosings.$inferSelect): FiscalYearClosing {

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { FiscalYearClosing } from "../../domain/fiscal-year-closing.aggregate";
 import {
   FISCAL_YEAR_CLOSING_REPOSITORY,
@@ -9,7 +10,7 @@ import {
 export class ListFiscalYearClosingsHandler {
   constructor(@Inject(FISCAL_YEAR_CLOSING_REPOSITORY) private readonly closings: FiscalYearClosingRepositoryPort) {}
 
-  execute(): Promise<FiscalYearClosing[]> {
-    return this.closings.list();
+  execute(page?: PageRequest): Promise<{ rows: FiscalYearClosing[]; total: number }> {
+    return this.closings.listPage(page);
   }
 }
