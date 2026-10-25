@@ -14,6 +14,7 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import { BranchScopeGuard, BranchScoped, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("reports")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -71,13 +72,17 @@ export class ReportsController {
   @Get("action-center")
   @RequirePermission(PERMISSION.REPORTS_VIEW)
   async actionCenter(
+    @Query() listQuery: ListQueryDto,
     @Query("branchId") branchId: string | undefined,
     @Query("from") from: string | undefined,
     @Query("to") to: string | undefined,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
     const effectiveBranchId = this.effectiveBranchId(req, branchId);
-    return this.getActionCenter.execute({ branchId: effectiveBranchId, from, to });
+    const report = await this.getActionCenter.execute({ branchId: effectiveBranchId, from, to });
+    const page = pageRequestOf(listQuery);
+    if (!page) return report;
+    return { ...report, alerts: pageOfRows(report.alerts, page), total: report.alerts.length, limit: page.limit, offset: page.offset };
   }
 
   // بطاقة صحة الفروع - مقارنة كل الفروع في مكان واحد (إيراد/تكلفة طعام%/فرق كاش/مخزون سالب/شكاوى)،
