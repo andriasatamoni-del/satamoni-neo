@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Payment } from "../../domain/payment.aggregate";
 import type { PaymentMethodKind, SettlementChannel } from "../../domain/payment-method.aggregate";
@@ -44,19 +46,19 @@ export class PaymentRepository implements PaymentRepositoryPort {
   }
 
   async list(filter?: { branchId?: string; settlementChannel?: string; fromDate?: Date; toDate?: Date }): Promise<Payment[]> {
-    const rows = await this.db
-      .select()
-      .from(payments)
-      .where(
-        and(
-          filter?.branchId ? eq(payments.branch_id, filter.branchId) : undefined,
-          filter?.settlementChannel ? eq(payments.settlement_channel, filter.settlementChannel) : undefined,
-          filter?.fromDate ? gte(payments.locked_at, filter.fromDate) : undefined,
-          filter?.toDate ? lte(payments.locked_at, filter.toDate) : undefined
-        )
-      )
-      .orderBy(desc(payments.locked_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; settlementChannel?: string; fromDate?: Date; toDate?: Date }, page?: PageRequest): Promise<{ rows: Payment[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(payments.branch_id, filter.branchId) : undefined,
+      filter?.settlementChannel ? eq(payments.settlement_channel, filter.settlementChannel) : undefined,
+      filter?.fromDate ? gte(payments.locked_at, filter.fromDate) : undefined,
+      filter?.toDate ? lte(payments.locked_at, filter.toDate) : undefined
+    );
+    const query = this.db.select().from(payments).where(where).orderBy(desc(payments.locked_at), desc(payments.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(payments).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(payment: Payment) {

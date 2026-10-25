@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { TalabatOrder } from "../../domain/talabat-order.aggregate";
 import { TALABAT_ORDER_REPOSITORY, type TalabatOrderRepositoryPort } from "../../domain/ports/talabat-order-repository.port";
 
@@ -6,7 +7,7 @@ import { TALABAT_ORDER_REPOSITORY, type TalabatOrderRepositoryPort } from "../..
 export class ListTalabatOrdersHandler {
   constructor(@Inject(TALABAT_ORDER_REPOSITORY) private readonly talabatOrders: TalabatOrderRepositoryPort) {}
 
-  async execute(filter?: { branchId?: string; status?: string; from?: Date; to?: Date }): Promise<TalabatOrder[]> {
-    return this.talabatOrders.list(filter);
+  async execute(filter?: { branchId?: string; status?: string; from?: Date; to?: Date }, page?: PageRequest): Promise<{ rows: TalabatOrder[]; total: number }> {
+    return this.talabatOrders.listPage(filter, page);
   }
 }

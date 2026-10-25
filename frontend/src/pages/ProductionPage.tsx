@@ -11,6 +11,9 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface InventoryItem { id: string; name: string; unit: string; itemType: "raw" | "manufactured"; }
 interface Branch { id: string; name: string; }
@@ -82,17 +85,13 @@ export function ProductionPage() {
     queryFn: () => apiRequest<Recipe[]>("/catalog/recipes?recipeType=manufactured_item"),
     enabled: tab === "recipes",
   });
-  const ordersQuery = useQuery({
-    queryKey: ["production", "orders"],
-    queryFn: () => apiRequest<ConversionOrder[]>("/production"),
-    enabled: canSeeProduction && tab === "orders",
-  });
 
   const items = itemsQuery.data ?? [];
   const manufacturedItems = items.filter((i) => i.itemType === "manufactured");
   const rawItems = items.filter((i) => i.itemType === "raw");
   const recipes = recipesQuery.data ?? [];
-  const orders = ordersQuery.data ?? [];
+  const ordersList = useListState([] as const, { prefix: "orders." });
+  const ordersPageQuery = usePaginatedQuery<ConversionOrder>(["production", "orders"], "/production", ordersList.params, { enabled: canSeeProduction && tab === "orders" });
 
   function itemName(id: string): string {
     return items.find((i) => i.id === id)?.name ?? id;
@@ -352,14 +351,14 @@ export function ProductionPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>أوامر التحويل ({orders.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>أوامر التحويل ({ordersPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
                   <TR><TH>الناتج</TH><TH>المخطط</TH><TH>الفعلي</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {orders.map((order) => (
+                  {(ordersPageQuery.data?.items ?? []).map((order) => (
                     <Fragment key={order.id}>
                       <TR>
                         <TD className="font-semibold text-slate-900">{itemName(order.outputItemId)}</TD>
@@ -418,7 +417,10 @@ export function ProductionPage() {
                   ))}
                 </TBody>
               </Table>
-              {orders.length === 0 && <EmptyState>مفيش أوامر تحويل لسه</EmptyState>}
+              {ordersPageQuery.data && (
+                <Pagination total={ordersPageQuery.data.total} limit={ordersPageQuery.data.limit} offset={ordersPageQuery.data.offset} onPageChange={ordersList.setPage} isFetching={ordersPageQuery.isFetching} />
+              )}
+              {ordersPageQuery.data?.total === 0 && <EmptyState>مفيش أوامر تحويل لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>

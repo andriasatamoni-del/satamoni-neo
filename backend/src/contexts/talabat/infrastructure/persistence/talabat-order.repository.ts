@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { TalabatOrder, type CancellationSource, type TalabatOrderStatus } from "../../domain/talabat-order.aggregate";
 import type { TalabatOrderRepositoryPort } from "../../domain/ports/talabat-order-repository.port";
@@ -39,19 +41,19 @@ export class TalabatOrderRepository implements TalabatOrderRepositoryPort {
   }
 
   async list(filter?: { branchId?: string; status?: string; from?: Date; to?: Date }): Promise<TalabatOrder[]> {
-    const rows = await this.db
-      .select()
-      .from(talabatOrders)
-      .where(
-        and(
-          filter?.branchId ? eq(talabatOrders.branch_id, filter.branchId) : undefined,
-          filter?.status ? eq(talabatOrders.status, filter.status) : undefined,
-          filter?.from ? gte(talabatOrders.created_at, filter.from) : undefined,
-          filter?.to ? lte(talabatOrders.created_at, filter.to) : undefined
-        )
-      )
-      .orderBy(desc(talabatOrders.created_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; status?: string; from?: Date; to?: Date }, page?: PageRequest): Promise<{ rows: TalabatOrder[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(talabatOrders.branch_id, filter.branchId) : undefined,
+      filter?.status ? eq(talabatOrders.status, filter.status) : undefined,
+      filter?.from ? gte(talabatOrders.created_at, filter.from) : undefined,
+      filter?.to ? lte(talabatOrders.created_at, filter.to) : undefined
+    );
+    const query = this.db.select().from(talabatOrders).where(where).orderBy(desc(talabatOrders.created_at), desc(talabatOrders.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(talabatOrders).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   // raw_payload is jsonb: Drizzle serialises it.

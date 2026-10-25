@@ -11,6 +11,9 @@ import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table"
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
 import { can } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Reward {
   id: string;
@@ -49,7 +52,6 @@ export function LoyaltyPage() {
     queryFn: () => apiRequest<{ loyaltyPointsPerEgp: number }>("/pos-settings"),
     enabled: canSeeSettings,
   });
-  const rewardsQuery = useQuery({ queryKey: ["loyalty", "rewards"], queryFn: () => apiRequest<Reward[]>("/loyalty/rewards") });
   const itemsQuery = useQuery({
     queryKey: ["catalog", "items"],
     queryFn: () => apiRequest<MenuItem[]>("/catalog/items"),
@@ -119,7 +121,8 @@ export function LoyaltyPage() {
     };
   }
 
-  const rewards = rewardsQuery.data ?? [];
+  const rewardsList = useListState([] as const, { prefix: "rewards." });
+  const rewardsPageQuery = usePaginatedQuery<Reward>(["loyalty", "rewards"], "/loyalty/rewards", rewardsList.params);
   const rate = settingsQuery.data?.loyaltyPointsPerEgp ?? 0;
 
   return (
@@ -165,7 +168,7 @@ export function LoyaltyPage() {
               className="grid grid-cols-1 gap-4 md:grid-cols-3"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
-                const current = rewards.find((r) => r.id === editingId);
+                const current = (rewardsPageQuery.data?.items ?? []).find((r) => r.id === editingId);
                 saveReward.mutate({ id: editingId ?? undefined, body: rewardBody(form, current ? { isActive: current.isActive } : {}) });
               }}
             >
@@ -243,7 +246,7 @@ export function LoyaltyPage() {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>كتالوج المكافآت ({rewards.length})</CardTitle>
+          <CardTitle>كتالوج المكافآت ({rewardsPageQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
           <Table>
@@ -258,7 +261,7 @@ export function LoyaltyPage() {
               </TR>
             </THead>
             <TBody>
-              {rewards.map((r) => (
+              {(rewardsPageQuery.data?.items ?? []).map((r) => (
                 <TR key={r.id}>
                   <TD className="font-semibold text-slate-900">
                     {r.name}
@@ -288,7 +291,10 @@ export function LoyaltyPage() {
               ))}
             </TBody>
           </Table>
-          {rewards.length === 0 && <EmptyState>مفيش مكافآت لسه - ضيف أول مكافأة عشان العملاء يقدروا يصرفوا نقاطهم</EmptyState>}
+          {rewardsPageQuery.data && (
+            <Pagination total={rewardsPageQuery.data.total} limit={rewardsPageQuery.data.limit} offset={rewardsPageQuery.data.offset} onPageChange={rewardsList.setPage} isFetching={rewardsPageQuery.isFetching} />
+          )}
+          {rewardsPageQuery.data?.total === 0 && <EmptyState>مفيش مكافآت لسه - ضيف أول مكافأة عشان العملاء يقدروا يصرفوا نقاطهم</EmptyState>}
         </CardBody>
       </Card>
     </div>

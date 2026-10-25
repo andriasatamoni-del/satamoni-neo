@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
 import type {
   NotifiableOrder,
@@ -55,9 +57,10 @@ export class OrderNotificationStore implements OrderNotificationStorePort {
       .where(eq(orderNotifications.id, id));
   }
 
-  async listRecent(limit: number): Promise<OrderNotificationRecord[]> {
-    const rows = await this.db.select().from(orderNotifications).orderBy(desc(orderNotifications.created_at)).limit(limit);
-    return rows.map((r) => ({
+  async listRecent(page: PageRequest): Promise<{ rows: OrderNotificationRecord[]; total: number }> {
+    const query = this.db.select().from(orderNotifications).orderBy(desc(orderNotifications.created_at), desc(orderNotifications.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(orderNotifications)));
+    return { total, rows: rows.map((r) => ({
       id: r.id,
       orderId: r.order_id,
       kind: r.kind as OrderNotificationKind,
@@ -67,6 +70,6 @@ export class OrderNotificationStore implements OrderNotificationStorePort {
       status: r.status as OrderNotificationRecord["status"],
       error: r.error,
       createdAt: r.created_at,
-    }));
+    })) };
   }
 }

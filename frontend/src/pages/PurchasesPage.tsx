@@ -11,6 +11,9 @@ import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table"
 import { can } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface PurchaseLine {
   inventoryItemId: string; quantity: number; unit: string | null; unitPrice: number; lineTotal: number;
@@ -56,11 +59,6 @@ export function PurchasesPage() {
     enabled: !isCashier && can(user, PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE),
   });
 
-  const [filterBranchId, setFilterBranchId] = useState("");
-  const purchasesQuery = useQuery({
-    queryKey: ["purchases", "list", filterBranchId],
-    queryFn: () => apiRequest<Purchase[]>(filterBranchId ? `/purchases?branchId=${filterBranchId}` : "/purchases"),
-  });
 
   const [form, setForm] = useState({
     branchId: "", businessDate: new Date().toISOString().slice(0, 10), amount: "", notes: "",
@@ -132,7 +130,8 @@ export function PurchasesPage() {
     onError: (err) => setActionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  const purchases = purchasesQuery.data ?? [];
+  const purchasesList = useListState(["branchId"] as const, { prefix: "purchases." });
+  const purchasesPageQuery = usePaginatedQuery<Purchase>(["purchases", "list"], "/purchases", purchasesList.params);
 
   function branchName(id: string): string {
     return branches.find((b) => b.id === id)?.name ?? id;
@@ -245,12 +244,12 @@ export function PurchasesPage() {
         )}
 
         <Card>
-          <CardHeader><CardTitle>سجل المشتريات ({purchases.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>سجل المشتريات ({purchasesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
             {!isCashier && (
               <div className="border-b border-slate-100 p-4">
                 <Field label="فلترة حسب فرع (اختياري)">
-                  <Select value={filterBranchId} onChange={(e) => setFilterBranchId(e.target.value)}>
+                  <Select value={purchasesList.filters.branchId} onChange={(e) => purchasesList.setFilter("branchId", e.target.value)}>
                     <option value="">كل الفروع</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
@@ -265,7 +264,7 @@ export function PurchasesPage() {
                 </TR>
               </THead>
               <TBody>
-                {purchases.map((p) => (
+                {(purchasesPageQuery.data?.items ?? []).map((p) => (
                   <TR key={p.id}>
                     <TD>{p.businessDate.slice(0, 10)}</TD>
                     {!isCashier && <TD>{branchName(p.branchId)}</TD>}
@@ -308,7 +307,10 @@ export function PurchasesPage() {
                 ))}
               </TBody>
             </Table>
-            {purchases.length === 0 && <EmptyState>مفيش مشتريات مسجلة لسه</EmptyState>}
+            {purchasesPageQuery.data && (
+              <Pagination total={purchasesPageQuery.data.total} limit={purchasesPageQuery.data.limit} offset={purchasesPageQuery.data.offset} onPageChange={purchasesList.setPage} isFetching={purchasesPageQuery.isFetching} />
+            )}
+            {purchasesPageQuery.data?.total === 0 && <EmptyState>مفيش مشتريات مسجلة لسه</EmptyState>}
           </CardBody>
         </Card>
       </div>

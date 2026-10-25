@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, ne } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Position } from "../../domain/position.aggregate";
 import type { PositionRepositoryPort } from "../../domain/ports/position-repository.port";
@@ -40,17 +42,17 @@ export class PositionRepository implements PositionRepositoryPort {
   }
 
   async list(filter?: { status?: string; departmentId?: string }): Promise<Position[]> {
-    const rows = await this.db
-      .select()
-      .from(positions)
-      .where(
-        and(
-          filter?.status ? eq(positions.status, filter.status) : undefined,
-          filter?.departmentId ? eq(positions.department_id, filter.departmentId) : undefined
-        )
-      )
-      .orderBy(asc(positions.name));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { status?: string; departmentId?: string }, page?: PageRequest): Promise<{ rows: Position[]; total: number }> {
+    const where = and(
+      filter?.status ? eq(positions.status, filter.status) : undefined,
+      filter?.departmentId ? eq(positions.department_id, filter.departmentId) : undefined
+    );
+    const query = this.db.select().from(positions).where(where).orderBy(asc(positions.name), desc(positions.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(positions).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(position: Position) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseFilters, UseGuards } from "@nestjs/common";
 import { RegisterBankHandler } from "../application/commands/register-bank.handler";
 import { UpdateBankHandler } from "../application/commands/update-bank.handler";
 import { RegisterBankAccountHandler } from "../application/commands/register-bank-account.handler";
@@ -15,6 +15,7 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Bank } from "../domain/bank.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("banks")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -31,8 +32,10 @@ export class BanksController {
 
   @Get()
   @RequirePermission(PERMISSION.BANKS_VIEW)
-  async list() {
-    return (await this.listBanks.execute()).map(toPublicBank);
+  async list(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listBanks.execute(page);
+    return listResponse(rows.map(toPublicBank), total, page);
   }
 
   @Post()
@@ -49,8 +52,10 @@ export class BanksController {
 
   @Get("accounts")
   @RequirePermission(PERMISSION.BANKS_VIEW)
-  async accounts() {
-    return this.listBankAccounts.execute();
+  async accounts(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const rows = await this.listBankAccounts.execute();
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 
   @Post("accounts")

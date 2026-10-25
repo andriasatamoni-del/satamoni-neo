@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, count, desc, eq, ne } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { WhatsappPendingOrder, type WhatsappPendingOrderStatus } from "../../domain/whatsapp-pending-order.aggregate";
 import type { WhatsappPendingOrderRepositoryPort } from "../../domain/ports/whatsapp-pending-order-repository.port";
@@ -81,14 +83,16 @@ export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepos
 
   // المسودات (اللي البوت لسه بيجمّعها) مش بتظهر لطاقم المراجعة إلا لو اتطلبت صراحة بالحالة
   async list(filter?: { status?: string }): Promise<WhatsappPendingOrder[]> {
-    const rows = await this.db
-      .select()
-      .from(whatsappPendingOrders)
-      .where(filter?.status ? eq(whatsappPendingOrders.status, filter.status) : ne(whatsappPendingOrders.status, "DRAFT"))
-      .orderBy(desc(whatsappPendingOrders.created_at));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { status?: string }, page?: PageRequest): Promise<{ rows: WhatsappPendingOrder[]; total: number }> {
+    const where = filter?.status ? eq(whatsappPendingOrders.status, filter.status) : ne(whatsappPendingOrders.status, "DRAFT");
+    const query = this.db.select().from(whatsappPendingOrders).where(where).orderBy(desc(whatsappPendingOrders.created_at), desc(whatsappPendingOrders.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(whatsappPendingOrders).where(where)));
     const orders: WhatsappPendingOrder[] = [];
     for (const row of rows) orders.push(this.toDomain(row, await this.loadLines(row.id)));
-    return orders;
+    return { rows: orders, total };
   }
 
   private loadLines(pendingOrderId: string): Promise<(typeof whatsappPendingOrderLines.$inferSelect)[]> {

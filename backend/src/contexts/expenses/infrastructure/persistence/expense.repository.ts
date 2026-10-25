@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, type SQL } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Expense, type ExpenseStatus } from "../../domain/expense.aggregate";
 import type { ExpenseRepositoryPort } from "../../domain/ports/expense-repository.port";
@@ -59,16 +61,18 @@ export class ExpenseRepository implements ExpenseRepositoryPort {
   }
 
   async list(filter?: { branchId?: string; businessDate?: Date; status?: string }): Promise<Expense[]> {
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; businessDate?: Date; status?: string }, page?: PageRequest): Promise<{ rows: Expense[]; total: number }> {
     const conditions: SQL[] = [];
     if (filter?.branchId) conditions.push(eq(expenses.branch_id, filter.branchId));
     if (filter?.businessDate) conditions.push(eq(expenses.business_date, filter.businessDate));
     if (filter?.status) conditions.push(eq(expenses.status, filter.status));
-    const rows = await this.db
-      .select()
-      .from(expenses)
-      .where(and(...conditions))
-      .orderBy(desc(expenses.business_date), desc(expenses.created_at));
-    return rows.map((r) => this.toDomain(r));
+    const where = and(...conditions);
+    const query = this.db.select().from(expenses).where(where).orderBy(desc(expenses.business_date), desc(expenses.created_at), desc(expenses.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(expenses).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof expenses.$inferSelect): Expense {

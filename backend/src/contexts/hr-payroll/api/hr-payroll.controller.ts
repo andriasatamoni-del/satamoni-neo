@@ -59,8 +59,8 @@ import type { LeaveRequest } from "../domain/leave-request.aggregate";
 import type { EmployeeAttendanceShift } from "../domain/employee-attendance-shift.aggregate";
 import type { PayrollAdjustment } from "../domain/payroll-adjustment.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
-import { ListEmployeesQueryDto, ListLeaveRequestsQueryDto, ListPayrollRunsQueryDto } from "./dto/list-hr-query.dto";
+import { listResponse, splitListQuery, ListQueryDto, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
+import { ListEmployeesQueryDto, ListLeaveRequestsQueryDto, ListPayrollRunsQueryDto, ListDepartmentsQueryDto, ListPositionsQueryDto, ListPayrollAdjustmentsQueryDto } from "./dto/list-hr-query.dto";
 
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -172,8 +172,10 @@ export class HrPayrollController {
   // نص حر على employees.department/job_title
   @Get("departments")
   @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
-  async departments(@Query("status") status?: string) {
-    return (await this.listDepartments.execute({ status })).map(toPublicDepartment);
+  async departments(@Query() query: ListDepartmentsQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listDepartments.execute({ status: query.status }, page);
+    return listResponse(rows.map(toPublicDepartment), total, page);
   }
 
   @Post("departments")
@@ -190,8 +192,10 @@ export class HrPayrollController {
 
   @Get("positions")
   @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
-  async positions(@Query("status") status?: string, @Query("departmentId") departmentId?: string) {
-    return (await this.listPositions.execute({ status, departmentId })).map(toPublicPosition);
+  async positions(@Query() query: ListPositionsQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPositions.execute({ status: query.status, departmentId: query.departmentId }, page);
+    return listResponse(rows.map(toPublicPosition), total, page);
   }
 
   @Post("positions")
@@ -255,14 +259,18 @@ export class HrPayrollController {
 
   @Get("self/payslips")
   @RequirePermission(PERMISSION.HR_SELF_VIEW)
-  async ownPayslips(@Req() req: Request & { user: AuthenticatedUser }) {
-    return this.listOwnPayslips.execute(req.user.id);
+  async ownPayslips(@Query() query: ListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const page = pageRequestOf(query);
+    const rows = await this.listOwnPayslips.execute(req.user.id);
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 
   @Get("self/leave-requests")
   @RequirePermission(PERMISSION.HR_SELF_LEAVE_MANAGE)
-  async ownLeaveRequests(@Req() req: Request & { user: AuthenticatedUser }) {
-    return (await this.listOwnLeaveRequests.execute(req.user.id)).map(toPublicLeaveRequest);
+  async ownLeaveRequests(@Query() query: ListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const page = pageRequestOf(query);
+    const { requests, total } = await this.listOwnLeaveRequests.execute(req.user.id, page);
+    return listResponse(requests.map(toPublicLeaveRequest), total, page);
   }
 
   @Post("self/leave-requests")
@@ -287,8 +295,10 @@ export class HrPayrollController {
 
   @Get("self/attendance")
   @RequirePermission(PERMISSION.HR_SELF_VIEW)
-  async ownAttendance(@Req() req: Request & { user: AuthenticatedUser }) {
-    return (await this.listOwnAttendanceShifts.execute(req.user.id)).map(toPublicAttendanceShift);
+  async ownAttendance(@Query() query: ListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listOwnAttendanceShifts.execute(req.user.id, page);
+    return listResponse(rows.map(toPublicAttendanceShift), total, page);
   }
 
   @Post("self/attendance/check-in")
@@ -340,8 +350,10 @@ export class HrPayrollController {
   @CompanyWideOnly()
   @Get("adjustments")
   @RequirePermission(PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE)
-  async adjustments(@Query("employeeId") employeeId?: string, @Query("status") status?: string) {
-    return (await this.listPayrollAdjustments.execute({ employeeId, status })).map(toPublicAdjustment);
+  async adjustments(@Query() query: ListPayrollAdjustmentsQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPayrollAdjustments.execute({ employeeId: query.employeeId, status: query.status }, page);
+    return listResponse(rows.map(toPublicAdjustment), total, page);
   }
 
   @CompanyWideOnly()

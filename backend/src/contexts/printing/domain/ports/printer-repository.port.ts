@@ -1,9 +1,11 @@
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import type { Printer, PrinterType } from "../printer.aggregate";
 
 export interface PrinterRepositoryPort {
   save(printer: Printer): Promise<void>;
   findById(id: string): Promise<Printer | null>;
   listByBranch(branchId: string): Promise<Printer[]>;
+  listByBranchPage(branchId: string, page?: PageRequest): Promise<{ rows: Printer[]; total: number }>;
   // طابعة شغالة من نوع معيّن في الفرع - الافتراضية (isDefaultForType) الأول، وإلا أقدم طابعة شغالة من
   // نفس النوع (created_at ASC - نفس فلسفة "id ASC" في الريبو القديم، بس هنا الـid عشوائي UUID مش تسلسلي)
   resolveForType(branchId: string, printerType: PrinterType): Promise<Printer | null>;

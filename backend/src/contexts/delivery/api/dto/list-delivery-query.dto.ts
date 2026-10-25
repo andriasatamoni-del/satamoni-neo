@@ -18,3 +18,23 @@ export class ListDeliveryAssignmentsQueryDto extends BranchListQueryDto {
   @IsIn(DISPATCH_STATUSES)
   status?: string;
 }
+
+export class ListDriverSettlementsQueryDto extends BranchListQueryDto {
+  @IsOptional()
+  @IsString()
+  driverId?: string;
+
+  @IsOptional()
+  @IsString()
+  varianceStatus?: string;
+}
+
+export class ListDriverAttendanceShiftsQueryDto extends BranchListQueryDto {
+  @IsOptional()
+  @IsString()
+  driverId?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}

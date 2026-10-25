@@ -41,7 +41,7 @@ import { RegisterComboDto } from "./dto/register-combo.dto";
 import { UpdateComboDto } from "./dto/update-combo.dto";
 import { ReplaceComboItemsDto } from "./dto/replace-combo-items.dto";
 import { ListMenuCategoriesQueryDto, ListMenuItemsQueryDto } from "./dto/list-catalog-query.dto";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { listResponse, splitListQuery, ListQueryDto, pageRequestOf } from "../../../shared/http/list-query.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
@@ -269,15 +269,19 @@ export class CatalogController {
   // العروض النشطة بس - نفس GET /api/combos بالريبو القديم (لأي حد يقدر يسجّل/يشوف طلبات)
   @Get("combos")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
-  async combos() {
-    return (await this.listCombos.execute({ activeOnly: true })).map(toPublicCombo);
+  async combos(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listCombos.execute({ activeOnly: true }, page);
+    return listResponse(rows.map(toPublicCombo), total, page);
   }
 
   // كل العروض (نشطة وغير نشطة) - نفس GET /api/combos/all بالريبو القديم (لشاشة الإدارة بس)
   @Get("combos/all")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async allCombos() {
-    return (await this.listCombos.execute()).map(toPublicCombo);
+  async allCombos(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listCombos.execute(undefined, page);
+    return listResponse(rows.map(toPublicCombo), total, page);
   }
 
   @Post("combos")

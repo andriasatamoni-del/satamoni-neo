@@ -18,6 +18,7 @@ import { businessDateString } from "../../../shared/time/business-date";
 import { PurchasesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Purchase } from "../domain/purchase.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("purchases")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -39,15 +40,17 @@ export class PurchasesController {
     @Query("branchId") branchId: string | undefined,
     @Query("businessDate") businessDate: string | undefined,
     @Query("status") status: string | undefined,
+    @Query() listQuery: ListQueryDto,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
+    const page = pageRequestOf(listQuery);
     const scopedBranchId = !req.user.permissions.has(PERMISSION.PURCHASES_VIEW) ? req.user.branchId ?? undefined : branchId;
-    const purchases = await this.listPurchases.execute({
+    const { rows, total } = await this.listPurchases.execute({
       branchId: scopedBranchId,
       businessDate: businessDate ? new Date(businessDate) : undefined,
       status,
-    });
-    return purchases.map(toPublicPurchase);
+    }, page);
+    return listResponse(rows.map(toPublicPurchase), total, page);
   }
 
   @BranchScoped()

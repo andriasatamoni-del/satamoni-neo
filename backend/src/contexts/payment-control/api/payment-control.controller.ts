@@ -23,11 +23,13 @@ import { RequestPaymentAdjustmentDto } from "./dto/request-payment-adjustment.dt
 import { RegisterReconciliationRecordDto } from "./dto/register-reconciliation-record.dto";
 import { MatchReconciliationRecordDto } from "./dto/match-reconciliation-record.dto";
 import { CommitReconciliationImportDto } from "./dto/commit-reconciliation-import.dto";
+import { ListAdjustmentRequestsQueryDto, ListPaymentsQueryDto, ListReconciliationRecordsQueryDto } from "./dto/list-payment-control-query.dto";
+import { BranchListQueryDto, listResponse, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, branchScopeOf, requireCompanyWide } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, BranchResource, CurrentBranchScope, scopedBranchId, requireCompanyWide, type BranchScope } from "../../../shared/authorization/branch-scope";
 import { PaymentControlDomainErrorFilter } from "./filters/domain-error.filter";
 import type { PaymentMethod } from "../domain/payment-method.aggregate";
 import type { Payment } from "../domain/payment.aggregate";
@@ -80,24 +82,22 @@ export class PaymentControlController {
   @BranchScoped()
   @Get("payments")
   @RequirePermission(PERMISSION.PAYMENT_CONTROL_VIEW)
-  async payments(@Query("branchId") branchId?: string, @Query("settlementChannel") settlementChannel?: string) {
-    return (await this.listPayments.execute({ branchId, settlementChannel })).map(toPublicPayment);
+  async payments(@Query() query: ListPaymentsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPayments.execute({ branchId: scopedBranchId(scope, query.branchId), settlementChannel: query.settlementChannel }, page);
+    return listResponse(rows.map(toPublicPayment), total, page);
   }
 
   @BranchScoped()
   @Get("adjustment-requests")
   @RequirePermission(PERMISSION.PAYMENT_CONTROL_VIEW)
-  async adjustmentRequests(
-    @Req() req: Request & { user: AuthenticatedUser },
-    @Query("paymentId") paymentId?: string,
-    @Query("status") status?: string
-  ) {
-    const requests = await this.listAdjustmentRequests.execute({ paymentId, status });
-    const scope = branchScopeOf(req.user);
-    if (scope.kind === "all") return requests.map(toPublicAdjustmentRequest);
-    // branch-bound: only requests whose payment belongs to the user's branch
-    const own = new Set((await this.listPayments.execute({ branchId: scope.kind === "branch" ? scope.branchId : "00000000-0000-0000-0000-000000000000" })).map((p) => p.id));
-    return requests.filter((r) => own.has(r.paymentId)).map(toPublicAdjustmentRequest);
+  async adjustmentRequests(@Query() query: ListAdjustmentRequestsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listAdjustmentRequests.execute(
+      { paymentId: query.paymentId, status: query.status, branchId: scopedBranchId(scope, query.branchId) },
+      page
+    );
+    return listResponse(rows.map(toPublicAdjustmentRequest), total, page);
   }
 
   @BranchScoped()
@@ -131,12 +131,13 @@ export class PaymentControlController {
   @BranchScoped()
   @Get("reconciliation-records")
   @RequirePermission(PERMISSION.PAYMENT_CONTROL_VIEW)
-  async reconciliationRecords(
-    @Query("branchId") branchId?: string,
-    @Query("source") source?: string,
-    @Query("matchStatus") matchStatus?: string
-  ) {
-    return (await this.listReconciliationRecords.execute({ branchId, source, matchStatus })).map(toPublicReconciliationRecord);
+  async reconciliationRecords(@Query() query: ListReconciliationRecordsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listReconciliationRecords.execute(
+      { branchId: scopedBranchId(scope, query.branchId), source: query.source, matchStatus: query.matchStatus },
+      page
+    );
+    return listResponse(rows.map(toPublicReconciliationRecord), total, page);
   }
 
   @BranchScoped()
@@ -198,8 +199,10 @@ export class PaymentControlController {
   @BranchScoped()
   @Get("exceptions")
   @RequirePermission(PERMISSION.PAYMENT_CONTROL_VIEW)
-  async exceptions(@Query("branchId") branchId?: string) {
-    return this.listExceptions.execute({ branchId });
+  async exceptions(@Query() query: BranchListQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const exceptions = await this.listExceptions.execute({ branchId: scopedBranchId(scope, query.branchId) });
+    return listResponse(pageOfRows(exceptions, page), exceptions.length, page);
   }
 
   @BranchScoped()

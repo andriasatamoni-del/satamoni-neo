@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Bank } from "../../domain/bank.aggregate";
 import type { BankRepositoryPort } from "../../domain/ports/bank-repository.port";
@@ -22,8 +24,13 @@ export class BankRepository implements BankRepositoryPort {
   }
 
   async list(): Promise<Bank[]> {
-    const rows = await this.db.select().from(banks).orderBy(asc(banks.name));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage()).rows;
+  }
+
+  async listPage(page?: PageRequest): Promise<{ rows: Bank[]; total: number }> {
+    const query = this.db.select().from(banks).orderBy(asc(banks.name), desc(banks.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(banks)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof banks.$inferSelect): Bank {

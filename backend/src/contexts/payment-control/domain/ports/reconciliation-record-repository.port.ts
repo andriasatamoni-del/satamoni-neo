@@ -1,3 +1,4 @@
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import type { ReconciliationRecord } from "../reconciliation-record.aggregate";
 
 export interface ReconciliationRecordRepositoryPort {
@@ -5,6 +6,7 @@ export interface ReconciliationRecordRepositoryPort {
   findById(id: string): Promise<ReconciliationRecord | null>;
   findByLegacyReconciliationRecordId(legacyId: number): Promise<ReconciliationRecord | null>;
   list(filter?: { branchId?: string; source?: string; matchStatus?: string }): Promise<ReconciliationRecord[]>;
+  listPage(filter?: { branchId?: string; source?: string; matchStatus?: string }, page?: PageRequest): Promise<{ rows: ReconciliationRecord[]; total: number }>;
   listUnmatchedBySource(source: string): Promise<ReconciliationRecord[]>;
   listByImportBatchId(importBatchId: string): Promise<ReconciliationRecord[]>;
   deleteByImportBatchId(importBatchId: string): Promise<void>;

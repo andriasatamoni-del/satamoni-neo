@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useAuth } from "../shared/auth/AuthContext";
 import { PageHeader } from "../shared/ui/PageHeader";
@@ -8,6 +8,8 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input } from "../shared/ui/Field";
 import { can } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
+import { Pagination } from "../shared/ui/Pagination";
+import { DEFAULT_PAGE_SIZE } from "../shared/ui/useListState";
 
 interface PosSettings {
   shiftVarianceAckThresholdEgp: number;
@@ -28,6 +30,9 @@ type ToggleKey = "whatsappBotEnabled" | "smsConfirmationsEnabled" | "smsRatingRe
 interface OrderNotificationsLog {
   gatewayConfigured: boolean;
   ratingLinkBaseUrl: string | null;
+  total: number;
+  limit: number;
+  offset: number;
   notifications: { id: string; orderId: string; kind: string; recipient: string; status: string; error: string | null; createdAt: string }[];
 }
 
@@ -103,9 +108,12 @@ export function PosSettingsPage() {
     smsRatingRequestsEnabled: false,
     onlineOrderingEnabled: false,
   });
+  const [notificationsPage, setNotificationsPage] = useState(1);
+  const notificationsOffset = (notificationsPage - 1) * DEFAULT_PAGE_SIZE;
   const notificationsQuery = useQuery({
-    queryKey: ["order-notifications"],
-    queryFn: () => apiRequest<OrderNotificationsLog>("/order-notifications?limit=20"),
+    queryKey: ["order-notifications", notificationsOffset],
+    queryFn: () => apiRequest<OrderNotificationsLog>(`/order-notifications?limit=${DEFAULT_PAGE_SIZE}&offset=${notificationsOffset}`),
+    placeholderData: keepPreviousData,
   });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -237,6 +245,13 @@ export function PosSettingsPage() {
                 </tbody>
               </table>
             )}
+            <Pagination
+              total={notificationsQuery.data.total}
+              limit={notificationsQuery.data.limit}
+              offset={notificationsQuery.data.offset}
+              onPageChange={setNotificationsPage}
+              isFetching={notificationsQuery.isFetching}
+            />
           </CardBody>
         </Card>
       )}

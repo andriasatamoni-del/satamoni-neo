@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { SupplierPayment } from "../../domain/supplier-payment.aggregate";
 import type { SupplierPaymentRepositoryPort } from "../../domain/ports/supplier-payment-repository.port";
@@ -60,17 +62,17 @@ export class SupplierPaymentRepository implements SupplierPaymentRepositoryPort 
   }
 
   async list(filter?: { supplierId?: string; branchId?: string }): Promise<SupplierPayment[]> {
-    const rows = await this.db
-      .select()
-      .from(supplierPayments)
-      .where(
-        and(
-          filter?.supplierId ? eq(supplierPayments.supplier_id, filter.supplierId) : undefined,
-          filter?.branchId ? eq(supplierPayments.branch_id, filter.branchId) : undefined
-        )
-      )
-      .orderBy(desc(supplierPayments.created_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { supplierId?: string; branchId?: string }, page?: PageRequest): Promise<{ rows: SupplierPayment[]; total: number }> {
+    const where = and(
+      filter?.supplierId ? eq(supplierPayments.supplier_id, filter.supplierId) : undefined,
+      filter?.branchId ? eq(supplierPayments.branch_id, filter.branchId) : undefined
+    );
+    const query = this.db.select().from(supplierPayments).where(where).orderBy(desc(supplierPayments.created_at), desc(supplierPayments.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(supplierPayments).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof supplierPayments.$inferSelect): SupplierPayment {

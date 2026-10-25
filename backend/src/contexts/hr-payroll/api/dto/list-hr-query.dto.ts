@@ -37,3 +37,29 @@ export class ListLeaveRequestsQueryDto extends ListQueryDto {
   @IsString()
   employeeId?: string;
 }
+
+export class ListDepartmentsQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+export class ListPositionsQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
+}
+
+export class ListPayrollAdjustmentsQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}

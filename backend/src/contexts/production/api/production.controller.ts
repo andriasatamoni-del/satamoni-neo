@@ -17,11 +17,13 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess, CurrentBranchScope, scopedBranchId, type BranchScope } from "../../../shared/authorization/branch-scope";
 import { businessDateString } from "../../../shared/time/business-date";
 import { ProductionDomainErrorFilter } from "./filters/domain-error.filter";
 import type { ConversionOrder } from "../domain/conversion-order.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
+import { ListConversionOrdersQueryDto } from "./dto/list-conversion-orders-query.dto";
 
 @Controller("production")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -63,8 +65,10 @@ export class ProductionController {
   @BranchScoped()
   @Get()
   @RequirePermission(PERMISSION.PRODUCTION_VIEW)
-  async list(@Query("branchId") branchId?: string, @Query("status") status?: string) {
-    return (await this.listConversionOrders.execute({ branchId, status })).map(toPublicConversionOrder);
+  async list(@Query() query: ListConversionOrdersQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listConversionOrders.execute({ branchId: scopedBranchId(scope, query.branchId), status: query.status }, page);
+    return listResponse(rows.map(toPublicConversionOrder), total, page);
   }
 
   @BranchScoped()

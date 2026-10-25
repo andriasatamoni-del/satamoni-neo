@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { TransferRequest, type TransferRequestStatus } from "../../domain/transfer-request.aggregate";
 import type { TransferRequestRepositoryPort } from "../../domain/ports/transfer-request-repository.port";
@@ -86,23 +88,26 @@ export class TransferRequestRepository implements TransferRequestRepositoryPort 
     return this.toDomain(row, await this.loadLines(id));
   }
 
-  async list(filter?: { fromBranchId?: string; toBranchId?: string; status?: string; fromDate?: Date; toDate?: Date }): Promise<TransferRequest[]> {
-    const rows = await this.db
-      .select()
-      .from(transferRequests)
-      .where(
-        and(
-          filter?.fromBranchId ? eq(transferRequests.from_branch_id, filter.fromBranchId) : undefined,
-          filter?.toBranchId ? eq(transferRequests.to_branch_id, filter.toBranchId) : undefined,
-          filter?.status ? eq(transferRequests.status, filter.status) : undefined,
-          filter?.fromDate ? gte(transferRequests.required_date, filter.fromDate) : undefined,
-          filter?.toDate ? lte(transferRequests.required_date, filter.toDate) : undefined
-        )
-      )
-      .orderBy(desc(transferRequests.created_at));
+  async list(filter?: { fromBranchId?: string; toBranchId?: string; involvingBranchId?: string; status?: string; fromDate?: Date; toDate?: Date }): Promise<TransferRequest[]> {
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { fromBranchId?: string; toBranchId?: string; involvingBranchId?: string; status?: string; fromDate?: Date; toDate?: Date }, page?: PageRequest): Promise<{ rows: TransferRequest[]; total: number }> {
+    const where = and(
+      filter?.fromBranchId ? eq(transferRequests.from_branch_id, filter.fromBranchId) : undefined,
+      filter?.toBranchId ? eq(transferRequests.to_branch_id, filter.toBranchId) : undefined,
+      filter?.involvingBranchId
+        ? or(eq(transferRequests.from_branch_id, filter.involvingBranchId), eq(transferRequests.to_branch_id, filter.involvingBranchId))
+        : undefined,
+      filter?.status ? eq(transferRequests.status, filter.status) : undefined,
+      filter?.fromDate ? gte(transferRequests.required_date, filter.fromDate) : undefined,
+      filter?.toDate ? lte(transferRequests.required_date, filter.toDate) : undefined
+    );
+    const query = this.db.select().from(transferRequests).where(where).orderBy(desc(transferRequests.created_at), desc(transferRequests.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(transferRequests).where(where)));
     const requests: TransferRequest[] = [];
     for (const row of rows) requests.push(this.toDomain(row, await this.loadLines(row.id)));
-    return requests;
+    return { rows: requests, total };
   }
 
   private loadLines(requestId: string): Promise<(typeof transferRequestLines.$inferSelect)[]> {

@@ -12,6 +12,7 @@ import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table"
 import { ListFilters } from "../shared/ui/ListFilters";
 import { Pagination } from "../shared/ui/Pagination";
 import { useListState } from "../shared/ui/useListState";
+import { useClientPagination } from "../shared/ui/useClientPagination";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
 
@@ -80,16 +81,7 @@ export function CatalogPage() {
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const itemsList = useListState(["q", "categoryId", "status"] as const, { prefix: "items." });
   const itemsPageQuery = usePaginatedQuery<MenuItem>(["catalog", "items"], "/catalog/items", itemsList.params);
-  const combosQuery = useQuery({
-    queryKey: canManage ? ["catalog", "combos", "all"] : ["catalog", "combos"],
-    queryFn: () => apiRequest<Combo[]>(canManage ? "/catalog/combos/all" : "/catalog/combos"),
-  });
   const layoutQuery = useQuery({ queryKey: ["catalog", "layout"], queryFn: () => apiRequest<{ combosPosition: number }>("/catalog/layout") });
-  const archivedQuery = useQuery({
-    queryKey: ["catalog", "categories", "archived"],
-    queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories?archived=true"),
-    enabled: canManage,
-  });
 
   const invalidateCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "categories"] });
@@ -290,7 +282,6 @@ export function CatalogPage() {
   }
 
   const categories = categoriesQuery.data ?? [];
-  const archivedCategories = archivedQuery.data ?? [];
   // صفوف الترتيب: الأقسام + صف "العروض" في مكانه (نفس منطق شاشة الطلبات: الرقم ثم الاسم)
   const orderRows = [
     ...categories.map((c) => ({ key: c.id, order: c.displayOrder, rank: 1, category: c })),
@@ -308,7 +299,11 @@ export function CatalogPage() {
   }
   const items = itemsQuery.data ?? [];
   const pageItems = itemsPageQuery.data?.items ?? [];
-  const combos = combosQuery.data ?? [];
+  const categoriesPage = useClientPagination(orderRows);
+  const archivedList = useListState([] as const, { prefix: "archived." });
+  const archivedPageQuery = usePaginatedQuery<MenuCategory>(["catalog", "categories", "archived"], "/catalog/categories", { ...archivedList.params, archived: "true" }, { enabled: canManage });
+  const combosList = useListState([] as const, { prefix: "combos." });
+  const combosPageQuery = usePaginatedQuery<Combo>(canManage ? ["catalog", "combos", "all"] : ["catalog", "combos"], canManage ? "/catalog/combos/all" : "/catalog/combos", combosList.params);
   const categoryName_ = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "بدون قسم";
 
   return (
@@ -334,7 +329,8 @@ export function CatalogPage() {
             {categoryError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{categoryError}</p>}
             <p className="mb-2 text-xs text-slate-500">الترتيب هنا هو ترتيب أزرار الأقسام في شاشة الطلبات (العروض بتتحرك وسط الأقسام).</p>
             <div className="space-y-1.5">
-              {orderRows.map((row, index) => {
+              {categoriesPage.pageRows.map((row, pageIndex) => {
+                const index = categoriesPage.pager.offset + pageIndex;
                 const c = row.category;
                 const arrows = canManage && (
                   <span className="flex flex-col">
@@ -391,21 +387,25 @@ export function CatalogPage() {
                 );
               })}
             </div>
+            <Pagination {...categoriesPage.pager} />
 
             {canManage && (
               <div className="mt-4 border-t border-slate-100 pt-3">
                 <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm font-semibold text-slate-600 hover:text-brand-700">
-                  {showArchived ? "▼" : "◀"} الأقسام المؤرشفة ({archivedCategories.length})
+                  {showArchived ? "▼" : "◀"} الأقسام المؤرشفة ({archivedPageQuery.data?.total ?? 0})
                 </button>
                 {showArchived && (
                   <div className="mt-2 space-y-1.5">
-                    {archivedCategories.length === 0 && <p className="text-sm text-slate-400">مفيش أقسام مؤرشفة</p>}
-                    {archivedCategories.map((c) => (
+                    {archivedPageQuery.data?.total === 0 && <p className="text-sm text-slate-400">مفيش أقسام مؤرشفة</p>}
+                    {(archivedPageQuery.data?.items ?? []).map((c) => (
                       <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
                         <span className="flex-1 text-sm text-slate-500">{c.name}</span>
                         <Button size="sm" variant="secondary" onClick={() => restoreCategory.mutate(c.id)} disabled={restoreCategory.isPending}>استرجاع (موقوف)</Button>
                       </div>
                     ))}
+                    {archivedPageQuery.data && (
+                      <Pagination total={archivedPageQuery.data.total} limit={archivedPageQuery.data.limit} offset={archivedPageQuery.data.offset} onPageChange={archivedList.setPage} isFetching={archivedPageQuery.isFetching} />
+                    )}
                     <p className="text-xs text-slate-400">الاسترجاع بيرجّع القسم موقوف؛ فعّله بعد كده لو عايزه يظهر في الكاشير.</p>
                   </div>
                 )}
@@ -606,7 +606,7 @@ export function CatalogPage() {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>العروض ({combos.length})</CardTitle>
+          <CardTitle>العروض ({combosPageQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody>
           <p className="mb-4 text-sm text-slate-500">عرض بيجمع أكتر من حجم بسعر واحد مختلف عن مجموع أسعارهم</p>
@@ -652,7 +652,7 @@ export function CatalogPage() {
               <TR><TH>الصورة</TH><TH>الاسم والوصف</TH><TH>السعر</TH><TH>الأصناف</TH><TH>الحالة</TH><TH></TH></TR>
             </THead>
             <TBody>
-              {combos.map((c) => (
+              {(combosPageQuery.data?.items ?? []).map((c) => (
                 <TR key={c.id}>
                   <TD>
                     <ImageUploadButton imageUrl={c.imageUrl} onUploaded={(url) => updateCombo.mutate({ id: c.id, imageUrl: url })} readOnly={!canManage} testId={`combo-image-${c.name}`} />
@@ -703,7 +703,10 @@ export function CatalogPage() {
               ))}
             </TBody>
           </Table>
-          {combos.length === 0 && <EmptyState>مفيش عروض لسه</EmptyState>}
+          {combosPageQuery.data?.total === 0 && <EmptyState>مفيش عروض لسه</EmptyState>}
+          {combosPageQuery.data && (
+            <Pagination total={combosPageQuery.data.total} limit={combosPageQuery.data.limit} offset={combosPageQuery.data.offset} onPageChange={combosList.setPage} isFetching={combosPageQuery.isFetching} />
+          )}
         </CardBody>
       </Card>
 

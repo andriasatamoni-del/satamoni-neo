@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseFilters, UseGuards } from "@nestjs/common";
 import { RegisterBranchHandler } from "../application/commands/register-branch.handler";
 import { UpdateBranchHandler } from "../application/commands/update-branch.handler";
 import { ListBranchesHandler } from "../application/queries/list-branches.handler";
@@ -10,6 +10,7 @@ import { RequirePermission } from "../../identity-access/api/guards/require-perm
 import { BranchesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Branch } from "../domain/branch.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("branches")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -23,9 +24,10 @@ export class BranchesController {
 
   @Get()
   @RequirePermission(PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE)
-  async list() {
-    const branches = await this.listBranches.execute();
-    return branches.map(toPublicBranch);
+  async list(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listBranches.execute(page);
+    return listResponse(rows.map(toPublicBranch), total, page);
   }
 
   @Post()

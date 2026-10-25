@@ -1,3 +1,5 @@
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+
 export type OrderNotificationKind = "confirmation" | "rating_request";
 
 export interface NotifiableOrder {
@@ -26,7 +28,7 @@ export interface OrderNotificationStorePort {
   // الحدث اتنشر مرتين)
   reserve(input: { orderId: string; kind: OrderNotificationKind; recipient: string; message: string }): Promise<string | null>;
   complete(id: string, result: { status: OrderNotificationRecord["status"]; error?: string | null }): Promise<void>;
-  listRecent(limit: number): Promise<OrderNotificationRecord[]>;
+  listRecent(page: PageRequest): Promise<{ rows: OrderNotificationRecord[]; total: number }>;
 }
 
 export const ORDER_NOTIFICATION_STORE = Symbol("ORDER_NOTIFICATION_STORE");

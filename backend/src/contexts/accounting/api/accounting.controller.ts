@@ -25,7 +25,7 @@ import {
   scopedBranchId,
   type BranchScope,
 } from "../../../shared/authorization/branch-scope";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { listResponse, splitListQuery, ListQueryDto, pageRequestOf } from "../../../shared/http/list-query.dto";
 import { ListJournalEntriesQueryDto } from "./dto/list-journal-entries-query.dto";
 import { businessDate, businessDateString } from "../../../shared/time/business-date";
 import { RegisterAccountDto } from "./dto/register-account.dto";
@@ -66,8 +66,10 @@ export class AccountingController {
 
   @Get("accounts")
   @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
-  async accounts() {
-    return (await this.listAccounts.execute()).map(toPublicAccount);
+  async accounts(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listAccounts.execute(page);
+    return listResponse(rows.map(toPublicAccount), total, page);
   }
 
   @Post("accounts")
@@ -170,8 +172,10 @@ export class AccountingController {
 
   @Get("fiscal-year-closings")
   @RequirePermission(PERMISSION.ACCOUNTING_VIEW, PERMISSION.ACCOUNTING_MANAGE)
-  async fiscalYearClosings() {
-    return (await this.listFiscalYearClosings.execute()).map(toPublicFiscalYearClosing);
+  async fiscalYearClosings(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listFiscalYearClosings.execute(page);
+    return listResponse(rows.map(toPublicFiscalYearClosing), total, page);
   }
 
   @Post("fiscal-year-closings")

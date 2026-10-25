@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Account, type AccountType } from "../../domain/account.aggregate";
 import type { AccountRepositoryPort } from "../../domain/ports/account-repository.port";
@@ -48,8 +50,13 @@ export class AccountRepository implements AccountRepositoryPort {
   }
 
   async list(): Promise<Account[]> {
-    const rows = await this.db.select().from(accounts).orderBy(asc(accounts.code));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage()).rows;
+  }
+
+  async listPage(page?: PageRequest): Promise<{ rows: Account[]; total: number }> {
+    const query = this.db.select().from(accounts).orderBy(asc(accounts.code), desc(accounts.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(accounts)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(account: Account) {

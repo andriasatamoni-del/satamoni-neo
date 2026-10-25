@@ -111,11 +111,6 @@ export function HrPayrollPage() {
   const leaveRequestsQuery = usePaginatedQuery<LeaveRequest>(["hr", "leave-requests"], "/hr/leave-requests", leaveRequestsList.params, {
     enabled: tab === "leave",
   });
-  const adjustmentsQuery = useQuery({
-    queryKey: ["hr", "adjustments"],
-    queryFn: () => apiRequest<PayrollAdjustment[]>("/hr/adjustments"),
-    enabled: tab === "adjustments",
-  });
 
   const reviewLeaveRequest = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
@@ -335,11 +330,16 @@ export function HrPayrollPage() {
 
   const employees = employeesQuery.data ?? [];
   const departments = departmentsQuery.data ?? [];
+  const departmentsList = useListState([] as const, { prefix: "departments." });
+  const departmentsPageQuery = usePaginatedQuery<Department>(["hr", "departments"], "/hr/departments", departmentsList.params, { enabled: canSeeEmployees });
   const positions = positionsQuery.data ?? [];
+  const positionsList = useListState([] as const, { prefix: "positions." });
+  const positionsPageQuery = usePaginatedQuery<Position>(["hr", "positions"], "/hr/positions", positionsList.params, { enabled: canSeeEmployees });
   const pageEmployees = employeesPageQuery.data?.items ?? [];
   const payrollRuns = payrollRunsQuery.data?.items ?? [];
   const leaveRequests = leaveRequestsQuery.data?.items ?? [];
-  const adjustments = adjustmentsQuery.data ?? [];
+  const adjustmentsList = useListState([] as const, { prefix: "adjustments." });
+  const adjustmentsPageQuery = usePaginatedQuery<PayrollAdjustment>(["hr", "adjustments"], "/hr/adjustments", adjustmentsList.params, { enabled: tab === "adjustments" });
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId) ?? null;
 
   function departmentName(id: string | null): string {
@@ -681,7 +681,7 @@ export function HrPayrollPage() {
       {tab === "organization" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>الأقسام ({departments.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>الأقسام ({departmentsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody>
               {canManageOrganization && (
                 <form
@@ -703,7 +703,7 @@ export function HrPayrollPage() {
                   <TR><TH>الكود</TH><TH>الاسم</TH><TH>الحالة</TH><TH></TH></TR>
                 </THead>
                 <TBody>
-                  {departments.map((d) => (
+                  {(departmentsPageQuery.data?.items ?? []).map((d) => (
                     <TR key={d.id}>
                       <TD className="text-xs text-slate-400">{d.code}</TD>
                       <TD className="font-semibold text-slate-900">{d.name}</TD>
@@ -724,12 +724,15 @@ export function HrPayrollPage() {
                   ))}
                 </TBody>
               </Table>
-              {departments.length === 0 && <EmptyState>مفيش أقسام لسه</EmptyState>}
+              {departmentsPageQuery.data && (
+                <Pagination total={departmentsPageQuery.data.total} limit={departmentsPageQuery.data.limit} offset={departmentsPageQuery.data.offset} onPageChange={departmentsList.setPage} isFetching={departmentsPageQuery.isFetching} />
+              )}
+              {departmentsPageQuery.data?.total === 0 && <EmptyState>مفيش أقسام لسه</EmptyState>}
             </CardBody>
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>المسميات الوظيفية ({positions.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>المسميات الوظيفية ({positionsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody>
               {canManageOrganization && (
                 <form
@@ -759,7 +762,7 @@ export function HrPayrollPage() {
                   <TR><TH>الكود</TH><TH>الاسم</TH><TH>القسم</TH><TH>الحالة</TH><TH></TH></TR>
                 </THead>
                 <TBody>
-                  {positions.map((p) => (
+                  {(positionsPageQuery.data?.items ?? []).map((p) => (
                     <TR key={p.id}>
                       <TD className="text-xs text-slate-400">{p.code}</TD>
                       <TD className="font-semibold text-slate-900">{p.name}</TD>
@@ -781,7 +784,10 @@ export function HrPayrollPage() {
                   ))}
                 </TBody>
               </Table>
-              {positions.length === 0 && <EmptyState>مفيش مسميات وظيفية لسه</EmptyState>}
+              {positionsPageQuery.data && (
+                <Pagination total={positionsPageQuery.data.total} limit={positionsPageQuery.data.limit} offset={positionsPageQuery.data.offset} onPageChange={positionsList.setPage} isFetching={positionsPageQuery.isFetching} />
+              )}
+              {positionsPageQuery.data?.total === 0 && <EmptyState>مفيش مسميات وظيفية لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>
@@ -884,7 +890,7 @@ export function HrPayrollPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>سجل السلف والجزاءات والمكافآت ({adjustments.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>سجل السلف والجزاءات والمكافآت ({adjustmentsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               {cancelAdjustmentError && <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{cancelAdjustmentError}</p>}
               <Table>
@@ -892,7 +898,7 @@ export function HrPayrollPage() {
                   <TR><TH>الموظف</TH><TH>التاريخ</TH><TH>النوع</TH><TH>المبلغ</TH><TH>ملاحظات</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {adjustments.map((a) => (
+                  {(adjustmentsPageQuery.data?.items ?? []).map((a) => (
                     <TR key={a.id}>
                       <TD className="font-semibold text-slate-900">
                         {employees.find((e) => e.id === a.employeeId)?.name ?? a.employeeId}
@@ -931,7 +937,10 @@ export function HrPayrollPage() {
                   ))}
                 </TBody>
               </Table>
-              {adjustments.length === 0 && <EmptyState>مفيش سلف أو جزاءات أو مكافآت مسجلة لسه</EmptyState>}
+              {adjustmentsPageQuery.data && (
+                <Pagination total={adjustmentsPageQuery.data.total} limit={adjustmentsPageQuery.data.limit} offset={adjustmentsPageQuery.data.offset} onPageChange={adjustmentsList.setPage} isFetching={adjustmentsPageQuery.isFetching} />
+              )}
+              {adjustmentsPageQuery.data?.total === 0 && <EmptyState>مفيش سلف أو جزاءات أو مكافآت مسجلة لسه</EmptyState>}
             </CardBody>
           </Card>
         </>

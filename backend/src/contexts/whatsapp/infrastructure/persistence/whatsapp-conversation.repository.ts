@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { WhatsappConversation, type ConversationChannel } from "../../domain/whatsapp-conversation.aggregate";
 import type { WhatsappConversationRepositoryPort } from "../../domain/ports/whatsapp-conversation-repository.port";
@@ -41,8 +43,13 @@ export class WhatsappConversationRepository implements WhatsappConversationRepos
   }
 
   async list(): Promise<WhatsappConversation[]> {
-    const rows = await this.db.select().from(whatsappConversations).orderBy(desc(whatsappConversations.last_message_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage()).rows;
+  }
+
+  async listPage(page?: PageRequest): Promise<{ rows: WhatsappConversation[]; total: number }> {
+    const query = this.db.select().from(whatsappConversations).orderBy(desc(whatsappConversations.last_message_at), desc(whatsappConversations.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(whatsappConversations)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof whatsappConversations.$inferSelect): WhatsappConversation {

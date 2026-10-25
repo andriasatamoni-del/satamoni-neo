@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { WhatsappPendingOrder } from "../../domain/whatsapp-pending-order.aggregate";
 import {
   WHATSAPP_PENDING_ORDER_REPOSITORY,
@@ -9,7 +10,7 @@ import {
 export class ListPendingOrdersHandler {
   constructor(@Inject(WHATSAPP_PENDING_ORDER_REPOSITORY) private readonly pendingOrders: WhatsappPendingOrderRepositoryPort) {}
 
-  async execute(filter?: { status?: string }): Promise<WhatsappPendingOrder[]> {
-    return this.pendingOrders.list(filter);
+  async execute(filter?: { status?: string }, page?: PageRequest): Promise<{ rows: WhatsappPendingOrder[]; total: number }> {
+    return this.pendingOrders.listPage(filter, page);
   }
 }

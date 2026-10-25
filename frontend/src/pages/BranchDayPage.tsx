@@ -11,6 +11,9 @@ import { Badge } from "../shared/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "../shared/ui/Table";
 import { can } from "../shared/auth/roles";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Branch {
   id: string;
@@ -72,11 +75,8 @@ export function BranchDayPage() {
     enabled: !!branchId,
   });
 
-  const historyQuery = useQuery({
-    queryKey: ["branch-day-history", branchId],
-    queryFn: () => apiRequest<BranchDayRecord[]>(`/branch-days/${branchId}/history`),
-    enabled: !!branchId,
-  });
+  const historyList = useListState([] as const, { prefix: "history." });
+  const historyPageQuery = usePaginatedQuery<BranchDayRecord>(["branch-day-history", branchId], `/branch-days/${branchId}/history`, historyList.params, { enabled: !!branchId });
 
   const closeMutation = useMutation({
     mutationFn: () => apiRequest(`/branch-days/${branchId}/close`, { method: "POST", body: { managerNotes: managerNotes || undefined } }),
@@ -180,32 +180,37 @@ export function BranchDayPage() {
           <CardTitle>سجل التقفيلات</CardTitle>
         </CardHeader>
         <CardBody>
-          {historyQuery.data && historyQuery.data.length === 0 && <EmptyState>مفيش تقفيلات لسه</EmptyState>}
-          {historyQuery.data && historyQuery.data.length > 0 && (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>التاريخ</TH>
-                  <TH>المبيعات</TH>
-                  <TH>عدد الطلبات</TH>
-                  <TH>فرق الكاش</TH>
-                  <TH>اتقفل بمعرفة</TH>
-                  <TH>ملاحظات</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {historyQuery.data.map((day) => (
-                  <TR key={day.id}>
-                    <TD>{day.businessDate}</TD>
-                    <TD>{day.totalSales.toFixed(2)} ج.م</TD>
-                    <TD>{day.orderCount}</TD>
-                    <TD>{day.cashVarianceTotal.toFixed(2)} ج.م</TD>
-                    <TD>{day.closedByName ?? "-"}</TD>
-                    <TD>{day.managerNotes ?? "-"}</TD>
+          {historyPageQuery.data?.total === 0 && <EmptyState>مفيش تقفيلات لسه</EmptyState>}
+          {(historyPageQuery.data?.total ?? 0) > 0 && (
+            <>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>التاريخ</TH>
+                    <TH>المبيعات</TH>
+                    <TH>عدد الطلبات</TH>
+                    <TH>فرق الكاش</TH>
+                    <TH>اتقفل بمعرفة</TH>
+                    <TH>ملاحظات</TH>
                   </TR>
-                ))}
-              </TBody>
-            </Table>
+                </THead>
+                <TBody>
+                  {(historyPageQuery.data?.items ?? []).map((day) => (
+                    <TR key={day.id}>
+                      <TD>{day.businessDate}</TD>
+                      <TD>{day.totalSales.toFixed(2)} ج.م</TD>
+                      <TD>{day.orderCount}</TD>
+                      <TD>{day.cashVarianceTotal.toFixed(2)} ج.م</TD>
+                      <TD>{day.closedByName ?? "-"}</TD>
+                      <TD>{day.managerNotes ?? "-"}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {historyPageQuery.data && (
+                <Pagination total={historyPageQuery.data.total} limit={historyPageQuery.data.limit} offset={historyPageQuery.data.offset} onPageChange={historyList.setPage} isFetching={historyPageQuery.isFetching} />
+              )}
+            </>
           )}
         </CardBody>
       </Card>

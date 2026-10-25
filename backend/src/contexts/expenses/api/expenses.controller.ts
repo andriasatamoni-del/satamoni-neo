@@ -25,6 +25,7 @@ import { ExpensesDomainErrorFilter } from "./filters/domain-error.filter";
 import type { ExpenseCategory } from "../domain/expense-category.aggregate";
 import type { Expense } from "../domain/expense.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("expenses")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -45,8 +46,10 @@ export class ExpensesController {
 
   @Get("categories")
   @RequirePermission(PERMISSION.EXPENSES_VIEW, PERMISSION.EXPENSES_CREATE, PERMISSION.EXPENSES_CREATE_OWN_DAILY, PERMISSION.EXPENSES_MANAGE)
-  async categories() {
-    return (await this.listCategories.execute()).map(toPublicCategory);
+  async categories(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listCategories.execute(page);
+    return listResponse(rows.map(toPublicCategory), total, page);
   }
 
   @Post("categories")
@@ -68,16 +71,18 @@ export class ExpensesController {
     @Query("branchId") branchId: string | undefined,
     @Query("businessDate") businessDate: string | undefined,
     @Query("status") status: string | undefined,
+    @Query() listQuery: ListQueryDto,
     @Req() req: Request & { user: AuthenticatedUser }
   ) {
+    const page = pageRequestOf(listQuery);
     // نفس فلسفة الريبو القديم: الكاشير (expenses.create_own_daily بس) بيشوف مصروفات فرعه هو بس
     const scopedBranchId = !req.user.permissions.has(PERMISSION.EXPENSES_VIEW) ? req.user.branchId ?? undefined : branchId;
-    const expenses = await this.listExpenses.execute({
+    const { rows, total } = await this.listExpenses.execute({
       branchId: scopedBranchId,
       businessDate: businessDate ? new Date(businessDate) : undefined,
       status,
-    });
-    return expenses.map(toPublicExpense);
+    }, page);
+    return listResponse(rows.map(toPublicExpense), total, page);
   }
 
   @BranchScoped()

@@ -11,6 +11,9 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge, StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface PaymentMethod { id: string; name: string; kind: string; settlementChannel: string | null; isActive: boolean; }
 interface Payment { id: string; orderId: string; branchId: string; methodKind: string; settlementChannel: string | null; amount: number; lockedAt: string; }
@@ -68,9 +71,6 @@ export function PaymentControlPage() {
   const canReconcile = allowed(PERMISSION.PAYMENT_CONTROL_RECONCILIATION_ENTER);
   const methodsQuery = useQuery({ queryKey: ["payment-control", "methods"], queryFn: () => apiRequest<PaymentMethod[]>("/payment-control/payment-methods") });
   const paymentsQuery = useQuery({ queryKey: ["payment-control", "payments"], queryFn: () => apiRequest<Payment[]>("/payment-control/payments") });
-  const requestsQuery = useQuery({ queryKey: ["payment-control", "requests"], queryFn: () => apiRequest<AdjustmentRequest[]>("/payment-control/adjustment-requests") });
-  const recordsQuery = useQuery({ queryKey: ["payment-control", "records"], queryFn: () => apiRequest<ReconciliationRecord[]>("/payment-control/reconciliation-records") });
-  const exceptionsQuery = useQuery({ queryKey: ["payment-control", "exceptions"], queryFn: () => apiRequest<PaymentException[]>("/payment-control/exceptions") });
   const { branches } = useBranchOptions<Branch>(tab === "overview");
 
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -84,11 +84,6 @@ export function PaymentControlPage() {
     enabled: tab === "overview",
   });
 
-  const auditLogQuery = useQuery({
-    queryKey: ["audit-logs", "payment-control"],
-    queryFn: () => apiRequest<AuditLogRecord[]>("/audit-logs?entityType=payment-control&limit=200"),
-    enabled: tab === "audit",
-  });
 
   const [adjustmentForm, setAdjustmentForm] = useState({ paymentId: "", proposedPaymentMethodId: "", proposedAmount: "", reason: "" });
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
@@ -224,11 +219,17 @@ export function PaymentControlPage() {
   });
 
   const payments = paymentsQuery.data ?? [];
-  const requests = requestsQuery.data ?? [];
-  const records = recordsQuery.data ?? [];
-  const exceptions = exceptionsQuery.data ?? [];
+  const paymentsList = useListState([] as const, { prefix: "payments." });
+  const paymentsPageQuery = usePaginatedQuery<Payment>(["payment-control", "payments"], "/payment-control/payments", paymentsList.params);
+  const requestsList = useListState([] as const, { prefix: "requests." });
+  const requestsPageQuery = usePaginatedQuery<AdjustmentRequest>(["payment-control", "requests"], "/payment-control/adjustment-requests", requestsList.params);
+  const recordsList = useListState([] as const, { prefix: "records." });
+  const recordsPageQuery = usePaginatedQuery<ReconciliationRecord>(["payment-control", "records"], "/payment-control/reconciliation-records", recordsList.params);
+  const exceptionsList = useListState([] as const, { prefix: "exceptions." });
+  const exceptionsPageQuery = usePaginatedQuery<PaymentException>(["payment-control", "exceptions"], "/payment-control/exceptions", exceptionsList.params);
   const report = reportQuery.data;
-  const auditEntries = auditLogQuery.data ?? [];
+  const auditEntriesList = useListState([] as const, { prefix: "audit." });
+  const auditEntriesPageQuery = usePaginatedQuery<AuditLogRecord>(["audit-logs", "payment-control"], "/audit-logs", { ...auditEntriesList.params, entityType: "payment-control" }, { enabled: tab === "audit" });
   const parsedImportPreview = parseImportRows();
 
   return (
@@ -306,7 +307,7 @@ export function PaymentControlPage() {
                 <TR><TH>الطلب</TH><TH>الطريقة</TH><TH>القناة</TH><TH>المبلغ</TH><TH>وقت القفل</TH></TR>
               </THead>
               <TBody>
-                {payments.map((p) => (
+                {(paymentsPageQuery.data?.items ?? []).map((p) => (
                   <TR key={p.id}>
                     <TD className="font-mono text-xs">{p.orderId.slice(0, 8)}</TD>
                     <TD>{KIND_LABELS[p.methodKind] ?? p.methodKind}</TD>
@@ -317,7 +318,10 @@ export function PaymentControlPage() {
                 ))}
               </TBody>
             </Table>
-            {payments.length === 0 && <EmptyState>مفيش دفعات لسه</EmptyState>}
+            {paymentsPageQuery.data && (
+              <Pagination total={paymentsPageQuery.data.total} limit={paymentsPageQuery.data.limit} offset={paymentsPageQuery.data.offset} onPageChange={paymentsList.setPage} isFetching={paymentsPageQuery.isFetching} />
+            )}
+            {paymentsPageQuery.data?.total === 0 && <EmptyState>مفيش دفعات لسه</EmptyState>}
           </CardBody>
         </Card>
       )}
@@ -357,14 +361,14 @@ export function PaymentControlPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>الطلبات ({requests.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>الطلبات ({requestsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
                   <TR><TH>الدفعة</TH><TH>المبلغ المقترح</TH><TH>الفرق</TH><TH>السبب</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {requests.map((r) => (
+                  {(requestsPageQuery.data?.items ?? []).map((r) => (
                     <TR key={r.id}>
                       <TD className="font-mono text-xs">{r.paymentId.slice(0, 8)}</TD>
                       <TD>{r.proposedAmount}ج</TD>
@@ -383,7 +387,10 @@ export function PaymentControlPage() {
                   ))}
                 </TBody>
               </Table>
-              {requests.length === 0 && <EmptyState>مفيش طلبات تعديل لسه</EmptyState>}
+              {requestsPageQuery.data && (
+                <Pagination total={requestsPageQuery.data.total} limit={requestsPageQuery.data.limit} offset={requestsPageQuery.data.offset} onPageChange={requestsList.setPage} isFetching={requestsPageQuery.isFetching} />
+              )}
+              {requestsPageQuery.data?.total === 0 && <EmptyState>مفيش طلبات تعديل لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>
@@ -505,14 +512,14 @@ export function PaymentControlPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>سطور المطابقة ({records.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>سطور المطابقة ({recordsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
                   <TR><TH>المصدر</TH><TH>المرجع</TH><TH>المبلغ</TH><TH>التاريخ</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {records.map((r) => (
+                  {(recordsPageQuery.data?.items ?? []).map((r) => (
                     <TR key={r.id}>
                       <TD>{SOURCE_LABELS[r.source] ?? r.source}</TD>
                       <TD>{r.externalReference ?? "-"}</TD>
@@ -544,7 +551,10 @@ export function PaymentControlPage() {
                   ))}
                 </TBody>
               </Table>
-              {records.length === 0 && <EmptyState>مفيش سطور مطابقة لسه</EmptyState>}
+              {recordsPageQuery.data && (
+                <Pagination total={recordsPageQuery.data.total} limit={recordsPageQuery.data.limit} offset={recordsPageQuery.data.offset} onPageChange={recordsList.setPage} isFetching={recordsPageQuery.isFetching} />
+              )}
+              {recordsPageQuery.data?.total === 0 && <EmptyState>مفيش سطور مطابقة لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>
@@ -552,14 +562,14 @@ export function PaymentControlPage() {
 
       {tab === "exceptions" && (
         <Card>
-          <CardHeader><CardTitle>الاستثناءات ونقاط المخاطر ({exceptions.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>الاستثناءات ونقاط المخاطر ({exceptionsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
             <Table>
               <THead>
                 <TR><TH>الطلب</TH><TH>القناة</TH><TH>المبلغ</TH><TH>السبب</TH><TH>مستوى الخطورة</TH></TR>
               </THead>
               <TBody>
-                {exceptions.map((e) => (
+                {(exceptionsPageQuery.data?.items ?? []).map((e) => (
                   <TR key={e.paymentId}>
                     <TD className="font-mono text-xs">{e.orderId.slice(0, 8)}</TD>
                     <TD>{e.settlementChannel}</TD>
@@ -570,21 +580,24 @@ export function PaymentControlPage() {
                 ))}
               </TBody>
             </Table>
-            {exceptions.length === 0 && <EmptyState>مفيش استثناءات حاليًا</EmptyState>}
+            {exceptionsPageQuery.data && (
+              <Pagination total={exceptionsPageQuery.data.total} limit={exceptionsPageQuery.data.limit} offset={exceptionsPageQuery.data.offset} onPageChange={exceptionsList.setPage} isFetching={exceptionsPageQuery.isFetching} />
+            )}
+            {exceptionsPageQuery.data?.total === 0 && <EmptyState>مفيش استثناءات حاليًا</EmptyState>}
           </CardBody>
         </Card>
       )}
 
       {tab === "audit" && (
         <Card>
-          <CardHeader><CardTitle>سجل التدقيق - التحكم في المدفوعات ({auditEntries.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>سجل التدقيق - التحكم في المدفوعات ({auditEntriesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
             <Table>
               <THead>
                 <TR><TH>الوقت</TH><TH>الإجراء</TH><TH>العنصر</TH><TH>بواسطة</TH></TR>
               </THead>
               <TBody>
-                {auditEntries.map((a) => (
+                {(auditEntriesPageQuery.data?.items ?? []).map((a) => (
                   <TR key={a.id}>
                     <TD className="text-xs">{new Date(a.createdAt).toLocaleString("ar-EG")}</TD>
                     <TD className="font-mono text-xs">{a.action}</TD>
@@ -594,7 +607,10 @@ export function PaymentControlPage() {
                 ))}
               </TBody>
             </Table>
-            {auditEntries.length === 0 && <EmptyState>مفيش سجل تدقيق لسه (أو معندكش صلاحية رؤيته)</EmptyState>}
+            {auditEntriesPageQuery.data && (
+              <Pagination total={auditEntriesPageQuery.data.total} limit={auditEntriesPageQuery.data.limit} offset={auditEntriesPageQuery.data.offset} onPageChange={auditEntriesList.setPage} isFetching={auditEntriesPageQuery.isFetching} />
+            )}
+            {auditEntriesPageQuery.data?.total === 0 && <EmptyState>مفيش سجل تدقيق لسه (أو معندكش صلاحية رؤيته)</EmptyState>}
           </CardBody>
         </Card>
       )}

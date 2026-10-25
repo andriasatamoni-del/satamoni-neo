@@ -26,17 +26,9 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import {
-  BranchScopeGuard,
-  BranchScoped,
-  BranchResource,
-  BranchResources,
-  CurrentBranchScope,
-  scopedBranchId,
-  type BranchScope,
-} from "../../../shared/authorization/branch-scope";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
-import { ListDeliveryAssignmentsQueryDto, ListDriversQueryDto } from "./dto/list-delivery-query.dto";
+import { BranchScopeGuard, BranchScoped, BranchResource, BranchResources, CurrentBranchScope, scopedBranchId, type BranchScope } from "../../../shared/authorization/branch-scope";
+import { listResponse, splitListQuery, pageRequestOf } from "../../../shared/http/list-query.dto";
+import { ListDeliveryAssignmentsQueryDto, ListDriversQueryDto, ListDriverSettlementsQueryDto, ListDriverAttendanceShiftsQueryDto } from "./dto/list-delivery-query.dto";
 import { DeliveryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Driver } from "../domain/driver.aggregate";
 import type { DeliveryAssignment } from "../domain/delivery-assignment.aggregate";
@@ -110,8 +102,10 @@ export class DeliveryController {
   @BranchScoped()
   @Get("settlements")
   @RequirePermission(PERMISSION.DELIVERY_SETTLEMENTS_VIEW, PERMISSION.DELIVERY_SETTLEMENTS_CREATE, PERMISSION.DELIVERY_SETTLEMENTS_REVIEW)
-  async settlements(@Query("driverId") driverId?: string, @Query("branchId") branchId?: string, @Query("varianceStatus") varianceStatus?: string) {
-    return (await this.listDriverSettlements.execute({ driverId, branchId, varianceStatus })).map(toPublicSettlement);
+  async settlements(@Query() query: ListDriverSettlementsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listDriverSettlements.execute({ driverId: query.driverId, branchId: scopedBranchId(scope, query.branchId), varianceStatus: query.varianceStatus }, page);
+    return listResponse(rows.map(toPublicSettlement), total, page);
   }
 
   @BranchScoped()
@@ -166,8 +160,10 @@ export class DeliveryController {
   @BranchScoped()
   @Get("attendance-shifts")
   @RequirePermission(PERMISSION.DELIVERY_SHIFTS_MANAGE)
-  async attendanceShifts(@Query("branchId") branchId?: string, @Query("driverId") driverId?: string, @Query("status") status?: string) {
-    return (await this.listDriverAttendanceShifts.execute({ branchId, driverId, status })).map(toPublicAttendanceShift);
+  async attendanceShifts(@Query() query: ListDriverAttendanceShiftsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listDriverAttendanceShifts.execute({ branchId: scopedBranchId(scope, query.branchId), driverId: query.driverId, status: query.status }, page);
+    return listResponse(rows.map(toPublicAttendanceShift), total, page);
   }
 
   @BranchScoped()

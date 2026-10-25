@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { SupplierPayment } from "../../domain/supplier-payment.aggregate";
 import {
   SUPPLIER_PAYMENT_REPOSITORY,
@@ -9,7 +10,7 @@ import {
 export class ListSupplierPaymentsHandler {
   constructor(@Inject(SUPPLIER_PAYMENT_REPOSITORY) private readonly payments: SupplierPaymentRepositoryPort) {}
 
-  execute(filter?: { supplierId?: string; branchId?: string }): Promise<SupplierPayment[]> {
-    return this.payments.list(filter);
+  execute(filter?: { supplierId?: string; branchId?: string }, page?: PageRequest): Promise<{ rows: SupplierPayment[]; total: number }> {
+    return this.payments.listPage(filter, page);
   }
 }

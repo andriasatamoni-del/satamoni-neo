@@ -107,16 +107,6 @@ export function DeliveryPage() {
   const assignmentsQuery = usePaginatedQuery<Assignment>(["delivery", "assignments"], "/delivery/assignments", assignmentsList.params, {
     enabled: canSeeAssignments && tab === "assignments",
   });
-  const settlementsQuery = useQuery({
-    queryKey: ["delivery", "settlements"],
-    queryFn: () => apiRequest<DriverSettlement[]>("/delivery/settlements"),
-    enabled: canSeeSettlements && tab === "settlements",
-  });
-  const shiftsQuery = useQuery({
-    queryKey: ["delivery", "attendance-shifts"],
-    queryFn: () => apiRequest<DriverAttendanceShift[]>("/delivery/attendance-shifts"),
-    enabled: canManageShifts && tab === "shifts",
-  });
 
   const [driverName, setDriverName] = useState("");
   const [driverBranch, setDriverBranch] = useState("");
@@ -223,8 +213,10 @@ export function DeliveryPage() {
   const driverName_ = (id: string) => driversQuery.data?.find((d) => d.id === id)?.name ?? id;
   const branchName = (id: string) => branches.find((b) => b.id === id)?.name ?? id;
   const assignments = assignmentsQuery.data?.items ?? [];
-  const settlements = settlementsQuery.data ?? [];
-  const shifts = shiftsQuery.data ?? [];
+  const settlementsList = useListState([] as const, { prefix: "settlements." });
+  const settlementsPageQuery = usePaginatedQuery<DriverSettlement>(["delivery", "settlements"], "/delivery/settlements", settlementsList.params, { enabled: canSeeSettlements && tab === "settlements" });
+  const shiftsList = useListState([] as const, { prefix: "shifts." });
+  const shiftsPageQuery = usePaginatedQuery<DriverAttendanceShift>(["delivery", "attendance-shifts"], "/delivery/attendance-shifts", shiftsList.params, { enabled: canManageShifts && tab === "shifts" });
 
   return (
     <div>
@@ -421,7 +413,7 @@ export function DeliveryPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>تسويات الكاش ({settlements.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>تسويات الكاش ({settlementsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -430,7 +422,7 @@ export function DeliveryPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {settlements.map((s) => (
+                  {(settlementsPageQuery.data?.items ?? []).map((s) => (
                     <TR key={s.id}>
                       <TD className="font-semibold text-slate-900">{driverName_(s.driverId)}</TD>
                       <TD>{branchName(s.branchId)}</TD>
@@ -462,7 +454,10 @@ export function DeliveryPage() {
                   ))}
                 </TBody>
               </Table>
-              {settlements.length === 0 && <EmptyState>مفيش تسويات كاش لسه</EmptyState>}
+              {settlementsPageQuery.data && (
+                <Pagination total={settlementsPageQuery.data.total} limit={settlementsPageQuery.data.limit} offset={settlementsPageQuery.data.offset} onPageChange={settlementsList.setPage} isFetching={settlementsPageQuery.isFetching} />
+              )}
+              {settlementsPageQuery.data?.total === 0 && <EmptyState>مفيش تسويات كاش لسه</EmptyState>}
             </CardBody>
           </Card>
         </>
@@ -497,7 +492,7 @@ export function DeliveryPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>شيفتات الحضور ({shifts.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>شيفتات الحضور ({shiftsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
@@ -506,7 +501,7 @@ export function DeliveryPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {shifts.map((s) => (
+                  {(shiftsPageQuery.data?.items ?? []).map((s) => (
                     <TR key={s.id}>
                       <TD className="font-semibold text-slate-900">{driverName_(s.driverId)}</TD>
                       <TD>{branchName(s.branchId)}</TD>
@@ -524,7 +519,10 @@ export function DeliveryPage() {
                   ))}
                 </TBody>
               </Table>
-              {shifts.length === 0 && <EmptyState>مفيش شيفتات حضور لسه</EmptyState>}
+              {shiftsPageQuery.data && (
+                <Pagination total={shiftsPageQuery.data.total} limit={shiftsPageQuery.data.limit} offset={shiftsPageQuery.data.offset} onPageChange={shiftsList.setPage} isFetching={shiftsPageQuery.isFetching} />
+              )}
+              {shiftsPageQuery.data?.total === 0 && <EmptyState>مفيش شيفتات حضور لسه</EmptyState>}
             </CardBody>
           </Card>
         </>

@@ -37,7 +37,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess, branchScopeOf } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, BranchResource, assertBranchAccess, branchScopeOf, CurrentBranchScope, scopedBranchId, type BranchScope } from "../../../shared/authorization/branch-scope";
 import { InventoryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { InventoryItem } from "../domain/inventory-item.aggregate";
 import type { StockMovement } from "../domain/stock-movement.aggregate";
@@ -47,7 +47,8 @@ import type { TransferRequest } from "../domain/transfer-request.aggregate";
 import type { InventoryBatch } from "../domain/inventory-batch.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
 import { ListInventoryItemsQueryDto } from "./dto/list-inventory-items-query.dto";
-import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
+import { listResponse, splitListQuery, pageRequestOf, BranchListQueryDto, pageOfRows } from "../../../shared/http/list-query.dto";
+import { ListStocktakesQueryDto, ListTransferRequestsQueryDto } from "./dto/list-inventory-lists-query.dto";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, PermissionsGuard, BranchScopeGuard)
@@ -134,8 +135,10 @@ export class InventoryController {
   @BranchScoped()
   @Get("low-stock")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
-  async lowStock(@Query("branchId") branchId?: string) {
-    return this.listLowStock.execute(branchId);
+  async lowStock(@Query() query: BranchListQueryDto) {
+    const page = pageRequestOf(query);
+    const rows = await this.listLowStock.execute(query.branchId);
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 
   @BranchScoped()
@@ -155,8 +158,10 @@ export class InventoryController {
   @BranchScoped()
   @Get("stocktakes")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW)
-  async stocktakes(@Query("branchId") branchId?: string) {
-    return (await this.listStocktakes.execute({ branchId })).map(toPublicStocktake);
+  async stocktakes(@Query() query: ListStocktakesQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listStocktakes.execute({ branchId: scopedBranchId(scope, query.branchId) }, page);
+    return listResponse(rows.map(toPublicStocktake), total, page);
   }
 
   @BranchScoped()
@@ -179,17 +184,14 @@ export class InventoryController {
   @BranchScoped()
   @Get("transfer-requests")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_MOVEMENTS_RECORD)
-  async transferRequests(
-    @Req() req: Request & { user: AuthenticatedUser },
-    @Query("fromBranchId") fromBranchId?: string,
-    @Query("toBranchId") toBranchId?: string,
-    @Query("status") status?: string
-  ) {
-    const rows = await this.listTransferRequests.execute({ fromBranchId, toBranchId, status });
-    const scope = branchScopeOf(req.user);
+  async transferRequests(@Query() query: ListTransferRequestsQueryDto, @CurrentBranchScope() scope: BranchScope) {
+    const page = pageRequestOf(query);
     // a branch-bound user only sees transfers where its own branch is the sender or the receiver
-    const visible = scope.kind === "all" ? rows : scope.kind === "branch" ? rows.filter((t) => t.fromBranchId === scope.branchId || t.toBranchId === scope.branchId) : [];
-    return visible.map(toPublicTransferRequest);
+    const { rows, total } = await this.listTransferRequests.execute(
+      { fromBranchId: query.fromBranchId, toBranchId: query.toBranchId, status: query.status, involvingBranchId: scopedBranchId(scope) },
+      page
+    );
+    return listResponse(rows.map(toPublicTransferRequest), total, page);
   }
 
   @BranchScoped()
@@ -279,8 +281,10 @@ export class InventoryController {
   @BranchScoped()
   @Get("items/:id/batches")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
-  async batches(@Param("id") id: string, @Query("branchId") branchId: string) {
-    return (await this.listInventoryBatches.execute({ inventoryItemId: id, branchId })).map(toPublicBatch);
+  async batches(@Param("id") id: string, @Query() query: BranchListQueryDto) {
+    const page = pageRequestOf(query);
+    const rows = await this.listInventoryBatches.execute({ inventoryItemId: id, branchId: query.branchId as string });
+    return listResponse(pageOfRows(rows, page).map(toPublicBatch), rows.length, page);
   }
 
   @BranchScoped()

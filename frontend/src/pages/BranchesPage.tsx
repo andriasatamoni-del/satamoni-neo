@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useCan } from "../shared/auth/AuthContext";
 import { PERMISSION } from "../shared/auth/permissions";
@@ -9,6 +9,9 @@ import { Button } from "../shared/ui/Button";
 import { Field, Input } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Branch {
   id: string;
@@ -22,7 +25,6 @@ interface Branch {
 export function BranchesPage() {
   const queryClient = useQueryClient();
   const allowed = useCan();
-  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiRequest<Branch[]>("/branches") });
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -44,7 +46,8 @@ export function BranchesPage() {
     createBranch.mutate();
   }
 
-  const branches = branchesQuery.data ?? [];
+  const branchesList = useListState([] as const, { prefix: "branches." });
+  const branchesPageQuery = usePaginatedQuery<Branch>(["branches"], "/branches", branchesList.params);
 
   return (
     <div>
@@ -74,10 +77,10 @@ export function BranchesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>الفروع ({branches.length})</CardTitle>
+          <CardTitle>الفروع ({branchesPageQuery.data?.total ?? 0})</CardTitle>
         </CardHeader>
         <CardBody className="p-0">
-          {branchesQuery.isLoading && <p className="px-5 py-4 text-sm text-slate-400">بيتحمّل...</p>}
+          {branchesPageQuery.isLoading && <p className="px-5 py-4 text-sm text-slate-400">بيتحمّل...</p>}
           <Table>
             <THead>
               <TR>
@@ -87,7 +90,7 @@ export function BranchesPage() {
               </TR>
             </THead>
             <TBody>
-              {branches.map((b) => (
+              {(branchesPageQuery.data?.items ?? []).map((b) => (
                 <TR key={b.id}>
                   <TD className="font-semibold text-slate-900">{b.name}</TD>
                   <TD>{b.address ?? "—"}</TD>
@@ -101,7 +104,10 @@ export function BranchesPage() {
               ))}
             </TBody>
           </Table>
-          {branches.length === 0 && !branchesQuery.isLoading && <EmptyState>مفيش فروع لسه</EmptyState>}
+          {branchesPageQuery.data && (
+            <Pagination total={branchesPageQuery.data.total} limit={branchesPageQuery.data.limit} offset={branchesPageQuery.data.offset} onPageChange={branchesList.setPage} isFetching={branchesPageQuery.isFetching} />
+          )}
+          {branchesPageQuery.data?.total === 0 && <EmptyState>مفيش فروع لسه</EmptyState>}
         </CardBody>
       </Card>
     </div>

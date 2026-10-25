@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Purchase, type PurchaseStatus } from "../../domain/purchase.aggregate";
 import type { PurchaseRepositoryPort } from "../../domain/ports/purchase-repository.port";
@@ -64,20 +66,20 @@ export class PurchaseRepository implements PurchaseRepositoryPort {
   }
 
   async list(filter?: { branchId?: string; businessDate?: Date; status?: string }): Promise<Purchase[]> {
-    const rows = await this.db
-      .select()
-      .from(purchases)
-      .where(
-        and(
-          filter?.branchId ? eq(purchases.branch_id, filter.branchId) : undefined,
-          filter?.businessDate ? eq(purchases.business_date, filter.businessDate) : undefined,
-          filter?.status ? eq(purchases.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(purchases.business_date), desc(purchases.created_at));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; businessDate?: Date; status?: string }, page?: PageRequest): Promise<{ rows: Purchase[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(purchases.branch_id, filter.branchId) : undefined,
+      filter?.businessDate ? eq(purchases.business_date, filter.businessDate) : undefined,
+      filter?.status ? eq(purchases.status, filter.status) : undefined
+    );
+    const query = this.db.select().from(purchases).where(where).orderBy(desc(purchases.business_date), desc(purchases.created_at), desc(purchases.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(purchases).where(where)));
     const result: Purchase[] = [];
     for (const row of rows) result.push(this.toDomain(row, await this.loadLines(row.id)));
-    return result;
+    return { rows: result, total };
   }
 
   private loadLines(purchaseId: string): Promise<(typeof purchaseLines.$inferSelect)[]> {

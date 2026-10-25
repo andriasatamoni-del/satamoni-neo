@@ -12,6 +12,9 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { StatusBadge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Conversation { id: string; channel: "whatsapp" | "messenger" | "instagram"; phone: string; customerName: string | null; lastMessageAt: string | null; createdAt: string; }
 interface BotStatus { enabled: boolean; aiConfigured: boolean; whatsappSendConfigured: boolean; socialSendConfigured: boolean; }
@@ -50,7 +53,6 @@ export function WhatsappPage() {
   // أصناف وفروع فورم "تسجيل طلب" بس
   const canPickVariants = canManageOrders && can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
 
-  const conversationsQuery = useQuery({ queryKey: ["whatsapp", "conversations"], queryFn: () => apiRequest<Conversation[]>("/whatsapp/conversations") });
   const conversationDetailQuery = useQuery({
     queryKey: ["whatsapp", "conversations", openConversationId],
     queryFn: () => apiRequest<{ conversation: Conversation; messages: Message[] }>(`/whatsapp/conversations/${openConversationId}`),
@@ -63,11 +65,6 @@ export function WhatsappPage() {
   });
   // من غير branches.view الطلب بيتسجّل على فرع المستخدم
   const { branches: orderBranches, canListBranches } = useBranchOptions<Branch>(canManageOrders);
-  const pendingOrdersQuery = useQuery({
-    queryKey: ["whatsapp", "pending-orders"],
-    queryFn: () => apiRequest<PendingOrder[]>("/whatsapp/pending-orders"),
-    enabled: canManageOrders && tab === "pending-orders",
-  });
   const botStatusQuery = useQuery({ queryKey: ["whatsapp", "bot-status"], queryFn: () => apiRequest<BotStatus>("/whatsapp/bot-status") });
 
   const variants = (menuItemsQuery.data ?? []).flatMap((item) => item.variants.map((v) => ({ ...v, itemName: item.name })));
@@ -156,8 +153,10 @@ export function WhatsappPage() {
     createComplaint.mutate();
   }
 
-  const conversations = conversationsQuery.data ?? [];
-  const pendingOrders = pendingOrdersQuery.data ?? [];
+  const conversationsList = useListState([] as const, { prefix: "conversations." });
+  const conversationsPageQuery = usePaginatedQuery<Conversation>(["whatsapp", "conversations", "list"], "/whatsapp/conversations", conversationsList.params);
+  const pendingOrdersList = useListState([] as const, { prefix: "pendingOrders." });
+  const pendingOrdersPageQuery = usePaginatedQuery<PendingOrder>(["whatsapp", "pending-orders"], "/whatsapp/pending-orders", pendingOrdersList.params, { enabled: canManageOrders && tab === "pending-orders" });
 
   return (
     <div>
@@ -184,11 +183,11 @@ export function WhatsappPage() {
       {tab === "conversations" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-1">
-            <CardHeader><CardTitle>المحادثات ({conversations.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>المحادثات ({conversationsPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="max-h-[32rem] overflow-y-auto p-0">
               <Table>
                 <TBody>
-                  {conversations.map((c) => (
+                  {(conversationsPageQuery.data?.items ?? []).map((c) => (
                     <TR key={c.id} className={openConversationId === c.id ? "bg-brand-50" : ""}>
                       <TD>
                         <button type="button" className="text-start" onClick={() => setOpenConversationId(c.id)}>
@@ -200,7 +199,10 @@ export function WhatsappPage() {
                   ))}
                 </TBody>
               </Table>
-              {conversations.length === 0 && <EmptyState>مفيش محادثات واتساب لسه</EmptyState>}
+              {conversationsPageQuery.data && (
+                <Pagination total={conversationsPageQuery.data.total} limit={conversationsPageQuery.data.limit} offset={conversationsPageQuery.data.offset} onPageChange={conversationsList.setPage} isFetching={conversationsPageQuery.isFetching} />
+              )}
+              {conversationsPageQuery.data?.total === 0 && <EmptyState>مفيش محادثات واتساب لسه</EmptyState>}
             </CardBody>
           </Card>
 
@@ -313,14 +315,14 @@ export function WhatsappPage() {
 
       {tab === "pending-orders" && (
         <Card>
-          <CardHeader><CardTitle>الطلبات المعلّقة ({pendingOrders.length})</CardTitle></CardHeader>
+          <CardHeader><CardTitle>الطلبات المعلّقة ({pendingOrdersPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
           <CardBody className="p-0">
             <Table>
               <THead>
                 <TR><TH>العميل</TH><TH>النوع</TH><TH>الأصناف</TH><TH>الإجمالي</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
               </THead>
               <TBody>
-                {pendingOrders.map((order) => (
+                {(pendingOrdersPageQuery.data?.items ?? []).map((order) => (
                   <TR key={order.id}>
                     <TD className="font-semibold text-slate-900">{order.customerName ?? order.customerPhone}</TD>
                     <TD>{ORDER_TYPE_LABELS[order.orderType] ?? order.orderType}</TD>
@@ -339,7 +341,10 @@ export function WhatsappPage() {
                 ))}
               </TBody>
             </Table>
-            {pendingOrders.length === 0 && <EmptyState>مفيش طلبات معلّقة لسه</EmptyState>}
+            {pendingOrdersPageQuery.data && (
+              <Pagination total={pendingOrdersPageQuery.data.total} limit={pendingOrdersPageQuery.data.limit} offset={pendingOrdersPageQuery.data.offset} onPageChange={pendingOrdersList.setPage} isFetching={pendingOrdersPageQuery.isFetching} />
+            )}
+            {pendingOrdersPageQuery.data?.total === 0 && <EmptyState>مفيش طلبات معلّقة لسه</EmptyState>}
           </CardBody>
         </Card>
       )}

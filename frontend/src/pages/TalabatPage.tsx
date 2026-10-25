@@ -11,6 +11,9 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface Branch { id: string; name: string; talabatBranchId: string | null; }
 interface PaymentMethod { id: string; name: string; talabatPaymentCode: string | null; }
@@ -71,17 +74,11 @@ export function TalabatPage() {
     enabled: tab === "dashboard",
   });
 
-  const ordersQuery = useQuery({
-    queryKey: ["talabat", "orders"],
-    queryFn: () => apiRequest<TalabatOrderRow[]>("/talabat/orders"),
-    enabled: tab === "orders",
-  });
+  const talabatOrdersList = useListState([] as const, { prefix: "orders." });
+  const talabatOrdersPageQuery = usePaginatedQuery<TalabatOrderRow>(["talabat", "orders"], "/talabat/orders", talabatOrdersList.params, { enabled: tab === "orders" });
 
-  const errorsQuery = useQuery({
-    queryKey: ["talabat", "integration-errors"],
-    queryFn: () => apiRequest<IntegrationError[]>("/talabat/integration-errors"),
-    enabled: tab === "errors",
-  });
+  const integrationErrorsList = useListState([] as const, { prefix: "errors." });
+  const integrationErrorsPageQuery = usePaginatedQuery<IntegrationError>(["talabat", "integration-errors"], "/talabat/integration-errors", integrationErrorsList.params, { enabled: tab === "errors" });
 
   const retryError = useMutation({
     mutationFn: (id: string) => apiRequest(`/talabat/integration-errors/${id}/retry`, { method: "POST" }),
@@ -126,11 +123,8 @@ export function TalabatPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["payment-control", "payment-methods"] }),
   });
 
-  const paymentOverridesQuery = useQuery({
-    queryKey: ["talabat", "payment-control-report"],
-    queryFn: () => apiRequest<PaymentOverrideRow[]>("/talabat/payment-control-report"),
-    enabled: tab === "payment-control",
-  });
+  const paymentOverridesList = useListState([] as const, { prefix: "overrides." });
+  const paymentOverridesPageQuery = usePaginatedQuery<PaymentOverrideRow>(["talabat", "payment-control-report"], "/talabat/payment-control-report", paymentOverridesList.params, { enabled: tab === "payment-control" });
 
   return (
     <div>
@@ -203,7 +197,7 @@ export function TalabatPage() {
                 </TR>
               </THead>
               <TBody>
-                {ordersQuery.data?.map((o) => (
+                {(talabatOrdersPageQuery.data?.items ?? []).map((o) => (
                   <TR key={o.id}>
                     <TD className="font-mono text-xs">{o.talabatOrderId}</TD>
                     <TD><Badge tone={ORDER_STATUS_TONES[o.status]}>{ORDER_STATUS_LABELS[o.status]}</Badge></TD>
@@ -214,7 +208,10 @@ export function TalabatPage() {
                 ))}
               </TBody>
             </Table>
-            {ordersQuery.data?.length === 0 && <EmptyState>مفيش أوردرات Talabat لسه</EmptyState>}
+            {talabatOrdersPageQuery.data && (
+              <Pagination total={talabatOrdersPageQuery.data.total} limit={talabatOrdersPageQuery.data.limit} offset={talabatOrdersPageQuery.data.offset} onPageChange={talabatOrdersList.setPage} isFetching={talabatOrdersPageQuery.isFetching} />
+            )}
+            {talabatOrdersPageQuery.data?.total === 0 && <EmptyState>مفيش أوردرات Talabat لسه</EmptyState>}
           </CardBody>
         </Card>
       )}
@@ -234,7 +231,7 @@ export function TalabatPage() {
                 </TR>
               </THead>
               <TBody>
-                {errorsQuery.data?.map((e) => (
+                {(integrationErrorsPageQuery.data?.items ?? []).map((e) => (
                   <TR key={e.id}>
                     <TD>{e.stage}</TD>
                     <TD className="font-mono text-xs">{e.talabatOrderId ?? "-"}</TD>
@@ -256,7 +253,10 @@ export function TalabatPage() {
                 ))}
               </TBody>
             </Table>
-            {errorsQuery.data?.length === 0 && <EmptyState>مفيش أخطاء تكامل</EmptyState>}
+            {integrationErrorsPageQuery.data && (
+              <Pagination total={integrationErrorsPageQuery.data.total} limit={integrationErrorsPageQuery.data.limit} offset={integrationErrorsPageQuery.data.offset} onPageChange={integrationErrorsList.setPage} isFetching={integrationErrorsPageQuery.isFetching} />
+            )}
+            {integrationErrorsPageQuery.data?.total === 0 && <EmptyState>مفيش أخطاء تكامل</EmptyState>}
           </CardBody>
         </Card>
       )}
@@ -391,7 +391,7 @@ export function TalabatPage() {
                 </TR>
               </THead>
               <TBody>
-                {paymentOverridesQuery.data?.map((r) => (
+                {(paymentOverridesPageQuery.data?.items ?? []).map((r) => (
                   <TR key={r.adjustmentRequestId}>
                     <TD className="font-mono text-xs">{r.talabatOrderId}</TD>
                     <TD>{r.status}</TD>
@@ -401,7 +401,10 @@ export function TalabatPage() {
                 ))}
               </TBody>
             </Table>
-            {paymentOverridesQuery.data?.length === 0 && <EmptyState>مفيش محاولات تعديل دفع لأوردرات Talabat</EmptyState>}
+            {paymentOverridesPageQuery.data && (
+              <Pagination total={paymentOverridesPageQuery.data.total} limit={paymentOverridesPageQuery.data.limit} offset={paymentOverridesPageQuery.data.offset} onPageChange={paymentOverridesList.setPage} isFetching={paymentOverridesPageQuery.isFetching} />
+            )}
+            {paymentOverridesPageQuery.data?.total === 0 && <EmptyState>مفيش محاولات تعديل دفع لأوردرات Talabat</EmptyState>}
           </CardBody>
         </Card>
       )}

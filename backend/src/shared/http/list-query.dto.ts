@@ -6,7 +6,7 @@ import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Ma
 // Opt-in during the transition: a caller that sends `paginate=1` gets a `Paginated<T>` envelope with the default limit
 // applied; without it the endpoint keeps returning the bare array it always did (the POS menu, the offline cashier cache
 // and the pickers on other pages need the full list). Filters (q, from/to, per-resource ones) apply in both modes.
-export const DEFAULT_PAGE_LIMIT = 50;
+export const DEFAULT_PAGE_LIMIT = 10;
 export const MAX_PAGE_LIMIT = 200;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -111,4 +111,8 @@ export function splitListQuery<Q extends ListQueryDto>(query: Q): { page: PageRe
 /** The response of a list endpoint: the `Paginated<T>` envelope when the caller asked for a page, the bare array otherwise. */
 export function listResponse<T>(items: T[], total: number, page: PageRequest | undefined): Paginated<T> | T[] {
   return page ? { items, total, limit: page.limit, offset: page.offset } : items;
+}
+
+export function pageOfRows<T>(rows: T[], page: PageRequest | undefined): T[] {
+  return page ? rows.slice(page.offset, page.offset + page.limit) : rows;
 }

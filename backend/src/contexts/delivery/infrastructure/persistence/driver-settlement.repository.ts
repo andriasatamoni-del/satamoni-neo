@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { DriverSettlement, type VarianceStatus } from "../../domain/driver-settlement.aggregate";
 import type { DriverSettlementRepositoryPort } from "../../domain/ports/driver-settlement-repository.port";
@@ -48,18 +50,18 @@ export class DriverSettlementRepository implements DriverSettlementRepositoryPor
   }
 
   async list(filter?: { driverId?: string; branchId?: string; varianceStatus?: string }): Promise<DriverSettlement[]> {
-    const rows = await this.db
-      .select()
-      .from(driverSettlements)
-      .where(
-        and(
-          filter?.driverId ? eq(driverSettlements.driver_id, filter.driverId) : undefined,
-          filter?.branchId ? eq(driverSettlements.branch_id, filter.branchId) : undefined,
-          filter?.varianceStatus ? eq(driverSettlements.variance_status, filter.varianceStatus) : undefined
-        )
-      )
-      .orderBy(desc(driverSettlements.settled_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { driverId?: string; branchId?: string; varianceStatus?: string }, page?: PageRequest): Promise<{ rows: DriverSettlement[]; total: number }> {
+    const where = and(
+      filter?.driverId ? eq(driverSettlements.driver_id, filter.driverId) : undefined,
+      filter?.branchId ? eq(driverSettlements.branch_id, filter.branchId) : undefined,
+      filter?.varianceStatus ? eq(driverSettlements.variance_status, filter.varianceStatus) : undefined
+    );
+    const query = this.db.select().from(driverSettlements).where(where).orderBy(desc(driverSettlements.settled_at), desc(driverSettlements.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(driverSettlements).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof driverSettlements.$inferSelect): DriverSettlement {

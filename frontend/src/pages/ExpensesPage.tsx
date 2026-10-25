@@ -12,6 +12,9 @@ import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { can } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
+import { Pagination } from "../shared/ui/Pagination";
+import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { useListState } from "../shared/ui/useListState";
 
 interface ExpenseCategory {
   id: string; name: string; isActive: boolean; alertThreshold: number | null; accountId: string | null;
@@ -62,11 +65,6 @@ export function ExpensesPage() {
     enabled: !isCashier && can(user, PERMISSION.PROCUREMENT_SUPPLIERS_VIEW, PERMISSION.PROCUREMENT_SUPPLIERS_MANAGE),
   });
 
-  const [expenseFilterBranchId, setExpenseFilterBranchId] = useState("");
-  const expensesQuery = useQuery({
-    queryKey: ["expenses", "list", expenseFilterBranchId],
-    queryFn: () => apiRequest<Expense[]>(expenseFilterBranchId ? `/expenses?branchId=${expenseFilterBranchId}` : "/expenses"),
-  });
 
   const [expenseForm, setExpenseForm] = useState({
     branchId: "", businessDate: new Date().toISOString().slice(0, 10), categoryId: "", amount: "", notes: "", supplierId: "",
@@ -136,7 +134,10 @@ export function ExpensesPage() {
   });
 
   const categories = categoriesQuery.data ?? [];
-  const expenses = expensesQuery.data ?? [];
+  const categoriesList = useListState([] as const, { prefix: "cat." });
+  const categoriesPageQuery = usePaginatedQuery<ExpenseCategory>(["expenses", "categories"], "/expenses/categories", categoriesList.params);
+  const expensesList = useListState(["branchId"] as const, { prefix: "expenses." });
+  const expensesPageQuery = usePaginatedQuery<Expense>(["expenses", "list"], "/expenses", expensesList.params);
 
   function categoryName(id: string): string {
     return categories.find((c) => c.id === id)?.name ?? id;
@@ -215,12 +216,12 @@ export function ExpensesPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>سجل المصروفات ({expenses.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>سجل المصروفات ({expensesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               {!isCashier && (
                 <div className="border-b border-slate-100 p-4">
                   <Field label="فلترة حسب فرع (اختياري)">
-                    <Select value={expenseFilterBranchId} onChange={(e) => setExpenseFilterBranchId(e.target.value)}>
+                    <Select value={expensesList.filters.branchId} onChange={(e) => expensesList.setFilter("branchId", e.target.value)}>
                       <option value="">كل الفروع</option>
                       {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </Select>
@@ -233,7 +234,7 @@ export function ExpensesPage() {
                   <TR><TH>التاريخ</TH>{!isCashier && <TH>الفرع</TH>}<TH>البند</TH><TH>المبلغ</TH><TH>ملاحظات</TH><TH>الحالة</TH><TH>إجراء</TH></TR>
                 </THead>
                 <TBody>
-                  {expenses.map((e) => (
+                  {(expensesPageQuery.data?.items ?? []).map((e) => (
                     <TR key={e.id}>
                       <TD>{e.businessDate.slice(0, 10)}</TD>
                       {!isCashier && <TD>{branchName(e.branchId)}</TD>}
@@ -275,7 +276,10 @@ export function ExpensesPage() {
                   ))}
                 </TBody>
               </Table>
-              {expenses.length === 0 && <EmptyState>مفيش مصروفات مسجلة لسه</EmptyState>}
+              {expensesPageQuery.data && (
+                <Pagination total={expensesPageQuery.data.total} limit={expensesPageQuery.data.limit} offset={expensesPageQuery.data.offset} onPageChange={expensesList.setPage} isFetching={expensesPageQuery.isFetching} />
+              )}
+              {expensesPageQuery.data?.total === 0 && <EmptyState>مفيش مصروفات مسجلة لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>
@@ -308,14 +312,14 @@ export function ExpensesPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>بنود المصروفات ({categories.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle>بنود المصروفات ({categoriesPageQuery.data?.total ?? 0})</CardTitle></CardHeader>
             <CardBody className="p-0">
               <Table>
                 <THead>
                   <TR><TH>الاسم</TH><TH>الحساب المرتبط</TH><TH>حد التنبيه</TH><TH>الحالة</TH><TH></TH></TR>
                 </THead>
                 <TBody>
-                  {categories.map((c) => (
+                  {(categoriesPageQuery.data?.items ?? []).map((c) => (
                     <TR key={c.id}>
                       <TD className="font-semibold text-slate-900">{c.name}</TD>
                       <TD>{c.accountId ? accountsQuery.data?.find((a) => a.id === c.accountId)?.name ?? "-" : "افتراضي (6900)"}</TD>
@@ -332,7 +336,10 @@ export function ExpensesPage() {
                   ))}
                 </TBody>
               </Table>
-              {categories.length === 0 && <EmptyState>مفيش بنود مصروفات لسه</EmptyState>}
+              {categoriesPageQuery.data && (
+                <Pagination total={categoriesPageQuery.data.total} limit={categoriesPageQuery.data.limit} offset={categoriesPageQuery.data.offset} onPageChange={categoriesList.setPage} isFetching={categoriesPageQuery.isFetching} />
+              )}
+              {categoriesPageQuery.data?.total === 0 && <EmptyState>مفيش بنود مصروفات لسه</EmptyState>}
             </CardBody>
           </Card>
         </div>

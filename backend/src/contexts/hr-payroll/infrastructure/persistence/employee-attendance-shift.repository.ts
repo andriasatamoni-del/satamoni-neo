@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { EmployeeAttendanceShift, type EmployeeAttendanceShiftStatus } from "../../domain/employee-attendance-shift.aggregate";
 import type { EmployeeAttendanceShiftRepositoryPort } from "../../domain/ports/employee-attendance-shift-repository.port";
@@ -40,12 +42,14 @@ export class EmployeeAttendanceShiftRepository implements EmployeeAttendanceShif
   }
 
   async list(filter?: { employeeId?: string }): Promise<EmployeeAttendanceShift[]> {
-    const rows = await this.db
-      .select()
-      .from(employeeAttendanceShifts)
-      .where(filter?.employeeId ? eq(employeeAttendanceShifts.employee_id, filter.employeeId) : undefined)
-      .orderBy(desc(employeeAttendanceShifts.checked_in_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { employeeId?: string }, page?: PageRequest): Promise<{ rows: EmployeeAttendanceShift[]; total: number }> {
+    const where = filter?.employeeId ? eq(employeeAttendanceShifts.employee_id, filter.employeeId) : undefined;
+    const query = this.db.select().from(employeeAttendanceShifts).where(where).orderBy(desc(employeeAttendanceShifts.checked_in_at), desc(employeeAttendanceShifts.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(employeeAttendanceShifts).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toRow(shift: EmployeeAttendanceShift) {

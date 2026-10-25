@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
@@ -11,6 +11,7 @@ import { SaveLoyaltyRewardHandler } from "../application/commands/save-loyalty-r
 import { SaveLoyaltyRewardDto } from "./dto/save-loyalty-reward.dto";
 import { LoyaltyDomainErrorFilter } from "./filters/domain-error.filter";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageOfRows, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 // إدارة كتالوج المكافآت (الموظفين) - نسبة الكسب نفسها في إعدادات النظام (loyaltyPointsPerEgp)
 @Controller("loyalty/rewards")
@@ -24,8 +25,10 @@ export class LoyaltyRewardsController {
 
   @Get()
   @RequirePermission(PERMISSION.LOYALTY_VIEW, PERMISSION.LOYALTY_MANAGE)
-  async list() {
-    return this.listRewards.execute();
+  async list(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const rows = await this.listRewards.execute();
+    return listResponse(pageOfRows(rows, page), rows.length, page);
   }
 
   @Post()

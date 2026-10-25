@@ -1,3 +1,5 @@
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
+
 export interface FollowupQueueRow {
   orderId: string;
   branchId: string;
@@ -16,7 +18,7 @@ export interface FollowupQueueReaderPort {
   // أوردرات دليفري اتسلّمت ولسه محتاجة مكالمة متابعة: إما لسه ما اتصلناش بيها خالص، أو اتصلنا وماردّوش
   // (no_answer) فلسه تستاهل محاولة تانية. "مش راد بعد 3 محاولات" اعتباره نهائي - بيخرج من الطابور
   // ومش بيرجع تاني (نفس فلسفة الريبو القديم بالظبط، راجع routes/crm.js)
-  listQueue(branchId?: string): Promise<FollowupQueueRow[]>;
+  listQueue(branchId?: string, page?: PageRequest): Promise<{ rows: FollowupQueueRow[]; total: number }>;
 }
 
 export const FOLLOWUP_QUEUE_READER = Symbol("FOLLOWUP_QUEUE_READER");

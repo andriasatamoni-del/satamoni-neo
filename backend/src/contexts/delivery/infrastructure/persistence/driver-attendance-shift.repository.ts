@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { paginate, totalOf } from "../../../../shared/database/pagination";
+import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { DriverAttendanceShift, type DriverAttendanceShiftStatus } from "../../domain/driver-attendance-shift.aggregate";
 import type { DriverAttendanceShiftRepositoryPort } from "../../domain/ports/driver-attendance-shift-repository.port";
@@ -58,18 +60,18 @@ export class DriverAttendanceShiftRepository implements DriverAttendanceShiftRep
   }
 
   async list(filter?: { branchId?: string; driverId?: string; status?: string }): Promise<DriverAttendanceShift[]> {
-    const rows = await this.db
-      .select()
-      .from(driverAttendanceShifts)
-      .where(
-        and(
-          filter?.branchId ? eq(driverAttendanceShifts.branch_id, filter.branchId) : undefined,
-          filter?.driverId ? eq(driverAttendanceShifts.driver_id, filter.driverId) : undefined,
-          filter?.status ? eq(driverAttendanceShifts.status, filter.status) : undefined
-        )
-      )
-      .orderBy(desc(driverAttendanceShifts.checked_in_at));
-    return rows.map((r) => this.toDomain(r));
+    return (await this.listPage(filter)).rows;
+  }
+
+  async listPage(filter?: { branchId?: string; driverId?: string; status?: string }, page?: PageRequest): Promise<{ rows: DriverAttendanceShift[]; total: number }> {
+    const where = and(
+      filter?.branchId ? eq(driverAttendanceShifts.branch_id, filter.branchId) : undefined,
+      filter?.driverId ? eq(driverAttendanceShifts.driver_id, filter.driverId) : undefined,
+      filter?.status ? eq(driverAttendanceShifts.status, filter.status) : undefined
+    );
+    const query = this.db.select().from(driverAttendanceShifts).where(where).orderBy(desc(driverAttendanceShifts.checked_in_at), desc(driverAttendanceShifts.id)).$dynamic();
+    const { rows, total } = await paginate(query, page, async () => totalOf(await this.db.select({ total: count() }).from(driverAttendanceShifts).where(where)));
+    return { rows: rows.map((r) => this.toDomain(r)), total };
   }
 
   private toDomain(row: typeof driverAttendanceShifts.$inferSelect): DriverAttendanceShift {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseFilters, UseGuards, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { SendWhatsappReplyHandler } from "../application/commands/send-whatsapp-reply.handler";
 import { RegisterPendingOrderHandler } from "../application/commands/register-pending-order.handler";
@@ -23,6 +23,7 @@ import type { WhatsappConversation } from "../domain/whatsapp-conversation.aggre
 import type { WhatsappMessageRecord } from "../domain/ports/whatsapp-message.port";
 import type { WhatsappPendingOrder } from "../domain/whatsapp-pending-order.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
+import { ListQueryDto, listResponse, pageRequestOf } from "../../../shared/http/list-query.dto";
 
 @Controller("whatsapp")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -49,8 +50,10 @@ export class WhatsappController {
 
   @Get("conversations")
   @RequirePermission(PERMISSION.WHATSAPP_VIEW)
-  async conversations() {
-    return (await this.listConversations.execute()).map(toPublicConversation);
+  async conversations(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listConversations.execute(page);
+    return listResponse(rows.map(toPublicConversation), total, page);
   }
 
   @Get("conversations/:id")
@@ -77,8 +80,10 @@ export class WhatsappController {
 
   @Get("pending-orders")
   @RequirePermission(PERMISSION.WHATSAPP_ORDERS_MANAGE)
-  async pendingOrders() {
-    return (await this.listPendingOrders.execute()).map(toPublicPendingOrder);
+  async pendingOrders(@Query() query: ListQueryDto) {
+    const page = pageRequestOf(query);
+    const { rows, total } = await this.listPendingOrders.execute(undefined, page);
+    return listResponse(rows.map(toPublicPendingOrder), total, page);
   }
 
   @Post("pending-orders/:id/confirm")
