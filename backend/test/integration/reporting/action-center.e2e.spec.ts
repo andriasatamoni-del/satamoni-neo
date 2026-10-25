@@ -194,6 +194,24 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     expect(types).toContain("NEGATIVE_STOCK");
   });
 
+  test("paginate=1 pages the alerts in severity order and keeps the counts over every alert", async () => {
+    const full = await request(app.getHttpServer())
+      .get("/reports/action-center")
+      .set("Authorization", `Bearer ${adminToken}`);
+    const firstPage = await request(app.getHttpServer())
+      .get("/reports/action-center?paginate=1&limit=2&offset=0")
+      .set("Authorization", `Bearer ${adminToken}`);
+    const secondPage = await request(app.getHttpServer())
+      .get("/reports/action-center?paginate=1&limit=2&offset=2")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body).toMatchObject({ total: full.body.alerts.length, limit: 2, offset: 0 });
+    expect(firstPage.body.alerts).toEqual(full.body.alerts.slice(0, 2));
+    expect(secondPage.body.alerts).toEqual(full.body.alerts.slice(2, 4));
+    expect(firstPage.body.countsBySeverity).toEqual(full.body.countsBySeverity);
+    expect(full.body.total).toBeUndefined();
+  });
+
   test("من غير توكن -> 401", async () => {
     const res = await request(app.getHttpServer()).get("/reports/action-center");
     expect(res.status).toBe(401);
