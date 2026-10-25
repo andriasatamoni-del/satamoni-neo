@@ -13,6 +13,7 @@
     "backup": "ts-node scripts/backup/backup.ts",
     "restore-drill": "ts-node scripts/backup/restore-drill.ts",
     "seed:dev": "ts-node scripts/dev/seed-dev.ts",
+    "seed:demo": "ts-node scripts/dev/seed-demo.ts",
     "verify-encrypted-backup": "ts-node scripts/backup/verify-encrypted-backup.ts",
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:unit": "jest --runInBand",
