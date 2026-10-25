@@ -185,6 +185,12 @@ describe("local dev seed stays local (BL-14 exception)", () => {
     expect(main.indexOf("assertLocalDevDatabase(")).toBeLessThan(main.indexOf("createScriptDb("));
   });
 
+  test("the demo seed asserts a local database before it boots the app", () => {
+    const main = fs.readFileSync(path.join(backendDir, "scripts/dev/seed-demo.ts"), "utf8").split("async function main()")[1] ?? "";
+    expect(main.indexOf("assertLocalDevDatabase(")).toBeGreaterThan(-1);
+    expect(main.indexOf("assertLocalDevDatabase(")).toBeLessThan(main.indexOf("createApplicationContext("));
+  });
+
   test("no workflow, deployment file or Render config references the dev seed", () => {
     const files = [
       ...fs.readdirSync(workflowsDir).map((f) => path.join(workflowsDir, f)),
@@ -192,7 +198,7 @@ describe("local dev seed stays local (BL-14 exception)", () => {
       path.join(repoRoot, "DEPLOYMENT.md"),
     ].filter((f) => fs.existsSync(f));
     for (const f of files) {
-      expect({ f, hit: /seed-dev|seed:dev/.test(fs.readFileSync(f, "utf8")) }).toEqual({ f, hit: false });
+      expect({ f, hit: /seed-dev|seed:dev|seed-demo|seed:demo/.test(fs.readFileSync(f, "utf8")) }).toEqual({ f, hit: false });
     }
   });
 
