@@ -1,384 +1,60 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, ApiError } from "../shared/api/client";
+import { useState, type FormEvent } from "react";
 import { useAuth } from "../shared/auth/AuthContext";
 import { PERMISSION } from "../shared/auth/permissions";
 import { can } from "../shared/auth/roles";
-import { OWN_BRANCH_LABEL } from "../shared/auth/useBranchOptions";
 import { PageHeader } from "../shared/ui/PageHeader";
-import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
-import { Button } from "../shared/ui/Button";
-import { Field, Input, Select, Textarea } from "../shared/ui/Field";
-import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { ListFilters } from "../shared/ui/ListFilters";
-import { Pagination } from "../shared/ui/Pagination";
-import { useListState } from "../shared/ui/useListState";
-import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
-import { Badge, StatusBadge } from "../shared/ui/Badge";
+import { Field, Select } from "../shared/ui/Field";
 import { ShiftBanner } from "./orders/ShiftBanner";
 import { ShiftReviewPanel } from "./orders/ShiftReviewPanel";
-import { enqueueOrder, loadSnapshot, saveSnapshot } from "../shared/offline/db";
-import { useOfflineSync } from "../shared/offline/useOfflineSync";
-
-// وضع الكاشير الأوفلاين (OFFLINE) - بيجيب البيانات من الشبكة كالمعتاد، وبيحفظ آخر نسخة ناجحة في
-// IndexedDB. لو الطلب فشل (أوفلاين)، بيرجّع آخر نسخة محفوظة بدل ما يوقف الصفحة تمامًا - الكاشير يقدر
-// يفضل يشتغل بقائمة الطعام والفروع وطرق الدفع اللي كانت متاحة آخر مرة كان فيها نت.
-async function offlineFallbackQuery<T>(path: string, snapshotKey: string): Promise<T> {
-  try {
-    const data = await apiRequest<T>(path);
-    await saveSnapshot(snapshotKey, data);
-    return data;
-  } catch (err) {
-    const cached = await loadSnapshot<T>(snapshotKey);
-    if (cached) return cached;
-    throw err;
-  }
-}
-
-interface Branch { id: string; name: string; }
-interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: "regular" | "fasting"; isActive: boolean; }
-interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
-interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
-interface MenuItemModifier {
-  id: string;
-  name: string;
-  priceDelta: number;
-  isActive: boolean;
-  variantPrices: MenuItemModifierVariantPrice[];
-}
-interface MenuItem {
-  id: string;
-  categoryId: string;
-  name: string;
-  description: string | null;
-  imageUrl: string | null;
-  isBest: boolean;
-  isActive: boolean;
-  variants: MenuItemVariant[];
-  modifiers: MenuItemModifier[];
-}
-interface ComboItem { variantId: string; quantity: number; }
-interface Combo { id: string; name: string; price: number; isActive: boolean; onlineOnly?: boolean; items: ComboItem[]; }
-interface PaymentMethod { id: string; name: string; }
-interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
-interface OrderLine {
-  menuItemId: string | null;
-  variantId: string | null;
-  comboId: string | null;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-  modifiers: OrderLineModifier[];
-}
-interface Order {
-  id: string;
-  branchId: string;
-  orderType: string;
-  tableNumber: string | null;
-  customerName: string | null;
-  customerPhone: string | null;
-  items: OrderLine[];
-  subtotal: number;
-  discount: number;
-  total: number;
-  status: string;
-  kitchenStatus: string;
-  paymentMethodId: string | null;
-  source?: string;
-  customerNotes?: string | null;
-  addressDetails?: string | null;
-}
-
-// مصدر الطلب (STORE-1) - الكاشير لازم يعرف إن الطلب جه من الموقع (العميل مستني تأكيد/اتصال) أو غيره
-const SOURCE_LABELS: Record<string, string> = { website: "أونلاين", whatsapp: "واتساب", talabat: "طلبات" };
-
-interface CartLineModifier { modifierId: string; name: string; priceDelta: number; }
-interface CartLine {
-  key: string;
-  variantId: string | null;
-  comboId: string | null;
-  itemName: string;
-  variantLabel: string;
-  unitPrice: number;
-  quantity: number;
-  modifiers: CartLineModifier[];
-}
-
-function resolveModifierPrice(modifier: MenuItemModifier, variantId: string): number {
-  const override = modifier.variantPrices.find((vp) => vp.variantId === variantId);
-  return override ? override.priceDelta : modifier.priceDelta;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  preparing: "بيتحضّر", out_for_delivery: "في الطريق", completed: "مكتمل", cancelled: "ملغي",
-};
-
-const ORDER_TYPES = [
-  { value: "takeaway", label: "تيك أواي" },
-  { value: "dinein", label: "صالة" },
-  { value: "delivery", label: "دليفري" },
-];
-
-const MENU_GROUP_LABELS: Record<string, string> = { regular: "عادي", fasting: "صيامي" };
+import { OfflineSyncBanner } from "./orders/OfflineSyncBanner";
+import { MenuBrowser } from "./orders/MenuBrowser";
+import { CartPanel } from "./orders/CartPanel";
+import { ItemPickerDialog } from "./orders/ItemPickerDialog";
+import { OrdersListCard, useOrdersListState } from "./orders/OrdersListCard";
+import { needsOptionPicker } from "./orders/menuPricing";
+import { useOrderDraft } from "./orders/orderDraft";
+import { useCart } from "./orders/useCart";
+import { useCreateOrder } from "./orders/useCreateOrder";
+import { errorMessage } from "./orders/errorMessage";
+import { usePosBranches } from "./orders/usePosBranches";
+import { usePosCatalog } from "./orders/usePosCatalog";
+import type { MenuItem } from "./orders/posTypes";
 
 export function OrdersPage() {
-  const queryClient = useQueryClient();
-  const offlineSync = useOfflineSync();
-  // الصلاحيات من آخر /auth/me (والكاشير الأوفلاين بيفضل شايف نفس الصلاحيات من الواجهة المتكاشة)
   const { user } = useAuth();
   const canCreateOrders = can(user, PERMISSION.ORDERS_CREATE);
   const canManageOrders = can(user, PERMISSION.ORDERS_MANAGE);
   const canSeeCatalog = can(user, PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE);
   const canSeePaymentMethods = can(user, PERMISSION.PAYMENT_CONTROL_VIEW);
-  const canListBranches = can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
-  const branchesQuery = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => offlineFallbackQuery<Branch[]>("/branches", "branches"),
-    enabled: canListBranches,
-  });
-  // من غير branches.view (الكاشير) الفرع الوحيد هو فرع المستخدم - ومن غيره زرار تسجيل الطلب بيفضل مقفول
-  const branches: Branch[] = canListBranches
-    ? (branchesQuery.data ?? [])
-    : user?.branchId
-      ? [{ id: user.branchId, name: OWN_BRANCH_LABEL }]
-      : [];
-  // الأقسام والترتيب بقوا الأساس لشاشة الأصناف، فلازم يتخزنوا للكاشير الأوفلاين زي الأصناف والعروض
-  const categoriesQuery = useQuery({
-    queryKey: ["catalog", "categories"],
-    queryFn: () => offlineFallbackQuery<MenuCategory[]>("/catalog/categories", "catalog-categories"),
-    enabled: canSeeCatalog,
-  });
-  const layoutQuery = useQuery({
-    queryKey: ["catalog", "layout"],
-    queryFn: () => offlineFallbackQuery<{ combosPosition: number }>("/catalog/layout", "catalog-layout"),
-    enabled: canSeeCatalog,
-  });
-  const menuItemsQuery = useQuery({
-    queryKey: ["catalog", "items"],
-    queryFn: () => offlineFallbackQuery<MenuItem[]>("/catalog/items", "catalog-items"),
-    enabled: canSeeCatalog,
-  });
-  const combosQuery = useQuery({
-    queryKey: ["catalog", "combos"],
-    queryFn: () => offlineFallbackQuery<Combo[]>("/catalog/combos", "catalog-combos"),
-    enabled: canSeeCatalog,
-  });
-  // طريقة الدفع اختيارية في الطلب؛ من غير payment_control.view الاختيار مش بيظهر
-  const paymentMethodsQuery = useQuery({
-    queryKey: ["payment-control", "methods"],
-    queryFn: () => offlineFallbackQuery<PaymentMethod[]>("/payment-control/payment-methods", "payment-methods"),
-    enabled: canCreateOrders && canSeePaymentMethods,
-  });
 
-  const [branchId, setBranchId] = useState(canListBranches ? "" : (user?.branchId ?? ""));
-  // قائمة الطلبات بقت صفحات من السيرفر (NEO-6): البحث والفلاتر والصفحة في الـURL، والفرع من اختيار الكاشير فوق
-  const ordersList = useListState(["q", "status", "orderType", "source", "from", "to"] as const, { prefix: "orders." });
-  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...ordersList.params, branchId });
+  const { branches, canListBranches, defaultBranchId } = usePosBranches();
+  const [branchId, setBranchId] = useState(defaultBranchId);
+  const ordersList = useOrdersListState();
+  const catalog = usePosCatalog(canSeeCatalog);
 
-  const [menuGroup, setMenuGroup] = useState<"all" | "regular" | "fasting">("all");
-  // التبويب المختار: id قسم، أو "combos" (العروض)، أو "none" (أصناف من غير قسم). فاضي = أول تبويب تلقائيًا
-  const [selectedTab, setSelectedTab] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const cart = useCart();
+  const orderDraft = useOrderDraft();
+  const createOrder = useCreateOrder(() => {
+    cart.clear();
+    orderDraft.resetKeepingOrderType();
+  });
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
-  const [pickerVariantId, setPickerVariantId] = useState<string | null>(null);
-  const [pickerModifierIds, setPickerModifierIds] = useState<string[]>([]);
-
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [orderType, setOrderType] = useState("takeaway");
-  const [tableNumber, setTableNumber] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [addressDetails, setAddressDetails] = useState("");
-  const [discount, setDiscount] = useState("");
-  const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-
-  const combos = useMemo(() => (combosQuery.data ?? []).filter((c) => !c.onlineOnly), [combosQuery.data]);
-
-  // الأقسام النشطة فقط (القسم الموقوف أو المؤرشف مبيظهرش) بترتيبها، وتبويب "العروض" في المكان اللي اتحدد له وسطها
-  const activeCategories = useMemo(
-    () => (categoriesQuery.data ?? []).filter((c) => c.isActive && (menuGroup === "all" || c.menuGroup === menuGroup)),
-    [categoriesQuery.data, menuGroup]
-  );
-  const activeCategoryIds = useMemo(() => new Set(activeCategories.map((c) => c.id)), [activeCategories]);
-
-  const hasFastingMenu = (categoriesQuery.data ?? []).some((c) => c.menuGroup === "fasting");
-
-  // الأصناف المتاحة للبيع: نشطة وقسمها نشط (أو من غير قسم). "كل الأصناف" مبقتش شاشة، الأقسام هي الشاشة.
-  const sellableItems = useMemo(
-    () =>
-      (menuItemsQuery.data ?? []).filter((item) => {
-        if (!item.isActive) return false;
-        if (item.categoryId === null) return menuGroup === "all";
-        return activeCategoryIds.has(item.categoryId);
-      }),
-    [menuItemsQuery.data, activeCategoryIds, menuGroup]
-  );
-  const hasUncategorized = sellableItems.some((i) => i.categoryId === null);
-
-  const tabs = useMemo(() => {
-    const list: Array<{ key: string; label: string; order: number; rank: number }> = activeCategories.map((c) => ({ key: c.id, label: c.name, order: c.displayOrder, rank: 1 }));
-    if (combos.length > 0) list.push({ key: "combos", label: "العروض", order: layoutQuery.data?.combosPosition ?? -1, rank: 0 });
-    if (hasUncategorized) list.push({ key: "none", label: "بدون قسم", order: Number.MAX_SAFE_INTEGER, rank: 2 });
-    return list.sort((a, b) => a.order - b.order || a.rank - b.rank || a.label.localeCompare(b.label, "ar"));
-  }, [activeCategories, combos.length, layoutQuery.data, hasUncategorized]);
-
-  const activeTab = tabs.some((t) => t.key === selectedTab) ? selectedTab : tabs[0]?.key ?? null;
-  const searching = search.trim() !== "";
-
-  const visibleItems = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (q) return sellableItems.filter((item) => item.name.toLowerCase().includes(q)); // البحث بالاسم شغّال عبر كل الأقسام النشطة
-    if (!activeTab || activeTab === "combos") return [];
-    return sellableItems.filter((item) => (activeTab === "none" ? item.categoryId === null : item.categoryId === activeTab));
-  }, [sellableItems, activeTab, search]);
-
-  function addToCart(item: MenuItem, variant: MenuItemVariant, modifierIds: string[]) {
-    const modifiers: CartLineModifier[] = modifierIds.map((id) => {
-      const modifier = item.modifiers.find((m) => m.id === id)!;
-      return { modifierId: modifier.id, name: modifier.name, priceDelta: resolveModifierPrice(modifier, variant.id) };
-    });
-    const modifierTotal = modifiers.reduce((sum, m) => sum + m.priceDelta, 0);
-    const key = `${variant.id}:${modifierIds.slice().sort().join(",")}`;
-    setCart((lines) => {
-      const existing = lines.find((l) => l.key === key);
-      if (existing) {
-        return lines.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l));
-      }
-      return [
-        ...lines,
-        {
-          key, variantId: variant.id, comboId: null, itemName: item.name, variantLabel: variant.label,
-          unitPrice: variant.price + modifierTotal, quantity: 1, modifiers,
-        },
-      ];
-    });
-    setPickerItem(null);
-  }
-
-  function addComboToCart(combo: Combo) {
-    const key = `combo:${combo.id}`;
-    setCart((lines) => {
-      const existing = lines.find((l) => l.key === key);
-      if (existing) return lines.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l));
-      return [
-        ...lines,
-        { key, variantId: null, comboId: combo.id, itemName: combo.name, variantLabel: "", unitPrice: combo.price, quantity: 1, modifiers: [] },
-      ];
-    });
-  }
 
   function handleItemClick(item: MenuItem) {
     if (item.variants.length === 0) return;
-    const activeModifiers = item.modifiers.filter((m) => m.isActive);
-    if (item.variants.length === 1 && activeModifiers.length === 0) {
-      addToCart(item, item.variants[0], []);
-    } else {
-      setPickerItem(item);
-      setPickerVariantId(item.variants[0]?.id ?? null);
-      setPickerModifierIds([]);
-    }
+    if (needsOptionPicker(item)) setPickerItem(item);
+    else cart.addItem(item, item.variants[0], []);
   }
 
-  function changeQuantity(key: string, delta: number) {
-    setCart((lines) =>
-      lines
-        .map((l) => (l.key === key ? { ...l, quantity: l.quantity + delta } : l))
-        .filter((l) => l.quantity > 0)
-    );
+  function handleBranchChange(id: string) {
+    setBranchId(id);
+    ordersList.setPage(1);
   }
-
-  function removeLine(key: string) {
-    setCart((lines) => lines.filter((l) => l.key !== key));
-  }
-
-  const subtotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
-  const discountNum = Number(discount) || 0;
-  const total = Math.max(0, subtotal - discountNum);
-
-  const createOrder = useMutation({
-    // React Query بشكل افتراضي بيوقف تنفيذ الـmutation تمامًا وهو أوفلاين (networkMode: 'online')
-    // ويأجّله لحد ما النت يرجع - ده بالظبط عكس اللي محتاجينه هنا: عايزين الكود يتنفّذ فورًا وهو
-    // أوفلاين عشان يسجّل الطلب في الطابور المحلي بنفسه، مش ينتظر النت يرجع الأول
-    networkMode: "always",
-    mutationFn: async () => {
-      const payload = {
-        branchId,
-        orderType,
-        tableNumber: orderType === "dinein" && tableNumber ? tableNumber : undefined,
-        customerName: customerName || undefined,
-        customerPhone: customerPhone || undefined,
-        addressDetails: orderType === "delivery" && addressDetails ? addressDetails : undefined,
-        items: cart.map((l) =>
-          l.comboId
-            ? { comboId: l.comboId, quantity: l.quantity }
-            : {
-                variantId: l.variantId,
-                quantity: l.quantity,
-                modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
-              }
-        ),
-        discount: discountNum > 0 ? discountNum : undefined,
-        paymentMethodId: paymentMethodId || undefined,
-        // معرّف بيتولّد هنا (مش في السيرفر) عشان لو الطلب اتسجّل في الطابور المحلي وبعدين اتزامن أكتر
-        // من مرة (وضع الكاشير الأوفلاين)، السيرفر يقدر يتجاهل التكرار - راجع تعليق Order.clientRequestId
-        clientRequestId: crypto.randomUUID(),
-      };
-      const cartSummary = cart.map((l) => `${l.itemName} × ${l.quantity}`).join("، ");
-
-      if (!navigator.onLine) {
-        await enqueueOrder({ clientRequestId: payload.clientRequestId, payload, summary: cartSummary, createdAt: Date.now() });
-        return { queued: true as const };
-      }
-      try {
-        await apiRequest("/orders", { method: "POST", body: payload });
-        return { queued: false as const };
-      } catch (err) {
-        if (err instanceof ApiError) throw err;
-        // فشل الطلب من غير رد من السيرفر (انقطاع شبكة فعلي، مش رفض) - نسجّله في الطابور المحلي
-        await enqueueOrder({ clientRequestId: payload.clientRequestId, payload, summary: cartSummary, createdAt: Date.now() });
-        return { queued: true as const };
-      }
-    },
-    onSuccess: (result) => {
-      setError(null);
-      setCart([]);
-      setTableNumber("");
-      setCustomerName("");
-      setCustomerPhone("");
-      setAddressDetails("");
-      setDiscount("");
-      setPaymentMethodId("");
-      if (!result.queued) {
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
-        queryClient.invalidateQueries({ queryKey: ["inventory"] });
-      }
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
-  });
-
-  const completeOrder = useMutation({
-    mutationFn: (id: string) => apiRequest(`/orders/${id}/status`, { method: "PATCH", body: { status: "completed" } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
-  });
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    createOrder.mutate();
+    createOrder.mutate({ branchId, draft: orderDraft.draft, lines: cart.lines });
   }
-
-  const variantLabel = (variantId: string) => {
-    for (const item of menuItemsQuery.data ?? []) {
-      const v = item.variants.find((v) => v.id === variantId);
-      if (v) return `${item.name} (${v.label})`;
-    }
-    return variantId;
-  };
-  const comboName = (comboId: string) => (combosQuery.data ?? []).find((c) => c.id === comboId)?.name ?? "عرض";
-  const orderLineLabel = (line: OrderLine) => (line.comboId ? comboName(line.comboId) : variantLabel(line.variantId!));
-  const orders = ordersQuery.data?.items ?? [];
-  // العروض الحصرية لموقع الطلب مابتتسجّلش من الكاشير (السيرفر بيرفضها برضه) - الفلتر فوق في `combos`
 
   return (
     <div>
@@ -386,34 +62,11 @@ export function OrdersPage() {
 
       <ShiftBanner />
       <ShiftReviewPanel />
-
-      {(!offlineSync.isOnline || offlineSync.pendingOrders.length > 0 || offlineSync.syncError) && (
-        <div className={`mb-4 rounded-xl border p-3 text-sm ${!offlineSync.isOnline ? "border-amber-200 bg-amber-50" : "border-brand-200 bg-brand-50"}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="font-semibold text-slate-800">
-              {!offlineSync.isOnline && "أنت غير متصل بالإنترنت - الطلبات هتتسجّل محليًا وتتزامن أول ما النت يرجع. "}
-              {offlineSync.pendingOrders.length > 0 && `${offlineSync.pendingOrders.length} طلب في انتظار المزامنة.`}
-            </div>
-            {offlineSync.pendingOrders.length > 0 && (
-              <Button size="sm" variant="secondary" onClick={offlineSync.syncNow} disabled={!offlineSync.isOnline || offlineSync.syncing}>
-                {offlineSync.syncing ? "بتتزامن..." : "مزامنة الآن"}
-              </Button>
-            )}
-          </div>
-          {offlineSync.syncError && <p className="mt-1 text-red-700">{offlineSync.syncError}</p>}
-          {offlineSync.pendingOrders.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
-              {offlineSync.pendingOrders.map((o) => (
-                <li key={o.clientRequestId}>{o.summary}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <OfflineSyncBanner />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="الفرع">
-          <Select value={branchId} onChange={(e) => { setBranchId(e.target.value); ordersList.setPage(1); }} className="max-w-[220px]">
+          <Select value={branchId} onChange={(e) => handleBranchChange(e.target.value)} className="max-w-[220px]">
             {canListBranches && <option value="">كل الفروع</option>}
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>
@@ -423,344 +76,38 @@ export function OrdersPage() {
       {canCreateOrders && (
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
-            {/* Category/item grid */}
-            <Card>
-              <CardBody>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Input
-                    placeholder="بحث عن صنف..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="max-w-[220px]"
-                  />
-                  {hasFastingMenu && (
-                    <div className="flex gap-1">
-                      {(["all", "regular", "fasting"] as const).map((g) => (
-                        <button
-                          key={g}
-                          type="button"
-                          onClick={() => { setMenuGroup(g); setSelectedTab(null); }}
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                            menuGroup === g ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {g === "all" ? "الكل" : MENU_GROUP_LABELS[g]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* أزرار الأقسام فقط (مفيش "كل الأصناف"): الضغط على قسم بيعرض أصنافه. ترتيبها من إعدادات قائمة الطعام */}
-                <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
-                  {tabs.map((t) => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => { setSelectedTab(t.key); setSearch(""); }}
-                      className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                        !searching && activeTab === t.key ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                  {tabs.length === 0 && (
-                    <p className="text-sm text-slate-500">مفيش أقسام نشطة. فعّل أو أضف قسم من شاشة "قائمة الطعام".</p>
-                  )}
-                </div>
-
-                {combos.length > 0 && activeTab === "combos" && !searching && (
-                  <div className="mb-4">
-                    <p className="mb-2 text-xs font-semibold text-slate-500">العروض</p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                      {combos.map((combo) => {
-                        const inCartQty = cart.filter((l) => l.comboId === combo.id).reduce((sum, l) => sum + l.quantity, 0);
-                        return (
-                          <button
-                            key={combo.id}
-                            type="button"
-                            onClick={() => addComboToCart(combo)}
-                            className="relative flex flex-col items-start gap-1 rounded-xl border border-brand-300 bg-brand-50/50 p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
-                          >
-                            {inCartQty > 0 && (
-                              <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
-                                {inCartQty}
-                              </span>
-                            )}
-                            <Badge tone="warning" className="mb-0.5">عرض</Badge>
-                            <p className="text-sm font-bold text-slate-900">{combo.name}</p>
-                            <p className="text-sm font-semibold text-brand-700">{combo.price}ج</p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {visibleItems.map((item) => {
-                    const minPrice = item.variants.reduce((min, v) => Math.min(min, v.price), Infinity);
-                    const inCartQty = cart
-                      .filter((l) => item.variants.some((v) => v.id === l.variantId))
-                      .reduce((sum, l) => sum + l.quantity, 0);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleItemClick(item)}
-                        className="relative flex flex-col items-start gap-1 rounded-xl border border-slate-200 bg-white p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md"
-                      >
-                        {inCartQty > 0 && (
-                          <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
-                            {inCartQty}
-                          </span>
-                        )}
-                        {item.isBest && <Badge tone="warning" className="mb-0.5">الأكثر طلبًا</Badge>}
-                        <p className="text-sm font-bold text-slate-900">{item.name}</p>
-                        <p className="text-sm font-semibold text-brand-700">
-                          {item.variants.length > 1 ? `من ${minPrice}ج` : `${minPrice === Infinity ? "-" : minPrice}ج`}
-                        </p>
-                      </button>
-                    );
-                  })}
-                  {visibleItems.length === 0 && !(activeTab === "combos" && !searching) && (
-                    <p className="col-span-full py-8 text-center text-sm text-slate-400">{searching ? "مفيش أصناف مطابقة للبحث" : "مفيش أصناف في القسم ده"}</p>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-
-            {/* Cart panel */}
-            <Card className="h-fit lg:sticky lg:top-20">
-              <CardHeader>
-                <CardTitle>السلة ({cart.length})</CardTitle>
-              </CardHeader>
-              <CardBody className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {ORDER_TYPES.map((t) => (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => setOrderType(t.value)}
-                      className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                        orderType === t.value ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {orderType === "dinein" && (
-                  <Field label="رقم الترابيزة">
-                    <Input value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} />
-                  </Field>
-                )}
-                {(orderType === "delivery" || orderType === "takeaway") && (
-                  <>
-                    <Field label="اسم العميل (اختياري)">
-                      <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-                    </Field>
-                    <Field label="رقم الموبايل (اختياري)">
-                      <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-                    </Field>
-                  </>
-                )}
-                {orderType === "delivery" && (
-                  <Field label="العنوان">
-                    <Textarea rows={2} value={addressDetails} onChange={(e) => setAddressDetails(e.target.value)} />
-                  </Field>
-                )}
-
-                <div className="max-h-64 space-y-2 overflow-y-auto border-t border-slate-100 pt-3">
-                  {cart.map((line) => (
-                    <div key={line.key} className="flex items-center gap-2 text-sm">
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-800">{line.itemName}</p>
-                        {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
-                        {line.modifiers.length > 0 && (
-                          <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => changeQuantity(line.key, -1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">−</button>
-                        <span className="w-5 text-center font-semibold">{line.quantity}</span>
-                        <button type="button" onClick={() => changeQuantity(line.key, 1)} className="h-6 w-6 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200">+</button>
-                      </div>
-                      <span className="w-14 text-end font-bold text-slate-900">{line.unitPrice * line.quantity}ج</span>
-                      <button type="button" onClick={() => removeLine(line.key)} className="text-red-500 hover:text-red-700">×</button>
-                    </div>
-                  ))}
-                  {cart.length === 0 && <p className="py-6 text-center text-sm text-slate-400">السلة فاضية</p>}
-                </div>
-
-                <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
-                  <div className="flex justify-between"><span className="text-slate-500">الإجمالي الفرعي</span><span className="font-semibold">{subtotal}ج</span></div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-500">الخصم</span>
-                    <Input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} className="max-w-[100px] py-1 text-end" />
-                  </div>
-                  <div className="flex justify-between text-base font-bold text-slate-900"><span>الإجمالي</span><span>{total}ج</span></div>
-                </div>
-
-                {canSeePaymentMethods && (
-                  <Field label="طريقة الدفع (اختياري)">
-                    <Select value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
-                      <option value="">- بدون -</option>
-                      {paymentMethodsQuery.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </Select>
-                  </Field>
-                )}
-
-                {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-
-                <Button type="submit" className="w-full" disabled={createOrder.isPending || cart.length === 0 || !branchId}>
-                  {createOrder.isPending ? "بيتسجّل..." : "تسجيل الطلب"}
-                </Button>
-                {!branchId && <p className="text-center text-xs text-amber-600">اختار الفرع الأول</p>}
-              </CardBody>
-            </Card>
+            <MenuBrowser catalog={catalog} cart={cart} onItemClick={handleItemClick} onComboClick={cart.addCombo} />
+            <CartPanel
+              cart={cart}
+              draft={orderDraft.draft}
+              onDraftChange={orderDraft.update}
+              canChoosePaymentMethod={canSeePaymentMethods}
+              branchSelected={branchId !== ""}
+              isSubmitting={createOrder.isPending}
+              error={errorMessage(createOrder.error)}
+            />
           </div>
         </form>
       )}
 
-      {pickerItem && (() => {
-        const activeModifiers = pickerItem.modifiers.filter((m) => m.isActive);
-        const selectedVariant = pickerItem.variants.find((v) => v.id === pickerVariantId) ?? pickerItem.variants[0];
-        const modifierTotal = pickerModifierIds.reduce((sum, id) => {
-          const modifier = activeModifiers.find((m) => m.id === id);
-          return modifier ? sum + resolveModifierPrice(modifier, selectedVariant.id) : sum;
-        }, 0);
-        const finalPrice = selectedVariant.price + modifierTotal;
+      {pickerItem && (
+        <ItemPickerDialog
+          key={pickerItem.id}
+          item={pickerItem}
+          onClose={() => setPickerItem(null)}
+          onAdd={(variant, modifierIds) => {
+            cart.addItem(pickerItem, variant, modifierIds);
+            setPickerItem(null);
+          }}
+        />
+      )}
 
-        function toggleModifier(id: string) {
-          setPickerModifierIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-        }
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPickerItem(null)}>
-            <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-bold text-slate-900">{pickerItem.name}</h3>
-                <button type="button" onClick={() => setPickerItem(null)} className="text-slate-400 hover:text-slate-700">×</button>
-              </div>
-
-              {pickerItem.variants.length > 1 && (
-                <div className="mb-3 space-y-2">
-                  {pickerItem.variants.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setPickerVariantId(v.id)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-semibold ${
-                        selectedVariant.id === v.id ? "border-brand-500 bg-brand-50" : "border-slate-200 hover:border-brand-400"
-                      }`}
-                    >
-                      <span>{v.label}</span>
-                      <span className="text-brand-700">{v.price}ج</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {activeModifiers.length > 0 && (
-                <div className="mb-3 space-y-1.5 border-t border-slate-100 pt-3">
-                  <p className="text-xs font-semibold text-slate-500">إضافات</p>
-                  {activeModifiers.map((m) => {
-                    const price = resolveModifierPrice(m, selectedVariant.id);
-                    return (
-                      <label key={m.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-1.5 text-sm">
-                        <input type="checkbox" checked={pickerModifierIds.includes(m.id)} onChange={() => toggleModifier(m.id)} />
-                        <span className="flex-1">{m.name}</span>
-                        <span className="text-slate-500">+{price}ج</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-sm font-semibold text-slate-500">السعر</span>
-                <span className="text-lg font-bold text-brand-700">{finalPrice}ج</span>
-              </div>
-              <Button className="mt-3 w-full" onClick={() => addToCart(pickerItem, selectedVariant, pickerModifierIds)}>
-                إضافة للسلة
-              </Button>
-            </div>
-          </div>
-        );
-      })()}
-
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>الطلبات ({ordersQuery.data?.total ?? 0})</CardTitle>
-        </CardHeader>
-        <CardBody className="p-0">
-          <ListFilters
-            state={ordersList}
-            search={{ placeholder: "اسم العميل أو التليفون أو الترابيزة" }}
-            dateRange
-            selects={[
-              { name: "status", label: "الحالة", options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) },
-              { name: "orderType", label: "النوع", options: ORDER_TYPES },
-              { name: "source", label: "المصدر", options: [{ value: "pos", label: "الكاشير" }, ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))] },
-            ]}
-          />
-          <Table>
-            <THead>
-              <TR>
-                <TH>النوع</TH>
-                <TH>الأصناف</TH>
-                <TH>الإجمالي</TH>
-                <TH>الحالة</TH>
-                <TH>إجراء</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {orders.map((o) => (
-                <TR key={o.id}>
-                  <TD>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge tone="neutral">{ORDER_TYPES.find((t) => t.value === o.orderType)?.label ?? o.orderType}</Badge>
-                      {o.source && o.source !== "pos" && (
-                        <Badge tone="info" data-testid="order-source-badge">{SOURCE_LABELS[o.source] ?? o.source}</Badge>
-                      )}
-                    </div>
-                  </TD>
-                  <TD className="max-w-xs">
-                    {o.items.map((i) => `${orderLineLabel(i)} × ${i.quantity}`).join("، ")}
-                    {o.source === "website" && (o.customerName || o.customerPhone) && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        {o.customerName} <span dir="ltr">{o.customerPhone}</span>
-                        {o.addressDetails && ` · ${o.addressDetails}`}
-                      </p>
-                    )}
-                    {o.customerNotes && <p className="mt-1 text-xs font-semibold text-amber-700">📝 {o.customerNotes}</p>}
-                  </TD>
-                  <TD className="font-bold text-slate-900">{o.total}ج</TD>
-                  <TD><StatusBadge status={STATUS_LABELS[o.status] ?? o.status} /></TD>
-                  <TD>
-                    {o.status === "preparing" && canManageOrders && (
-                      <Button size="sm" variant="secondary" onClick={() => completeOrder.mutate(o.id)} disabled={completeOrder.isPending}>
-                        إتمام
-                      </Button>
-                    )}
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-          {orders.length === 0 && !ordersQuery.isLoading && <EmptyState>مفيش طلبات بالفلاتر دي</EmptyState>}
-          <Pagination
-            total={ordersQuery.data?.total ?? 0}
-            limit={ordersList.limit}
-            offset={ordersList.offset}
-            onPageChange={ordersList.setPage}
-            isFetching={ordersQuery.isFetching}
-          />
-        </CardBody>
-      </Card>
+      <OrdersListCard
+        listState={ordersList}
+        branchId={branchId}
+        canManageOrders={canManageOrders}
+        describeOrderLine={catalog.describeOrderLine}
+      />
     </div>
   );
 }
