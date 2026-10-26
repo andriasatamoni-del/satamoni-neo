@@ -29,6 +29,13 @@
       "when": 1792218003621,
       "tag": "0003_neo6_list_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793050028520,
+      "tag": "0004_customers_view_permission",
+      "breakpoints": true
     }
   ]
 }
