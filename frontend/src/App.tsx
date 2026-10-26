@@ -8,6 +8,7 @@ import { STAFF_ROUTES, navItemsFor, type StaffPath } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { CrmPage } from "./pages/CrmPage";
+import { CustomersPage } from "./pages/CustomersPage";
 import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
@@ -41,13 +42,13 @@ import { StorefrontPage } from "./pages/storefront/StorefrontPage";
 import { TrackOrderPage } from "./pages/storefront/TrackOrderPage";
 import { MyOrdersPage } from "./pages/storefront/MyOrdersPage";
 
-// صفحة كل راوت في STAFF_ROUTES - Record بيخلّي الكومبايلر يفشل لو راوت اتضاف هناك من غير صفحة هنا.
 const STAFF_PAGES: Record<StaffPath, ComponentType> = {
   "/": HomePage,
   "/me": MyProfilePage,
   "/orders": OrdersPage,
   "/kds": KdsPage,
   "/crm": CrmPage,
+  "/customers": CustomersPage,
   "/whatsapp": WhatsappPage,
   "/branches": BranchesPage,
   "/inventory": InventoryPage,

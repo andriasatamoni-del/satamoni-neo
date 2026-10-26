@@ -41,8 +41,8 @@ describe("sidebar per seeded role", () => {
     expect(navPaths("driver")).toEqual(["/", "/me", "/delivery", "/pos-settings"]);
   });
 
-  it("callcenter sees CRM, WhatsApp and the menu", () => {
-    expect(navPaths("callcenter")).toEqual(["/", "/me", "/crm", "/whatsapp", "/catalog", "/talabat"]);
+  it("callcenter sees CRM, customers, WhatsApp and the menu", () => {
+    expect(navPaths("callcenter")).toEqual(["/", "/me", "/crm", "/customers", "/whatsapp", "/catalog", "/talabat"]);
   });
 
   it("every role sees home and their profile", () => {

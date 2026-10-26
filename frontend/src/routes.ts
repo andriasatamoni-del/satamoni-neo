@@ -23,6 +23,7 @@ import {
   ShieldUserIcon,
   TruckIcon,
   UserCircleIcon,
+  UserGroupIcon,
   UsersIcon,
   VaultIcon,
 } from "./shared/ui/icons";
@@ -31,18 +32,12 @@ export type NavEntry = Omit<NavItem, "to">;
 
 export interface StaffRoute {
   path: string;
-  // أي مفتاح واحد كفاية لفتح الصفحة - نفس مفاتيح @RequirePermission بتاعة الـendpoints الأساسية للصفحة في الباك
-  // (لو الصفحة تابات مستقلة: اتحاد مفاتيح التابات). null = أي مستخدم داخل.
-  // مفتاح غلط هنا بيخفي صفحة شغالة، فخدها من الكنترولر نفسه.
   perm: readonly Permission[] | null;
   nav: NavEntry;
 }
 
 const P = PERMISSION;
 
-// المصدر الوحيد لراوتات الموظفين: App.tsx بيبني منها الراوتات (وبيربط كل path بصفحته) والـAppShell بيبني منها
-// القائمة الجانبية، بنفس الصلاحيات. الملف ده من غير imports للصفحات عشان الصفحات نفسها تقدر تستخدمه (HomePage).
-// الترتيب هنا = ترتيب القائمة الجانبية.
 export const STAFF_ROUTES = [
   { path: "/", perm: null, nav: { label: "الرئيسية", icon: HomeIcon, end: true } },
   { path: "/me", perm: [P.HR_SELF_VIEW, P.HR_SELF_LEAVE_MANAGE], nav: { label: "بياناتي", icon: UserCircleIcon } },
@@ -53,6 +48,7 @@ export const STAFF_ROUTES = [
     perm: [P.CRM_FOLLOWUPS_VIEW, P.CRM_COMPLAINTS_VIEW],
     nav: { label: "متابعة العملاء والشكاوى", icon: UsersIcon },
   },
+  { path: "/customers", perm: [P.CUSTOMERS_VIEW], nav: { label: "العملاء", icon: UserGroupIcon } },
   { path: "/whatsapp", perm: [P.WHATSAPP_VIEW], nav: { label: "بوابة واتساب", icon: ChatBubbleIcon } },
   { path: "/branches", perm: [P.BRANCHES_VIEW, P.BRANCHES_MANAGE], nav: { label: "الفروع", icon: BuildingIcon } },
   {
@@ -182,12 +178,10 @@ export function canOpenRoute(user: { permissions: readonly Permission[] } | null
   return route.perm === null ? !!user : can(user, ...route.perm);
 }
 
-// روابط القائمة الجانبية = الراوتات اللي المستخدم يقدر يفتحها بس.
 export function navItemsFor(user: { permissions: readonly Permission[] } | null | undefined): NavItem[] {
   return STAFF_ROUTES.filter((r) => canOpenRoute(user, r)).map((r) => ({ to: r.path, ...r.nav }));
 }
 
-// للروابط اللي جوه الصفحات (بطاقات الرئيسية): path مش معروف = نسيبه ظاهر، والراوت نفسه هيعرض NotFound.
 export function canOpenPath(user: { permissions: readonly Permission[] } | null | undefined, path: string): boolean {
   const route = STAFF_ROUTES.find((r) => r.path === path.split(/[?#]/)[0]);
   return route ? canOpenRoute(user, route) : true;

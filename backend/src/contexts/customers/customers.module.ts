@@ -13,23 +13,24 @@ import { UpdateCustomerProfileHandler } from "./application/commands/update-cust
 import { ManageCustomerAddressHandler } from "./application/commands/manage-customer-address.handler";
 import { CustomerAuthController } from "./api/customer-auth.controller";
 import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
+import { CustomersController } from "./api/customers.controller";
+import { ListCustomersHandler } from "./application/queries/list-customers.handler";
+import { IdentityAccessModule } from "../identity-access/identity-access.module";
 
-// سر توكن منفصل تمامًا عن توكن الموظفين (JWT_SECRET بتاع IdentityAccessModule) - مشتق من نفس المتغيّر
-// الأساسي زي الريبو القديم بالظبط (`${JWT_SECRET}::customer`) عشان يشتغل فورًا من غير أي إعداد إضافي
-// على الاستضافة، بس توكن عميل مايتحققش أبدًا بمكتبة الموظفين ولا العكس. جلسة طويلة (180 يوم) - موقع
-// طلب عادي، مفيش حساسية زي حساب موظف
 @Module({
   imports: [
+    IdentityAccessModule,
     JwtModule.register({
       secret: `${process.env.JWT_SECRET}::customer`,
       signOptions: { expiresIn: "180d" },
     }),
   ],
-  controllers: [CustomerAuthController],
+  controllers: [CustomerAuthController, CustomersController],
   providers: [
     { provide: CUSTOMER_REPOSITORY, useClass: CustomerRepository },
     { provide: CUSTOMER_PASSWORD_HASHER, useClass: BcryptCustomerPasswordHasher },
     { provide: CUSTOMER_TOKEN_SERVICE, useClass: JwtCustomerTokenService },
+    ListCustomersHandler,
     RegisterCustomerHandler,
     LoginCustomerHandler,
     AddCustomerAddressHandler,
