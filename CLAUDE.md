@@ -9,7 +9,7 @@ satamoni-neo is a restaurant ERP. It rebuilds the legacy `satamoni-backend` syst
 - `backend/`: NestJS 10 + Drizzle ORM + PostgreSQL. A DDD **modular monolith**.
 - `frontend/`: React 18 + Vite 6 + React Router 7 + TanStack Query + Tailwind 4. An SPA.
 
-**Don't add comments to code.** Use clear names instead. Leave existing comments alone unless your change makes them wrong. Existing comments and docs are mostly in Egyptian Arabic, with Phase 3.1 code in English. User-facing strings and permission labels are in Arabic.
+**Don't add comments to code.** Use clear names instead. When you work on a file, remove all existing comments in it (keep tool directives such as `@ts-expect-error`). Existing comments and docs are mostly in Egyptian Arabic, with Phase 3.1 code in English. User-facing strings and permission labels are in Arabic.
 
 ## Commands
 
