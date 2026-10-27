@@ -105,7 +105,7 @@ openssl s_client -starttls postgres -connect "$HOST:5432" -servername "$HOST" -s
 
 التشغيل اليدوي المحلي: `PGSSL=true` بقت معناها `verify-full`. محتاج عميل PostgreSQL 16+ (بيستخدم `sslrootcert=system`)، أو حدد `PGSSLROOTCERT=/path/ca.pem`. للتجاوز المؤقت `BACKUP_DB_TLS_MODE=insecure-skip-verify`.
 
-**خارج النطاق ده**: اتصال التطبيق نفسه (`src/shared/database/pg-ssl.ts`) ومهام الاستيراد (`maintenance-operation.yml`) لسه بيستخدموا `rejectUnauthorized: false`. على Render الباك إند بيتصل بالـInternal URL من غير SSL، فمش متأثر؛ مهام الاستيراد بتتصل بالـExternal URL وتحتاج تعديل منفصل.
+**خارج النطاق ده**: اتصال التطبيق نفسه (`src/shared/database/pg-ssl.ts`) لسه بيستخدم `rejectUnauthorized: false`. على Render الباك إند بيتصل بالـInternal URL من غير SSL، فمش متأثر.
 
 ## تشغيل نسخة يدويًا من GitHub
 

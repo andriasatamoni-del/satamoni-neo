@@ -49,35 +49,6 @@ describe("workflow security (BL-14)", () => {
     }
   });
 
-  test("maintenance operation: fixed choice list, protected environment, main only, no free text", () => {
-    const wf = workflows.find((w) => w.file === "maintenance-operation.yml");
-    expect(wf).toBeDefined();
-    const input = wf!.doc.on.workflow_dispatch.inputs.operation;
-    expect(input.type).toBe("choice");
-    expect(Array.isArray(input.options)).toBe(true);
-    const job = wf!.doc.jobs["run-operation"];
-    expect(job.environment).toBe("production-maintenance");
-    expect(job.if).toContain("refs/heads/main");
-    // The only inputs reference is an env: assignment, never inline in run
-    const runStep = job.steps.find((s: any) => s.name === "Run approved operation");
-    expect(runStep.env.OPERATION).toContain("inputs.operation");
-    expect(runStep.run).not.toMatch(/\$\{\{/);
-    expect(runStep.run).toContain("exit 1"); // unknown values fail closed
-  });
-
-  test("every approved operation maps to an existing reviewed script, and no unmapped option exists", () => {
-    const wf = workflows.find((w) => w.file === "maintenance-operation.yml")!;
-    const options: string[] = wf.doc.on.workflow_dispatch.inputs.operation.options;
-    const runStep = wf.doc.jobs["run-operation"].steps.find((s: any) => s.name === "Run approved operation");
-    const mapped = new Map<string, string>();
-    for (const m of runStep.run.matchAll(/^\s*([a-z-]+)\)\s+SCRIPT="([^"]+)"/gm)) mapped.set(m[1], m[2]);
-    expect([...mapped.keys()].sort()).toEqual([...options].sort());
-    for (const script of mapped.values()) {
-      expect(script).toMatch(/^scripts\/[a-z-]+\.ts$/);
-      expect(fs.existsSync(path.join(backendDir, script))).toBe(true);
-    }
-  });
-
   test("production secrets are only used by jobs bound to a protected environment or the backup job (no env, no secrets elsewhere)", () => {
     for (const { file, doc } of workflows) {
       for (const [jobName, job] of Object.entries<any>(doc.jobs)) {

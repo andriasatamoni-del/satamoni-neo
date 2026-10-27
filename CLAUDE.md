@@ -17,7 +17,7 @@ pnpm is the package manager. Its version is pinned in the root `package.json` (`
 
 From the root: `pnpm dev` starts the local Postgres (Docker), applies migrations, then runs backend + frontend + a frontend typecheck together, with a status/log dashboard at http://localhost:4300 (`scripts/dev.mjs`; `DEV_DASHBOARD_PORT` to change; `DEV_SKIP_DOCKER=1` to use your own Postgres). It creates `backend/.env` from `.env.example` if missing.
 
-Local database: `docker-compose.yml` runs `postgres:17` on `127.0.0.1:5432` (user `postgres`, password `test123`) with the `satamoni_neo` dev database plus `satamoni_neo_test` and `satamoni_legacy_fixture_test` for the integration tests (`docker/postgres/init/`). Data persists in the `pgdata` volume. `pnpm db:up`, `pnpm db:down`, `pnpm db:reset` (wipes the volume and re-migrates). Stopping `pnpm dev` leaves the container running.
+Local database: `docker-compose.yml` runs `postgres:17` on `127.0.0.1:5432` (user `postgres`, password `test123`) with the `satamoni_neo` dev database plus `satamoni_neo_test` for the integration tests (`docker/postgres/init/`). Data persists in the `pgdata` volume. `pnpm db:up`, `pnpm db:down`, `pnpm db:reset` (wipes the volume and re-migrates). Stopping `pnpm dev` leaves the container running.
 
 Several worktrees can run their dev stacks side by side:
 - Inside a git worktree, run `pnpm worktree:setup` once. It runs `pnpm install` if needed and creates a database named after the worktree folder (`satamoni_neo_<folder>`) on the same Postgres container. It also picks a free port slot N (backend 4100+N, frontend 5173+N, dashboard 4300+N), writes the worktree's `backend/.env` and `.dev-worktree.json` (gitignored), and runs the migrations.
@@ -49,7 +49,6 @@ How the integration tests run:
 - They connect to `TEST_DATABASE_URL`, which defaults to `postgresql://postgres:test123@localhost:5432/satamoni_neo_test`. `global-setup.js` **drops the `public` schema and re-runs all migrations on every run**, even a run of a single file.
 - `test/safety/assert-disposable-db.js` refuses to run unless the host is local and the database name contains `test`, `scratch`, `disposable` or `ci`. Never weaken this guard. Never point tests at a real database.
 - `test/integration/setup.ts` sets `ACCOUNTING_ENFORCEMENT=deferred`, raises all throttle limits and deletes every external-service key, so tests never call Gemini, Meta or SMS. The Phase 3.1 suites (`test/integration/phase31/`) switch to `strict` themselves.
-- The legacy-import specs need an extra empty database: `CREATE DATABASE satamoni_legacy_fixture_test`.
 - The backup/restore drill specs need `pg_dump`/`pg_restore` at the same major version as the server (Postgres 17) on `PATH`.
 - Suites run serially (`maxWorkers: 1`). CI adds `--forceExit`.
 
@@ -141,10 +140,9 @@ The business day is the **Africa/Cairo calendar date**. The process and DB sessi
 - Tabs take an optional `perm`; use `usePermittedTabs(TABS)` so hidden tabs never become active, and give each tab's query `enabled: <permission> && tab === "<key>"`. Action buttons are wrapped in the matching permission. Branch pickers use `useBranchOptions()` (`GET /branches` needs `branches.view`; without it the list is the user's own branch).
 - `src/shared/offline/`: offline cashier mode. IndexedDB queue plus `useOfflineSync`. `public/sw.js` caches the UI so the orders page can open without network.
 
-## Legacy import & operations
+## Operations
 
-- `backend/scripts/import-*-from-legacy.ts` read the old database (`LEGACY_DATABASE_URL`, read-only). They are idempotent and **must run in the dependency order listed in `DEPLOYMENT.md` §4**: branches → users → crm → inventory → catalog → procurement → orders → drivers → accounting → payment-control → hr-payroll.
-- Production operations run only through `.github/workflows/maintenance-operation.yml`. It offers a fixed operation list and is gated by the `production-maintenance` environment, which requires a reviewer. Do not reintroduce a workflow that runs arbitrary scripts with production secrets. See `backend/docs/SECURITY_HARDENING.md`.
+- The one-time legacy import is finished. Its scripts and the `maintenance-operation.yml` workflow that ran them have been removed. The `legacy_*_id` columns stay, because they hold the imported rows' original ids. Do not add a workflow that runs arbitrary scripts with production secrets. See `backend/docs/SECURITY_HARDENING.md`.
 - Backups: `pnpm backup` and `pnpm restore-drill`, plus the daily `db-backup.yml` workflow. See `backend/docs/BACKUP_AND_RECOVERY.md`.
 - Deployment target is Render (`render.yaml`, `DEPLOYMENT.md`): both services build from the repo root with pnpm (no `rootDir`; `buildFilter` scopes auto-deploys). The backend runs as a Node web service and the frontend as a static site with a `/* → /index.html` rewrite.
 

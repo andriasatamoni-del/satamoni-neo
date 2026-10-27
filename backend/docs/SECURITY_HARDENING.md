@@ -8,7 +8,7 @@ Nothing here was executed against production by the engineering assistant.
 | Item | Before | After |
 |---|---|---|
 | `backend/scripts/create-test-admin.ts` | Created/reset an **active admin** `admin-test@satamoni-neo.local` with the committed password `Test12345!` against whatever `DATABASE_URL` pointed to. | **Deleted.** There is no code path that creates a privileged account with a fixed password. |
-| `.github/workflows/run-script.yml` | `workflow_dispatch` with a free-text `script_path`, interpolated into a shell command, run with `DATABASE_URL` + `LEGACY_DATABASE_URL` production secrets, no protected environment. | **Deleted** and replaced by `maintenance-operation.yml`: fixed `choice` list, mapped through a static `case`, `environment: production-maintenance`, `contents: read`, `main` only, serialized. |
+| `.github/workflows/run-script.yml` | `workflow_dispatch` with a free-text `script_path`, interpolated into a shell command, run with `DATABASE_URL` + `LEGACY_DATABASE_URL` production secrets, no protected environment. | **Deleted** and replaced by `maintenance-operation.yml`: fixed `choice` list, mapped through a static `case`, `environment: production-maintenance`, `contents: read`, `main` only, serialized. `maintenance-operation.yml` only ran the legacy imports and was removed with them once the import was done. |
 | `backend/scripts/audit-test-account.ts` | n/a | New **read-only** owner tool (single `SELECT` in a `READ ONLY` transaction) that reports whether the compromised account exists. |
 | Integration tests | Could be pointed at any `TEST_DATABASE_URL` and `DROP SCHEMA public CASCADE`. | `test/safety/assert-disposable-db.js` refuses non-local hosts and database names that do not contain `test`/`scratch`/`disposable`/`ci`. |
 | `backend/scripts/dev/seed-dev.ts` | n/a | **Local-dev-only** seed with simple, public demo passwords: the one deliberate exception to "no committed credentials". It refuses non-local hosts, `NODE_ENV=production` and `PGSSL=true` with no override, and `workflow-security.spec.ts` fails if the guard is removed or any workflow, `render.yaml` or `DEPLOYMENT.md` references it. |
@@ -53,10 +53,7 @@ Even after it is private, keep `BACKUP_ENCRYPTION_KEY` set: backups are encrypte
 
 ## 4. GitHub settings required for the new workflows (owner action)
 
-1. **Settings → Environments → New environment** `production-maintenance`:
-   * *Required reviewers*: at least one person other than the person who triggers the run.
-   * *Deployment branches*: `main` only.
-   * Add the secrets `DATABASE_URL` and `LEGACY_DATABASE_URL` **to this environment** and delete the repository-level copies.
+1. `production-maintenance` is no longer used (its workflow was removed with the legacy imports). Delete the environment and its `DATABASE_URL` / `LEGACY_DATABASE_URL` secrets.
 2. **Environment** `production-backup` (same protections as above: required reviewer with *Prevent self-review*, deployment branches `main` only; the workflow additionally runs only from `main`, but that is a second layer, not a substitute) with the secrets `DATABASE_URL` (a read-only database role is strongly recommended),
    `BACKUP_ENCRYPTION_KEY` (≥ 32 random characters, stored also in your password manager — without it backups are unreadable)
    and, optionally, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION`,

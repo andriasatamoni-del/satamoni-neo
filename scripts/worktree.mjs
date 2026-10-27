@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 export const CONFIG_FILE = ".dev-worktree.json";
 const CONTAINER = "satamoni-neo-postgres";
-const PROTECTED_DATABASES = new Set(["postgres", "satamoni_neo", "satamoni_neo_test", "satamoni_legacy_fixture_test"]);
+const PROTECTED_DATABASES = new Set(["postgres", "satamoni_neo", "satamoni_neo_test"]);
 const BASE_PORTS = { backend: 4100, frontend: 5173, dashboard: 4300 };
 const MAX_SLOT = 99;
 

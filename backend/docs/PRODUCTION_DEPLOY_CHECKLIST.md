@@ -29,8 +29,8 @@ It does **not** change any code, schema, migration or Render configuration; it o
 ### Security
 
 - [ ] The repository is **private**.
-- [ ] Two GitHub environments exist: `production-maintenance` and `production-backup`, each with a **required reviewer** (and *Prevent self-review*), and **deployment branches limited to `main`**. An `environment:` line in a workflow does not prove this: GitHub creates a missing environment with no rules. Check both in **Settings → Environments** yourself.
-- [ ] Secrets live **inside the environments**, not at repository level (delete any repository-level copy): `DATABASE_URL` and `LEGACY_DATABASE_URL` in `production-maintenance`; `DATABASE_URL` and **`BACKUP_ENCRYPTION_KEY`** (required, at least 32 characters, also stored in a password manager) in `production-backup`.
+- [ ] The GitHub environment `production-backup` exists with a **required reviewer** (and *Prevent self-review*), and **deployment branches limited to `main`**. An `environment:` line in a workflow does not prove this: GitHub creates a missing environment with no rules. Check it in **Settings → Environments** yourself. `production-maintenance` is no longer used; delete it and its secrets.
+- [ ] Secrets live **inside the environments**, not at repository level (delete any repository-level copy): `DATABASE_URL` and **`BACKUP_ENCRYPTION_KEY`** (required, at least 32 characters, also stored in a password manager) in `production-backup`.
 - [ ] The new `JWT_SECRET` is randomly generated and was never used before.
 - [ ] Any old database password has been changed (treat the old one as compromised).
 - [ ] The account `admin-test@satamoni.local` does not exist, or is disabled, in production. (`backend/scripts/audit-test-account.ts` can check this; it only reads.)
@@ -88,21 +88,6 @@ It does **not** change any code, schema, migration or Render configuration; it o
 - [ ] Take a last verified encrypted backup before touching anything (if there is existing data).
 - [ ] Deploy the **backend**. Migration `057` runs automatically before start (it is additive).
 - [ ] Deploy the **frontend**.
-- [ ] If importing from the old system, run the operations from **Actions → Approved maintenance operation → Run workflow**, **in this order**, one at a time, each approved by the reviewer:
-  1. `import-branches`
-  2. `import-users`
-  3. `import-crm`
-  4. `import-inventory`
-  5. `import-catalog`
-  6. `import-procurement`
-  7. `import-orders`
-  8. `import-drivers`
-  9. `import-accounting`
-  10. `import-payment-control`
-  11. `import-hr-payroll`
-
-  (Each import is idempotent. See `DEPLOYMENT.md`, section 4. The workflow also offers `import-customers`, which `DEPLOYMENT.md` does not list in its order; confirm with the owner whether it is needed.)
-
 ---
 
 ## 3. Post-deploy checks (in this order)

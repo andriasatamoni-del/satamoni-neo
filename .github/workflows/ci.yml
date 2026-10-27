@@ -56,12 +56,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --filter satamoni-neo-backend
 
-      # the import-*-from-legacy specs build their fixture tables in an EMPTY database of their own (the legacy system's stand-in)
-      - name: Create the legacy-fixture database used by the import specs
-        env:
-          PGPASSWORD: test123
-        run: psql -h localhost -U postgres -c 'CREATE DATABASE satamoni_legacy_fixture_test'
-
       - name: Typecheck
         working-directory: backend
         run: pnpm exec tsc --noEmit -p tsconfig.json
