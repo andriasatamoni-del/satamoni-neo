@@ -76,7 +76,7 @@ describe("Drizzle baseline adoption", () => {
   test("a fresh database runs the baseline and every later migration: schema, triggers and seed rows", async () => {
     await runMigrations(withDatabase(serverUrl, names.fresh));
     const pool = open(names.fresh);
-    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_tables WHERE schemaname = 'public'"))).toBe(99);
+    expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_tables WHERE schemaname = 'public'"))).toBe(100);
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM pg_trigger WHERE NOT tgisinternal"))).toBe(6);
     expect(await scalar(pool, "SELECT email AS v FROM users")).toBe("talabat-integration@system.internal");
     expect(Number(await scalar(pool, "SELECT count(*) AS v FROM home_tiles"))).toBe(10);

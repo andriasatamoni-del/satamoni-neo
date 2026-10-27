@@ -6,6 +6,8 @@ import {
   InvalidEmailError,
   SecondPhoneRequiredError,
   CustomerNameRequiredError,
+  CustomerPhoneAlreadyAddedError,
+  CustomerPhoneNotFoundError,
   InvalidPhoneError,
   WeakCustomerPasswordError,
 } from "../../../src/contexts/customers/domain/errors";
@@ -53,7 +55,7 @@ describe("Customer aggregate", () => {
 
   it("activateAccount بيحوّل عميل ضيف (من غير حساب) لحساب حقيقي، وبيحافظ على نقاط الولاء", () => {
     const guest = Customer.reconstitute("guest-1", {
-      phone: "01012345678", phone2: null, email: null, name: null, addressDetails: null, distinguishingMark: null,
+      phones: Customer.phonesFromLegacyColumns("01012345678", null, new Date()), email: null, name: null, addressDetails: null, distinguishingMark: null,
       notes: null, loyaltyPoints: 50, passwordHash: null, isBlocked: false, blockReason: null,
       blockedBy: null, blockedAt: null, addresses: [], legacyCustomerId: null, createdAt: new Date(), updatedAt: new Date(),
     });
@@ -126,5 +128,60 @@ describe("Customer aggregate", () => {
     customer.removeAddress(b.id);
     expect(customer.findAddress(a.id)?.isDefault).toBe(true);
     expect(() => customer.removeAddress("nope")).toThrow(CustomerAddressNotFoundError);
+  });
+
+  describe("phone book", () => {
+    it("registerByStaff keeps the primary phone first and adds extra phones and addresses", () => {
+      const customer = Customer.registerByStaff({
+        name: " سامي ",
+        phone: "010 1111 2222",
+        extraPhones: [{ phone: "01233334444", label: "البيت" }],
+        addresses: [ADDRESS],
+      });
+      expect(customer.name).toBe("سامي");
+      expect(customer.phone).toBe("01011112222");
+      expect(customer.phone2).toBe("01233334444");
+      expect(customer.phones.map((p) => [p.phone, p.isPrimary, p.label])).toEqual([
+        ["01011112222", true, null],
+        ["01233334444", false, "البيت"],
+      ]);
+      expect(customer.addresses).toHaveLength(1);
+      expect(customer.hasAccount).toBe(false);
+    });
+
+    it("rejects a duplicate or invalid extra phone", () => {
+      const customer = Customer.registerByStaff({ name: "سامي", phone: "01011112222" });
+      expect(() => customer.addPhone({ phone: "0101111-2222" })).toThrow(CustomerPhoneAlreadyAddedError);
+      expect(() => customer.addPhone({ phone: "12" })).toThrow(InvalidPhoneError);
+      expect(() => Customer.registerByStaff({ name: " ", phone: "01011112222" })).toThrow(CustomerNameRequiredError);
+    });
+
+    it("updateContact replaces the second phone without dropping the others", () => {
+      const customer = register();
+      customer.addPhone({ phone: "01500000000" });
+      customer.updateContact({ phone2: "01600000000" });
+      expect(customer.phones.map((p) => p.phone)).toEqual(["01012345678", "01600000000", "01500000000"]);
+      customer.updateContact({ phone2: "01500000000" });
+      expect(customer.phones.map((p) => p.phone)).toEqual(["01012345678", "01500000000"]);
+    });
+  });
+
+  describe("orderContact", () => {
+    it("uses the chosen phone and address, with the landmark appended", () => {
+      const customer = Customer.registerByStaff({ name: "سامي", phone: "01011112222", extraPhones: [{ phone: "01233334444" }] });
+      const address = customer.addAddress({ ...ADDRESS, distinguishingMark: "جنب الصيدلية" });
+      expect(customer.orderContact({ phone: "01233334444", addressId: address.id })).toEqual({
+        customerName: "سامي",
+        customerPhone: "01233334444",
+        addressDetails: "المعادي - شارع 9 - عمارة 12 - الدور 3 - شقة 5 - علامة مميزة: جنب الصيدلية",
+      });
+      expect(customer.orderContact({})).toEqual({ customerName: "سامي", customerPhone: "01011112222", addressDetails: null });
+    });
+
+    it("rejects a phone or address that is not the customer's", () => {
+      const customer = Customer.registerByStaff({ name: "سامي", phone: "01011112222" });
+      expect(() => customer.orderContact({ phone: "01099999999" })).toThrow(CustomerPhoneNotFoundError);
+      expect(() => customer.orderContact({ addressId: "nope" })).toThrow(CustomerAddressNotFoundError);
+    });
   });
 });

@@ -3,6 +3,7 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
 import { CatalogModule } from "../catalog/catalog.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { BranchesModule } from "../branches/branches.module";
+import { CustomersModule } from "../customers/customers.module";
 import { ORDER_REPOSITORY } from "./domain/ports/order-repository.port";
 import { ORDER_RATING_REPOSITORY } from "./domain/ports/order-rating-repository.port";
 import { OrderRepository } from "./infrastructure/persistence/order.repository";
@@ -22,7 +23,7 @@ import { OrdersController } from "./api/orders.controller";
 import { OrderRatingsController } from "./api/order-ratings.controller";
 
 @Module({
-  imports: [IdentityAccessModule, CatalogModule, InventoryModule, BranchesModule],
+  imports: [IdentityAccessModule, CatalogModule, InventoryModule, BranchesModule, CustomersModule],
   controllers: [OrdersController, OrderRatingsController],
   providers: [
     { provide: ORDER_REPOSITORY, useClass: OrderRepository },
@@ -46,7 +47,6 @@ export class OrdersModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // BL-06: critical - runs inside the payment-adjustment transaction
     this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (e) => this.syncOrderPaymentMethod.handle(e), { critical: true });
   }
 }

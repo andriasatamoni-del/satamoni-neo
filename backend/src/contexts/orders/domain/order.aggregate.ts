@@ -16,8 +16,6 @@ export type OrderType = (typeof ORDER_TYPES)[number];
 export const ORDER_STATUSES = ["preparing", "out_for_delivery", "completed", "cancelled"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-// مصدر الطلب (STORE-1) - نفس orders.source في الريبو القديم: الكاشير والمطبخ لازم يميّزوا طلب الموقع
-// (العميل طلبه بنفسه ومحدش من الفريق كلّمه) عن طلب الكاشير
 export const ORDER_SOURCES = ["pos", "website", "whatsapp", "talabat"] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
 
@@ -32,15 +30,10 @@ export interface OrderItemModifierLine {
 
 export interface OrderItemLine {
   id: string;
-  // إما (menuItemId+variantId) لصنف عادي أو comboId لعرض - مش الاتنين ومش من غيرهم خالص (نفس تصميم
-  // order_items.combo_id في الريبو القديم بالظبط - راجع تعليق Combo.aggregate.ts)
   menuItemId: string | null;
   variantId: string | null;
   comboId: string | null;
   quantity: number;
-  // شامل مجموع أسعار المرفقات المختارة (basePrice + sum(modifiers.priceAtSale)) - نفس منطق الريبو
-  // القديم بالظبط (unitPrice = basePrice + modifierTotal)، مش سعر الحجم الأساسي لوحده. للعروض: سعر
-  // العرض نفسه (العروض مالهاش مرفقات - نفس الريبو القديم)
   unitPrice: number;
   lineTotal: number;
   modifiers: OrderItemModifierLine[];
@@ -51,6 +44,7 @@ export interface OrderProps {
   orderType: OrderType;
   tableNumber: string | null;
   customerName: string | null;
+  customerId: string | null;
   customerPhone: string | null;
   addressDetails: string | null;
   items: OrderItemLine[];
@@ -64,30 +58,13 @@ export interface OrderProps {
   createdBy: string | null;
   createdAt: Date;
   legacyOrderId: number | null;
-  // مرجع لطريقة الدفع المختارة وقت تسجيل الطلب - مش FK جوّاني في order.aggregate.ts (Payment Control
-  // context تاني بيمتلك مفهوم PaymentMethod نفسه)، بس Orders لازم يحمله عشان Payment Control يقدر
-  // يقفل Payment فوره وقت تسجيل الطلب (نفس فلسفة الريبو القديم بالظبط - "قفل طريقة الدفع فور اختيار
-  // الكاشير ليها"). لو معندش قيمة، مفيش Payment هيتسجّل خالص (نفس القيد الموروث من الريبو القديم).
   paymentMethodId: string | null;
-  // توكن عام عشوائي (TIER3-3) - مفتاح الدخول الوحيد لصفحة تقييم الطلب العامة (بدون تسجيل دخول)، نفس
-  // فلسفة orders.rating_token في الريبو القديم بالظبط: ثابت طول عمر الطلب، بيتولّد مرة واحدة وقت
-  // التسجيل، ومش رقم الطلب نفسه عشان محدش يقدر يخمّنه.
   ratingToken: string;
-  // معرّف بيولّده الكاشير (الفرونت إند) وقت التسجيل - مستخدم في وضع الكاشير الأوفلاين (OFFLINE) عشان
-  // لو نفس الطلب اتبعت مرتين (مثلًا الشبكة رجعت في نفس لحظة إعادة المحاولة) نرجّع نفس الطلب المتسجّل
-  // بدل ما نسجّله تاني - idempotency على مستوى الطلب مش على مستوى الـHTTP request بس.
   clientRequestId: string | null;
   source: OrderSource;
-  // ملاحظة العميل على الطلب كله (بدون بصل، الدور التالت...) - بتظهر للمطبخ والكاشير
   customerNotes: string | null;
 }
 
-// Order - نفس مفهوم orders+order_items في الريبو القديم، بس مبسّط للسلايس الأول (Phase 3): من غير
-// نقاط الولاء، الضريبة المجمّدة، workflow الـvoid، تفاصيل التوصيل (driver/dispatch_status - دول
-// context تاني، Delivery & Dispatch)، الشيفتات، أو order_status_log. status/kitchenStatus منفصلين
-// تمامًا عن بعض - نفس فلسفة الريبو القديم بالظبط (status مستقل عن kitchen_status). استهلاك المخزون
-// الفعلي (عن طريق الوصفة النشطة لكل حجم) بيحصل في الـapplication layer وقت التسجيل (RegisterOrderHandler)
-// مش هنا - الدومين هنا مسؤول بس عن شكل/قواعد الطلب نفسه.
 export class Order {
   private constructor(
     public readonly id: string,
@@ -99,6 +76,7 @@ export class Order {
     orderType: string;
     tableNumber?: string | null;
     customerName?: string | null;
+    customerId?: string | null;
     customerPhone?: string | null;
     addressDetails?: string | null;
     items: {
@@ -135,7 +113,6 @@ export class Order {
       };
     });
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
-    // الخصم مايعديش إجمالي الأصناف (مكافأة نقاط بـ50 جنيه على طلب بـ30 = الطلب ببلاش، مش بسالب)
     const discount = Math.min(Math.max(input.discount ?? 0, 0), subtotal);
 
     return new Order(randomUUID(), {
@@ -143,6 +120,7 @@ export class Order {
       orderType: input.orderType as OrderType,
       tableNumber: input.tableNumber ?? null,
       customerName: input.customerName ?? null,
+      customerId: input.customerId ?? null,
       customerPhone: input.customerPhone ?? null,
       addressDetails: input.addressDetails ?? null,
       items,
@@ -176,9 +154,6 @@ export class Order {
     this.props.status = status as OrderStatus;
   }
 
-  // بتتقدّم خطوة واحدة بالظبط كل مرة (NEW->ACCEPTED->PREPARING->READY) - مفيش تخطي ومفيش رجوع لورا،
-  // نفس قاعدة الريبو القديم بالظبط (routes/orders.js: nextIdx === currentIdx + 1) بما فيها قفل الحالة
-  // خالص لو الطلب اتلغى (مفيش حالة PREP_CANCELLED منفصلة - نفس قرار الريبو القديم).
   advanceKitchenStatus(status: string): void {
     if (!KITCHEN_STATUSES.includes(status as KitchenStatus)) throw new UnknownKitchenStatusError(status);
     if (this.props.status === "cancelled") throw new OrderCancelledError();
@@ -196,6 +171,7 @@ export class Order {
   get orderType(): OrderType { return this.props.orderType; }
   get tableNumber(): string | null { return this.props.tableNumber; }
   get customerName(): string | null { return this.props.customerName; }
+  get customerId(): string | null { return this.props.customerId; }
   get customerPhone(): string | null { return this.props.customerPhone; }
   get addressDetails(): string | null { return this.props.addressDetails; }
   get items(): readonly OrderItemLine[] { return this.props.items; }

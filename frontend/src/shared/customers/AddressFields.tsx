@@ -1,4 +1,4 @@
-import { Field, Input } from "../../shared/ui/Field";
+import { Field, Input } from "../ui/Field";
 
 export interface AddressForm {
   area: string;
@@ -24,7 +24,6 @@ export function addressBody(a: AddressForm) {
   };
 }
 
-// العنوان المقسّم - كل الحقول إلزامية ما عدا العلامة المميزة واسم العنوان (نفس قواعد السيرفر)
 export function AddressFields({ value, onChange, showLabel = false }: { value: AddressForm; onChange: (a: AddressForm) => void; showLabel?: boolean }) {
   const set = (key: keyof AddressForm) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...value, [key]: e.target.value });
   return (

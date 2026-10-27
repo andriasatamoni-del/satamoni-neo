@@ -1,6 +1,3 @@
-// Drizzle table definitions for the customers tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, timestamp, unique, check, uuid, boolean, integer, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
@@ -24,6 +21,24 @@ export const customerAddresses = pgTable("customer_addresses", {
       columns: [table.customer_id],
       foreignColumns: [customers.id],
       name: "customer_addresses_customer_id_fkey"
+    }).onDelete("cascade"),
+]);
+
+export const customerPhones = pgTable("customer_phones", {
+  id: uuid().primaryKey().notNull(),
+  customer_id: uuid().notNull(),
+  phone: text().notNull(),
+  label: text(),
+  is_primary: boolean().default(false).notNull(),
+  created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  unique("customer_phones_customer_phone_key").on(table.customer_id, table.phone),
+  index("idx_customer_phones_phone").using("btree", table.phone.asc().nullsLast()),
+  uniqueIndex("customer_phones_one_primary_idx").using("btree", table.customer_id).where(sql`is_primary`),
+  foreignKey({
+      columns: [table.customer_id],
+      foreignColumns: [customers.id],
+      name: "customer_phones_customer_id_fkey"
     }).onDelete("cascade"),
 ]);
 

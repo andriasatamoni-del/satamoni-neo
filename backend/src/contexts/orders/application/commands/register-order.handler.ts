@@ -6,7 +6,10 @@ import {
   InsufficientStockForOrderError,
   ModifierNotFoundForOrderError,
   ComboNotFoundForOrderError,
+  CustomerNotFoundForOrderError,
+  DeliveryAddressRequiredError,
 } from "../../domain/errors";
+import { CUSTOMER_REPOSITORY, type CustomerRepositoryPort } from "../../../customers/domain/ports/customer-repository.port";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
 import { RECIPE_REPOSITORY, type RecipeRepositoryPort } from "../../../catalog/domain/ports/recipe-repository.port";
 import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../../catalog/domain/ports/combo-repository.port";
@@ -31,25 +34,18 @@ export interface RegisterOrderCommand {
   customerName?: string | null;
   customerPhone?: string | null;
   addressDetails?: string | null;
+  customerId?: string | null;
+  customerAddressId?: string | null;
   items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
   discount?: number;
   createdBy?: string | null;
-  // موافقة صريحة تسمح باستهلاك يخلي رصيد صنف معينه ALLOW_WITH_APPROVAL يروح سالب - نفس فلسفة
-  // Inventory/Procurement بالظبط
   stockApproved?: boolean;
   paymentMethodId?: string | null;
-  // من وضع الكاشير الأوفلاين (OFFLINE) - راجع تعليق Order.clientRequestId. لو موجود ولقينا طلب مسجّل
-  // بيه بالفعل، بنرجّعه زي ما هو من غير ما نكرر استهلاك المخزون أو الحدث تاني.
   clientRequestId?: string | null;
   source?: OrderSource;
   customerNotes?: string | null;
 }
 
-// بيسجّل الطلب ويستهلك المخزون النظري (عن طريق الوصفة النشطة لكل حجم) في نفس الطلب - مرحلتين:
-// 1) يجمع الكمية المطلوبة من كل مكوّن عبر كل أصناف الطلب، ويتأكد إن الرصيد كافي **قبل** ما يرحّل أي
-//    حركة (بدل ما يبدأ يرحّل صنف صنف ويوقف في النص لو صنف متأخر مش كفاية - كان هيسيب استهلاك جزئي
-//    مش متسق). لو صنف من غير وصفة معرّفة لسه، بيتسجّل الطلب عادي من غير استهلاك ليه (مش خطأ).
-// 2) بعد ما التأكد يعدي لكل المكوّنات، يرحّل حركة CONSUMPTION حقيقية لكل مكوّن في Inventory context.
 @Injectable()
 export class RegisterOrderHandler {
   constructor(
@@ -59,15 +55,11 @@ export class RegisterOrderHandler {
     @Inject(COMBO_REPOSITORY) private readonly combos: ComboRepositoryPort,
     @Inject(INVENTORY_ITEM_REPOSITORY) private readonly inventoryItems: InventoryItemRepositoryPort,
     @Inject(STOCK_MOVEMENT_REPOSITORY) private readonly movements: StockMovementRepositoryPort,
+    @Inject(CUSTOMER_REPOSITORY) private readonly customers: CustomerRepositoryPort,
     private readonly eventBus: EventBusService,
     private readonly tx: TransactionService
   ) {}
 
-  // Phase 3.1 (BL-09): the whole registration - order row, ingredient consumption, payment lock, sale journal, COGS
-  // journal - is ONE database transaction. Any failure (insufficient stock, missing payment method, missing chart of
-  // accounts, DB error) rolls back everything, so no partial order/payment/movement/journal state can survive, and a
-  // client retry with the same clientRequestId starts clean. Concurrent retries with the same clientRequestId are
-  // serialised by an advisory lock, so exactly one of them creates the order and the others return it.
   async execute(command: RegisterOrderCommand): Promise<Order> {
     return this.tx.run(() => this.executeInTransaction(command));
   }
@@ -87,13 +79,10 @@ export class RegisterOrderHandler {
       unitPrice: number;
       modifiers: OrderItemModifierLine[];
     }[] = [];
-    // مكوّنات كل عرض (variantId+quantity) - مجمّعة هنا عشان تُستخدم في تجميع الاستهلاك تحت من غير ما
-    // نعيد قراءة العرض من الريبو تاني
     const comboLineComponents = new Map<string, { variantId: string; quantity: number }[]>();
     for (const item of command.items) {
       if (item.comboId) {
         const combo = await this.combos.findById(item.comboId);
-        // عرض حصري للموقع مايتسجّلش من الكاشير/البوت/طلبات (STORE-2)
         if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
 
         resolvedItems.push({
@@ -133,8 +122,6 @@ export class RegisterOrderHandler {
       });
     }
 
-    // كل (variantId, quantity الطلب) لازم يتاخد وصفته في الاستهلاك - سواء صنف عادي أو صنف جوّه عرض
-    // (العروض مفيهاش وصفة مباشرة - بتتفكّ لأصنافها الأصلية، نفس فلسفة الريبو القديم بالظبط)
     const variantConsumptions: { variantId: string; quantity: number }[] = [];
     for (const item of resolvedItems) {
       if (item.comboId) {
@@ -146,7 +133,6 @@ export class RegisterOrderHandler {
       }
     }
 
-    // تجميع الاستهلاك المطلوب لكل مكوّن عبر كل أصناف/عروض الطلب
     const requiredByIngredient = new Map<string, number>();
     for (const consumption of variantConsumptions) {
       const recipe = await this.recipes.findByVariantId(consumption.variantId);
@@ -158,7 +144,6 @@ export class RegisterOrderHandler {
       }
     }
 
-    // التأكد من الرصيد لكل مكوّن قبل ما نرحّل أي حاجة
     for (const [ingredientItemId, requiredQty] of requiredByIngredient) {
       const inventoryItem = await this.inventoryItems.findById(ingredientItemId);
       if (!inventoryItem) continue;
@@ -169,10 +154,10 @@ export class RegisterOrderHandler {
       }
     }
 
-    const order = Order.register({ ...command, items: resolvedItems });
+    const customerContact = await this.resolveCustomerContact(command);
+    const order = Order.register({ ...command, ...customerContact, items: resolvedItems });
     await this.orders.save(order);
 
-    // fixed lock order (by ingredient id) so two concurrent orders touching the same ingredients can never deadlock
     let costOfGoodsSold = 0;
     let costIncomplete = false;
     const sortedIngredients = [...requiredByIngredient.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -194,14 +179,11 @@ export class RegisterOrderHandler {
       try {
         await this.movements.recordMovement(movement, { allowNegativeBalance: allowNegative });
       } catch (err) {
-        // the pre-check above is advisory; the authoritative check runs under the row lock in recordMovement
         if (err instanceof InsufficientStockError) throw new InsufficientStockForOrderError(inventoryItem?.name ?? ingredientItemId);
         throw err;
       }
     }
 
-    // بعد ما الطلب اتسجّل ونجح خالص (بما فيه استهلاك المخزون) - مش قبل كده. فشل subscriber هنا
-    // (زي ترحيل القيد المحاسبي) مبيرجّعش الطلب نفسه فاشل (راجع تعليق EventBusService.publish)
     await this.eventBus.publish(
       new OrderRegisteredEvent(
         order.id,
@@ -215,5 +197,20 @@ export class RegisterOrderHandler {
     );
 
     return order;
+  }
+
+  private async resolveCustomerContact(command: RegisterOrderCommand) {
+    if (!command.customerId) return {};
+    const customer = await this.customers.findById(command.customerId);
+    if (!customer) throw new CustomerNotFoundForOrderError();
+    const contact = customer.orderContact({ phone: command.customerPhone, addressId: command.customerAddressId });
+    const addressDetails = contact.addressDetails ?? command.addressDetails ?? null;
+    if (command.orderType === "delivery" && !addressDetails) throw new DeliveryAddressRequiredError();
+    return {
+      customerId: customer.id,
+      customerName: contact.customerName ?? command.customerName ?? null,
+      customerPhone: contact.customerPhone,
+      addressDetails: command.orderType === "delivery" ? addressDetails : null,
+    };
   }
 }

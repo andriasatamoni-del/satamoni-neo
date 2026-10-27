@@ -7,15 +7,13 @@ import { Button } from "../../shared/ui/Button";
 import { Field, Input } from "../../shared/ui/Field";
 import { PortalShell } from "./PortalShell";
 import { useSafeNext } from "./safeNext";
-import { AddressFields, addressBody, EMPTY_ADDRESS } from "./AddressFields";
+import { AddressFields, addressBody, EMPTY_ADDRESS } from "../../shared/customers/AddressFields";
 
 interface CustomerAuthResponse {
   token: string;
   customer: { id: string; phone: string; name: string | null };
 }
 
-// تسجيل مرة واحدة (STORE-2): البيانات + عنوان التوصيل كلهم في صفحة واحدة، وبعدها العميل بيطلب في أي وقت
-// من غير ما يكتب حاجة تاني
 export function CustomerPortalRegisterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();

@@ -77,9 +77,6 @@ export class OrdersController {
     return toPublicOrder(await this.advanceKitchenStatus.execute({ orderId: id, kitchenStatus: dto.kitchenStatus }));
   }
 
-  // إلغاء حقيقي (عكس مخزون + قيد محاسبي) - مش مجرد status='cancelled' زي updateStatus فوق. نفس مسار
-  // الاسترجاع اللي Talabat cancellation بيستخدمه (CancelTalabatOrderHandler)، متاح هنا كمان لأي إلغاء
-  // يدوي من الكاشير/مدير الفرع (نفس مفهوم "void order" بالريبو القديم)
   @Patch(":id/cancel")
   @BranchResource("orders")
   @RequirePermission(PERMISSION.ORDERS_MANAGE)
@@ -94,6 +91,7 @@ function toPublicOrder(order: Order) {
     branchId: order.branchId,
     orderType: order.orderType,
     tableNumber: order.tableNumber,
+    customerId: order.customerId,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     items: order.items.map((i) => ({

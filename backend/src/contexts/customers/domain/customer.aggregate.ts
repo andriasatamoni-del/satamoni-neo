@@ -7,6 +7,8 @@ import {
   InvalidEmailError,
   SecondPhoneRequiredError,
   CustomerNameRequiredError,
+  CustomerPhoneAlreadyAddedError,
+  CustomerPhoneNotFoundError,
   InvalidPhoneError,
   WeakCustomerPasswordError,
 } from "./errors";
@@ -18,8 +20,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export function normalizeEmail(raw: string): string {
   return String(raw ?? "").trim().toLowerCase();
 }
-
-// بيانات التواصل الإلزامية لحساب الطلب أونلاين (STORE-2): إيميل صالح + رقم تاني صالح ومختلف عن الأساسي
 function validateContact(phone: string, input: { email: string; phone2: string }): { email: string; phone2: string } {
   const email = normalizeEmail(input.email);
   if (!EMAIL_RE.test(email) || email.length > 120) throw new InvalidEmailError();
@@ -28,8 +28,6 @@ function validateContact(phone: string, input: { email: string; phone2: string }
   if (phone2 === phone) throw new SecondPhoneRequiredError();
   return { email, phone2 };
 }
-
-// العنوان المقسّم - كل الحقول إلزامية ما عدا اسم العنوان والعلامة المميزة
 export interface StructuredAddressInput {
   label?: string | null;
   area: string;
@@ -57,11 +55,27 @@ export function normalizePhone(raw: string): string {
   return String(raw ?? "").replace(/[\s-]/g, "");
 }
 
+export function parsePhone(raw: string): string {
+  const phone = normalizePhone(raw);
+  if (!PHONE_RE.test(phone)) throw new InvalidPhoneError();
+  return phone;
+}
+
+export interface CustomerPhone {
+  id: string;
+  phone: string;
+  label: string | null;
+  isPrimary: boolean;
+  createdAt: Date;
+}
+
+function newPhone(phone: string, isPrimary: boolean, label: string | null = null): CustomerPhone {
+  return { id: randomUUID(), phone, label, isPrimary, createdAt: new Date() };
+}
+
 export interface CustomerAddress {
   id: string;
   label: string | null;
-  // النص الكامل (للطيار والطباعة) - للعناوين الجديدة بيتجمّع من الحقول المقسّمة تحت؛ العناوين المستوردة
-  // من القديم نص بس والحقول المقسّمة null
   addressDetails: string;
   area: string | null;
   street: string | null;
@@ -74,8 +88,7 @@ export interface CustomerAddress {
 }
 
 export interface CustomerProps {
-  phone: string;
-  phone2: string | null;
+  phones: CustomerPhone[];
   email: string | null;
   name: string | null;
   addressDetails: string | null;
@@ -92,19 +105,11 @@ export interface CustomerProps {
   createdAt: Date;
   updatedAt: Date;
 }
-
-// Customer - نفس مفهوم customers+customer_addresses في الريبو القديم (المرحلة 8.38): حساب اختياري
-// بالكامل لموقع الطلب أونلاين - رقم تليفون + كلمة سر. passwordHash=null يعني عميل "ضيف" (سجّل طلب من
-// غير حساب) - عنوانه/نقاط ولائه المتراكمة بتفضل محفوظة، وممكن يتحول لحساب حقيقي بعدين (activateAccount)
-// من غير ما يفقد أي حاجة. حظر العميل (isBlocked) بيانات مرجعية بس هنا - مفيش مسار طلب عام في neo لسه
-// يستهلكها (راجع خطة إعادة البناء - الطلبات هنا POS داخلي بس، الموقع العام مؤجّل)
 export class Customer {
   private constructor(
     public readonly id: string,
     private props: CustomerProps
   ) {}
-
-  // حساب جديد للطلب أونلاين: الاسم + التليفونين + الإيميل إلزاميين، والعنوان الأول بيتضاف بعدها بـaddAddress
   static register(input: {
     phone: string;
     phone2: string;
@@ -113,28 +118,58 @@ export class Customer {
     passwordHash: string;
     legacyCustomerId?: number | null;
   }): Customer {
-    const phone = normalizePhone(input.phone);
-    if (!PHONE_RE.test(phone)) throw new InvalidPhoneError();
+    const phone = parsePhone(input.phone);
     const name = input.name.trim();
     if (!name) throw new CustomerNameRequiredError();
     const contact = validateContact(phone, input);
 
-    return new Customer(randomUUID(), {
-      phone,
-      phone2: contact.phone2,
+    return Customer.create({
+      phones: [newPhone(phone, true), newPhone(contact.phone2, false)],
       email: contact.email,
       name,
+      passwordHash: input.passwordHash,
+      legacyCustomerId: input.legacyCustomerId ?? null,
+    });
+  }
+
+  static registerByStaff(input: {
+    name: string;
+    phone: string;
+    extraPhones?: { phone: string; label?: string | null }[];
+    addresses?: StructuredAddressInput[];
+  }): Customer {
+    const name = input.name.trim();
+    if (!name) throw new CustomerNameRequiredError();
+    const customer = Customer.create({
+      phones: [newPhone(parsePhone(input.phone), true)],
+      email: null,
+      name,
+      passwordHash: null,
+      legacyCustomerId: null,
+    });
+    for (const extra of input.extraPhones ?? []) customer.addPhone(extra);
+    for (const address of input.addresses ?? []) customer.addAddress(address);
+    return customer;
+  }
+
+  private static create(input: {
+    phones: CustomerPhone[];
+    email: string | null;
+    name: string;
+    passwordHash: string | null;
+    legacyCustomerId: number | null;
+  }): Customer {
+    return new Customer(randomUUID(), {
+      ...input,
       addressDetails: null,
       distinguishingMark: null,
       notes: null,
       loyaltyPoints: 0,
-      passwordHash: input.passwordHash,
       isBlocked: false,
       blockReason: null,
       blockedBy: null,
       blockedAt: null,
       addresses: [],
-      legacyCustomerId: input.legacyCustomerId ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -144,21 +179,23 @@ export class Customer {
     return new Customer(id, props);
   }
 
+  static phonesFromLegacyColumns(phone: string, phone2: string | null, createdAt: Date): CustomerPhone[] {
+    const phones: CustomerPhone[] = [{ ...newPhone(phone, true), createdAt }];
+    if (phone2 && phone2 !== phone) phones.push({ ...newPhone(phone2, false), createdAt });
+    return phones;
+  }
+
   static validatePasswordPolicy(plainText: string): void {
     if (plainText.length < MIN_PASSWORD_LENGTH) throw new WeakCustomerPasswordError(MIN_PASSWORD_LENGTH);
   }
-
-  // بيحوّل عميل ضيف (مسجّل قبل كده من طلب، من غير حساب) لحساب حقيقي - بياناته القديمة (نقاط الولاء،
-  // العنوان المحفوظ) بتفضل زي ما هي، مش بنبدأ من صفر. نفس فلسفة ON CONFLICT DO UPDATE بالريبو القديم
-  // بالظبط، بس كقاعدة دومين صريحة
   activateAccount(input: { name: string; passwordHash: string; email: string; phone2: string }): void {
     if (this.props.passwordHash) throw new CustomerAccountAlreadyExistsError();
     const name = input.name.trim();
     if (!name) throw new CustomerNameRequiredError();
-    const contact = validateContact(this.props.phone, input);
+    const contact = validateContact(this.phone, input);
     this.props.name = name;
     this.props.email = contact.email;
-    this.props.phone2 = contact.phone2;
+    this.setSecondPhone(contact.phone2);
     this.props.passwordHash = input.passwordHash;
     this.props.updatedAt = new Date();
   }
@@ -170,7 +207,6 @@ export class Customer {
 
   updateProfile(input: {
     name?: string;
-    phone2?: string | null;
     addressDetails?: string | null;
     distinguishingMark?: string | null;
     notes?: string | null;
@@ -180,14 +216,11 @@ export class Customer {
       if (!name) throw new CustomerNameRequiredError();
       this.props.name = name;
     }
-    if (input.phone2 !== undefined) this.props.phone2 = input.phone2;
     if (input.addressDetails !== undefined) this.props.addressDetails = input.addressDetails;
     if (input.distinguishingMark !== undefined) this.props.distinguishingMark = input.distinguishingMark;
     if (input.notes !== undefined) this.props.notes = input.notes;
     this.props.updatedAt = new Date();
   }
-
-  // تعديل بيانات التواصل من "حسابي" - حساب قديم مستورد من غير إيميل/رقم تاني بيكمّلهم هنا مرة واحدة
   updateContact(input: { name?: string; email?: string; phone2?: string }): void {
     if (input.name !== undefined) {
       const name = input.name.trim();
@@ -195,14 +228,36 @@ export class Customer {
       this.props.name = name;
     }
     if (input.email !== undefined || input.phone2 !== undefined) {
-      const contact = validateContact(this.props.phone, {
+      const contact = validateContact(this.phone, {
         email: input.email ?? this.props.email ?? "",
-        phone2: input.phone2 ?? this.props.phone2 ?? "",
+        phone2: input.phone2 ?? this.phone2 ?? "",
       });
       this.props.email = contact.email;
-      this.props.phone2 = contact.phone2;
+      this.setSecondPhone(contact.phone2);
     }
     this.props.updatedAt = new Date();
+  }
+
+  addPhone(input: { phone: string; label?: string | null }): CustomerPhone {
+    const phone = parsePhone(input.phone);
+    if (this.hasPhone(phone)) throw new CustomerPhoneAlreadyAddedError();
+    const entry = newPhone(phone, false, input.label?.trim() || null);
+    this.props.phones.push(entry);
+    this.props.updatedAt = new Date();
+    return entry;
+  }
+
+  hasPhone(phone: string): boolean {
+    const normalized = normalizePhone(phone);
+    return this.props.phones.some((p) => p.phone === normalized);
+  }
+
+  private setSecondPhone(phone: string): void {
+    if (this.phone2 === phone) return;
+    this.props.phones = this.props.phones.filter((p) => p.isPrimary || p.phone !== phone);
+    const second = this.props.phones.find((p) => !p.isPrimary);
+    if (second) second.phone = phone;
+    else this.props.phones.push(newPhone(phone, false));
   }
 
   addLoyaltyPoints(points: number): void {
@@ -225,9 +280,6 @@ export class Customer {
     this.props.blockedAt = null;
     this.props.updatedAt = new Date();
   }
-
-  // دفتر عناوين العميل: عنوان مقسّم إلزامي. أول عنوان بيبقى الافتراضي تلقائيًا، وعنوان جديد بـisDefault
-  // بيشيل الافتراضي عن الباقي (افتراضي واحد بس في أي وقت - نفس customer_addresses بالريبو القديم)
   addAddress(input: StructuredAddressInput): CustomerAddress {
     const fields = {} as Record<(typeof ADDRESS_FIELDS)[number]["key"], string>;
     for (const f of ADDRESS_FIELDS) {
@@ -271,18 +323,35 @@ export class Customer {
   findAddress(addressId: string): CustomerAddress | undefined {
     return this.props.addresses.find((a) => a.id === addressId);
   }
+  orderContact(input: { phone?: string | null; addressId?: string | null }): {
+    customerName: string | null;
+    customerPhone: string;
+    addressDetails: string | null;
+  } {
+    const requestedPhone = input.phone ? normalizePhone(input.phone) : null;
+    if (requestedPhone && !this.hasPhone(requestedPhone)) throw new CustomerPhoneNotFoundError();
+    let addressDetails: string | null = null;
+    if (input.addressId) {
+      const address = this.findAddress(input.addressId);
+      if (!address) throw new CustomerAddressNotFoundError();
+      addressDetails = [address.addressDetails, address.distinguishingMark && `علامة مميزة: ${address.distinguishingMark}`]
+        .filter(Boolean)
+        .join(" - ");
+    }
+    return { customerName: this.name, customerPhone: requestedPhone ?? this.phone, addressDetails };
+  }
 
-  // جاهز يطلب أونلاين: إيميل + رقم تاني + عنوان واحد على الأقل (الحسابات المستوردة من القديم بتكمّلهم مرة)
   get missingProfileFields(): string[] {
     const missing: string[] = [];
     if (!this.props.email) missing.push("email");
-    if (!this.props.phone2) missing.push("phone2");
+    if (!this.phone2) missing.push("phone2");
     if (this.props.addresses.length === 0) missing.push("address");
     return missing;
   }
 
-  get phone(): string { return this.props.phone; }
-  get phone2(): string | null { return this.props.phone2; }
+  get phone(): string { return this.props.phones.find((p) => p.isPrimary)!.phone; }
+  get phone2(): string | null { return this.props.phones.find((p) => !p.isPrimary)?.phone ?? null; }
+  get phones(): readonly CustomerPhone[] { return this.props.phones; }
   get email(): string | null { return this.props.email; }
   get name(): string | null { return this.props.name; }
   get addressDetails(): string | null { return this.props.addressDetails; }

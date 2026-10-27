@@ -18,6 +18,7 @@ export const PERMISSION = {
   CRM_COMPLAINTS_VIEW: "crm.complaints.view",
   CRM_COMPLAINTS_MANAGE: "crm.complaints.manage",
   CUSTOMERS_VIEW: "customers.view",
+  CUSTOMERS_MANAGE: "customers.manage",
   INVENTORY_ITEMS_VIEW: "inventory.items.view",
   INVENTORY_ITEMS_MANAGE: "inventory.items.manage",
   INVENTORY_MOVEMENTS_RECORD: "inventory.movements.record",

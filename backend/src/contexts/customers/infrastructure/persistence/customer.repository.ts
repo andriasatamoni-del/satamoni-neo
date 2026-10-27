@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { Customer } from "../../domain/customer.aggregate";
 import type { CustomerRepositoryPort } from "../../domain/ports/customer-repository.port";
-import { customerAddresses, customers } from "./customers.tables";
+import { customerAddresses, customerPhones, customers } from "./customers.tables";
+
+type CustomerRow = typeof customers.$inferSelect;
 
 @Injectable()
 export class CustomerRepository implements CustomerRepositoryPort {
@@ -41,8 +43,6 @@ export class CustomerRepository implements CustomerRepositoryPort {
             address_details: customer.addressDetails,
             distinguishing_mark: customer.distinguishingMark,
             notes: customer.notes,
-            // loyalty_points مش بيتكتب هنا: الرصيد بيتعدّل ذرّيًا من Loyalty context بس (UPDATE ... +/-) -
-            // حفظ الـaggregate بقيمة قديمة كان هيمسح نقاط اتضافت في نفس اللحظة
             password_hash: customer.passwordHash,
             is_blocked: customer.isBlocked,
             block_reason: customer.blockReason,
@@ -51,6 +51,18 @@ export class CustomerRepository implements CustomerRepositoryPort {
             updated_at: customer.updatedAt,
           },
         });
+
+      await tx.delete(customerPhones).where(eq(customerPhones.customer_id, customer.id));
+      await tx.insert(customerPhones).values(
+        customer.phones.map((p) => ({
+          id: p.id,
+          customer_id: customer.id,
+          phone: p.phone,
+          label: p.label,
+          is_primary: p.isPrimary,
+          created_at: p.createdAt,
+        }))
+      );
 
       await tx.delete(customerAddresses).where(eq(customerAddresses.customer_id, customer.id));
       for (const address of customer.addresses) {
@@ -74,12 +86,12 @@ export class CustomerRepository implements CustomerRepositoryPort {
 
   async findById(id: string): Promise<Customer | null> {
     const [row] = await this.db.select().from(customers).where(eq(customers.id, id)).limit(1);
-    return row ? this.toDomain(row, await this.loadAddresses(id)) : null;
+    return row ? this.load(row) : null;
   }
 
   async findByPhone(phone: string): Promise<Customer | null> {
     const [row] = await this.db.select().from(customers).where(eq(customers.phone, phone)).limit(1);
-    return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
+    return row ? this.load(row) : null;
   }
 
   async findByEmail(email: string): Promise<Customer | null> {
@@ -88,26 +100,33 @@ export class CustomerRepository implements CustomerRepositoryPort {
       .from(customers)
       .where(eq(sql`lower(${customers.email})`, email.toLowerCase()))
       .limit(1);
-    return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
+    return row ? this.load(row) : null;
   }
 
   async findByLegacyCustomerId(legacyId: number): Promise<Customer | null> {
     const [row] = await this.db.select().from(customers).where(eq(customers.legacy_customer_id, legacyId)).limit(1);
-    return row ? this.toDomain(row, await this.loadAddresses(row.id)) : null;
+    return row ? this.load(row) : null;
   }
 
-  private loadAddresses(customerId: string): Promise<(typeof customerAddresses.$inferSelect)[]> {
-    return this.db
-      .select()
-      .from(customerAddresses)
-      .where(eq(customerAddresses.customer_id, customerId))
-      .orderBy(asc(customerAddresses.created_at));
-  }
+  private async load(row: CustomerRow): Promise<Customer> {
+    const [phoneRows, addressRows] = await Promise.all([
+      this.db
+        .select()
+        .from(customerPhones)
+        .where(eq(customerPhones.customer_id, row.id))
+        .orderBy(desc(customerPhones.is_primary), asc(customerPhones.created_at), asc(customerPhones.id)),
+      this.db
+        .select()
+        .from(customerAddresses)
+        .where(eq(customerAddresses.customer_id, row.id))
+        .orderBy(asc(customerAddresses.created_at)),
+    ]);
+    const phones = phoneRows.length > 0
+      ? phoneRows.map((p) => ({ id: p.id, phone: p.phone, label: p.label, isPrimary: p.is_primary, createdAt: p.created_at }))
+      : Customer.phonesFromLegacyColumns(row.phone, row.phone2, row.created_at);
 
-  private toDomain(row: typeof customers.$inferSelect, addressRows: (typeof customerAddresses.$inferSelect)[]): Customer {
     return Customer.reconstitute(row.id, {
-      phone: row.phone,
-      phone2: row.phone2,
+      phones,
       email: row.email,
       name: row.name,
       addressDetails: row.address_details,
