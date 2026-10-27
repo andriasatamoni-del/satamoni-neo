@@ -23,6 +23,7 @@ export class OrderRepository implements OrderRepositoryPort {
           order_type: order.orderType,
           table_number: order.tableNumber,
           customer_name: order.customerName,
+          customer_id: order.customerId,
           customer_phone: order.customerPhone,
           address_details: order.addressDetails,
           subtotal: order.subtotal,
@@ -135,7 +136,6 @@ export class OrderRepository implements OrderRepositoryPort {
     return (await this.loadItemsFor([orderId])).get(orderId) ?? [];
   }
 
-  // NEO-6: items and modifiers of many orders in two queries per 1000 orders/items, instead of one per order and item (N+1)
   private async loadItemsFor(orderIds: string[]): Promise<Map<string, ItemWithModifiers[]>> {
     const byOrder = new Map<string, ItemWithModifiers[]>();
     if (orderIds.length === 0) return byOrder;
@@ -163,6 +163,7 @@ export class OrderRepository implements OrderRepositoryPort {
       orderType: row.order_type as OrderType,
       tableNumber: row.table_number,
       customerName: row.customer_name,
+      customerId: row.customer_id,
       customerPhone: row.customer_phone,
       addressDetails: row.address_details,
       items: itemRows.map(({ item: i, modifiers }) => ({

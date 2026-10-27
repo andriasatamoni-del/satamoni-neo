@@ -19,23 +19,17 @@ import {
 } from "../../domain/errors";
 
 export interface PlaceOnlineOrderCommand {
-  // الحساب إلزامي (STORE-2): الاسم والتليفونين والعنوان كلهم من الحساب - العميل مابيكتبهمش تاني
   customer: Customer;
   clientRequestId: string;
   branchId: string;
   orderType: string;
-  // عنوان محفوظ في دفتر عناوين العميل (للتوصيل بس)
   addressId?: string;
   tableNumber?: string;
   notes?: string;
-  // مكافأة نقاط ولاء اختيارية (خصم / صنف هدية / عرض هدية)
   rewardId?: string;
   items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
 }
 
-// طلب الموقع = نفس مسار الكاشير بالظبط (RegisterOrderHandler: أسعار من المنيو الحقيقي، استهلاك مخزون، قيد
-// محاسبي، طباعة المطبخ، SMS التأكيد) بمصدر website ومن غير موظف (createdBy=null). الدفع كاش عند الاستلام:
-// بيتقفل على أول طريقة دفع كاش نشطة (Payment Control). صرف النقاط بيتحجز قبل التسجيل وبيرجع لو فشل.
 @Injectable()
 export class PlaceOnlineOrderHandler {
   constructor(
@@ -49,8 +43,6 @@ export class PlaceOnlineOrderHandler {
 
   async execute(command: PlaceOnlineOrderCommand) {
     const { customer } = command;
-    // نفس الطلب اتبعت تاني (العميل داس مرتين / النت فصل بعد الإرسال) - نرجّع نفس الطلب قبل أي تحقق تاني
-    // (رصيد النقاط مثلًا اتخصم بالفعل في المرة الأولى)
     const previous = await this.orders.findByClientRequestId(command.clientRequestId);
     if (previous) return this.result(previous, customer);
 
@@ -81,7 +73,6 @@ export class PlaceOnlineOrderHandler {
     if (command.rewardId) {
       redemption = await this.redemption.prepare(customer.id, command.rewardId);
       if (redemption.giftLine) normalized.items.push(redemption.giftLine);
-      // المطبخ والكاشير لازم يعرفوا إن فيه هدية/خصم نقاط على الطلب
       normalized.customerNotes = [`🎁 مكافأة نقاط: ${redemption.rewardName}`, normalized.customerNotes].filter(Boolean).join(" - ");
       await this.redemption.reserve(customer.id, command.clientRequestId, redemption);
     }
@@ -90,6 +81,7 @@ export class PlaceOnlineOrderHandler {
     try {
       order = await this.registerOrder.execute({
         ...normalized,
+        customerId: customer.id,
         discount: redemption?.discount ?? 0,
         source: "website",
         createdBy: null,
@@ -106,7 +98,6 @@ export class PlaceOnlineOrderHandler {
   }
 
   private result(order: Order, customer: Customer) {
-    // clientRequestId مطابق لطلب حد تاني (مستحيل عمليًا - UUID) - مانرجّعش بيانات طلب مش بتاعه
     if (order.source !== "website" || order.customerPhone !== customer.phone) {
       throw new InvalidOnlineOrderError("الطلب ده متسجّل قبل كده ببيانات مختلفة");
     }

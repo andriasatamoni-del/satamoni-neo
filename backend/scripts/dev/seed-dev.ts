@@ -1,11 +1,3 @@
-// LOCAL DEVELOPMENT ONLY. Seeds a demo branch and one login per role with simple, publicly known passwords so a fresh
-// local database is usable right away. These passwords are committed to a public repository, so this script refuses
-// to run anywhere except a database on this machine (see assertLocalDevDatabase) and has no override flag on purpose.
-// It is not, and must never be, a maintenance-operation.yml option (see docs/SECURITY_HARDENING.md, BL-14).
-//
-// Idempotent: re-running it resets the seeded accounts back to the passwords below (and re-activates them).
-//
-// Run from backend/:  pnpm seed:dev
 import "dotenv/config";
 import * as bcrypt from "bcryptjs";
 import type { Database } from "../../src/shared/database/database.token";
@@ -17,7 +9,6 @@ import { Branch } from "../../src/contexts/branches/domain/branch.aggregate";
 
 export const DEV_BRANCH_NAME = "فرع التجربة";
 
-// Company-wide roles get no branch; every other role is branch-bound (see src/shared/authorization/branch-scope.ts).
 export const DEV_ACCOUNTS = [
   { email: "admin@satamoni.dev", secret: "admin123", role: "admin", name: "مدير النظام (تجربة)", branchBound: false },
   { email: "accountant@satamoni.dev", secret: "accountant123", role: "accountant", name: "محاسب (تجربة)", branchBound: false },
@@ -30,8 +21,6 @@ export const DEV_ACCOUNTS = [
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-// Throws unless the target is a database on this machine. Deliberately stricter than the test guard: no
-// ALLOW_REMOTE escape hatch, and PGSSL=true (which means a managed, remote database) is refused outright.
 export function assertLocalDevDatabase(url: string | undefined, env: NodeJS.ProcessEnv = process.env): void {
   if (!url) throw new Error("DATABASE_URL is required");
   let parsed: URL;

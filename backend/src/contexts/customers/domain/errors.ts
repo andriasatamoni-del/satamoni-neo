@@ -73,3 +73,21 @@ export class CustomerAddressNotFoundError extends DomainError {
     super("العنوان ده مش موجود");
   }
 }
+
+export class CustomerPhoneAlreadyAddedError extends DomainError {
+  constructor() {
+    super("الرقم ده متسجّل للعميل بالفعل");
+  }
+}
+
+export class CustomerPhoneTakenError extends DomainError {
+  constructor() {
+    super("الرقم ده رقم أساسي لعميل تاني - دوّر عليه واختاره");
+  }
+}
+
+export class CustomerPhoneNotFoundError extends DomainError {
+  constructor() {
+    super("الرقم ده مش من أرقام العميل");
+  }
+}

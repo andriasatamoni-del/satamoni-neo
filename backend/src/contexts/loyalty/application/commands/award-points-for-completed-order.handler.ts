@@ -6,8 +6,6 @@ import type { OrderStatusChangedEvent } from "../../../orders/domain/events/orde
 import { LOYALTY_LEDGER, type LoyaltyLedgerPort } from "../../domain/ports/loyalty-ledger.port";
 import { pointsEarnedFor } from "../../domain/loyalty-rules";
 
-// الكسب بعد ما الطلب يتقفل completed (اتسلّم فعلًا) - مش وقت التسجيل، عشان طلب اتلغى مايكسّبش. أي مصدر
-// (موقع/كاشير/واتساب) طالما رقم الطلب هو رقم حساب عميل مسجّل - بيشجع العميل يعمل حساب
 @Injectable()
 export class AwardPointsForCompletedOrderHandler {
   constructor(
@@ -20,8 +18,12 @@ export class AwardPointsForCompletedOrderHandler {
   async handle(event: OrderStatusChangedEvent): Promise<void> {
     if (event.status !== "completed") return;
     const order = await this.orders.findById(event.orderId);
-    if (!order?.customerPhone) return;
-    const customer = await this.customers.findByPhone(order.customerPhone);
+    if (!order) return;
+    const customer = order.customerId
+      ? await this.customers.findById(order.customerId)
+      : order.customerPhone
+        ? await this.customers.findByPhone(order.customerPhone)
+        : null;
     if (!customer?.hasAccount) return;
     const points = pointsEarnedFor(order.total, (await this.settings.execute()).loyaltyPointsPerEgp);
     if (points > 0) await this.ledger.earnForOrder(customer.id, order.id, points);

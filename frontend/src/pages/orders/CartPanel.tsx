@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "../../shared/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
-import { Field, Input, Select, Textarea } from "../../shared/ui/Field";
+import { Field, Input, Select } from "../../shared/ui/Field";
+import { CustomerPicker } from "./CustomerPicker";
 import { offlineFallbackQuery } from "./offlineFallbackQuery";
-import { orderTotal, type OrderDraft } from "./orderDraft";
+import { missingCustomerDetails, orderTotal, takesCustomer, type OrderDraft } from "./orderDraft";
 import { PillButton } from "./PillButton";
 import { formatPrice, ORDER_TYPES } from "./posLabels";
 import type { CartLine, PaymentMethod } from "./posTypes";
@@ -26,6 +27,7 @@ export function CartPanel({
   isSubmitting: boolean;
   error: string | null;
 }) {
+  const customerProblem = missingCustomerDetails(draft);
   return (
     <Card className="h-fit lg:sticky lg:top-20">
       <CardHeader>
@@ -61,10 +63,11 @@ export function CartPanel({
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
 
-        <Button type="submit" className="w-full" disabled={isSubmitting || cart.lines.length === 0 || !branchSelected}>
+        <Button type="submit" className="w-full" disabled={isSubmitting || cart.lines.length === 0 || !branchSelected || !!customerProblem}>
           {isSubmitting ? "بيتسجّل..." : "تسجيل الطلب"}
         </Button>
         {!branchSelected && <p className="text-center text-xs text-amber-600">اختار الفرع الأول</p>}
+        {branchSelected && customerProblem && <p className="text-center text-xs text-amber-600">{customerProblem}</p>}
       </CardBody>
     </Card>
   );
@@ -87,21 +90,7 @@ function OrderDetailsFields({ draft, onChange }: { draft: OrderDraft; onChange: 
           <Input value={draft.tableNumber} onChange={(e) => onChange({ tableNumber: e.target.value })} />
         </Field>
       )}
-      {(orderType === "delivery" || orderType === "takeaway") && (
-        <>
-          <Field label="اسم العميل (اختياري)">
-            <Input value={draft.customerName} onChange={(e) => onChange({ customerName: e.target.value })} />
-          </Field>
-          <Field label="رقم الموبايل (اختياري)">
-            <Input value={draft.customerPhone} onChange={(e) => onChange({ customerPhone: e.target.value })} />
-          </Field>
-        </>
-      )}
-      {orderType === "delivery" && (
-        <Field label="العنوان">
-          <Textarea rows={2} value={draft.addressDetails} onChange={(e) => onChange({ addressDetails: e.target.value })} />
-        </Field>
-      )}
+      {takesCustomer(orderType) && <CustomerPicker draft={draft} onChange={onChange} />}
     </>
   );
 }

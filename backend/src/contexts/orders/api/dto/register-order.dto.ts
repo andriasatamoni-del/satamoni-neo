@@ -3,8 +3,6 @@ import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID
 import { ORDER_TYPES } from "../../domain/order.aggregate";
 
 export class OrderItemInputDto {
-  // إما variantId لصنف عادي أو comboId لعرض - نفس قيد order_items.combo_id بالظبط (راجع تعليق
-  // Order.aggregate.ts). التحقق الفعلي إن واحد بس منهم متحدد بيحصل في RegisterOrderHandler.
   @IsOptional() @IsUUID() variantId?: string;
   @IsOptional() @IsUUID() comboId?: string;
 
@@ -29,6 +27,8 @@ export class RegisterOrderDto {
   @IsOptional() @IsString() customerName?: string;
   @IsOptional() @IsString() customerPhone?: string;
   @IsOptional() @IsString() addressDetails?: string;
+  @IsOptional() @IsUUID() customerId?: string;
+  @IsOptional() @IsUUID() customerAddressId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -38,7 +38,6 @@ export class RegisterOrderDto {
   @IsOptional() @IsNumber() discount?: number;
   @IsOptional() @IsBoolean() stockApproved?: boolean;
   @IsOptional() @IsUUID() paymentMethodId?: string;
-  // من وضع الكاشير الأوفلاين - راجع تعليق Order.clientRequestId
   @IsOptional() @IsUUID() clientRequestId?: string;
   @IsOptional() @IsString() @MaxLength(500) customerNotes?: string;
 }

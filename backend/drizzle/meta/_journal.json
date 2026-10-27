@@ -36,6 +36,20 @@
       "when": 1793050028520,
       "tag": "0004_customers_view_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793138439730,
+      "tag": "0005_customer_phones_and_order_customer",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793138450838,
+      "tag": "0006_backfill_customer_phones_and_manage_permission",
+      "breakpoints": true
     }
   ]
 }

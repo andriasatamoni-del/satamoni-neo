@@ -86,8 +86,6 @@ export class InsufficientStockForOrderError extends DomainError {
   }
 }
 
-// اللينك العام لتقييم الطلب غلط: توكن مش مطابق، أو مطابق لطلب تاني - نفس رد الريبو القديم بالظبط
-// (404 موحّد، مفيش تفرقة بين "توكن غلط" و"طلب غلط" - محدش لازم يعرف أيهما عشان محدش يقدر يخمّن)
 export class InvalidRatingTokenError extends DomainError {
   constructor() {
     super("اللينك ده غير صالح");
@@ -97,5 +95,17 @@ export class InvalidRatingTokenError extends DomainError {
 export class InvalidRatingStarsError extends DomainError {
   constructor() {
     super("لازم تختار تقييم من 1 لـ5 نجوم");
+  }
+}
+
+export class CustomerNotFoundForOrderError extends DomainError {
+  constructor() {
+    super("العميل ده مش موجود");
+  }
+}
+
+export class DeliveryAddressRequiredError extends DomainError {
+  constructor() {
+    super("اختار عنوان التوصيل للعميل");
   }
 }

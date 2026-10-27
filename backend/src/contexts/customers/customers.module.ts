@@ -15,6 +15,9 @@ import { CustomerAuthController } from "./api/customer-auth.controller";
 import { CustomerAuthGuard } from "./api/guards/customer-auth.guard";
 import { CustomersController } from "./api/customers.controller";
 import { ListCustomersHandler } from "./application/queries/list-customers.handler";
+import { SearchCustomersHandler } from "./application/queries/search-customers.handler";
+import { RegisterCustomerByStaffHandler } from "./application/commands/register-customer-by-staff.handler";
+import { AddCustomerPhoneHandler } from "./application/commands/add-customer-phone.handler";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
 
 @Module({
@@ -31,6 +34,9 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
     { provide: CUSTOMER_PASSWORD_HASHER, useClass: BcryptCustomerPasswordHasher },
     { provide: CUSTOMER_TOKEN_SERVICE, useClass: JwtCustomerTokenService },
     ListCustomersHandler,
+    SearchCustomersHandler,
+    RegisterCustomerByStaffHandler,
+    AddCustomerPhoneHandler,
     RegisterCustomerHandler,
     LoginCustomerHandler,
     AddCustomerAddressHandler,

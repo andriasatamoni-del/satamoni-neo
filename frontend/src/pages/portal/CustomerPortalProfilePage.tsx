@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Button } from "../../shared/ui/Button";
 import { Field, Input } from "../../shared/ui/Field";
 import { PortalShell } from "./PortalShell";
-import { AddressFields, addressBody, EMPTY_ADDRESS } from "./AddressFields";
+import { AddressFields, addressBody, EMPTY_ADDRESS } from "../../shared/customers/AddressFields";
 
 interface CustomerProfile {
   id: string;
@@ -42,7 +42,6 @@ const HISTORY_LABELS: Record<string, string> = {
 
 const errorText = (err: unknown) => (err instanceof CustomerApiError ? err.message : "حصل خطأ");
 
-// "حسابي": البيانات + دفتر العناوين + نقاط الولاء. حساب قديم ناقصه بيانات بيكمّلها هنا مرة واحدة
 export function CustomerPortalProfilePage() {
   if (!getCustomerToken()) return <Navigate to="/portal/login?next=/portal/me" replace />;
   return <Profile />;

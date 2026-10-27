@@ -1,10 +1,8 @@
-// Drizzle table definitions for the orders tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, timestamp, unique, check, uuid, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
 import { combos, menuItemVariants, menuItems } from "../../../catalog/infrastructure/persistence/catalog.tables";
+import { customers } from "../../../customers/infrastructure/persistence/customers.tables";
 import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
 import { paymentMethods } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
 
@@ -106,11 +104,18 @@ export const orders = pgTable("orders", {
   client_request_id: uuid(),
   source: text().default('pos').notNull(),
   customer_notes: text(),
+  customer_id: uuid(),
 }, (table) => [
   index("idx_orders_branch_created_at").using("btree", table.branch_id.asc().nullsLast(), table.created_at.asc().nullsLast()),
   index("idx_orders_created_at").using("btree", table.created_at.desc().nullsFirst()),
   index("idx_orders_status_created_at").using("btree", table.status.asc().nullsLast(), table.created_at.desc().nullsFirst()),
   uniqueIndex("orders_client_request_id_unique").using("btree", table.client_request_id.asc().nullsLast()).where(sql`(client_request_id IS NOT NULL)`),
+  index("orders_customer_id_idx").using("btree", table.customer_id.asc().nullsLast(), table.created_at.desc().nullsFirst()).where(sql`(customer_id IS NOT NULL)`),
+  foreignKey({
+      columns: [table.customer_id],
+      foreignColumns: [customers.id],
+      name: "orders_customer_id_fkey"
+    }).onDelete("set null"),
   index("orders_customer_phone_idx").using("btree", table.customer_phone.asc().nullsLast(), table.created_at.desc().nullsFirst()).where(sql`(customer_phone IS NOT NULL)`),
   foreignKey({
       columns: [table.branch_id],
