@@ -9,3 +9,4 @@ export * from "./Pagination";
 export * from "./ListFilters";
 export * from "./useListState";
 export * from "./useClientPagination";
+export * from "./FormDialog";

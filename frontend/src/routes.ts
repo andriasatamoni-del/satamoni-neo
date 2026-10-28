@@ -160,9 +160,10 @@ export const STAFF_ROUTES = [
   },
   {
     path: "/users",
-    perm: [P.IDENTITY_USERS_VIEW, P.IDENTITY_USERS_MANAGE, P.IDENTITY_ROLES_MANAGE],
+    perm: [P.IDENTITY_USERS_VIEW, P.IDENTITY_USERS_MANAGE],
     nav: { label: "المستخدمين", icon: ShieldUserIcon },
   },
+  { path: "/roles", perm: [P.IDENTITY_ROLES_MANAGE], nav: { label: "الأدوار والصلاحيات", icon: LockIcon } },
   { path: "/audit-log", perm: [P.AUDIT_VIEW], nav: { label: "سجل التدقيق", icon: ListSearchIcon } },
   { path: "/loyalty", perm: [P.LOYALTY_VIEW, P.LOYALTY_MANAGE], nav: { label: "نقاط الولاء", icon: CoinsIcon } },
   {

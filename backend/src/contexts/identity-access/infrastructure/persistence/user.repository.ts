@@ -5,7 +5,7 @@ import { User } from "../../domain/user.aggregate";
 import type { UserListFilter, UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
-import { ROLES, type Role } from "../../domain/role";
+import { ROLE, ROLES, type Role } from "../../domain/role";
 import { userRoles, users } from "./identity-access.tables";
 
 @Injectable()
@@ -53,6 +53,15 @@ export class UserRepository implements UserRepositoryPort {
   async existsByEmail(email: string): Promise<boolean> {
     const [row] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
     return !!row;
+  }
+
+  async countActiveAdmins(): Promise<number> {
+    const [row] = await this.db
+      .select({ total: count() })
+      .from(users)
+      .innerJoin(userRoles, eq(userRoles.user_id, users.id))
+      .where(and(eq(userRoles.role, ROLE.ADMIN), eq(users.is_active, true)));
+    return Number(row?.total ?? 0);
   }
 
   async list(filter?: { branchId?: string | null }): Promise<User[]> {

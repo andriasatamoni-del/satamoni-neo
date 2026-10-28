@@ -1,4 +1,4 @@
-import { DomainError } from "../../../shared/domain/domain-error";
+import { ConflictDomainError, DomainError } from "../../../shared/domain/domain-error";
 export { DomainError };
 
 export class InvalidEmailError extends DomainError {
@@ -28,6 +28,12 @@ export class RolesRequiredError extends DomainError {
 export class AdminRolePermissionsLockedError extends DomainError {
   constructor() {
     super("صلاحيات الأدمن ثابتة (كل الصلاحيات) ومينفعش تتعدّل");
+  }
+}
+
+export class LastAdminError extends ConflictDomainError {
+  constructor() {
+    super("لازم يفضل أدمن واحد نشط على الأقل في النظام، مينفعش تشيل دور الأدمن من آخر أدمن أو توقفه");
   }
 }
 

@@ -4,7 +4,7 @@ import { apiRequest } from "../../../shared/api/client";
 import { Badge } from "../../../shared/ui/Badge";
 import { Button } from "../../../shared/ui/Button";
 import { Field, Input, Select } from "../../../shared/ui/Field";
-import { errorMessage } from "../errorMessage";
+import { errorMessage } from "../../../shared/api/errorMessage";
 import { formatPrice } from "../posLabels";
 import { CASH_ENTRY_TYPE_LABELS, SHIFT_QUERY_KEYS, type CashDrawerEntry, type CashEntryType } from "./shiftTypes";
 import { ShiftSection } from "./ShiftSection";

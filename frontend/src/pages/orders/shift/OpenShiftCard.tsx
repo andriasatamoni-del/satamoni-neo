@@ -6,7 +6,7 @@ import { useBranchOptions } from "../../../shared/auth/useBranchOptions";
 import { Button } from "../../../shared/ui/Button";
 import { Card, CardBody } from "../../../shared/ui/Card";
 import { Field, Input, Select } from "../../../shared/ui/Field";
-import { errorMessage } from "../errorMessage";
+import { errorMessage } from "../../../shared/api/errorMessage";
 import type { Branch } from "../posTypes";
 import { SHIFT_QUERY_KEYS } from "./shiftTypes";
 

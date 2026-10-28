@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/api/client";
+import { ApiError } from "./client";
 
 export function errorMessage(error: unknown): string | null {
   if (!error) return null;
