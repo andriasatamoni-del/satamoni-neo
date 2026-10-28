@@ -10,6 +10,7 @@ import { BcryptPasswordHasher } from "./infrastructure/security/bcrypt-password-
 import { JwtTokenService } from "./infrastructure/security/jwt-token.service";
 import { RegisterUserHandler } from "./application/commands/register-user.handler";
 import { LoginHandler } from "./application/commands/login.handler";
+import { ActiveAdminGuard } from "./application/services/active-admin-guard.service";
 import { UpdateUserHandler } from "./application/commands/update-user.handler";
 import { UpdateRolePermissionsHandler } from "./application/commands/update-role-permissions.handler";
 import { ListUsersHandler } from "./application/queries/list-users.handler";
@@ -36,12 +37,13 @@ import { PermissionsGuard } from "./api/guards/permissions.guard";
     RegisterUserHandler,
     LoginHandler,
     UpdateUserHandler,
+    ActiveAdminGuard,
     UpdateRolePermissionsHandler,
     ListUsersHandler,
     GetPermissionsCatalogHandler,
     JwtAuthGuard,
     PermissionsGuard,
   ],
-  exports: [USER_REPOSITORY, ROLE_PERMISSION_REPOSITORY, TOKEN_SERVICE, JwtAuthGuard, PermissionsGuard],
+  exports: [USER_REPOSITORY, ActiveAdminGuard, ROLE_PERMISSION_REPOSITORY, TOKEN_SERVICE, JwtAuthGuard, PermissionsGuard],
 })
 export class IdentityAccessModule {}

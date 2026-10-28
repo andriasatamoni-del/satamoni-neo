@@ -3,8 +3,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Button } from "../../shared/ui/Button";
 import { Field, Input } from "../../shared/ui/Field";
 import { AddressFields, EMPTY_ADDRESS, type AddressForm } from "../../shared/customers/AddressFields";
-import { errorMessage } from "./errorMessage";
-import { PosDialog } from "./PosDialog";
+import { errorMessage } from "../../shared/api/errorMessage";
+import { FormDialog } from "../../shared/ui/FormDialog";
 import {
   addCustomerAddress,
   addCustomerPhone,
@@ -34,7 +34,7 @@ export function NewCustomerDialog({
   const register = useMutation({ mutationFn: registerCustomer, onSuccess: onCreated });
 
   return (
-    <PosDialog
+    <FormDialog
       title="عميل جديد"
       submitLabel="حفظ العميل"
       isSubmitting={register.isPending}
@@ -67,7 +67,7 @@ export function NewCustomerDialog({
         minItems={requireAddress ? 1 : 0}
         render={(value, onChange) => <AddressFields value={value} onChange={onChange} showLabel />}
       />
-    </PosDialog>
+    </FormDialog>
   );
 }
 
@@ -78,9 +78,9 @@ export function AddPhoneDialog({ customer, onAdded, onClose }: { customer: PosCu
     onSuccess: (updated) => onAdded(updated, updated.phones[updated.phones.length - 1].phone),
   });
   return (
-    <PosDialog title={`رقم جديد لـ${customer.name ?? "العميل"}`} submitLabel="إضافة" isSubmitting={add.isPending} error={errorMessage(add.error)} onSubmit={() => add.mutate()} onClose={onClose}>
+    <FormDialog title={`رقم جديد لـ${customer.name ?? "العميل"}`} submitLabel="إضافة" isSubmitting={add.isPending} error={errorMessage(add.error)} onSubmit={() => add.mutate()} onClose={onClose}>
       <PhoneFields value={value} onChange={setValue} autoFocus />
-    </PosDialog>
+    </FormDialog>
   );
 }
 
@@ -91,9 +91,9 @@ export function AddAddressDialog({ customer, onAdded, onClose }: { customer: Pos
     onSuccess: ({ customer: updated, addressId }) => onAdded(updated, addressId),
   });
   return (
-    <PosDialog title={`عنوان جديد لـ${customer.name ?? "العميل"}`} submitLabel="إضافة" isSubmitting={add.isPending} error={errorMessage(add.error)} onSubmit={() => add.mutate()} onClose={onClose}>
+    <FormDialog title={`عنوان جديد لـ${customer.name ?? "العميل"}`} submitLabel="إضافة" isSubmitting={add.isPending} error={errorMessage(add.error)} onSubmit={() => add.mutate()} onClose={onClose}>
       <AddressFields value={value} onChange={setValue} showLabel />
-    </PosDialog>
+    </FormDialog>
   );
 }
 

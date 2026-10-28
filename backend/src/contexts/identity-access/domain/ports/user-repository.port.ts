@@ -2,7 +2,6 @@ import type { User } from "../user.aggregate";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import type { Role } from "../role";
 
-// NEO-6: filters of the users list. `branchId: null` = users without a branch; undefined = every branch.
 export interface UserListFilter {
   branchId?: string | null;
   q?: string;
@@ -18,6 +17,7 @@ export interface UserRepositoryPort {
   findByEmail(email: string): Promise<User | null>;
   findByLegacyUserId(legacyUserId: number): Promise<User | null>;
   existsByEmail(email: string): Promise<boolean>;
+  countActiveAdmins(): Promise<number>;
   list(filter?: { branchId?: string | null }): Promise<User[]>;
   search(filter: UserListFilter, page?: PageRequest): Promise<{ users: User[]; total: number }>;
 }

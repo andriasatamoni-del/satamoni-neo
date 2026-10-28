@@ -1,44 +1,47 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../../domain/user.aggregate";
 import { UserNotFoundError } from "../../domain/errors";
-import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
 import { auditDetail } from "../../../../shared/audit/audit-context";
+import { ActiveAdminGuard } from "../services/active-admin-guard.service";
 
 export interface UpdateUserCommand {
   userId: string;
   roles?: string[];
   branchId?: string | null;
   isActive?: boolean;
-  password?: string; // إعادة تعيين كلمة سر (نسيان/فقدان) - الأدمن بس، نفس صلاحية identity.users.manage
+  password?: string;
+}
+
+function auditSnapshot(user: User) {
+  return { roles: [...user.roles], branchId: user.branchId, isActive: user.isActive };
 }
 
 @Injectable()
 export class UpdateUserHandler {
   constructor(
-    @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
-    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort
+    @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
+    private readonly activeAdminGuard: ActiveAdminGuard
   ) {}
 
   async execute(command: UpdateUserCommand): Promise<User> {
-    const user = await this.users.findById(command.userId);
-    if (!user) throw new UserNotFoundError();
-    // audit evidence: roles / branch / active changes (never the password or its hash)
-    const snapshot = () => ({ roles: [...user.roles], branchId: user.branchId, isActive: user.isActive });
-    auditDetail({ entityType: "users", entityId: user.id, before: snapshot() });
-
-    if (command.roles !== undefined) user.changeRoles(command.roles);
-    if (command.branchId !== undefined) user.changeBranch(command.branchId);
-    if (command.isActive === true) user.activate();
-    if (command.isActive === false) user.deactivate();
-
+    let passwordHash: string | undefined;
     if (command.password !== undefined) {
       User.validatePasswordPolicy(command.password);
-      user.setPasswordHash(await this.hasher.hash(command.password));
+      passwordHash = await this.hasher.hash(command.password);
     }
 
-    await this.users.save(user);
-    auditDetail({ after: { ...snapshot(), passwordReset: command.password !== undefined } });
+    const user = await this.activeAdminGuard.updateUser(command.userId, (u) => {
+      auditDetail({ entityType: "users", entityId: u.id, before: auditSnapshot(u) });
+      if (command.roles !== undefined) u.changeRoles(command.roles);
+      if (command.branchId !== undefined) u.changeBranch(command.branchId);
+      if (command.isActive === true) u.activate();
+      if (command.isActive === false) u.deactivate();
+      if (passwordHash !== undefined) u.setPasswordHash(passwordHash);
+    });
+    if (!user) throw new UserNotFoundError();
+
+    auditDetail({ after: { ...auditSnapshot(user), passwordReset: command.password !== undefined } });
     return user;
   }
 }

@@ -1,14 +1,15 @@
 import type { FormEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "../../shared/ui/Button";
+import { Button } from "./Button";
 
-export function PosDialog({
+export function FormDialog({
   title,
   submitLabel,
   isSubmitting,
   error,
   onSubmit,
   onClose,
+  size = "md",
   children,
 }: {
   title: string;
@@ -17,6 +18,7 @@ export function PosDialog({
   error: string | null;
   onSubmit: () => void;
   onClose: () => void;
+  size?: "md" | "xl";
   children: ReactNode;
 }) {
   function handleSubmit(e: FormEvent) {
@@ -30,7 +32,7 @@ export function PosDialog({
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl bg-white p-4 shadow-xl"
+        className={`max-h-[90vh] w-full ${size === "xl" ? "max-w-5xl" : "max-w-lg"} space-y-4 overflow-y-auto rounded-xl bg-white p-4 shadow-xl`}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900">{title}</h3>

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../../shared/api/client";
 import { Button } from "../../../shared/ui/Button";
 import { Field, Input } from "../../../shared/ui/Field";
-import { errorMessage } from "../errorMessage";
+import { errorMessage } from "../../../shared/api/errorMessage";
 import { formatPrice } from "../posLabels";
 import { SHIFT_QUERY_KEYS, type ShiftPreview } from "./shiftTypes";
 import { ShiftSection } from "./ShiftSection";

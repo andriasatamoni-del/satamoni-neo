@@ -15,7 +15,7 @@ import { needsOptionPicker } from "./orders/menuPricing";
 import { useOrderDraft } from "./orders/orderDraft";
 import { useCart } from "./orders/useCart";
 import { useCreateOrder } from "./orders/useCreateOrder";
-import { errorMessage } from "./orders/errorMessage";
+import { errorMessage } from "../shared/api/errorMessage";
 import { usePosBranches } from "./orders/usePosBranches";
 import { usePosCatalog } from "./orders/usePosCatalog";
 import type { MenuItem } from "./orders/posTypes";
