@@ -4,7 +4,6 @@ export interface PaymentMethodRepositoryPort {
   save(method: PaymentMethod): Promise<void>;
   findById(id: string): Promise<PaymentMethod | null>;
   findByLegacyPaymentMethodId(legacyId: number): Promise<PaymentMethod | null>;
-  findByTalabatPaymentCode(code: string): Promise<PaymentMethod | null>;
   list(): Promise<PaymentMethod[]>;
 }
 

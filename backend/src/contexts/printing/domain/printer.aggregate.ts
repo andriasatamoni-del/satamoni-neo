@@ -12,23 +12,16 @@ export interface PrinterProps {
   name: string;
   printerType: PrinterType;
   connectionType: ConnectionType;
-  // USB دلوقتي (osPrinterName = اسم الطابعة بالظبط زي ما ظاهر في نظام التشغيل، ده اللي وكيل الطباعة
-  // المحلي هيستهدفه) - LAN جاهزة معماريًا (ipAddress/port) لحد ما تتفعّل فعليًا لاحقًا من غير تغيير في الشكل
   osPrinterName: string | null;
   ipAddress: string | null;
   port: number | null;
   paperWidthMm: number;
   isEnabled: boolean;
-  // لو محطة/نوع طباعة مالوش توجيه صريح، تقدر تستخدم الطابعة دي كافتراضي لنوعها في الفرع - زر يدوي، مش
-  // تلقائي بمجرد إنشاء طابعة جديدة (عشان متبقاش أكتر من طابعة "افتراضية" لنفس النوع في نفس الفرع بالغلط)
   isDefaultForType: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Printer - نفس مفهوم printers في الريبو القديم بالظبط. الطباعة الفعلية بتحصل عند وكيل محلي منفصل خارج
-// النظام ده (زي الاتصال الحقيقي بـMeta/Talabat في WhatsApp/Production - مؤجّل لحد ما تتوفر بيئة تشغيل
-// حقيقية) - الأجريجيت هنا مسؤول بس عن شكل/قواعد الطابعة نفسها والتوجيه، مش الاتصال بالهاردوير
 export class Printer {
   private constructor(
     public readonly id: string,

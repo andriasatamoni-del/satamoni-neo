@@ -44,7 +44,7 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     const itemRes = await request(app.getHttpServer())
       .post("/catalog/items")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "بيتزا-سجل-أسعار-جست", variants: [{ label: "وسط", price: 100, talabatPrice: 110 }] });
+      .send({ name: "بيتزا-سجل-أسعار-جست", variants: [{ label: "وسط", price: 100 }] });
     itemId = itemRes.body.id;
     variantId = itemRes.body.variants[0].id;
 
@@ -66,25 +66,22 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     await app.close();
   });
 
-  test("PATCH variant price بيسجّل صف تاريخ (price + talabat_price)", async () => {
+  test("PATCH variant price بيسجّل صف تاريخ ", async () => {
     const res = await request(app.getHttpServer())
       .patch(`/catalog/items/${itemId}/variants/${variantId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ price: 120, talabatPrice: 130 });
+      .send({ price: 120 });
     expect(res.status).toBe(200);
 
     const history = await request(app.getHttpServer())
       .get(`/catalog/items/${itemId}/variants/${variantId}/price-history`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(history.status).toBe(200);
-    expect(history.body).toHaveLength(2);
+    expect(history.body).toHaveLength(1);
     const priceRow = history.body.find((h: { fieldName: string }) => h.fieldName === "price");
     expect(priceRow.oldPrice).toBe(100);
     expect(priceRow.newPrice).toBe(120);
     expect(priceRow.changedByName).toBe("أدمن-سجل-أسعار");
-    const talabatRow = history.body.find((h: { fieldName: string }) => h.fieldName === "talabat_price");
-    expect(talabatRow.oldPrice).toBe(110);
-    expect(talabatRow.newPrice).toBe(130);
   });
 
   test("PATCH variant price بنفس السعر - مفيش صف جديد يتسجّل", async () => {
@@ -132,7 +129,6 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     expect(history.body[0].newPrice).toBe(25);
     expect(history.body[0].variantId).toBe(variantId);
 
-    // مش المفروض يظهر في سجل المرفق العام (بدون variantId) - النوعين منفصلين
     const generalHistory = await request(app.getHttpServer())
       .get(`/catalog/items/${itemId}/modifiers/${modifierId}/price-history`)
       .set("Authorization", `Bearer ${adminToken}`);

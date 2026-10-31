@@ -111,11 +111,6 @@ export const PERMISSION = {
   PURCHASES_CREATE_OWN_DAILY: "purchases.create_own_daily",
   PURCHASES_EDIT_OWN_DAILY: "purchases.edit_own_daily",
   PURCHASES_REVIEW: "purchases.review",
-  TALABAT_VIEW: "talabat.view",
-  TALABAT_RETRY: "talabat.retry",
-  TALABAT_PAYMENT_OVERRIDE: "talabat.payment_override",
-  TALABAT_RECONCILIATION: "talabat.reconciliation",
-  TALABAT_MAPPING_MANAGE: "talabat.mapping_manage",
   HOME_TILES_MANAGE: "home_tiles.manage",
 } as const;
 

@@ -9,7 +9,6 @@ export interface UpdateBranchCommand {
   address?: string | null;
   phone?: string | null;
   hours?: string | null;
-  talabatBranchId?: string | null;
 }
 
 @Injectable()
@@ -22,7 +21,6 @@ export class UpdateBranchHandler {
 
     if (command.name !== undefined) branch.rename(command.name);
     branch.updateDetails({ address: command.address, phone: command.phone, hours: command.hours });
-    if (command.talabatBranchId !== undefined) branch.linkTalabatBranch(command.talabatBranchId);
 
     await this.branches.save(branch);
     return branch;

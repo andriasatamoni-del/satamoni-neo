@@ -13,7 +13,6 @@ import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ProductionPage } from "./pages/ProductionPage";
-import { WhatsappPage } from "./pages/WhatsappPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { KdsPage } from "./pages/KdsPage";
@@ -33,7 +32,6 @@ import { FinancialReportsPage } from "./pages/FinancialReportsPage";
 import { OperationalReportsPage } from "./pages/OperationalReportsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
-import { TalabatPage } from "./pages/TalabatPage";
 import { LoyaltyPage } from "./pages/LoyaltyPage";
 import { RateOrderPage } from "./pages/RateOrderPage";
 import { CustomerPortalLoginPage } from "./pages/portal/CustomerPortalLoginPage";
@@ -50,7 +48,6 @@ const STAFF_PAGES: Record<StaffPath, ComponentType> = {
   "/kds": KdsPage,
   "/crm": CrmPage,
   "/customers": CustomersPage,
-  "/whatsapp": WhatsappPage,
   "/branches": BranchesPage,
   "/inventory": InventoryPage,
   "/catalog": CatalogPage,
@@ -61,7 +58,6 @@ const STAFF_PAGES: Record<StaffPath, ComponentType> = {
   "/accounting": AccountingPage,
   "/expenses": ExpensesPage,
   "/purchases": PurchasesPage,
-  "/talabat": TalabatPage,
   "/financial-reports": FinancialReportsPage,
   "/operational-reports": OperationalReportsPage,
   "/treasuries": TreasuriesPage,

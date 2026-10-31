@@ -79,7 +79,6 @@ export interface CatalogReportRow {
   variantId: string;
   label: string;
   price: number;
-  talabatPrice: number | null;
   quantitySold: number;
   revenue: number;
 }
@@ -106,15 +105,6 @@ export interface RecipeReportRow {
   hasMissingCost: boolean;
 }
 
-// قراءة عبر Orders/Catalog/Inventory مباشرة - نفس فلسفة باقي قرّاء التقارير بالظبط. قرارات نطاق موثّقة:
-// - item-performance/recipes: التكلفة هنا بسعر الوحدة *الحالي* للمكوّن، مش "مجمّدة وقت البيع" زي
-//   الريبو القديم (order_items.cost_at_sale) - neo لسه معندوش عمود مماثل على order_items، بس
-//   stock_movements نفسها بقت بتجمّد التكلفة (راجع محرك تكلفة الطعام) فالتقرير ده بديل تقريبي مقبول
-//   للمراجعة السريعة، مش مصدر حقيقة محاسبي دقيق
-// - delays: neo معندوش order_status_log (سجل كل تحوّل حالة) - بيستخدم kitchen_ready_at بدل أول تحوّل
-//   حالة بعد "preparing"، وده نفس المعنى عمليًا (وقت ما الطلب بقى جاهز)
-// - cancelled-orders: neo معندوش تمييز منفصل بين "اتلغى قبل التنفيذ" و"استرجاع بعد الاكتمال" (voided)،
-//   ومعندوش عمود سبب الإلغاء - القائمة والإجمالي بس، بدون تقسيم الأسباب
 export interface SalesOpsReaderPort {
   getDailySummary(input: { branchId: string | null; from: string; to: string }): Promise<DailyBranchSummaryRow[]>;
   getSalesDetail(input: { branchId: string | null; from: string; to: string }): Promise<SalesDetailReport>;

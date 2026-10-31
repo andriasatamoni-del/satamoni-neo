@@ -7,7 +7,6 @@ import {
   BuildingIcon,
   CardIcon,
   CartIcon,
-  ChatBubbleIcon,
   ChartIcon,
   ClipboardIcon,
   CoinsIcon,
@@ -49,7 +48,6 @@ export const STAFF_ROUTES = [
     nav: { label: "متابعة العملاء والشكاوى", icon: UsersIcon },
   },
   { path: "/customers", perm: [P.CUSTOMERS_VIEW], nav: { label: "العملاء", icon: UserGroupIcon } },
-  { path: "/whatsapp", perm: [P.WHATSAPP_VIEW], nav: { label: "بوابة واتساب", icon: ChatBubbleIcon } },
   { path: "/branches", perm: [P.BRANCHES_VIEW, P.BRANCHES_MANAGE], nav: { label: "الفروع", icon: BuildingIcon } },
   {
     path: "/inventory",
@@ -108,11 +106,6 @@ export const STAFF_ROUTES = [
     path: "/purchases",
     perm: [P.PURCHASES_VIEW, P.PURCHASES_VIEW_OWN_DAILY],
     nav: { label: "المشتريات النقدية", icon: CartIcon },
-  },
-  {
-    path: "/talabat",
-    perm: [P.TALABAT_VIEW, P.TALABAT_MAPPING_MANAGE, P.TALABAT_RECONCILIATION],
-    nav: { label: "تكامل Talabat", icon: TruckIcon },
   },
   {
     path: "/financial-reports",

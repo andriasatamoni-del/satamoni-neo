@@ -25,13 +25,12 @@ describe("MenuItemRepository", () => {
   test("save بيسجّل صنف وأحجامه مع بعض، وfindById بيرجّعهم بنفس البيانات", async () => {
     const item = MenuItem.register({ name: "بيتزا-جست" });
     item.addVariant({ label: "وسط", price: 90 });
-    item.addVariant({ label: "كبير", price: 120, talabatPrice: 130 });
+    item.addVariant({ label: "كبير", price: 120 });
     await repo.save(item);
 
     const found = await repo.findById(item.id);
     expect(found?.name).toBe("بيتزا-جست");
     expect(found?.variants).toHaveLength(2);
-    expect(found?.variants.find((v) => v.label === "كبير")?.talabatPrice).toBe(130);
   });
 
   test("findByVariantId بيلاقي الصنف الأب لحجم معيّن", async () => {

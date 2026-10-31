@@ -1,6 +1,3 @@
-// Drizzle table definitions for the payment-control tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, timestamp, unique, check, uuid, boolean, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { localDate } from "../../../../shared/database/columns";
@@ -90,9 +87,7 @@ export const paymentMethods = pgTable("payment_methods", {
   is_active: boolean().default(true).notNull(),
   legacy_payment_method_id: integer(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
-  talabat_payment_code: text(),
 }, (table) => [
-  uniqueIndex("idx_payment_methods_talabat_payment_code").using("btree", table.talabat_payment_code.asc().nullsLast()),
   check("payment_methods_kind_check", sql`kind = ANY (ARRAY['cash'::text, 'card_or_wallet'::text, 'credit'::text])`),
   check("payment_methods_settlement_channel_check", sql`settlement_channel = ANY (ARRAY['visa_pos'::text, 'instapay'::text, 'orange_cash'::text, 'vodafone_cash'::text])`),
 ]);

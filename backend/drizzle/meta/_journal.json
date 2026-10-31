@@ -50,6 +50,20 @@
       "when": 1793138450838,
       "tag": "0006_backfill_customer_phones_and_manage_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793473262781,
+      "tag": "0007_drop_talabat_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793473268982,
+      "tag": "0008_remove_talabat_permissions_and_system_user",
+      "breakpoints": true
     }
   ]
 }

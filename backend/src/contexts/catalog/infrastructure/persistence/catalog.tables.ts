@@ -1,6 +1,3 @@
-// Drizzle table definitions for the catalog tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, timestamp, unique, check, uuid, boolean, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
@@ -12,7 +9,6 @@ export const menuItemVariants = pgTable("menu_item_variants", {
   item_id: uuid().notNull(),
   label: text().notNull(),
   price: numeric().notNull().$type<number>(),
-  talabat_price: numeric().$type<number>(),
   legacy_variant_id: integer(),
 }, (table) => [
   foreignKey({

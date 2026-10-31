@@ -15,8 +15,6 @@ import { paymentAdjustmentRequests, paymentMethods, paymentReconciliationRecords
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
 
-// e2e حقيقي بيغطي الحلقة الكاملة: قفل دفعة تلقائي وقت تسجيل الطلب (event bus - LockPaymentForOrderHandler)،
-// طلب تعديل + اعتماد (بيغيّر سنابشوت الدفعة فعليًا)، وإدخال + مطابقة يدوية لسطر كشف حساب خارجي
 describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -24,9 +22,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
   let variantId: string;
   let cashMethodId: string;
   let visaMethodId: string;
-  let talabatMethodId: string;
-  let branchManagerToken: string;
-  let approverToken: string; // BL-05: an independent approver (the requester can never approve)
+  let approverToken: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -56,14 +52,6 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    const branchManager = User.register({
-      name: "مدير فرع-دفعات-e2e", email: "bm-payment-control-e2e@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["branch_manager"], branchId,
-    });
-    await userRepo.save(branchManager);
-    branchManagerToken = (
-      await request(app.getHttpServer()).post("/auth/login").send({ email: "bm-payment-control-e2e@jest.test", password: "12345678" })
-    ).body.token;
-
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف دفعات-e2e" });
     const variant = item.addVariant({ label: "عادي", price: 100 });
@@ -82,16 +70,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
       .send({ name: "فيزا-دفعات-e2e", kind: "card_or_wallet", settlementChannel: "visa_pos" });
     visaMethodId = visaMethod.body.id;
 
-    const talabatMethod = await request(app.getHttpServer())
-      .post("/payment-control/payment-methods")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "Talabat-دفعات-e2e", kind: "credit" });
     approverToken = (await createSecondUser(app, "admin2-payment-control-e2e@jest.test", "admin")).token;
-    talabatMethodId = talabatMethod.body.id;
-    await request(app.getHttpServer())
-      .patch(`/payment-control/payment-methods/${talabatMethodId}/talabat-code`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ talabatPaymentCode: "tal-pay-e2e-flow" });
   });
 
   afterAll(async () => {
@@ -102,11 +81,11 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     await db.delete(printJobs);
     await db.delete(orderItems);
     await db.delete(orders);
-    await db.delete(paymentMethods).where(inArray(paymentMethods.id, [cashMethodId, visaMethodId, talabatMethodId]));
+    await db.delete(paymentMethods).where(inArray(paymentMethods.id, [cashMethodId, visaMethodId]));
     await db.delete(menuItemVariants);
     await db.delete(menuItems);
     await db.delete(branches).where(eq(branches.id, branchId));
-    await db.delete(users).where(inArray(users.email, ["admin-payment-control-e2e@jest.test", "bm-payment-control-e2e@jest.test", "admin2-payment-control-e2e@jest.test"]));
+    await db.delete(users).where(inArray(users.email, ["admin-payment-control-e2e@jest.test", "admin2-payment-control-e2e@jest.test"]));
     await app.close();
   });
 
@@ -156,7 +135,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ paymentId: payment.id, proposedPaymentMethodId: visaMethodId, proposedAmount: 100, reason: "تصحيح طريقة الدفع" });
     expect(adjustmentReq.status).toBe(201);
-    expect(adjustmentReq.body.amountDelta).toBe(100); // إعادة تصنيف قناة كاملة (cash -> visa_pos) = المبلغ كله
+    expect(adjustmentReq.body.amountDelta).toBe(100);
 
     const approved = await request(app.getHttpServer())
       .post(`/payment-control/adjustment-requests/${adjustmentReq.body.id}/approve`)
@@ -170,37 +149,6 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     const updatedPayment = paymentsAfter.body.find((p: { id: string }) => p.id === payment.id);
     expect(updatedPayment.methodKind).toBe("card_or_wallet");
     expect(updatedPayment.settlementChannel).toBe("visa_pos");
-  });
-
-  test("تعديل دفعة مصدرها Talabat - مدير الفرع مالوش صلاحية talabat.payment_override حتى لو معاه adjustment.approve العامة", async () => {
-    const order = await request(app.getHttpServer())
-      .post("/orders")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ branchId, orderType: "delivery", items: [{ variantId, quantity: 1 }], paymentMethodId: talabatMethodId });
-
-    const paymentsRes = await request(app.getHttpServer())
-      .get(`/payment-control/payments?branchId=${branchId}`)
-      .set("Authorization", `Bearer ${adminToken}`);
-    const payment = paymentsRes.body.find((p: { orderId: string }) => p.orderId === order.body.id);
-
-    const adjustmentReq = await request(app.getHttpServer())
-      .post("/payment-control/adjustment-requests")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ paymentId: payment.id, proposedAmount: 90, reason: "تصحيح مبلغ" });
-    expect(adjustmentReq.status).toBe(201);
-
-    // مدير الفرع معاه payment_control.adjustment.approve العامة بس مش talabat.payment_override -> مرفوض
-    const rejectedByBranchManager = await request(app.getHttpServer())
-      .post(`/payment-control/adjustment-requests/${adjustmentReq.body.id}/approve`)
-      .set("Authorization", `Bearer ${branchManagerToken}`);
-    expect(rejectedByBranchManager.status).toBe(400);
-
-    // الأدمن معاه talabat.payment_override (كل الصلاحيات المسجّلة) -> بينجح
-    const approvedByAdmin = await request(app.getHttpServer())
-      .post(`/payment-control/adjustment-requests/${adjustmentReq.body.id}/approve`)
-      .set("Authorization", `Bearer ${approverToken}`);
-    expect(approvedByAdmin.status).toBe(201);
-    expect(approvedByAdmin.body.status).toBe("APPROVED");
   });
 
   test("تسجيل ومطابقة سطر كشف حساب خارجي يدويًا", async () => {
@@ -253,7 +201,6 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
     expect(imported).toHaveLength(2);
     expect(imported.every((r: { matchStatus: string }) => r.matchStatus === "UNMATCHED")).toBe(true);
 
-    // إلغاء الدفعة كلها - لسه كل سطورها UNMATCHED
     const cancel = await request(app.getHttpServer())
       .delete(`/payment-control/reconciliation-records/import-batches/${commit.body.batchId}`)
       .set("Authorization", `Bearer ${adminToken}`);

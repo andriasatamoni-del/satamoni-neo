@@ -92,7 +92,6 @@ export class CatalogController {
     return (await this.listRecipes.execute({ recipeType })).map(toPublicRecipe);
   }
 
-  // ?archived=true بيرجّع الأقسام المؤرشفة بس (قائمة الاسترجاع في الإعدادات)؛ الافتراضي غير المؤرشفة
   @Get("categories")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async categories(@Query() query: ListMenuCategoriesQueryDto) {
@@ -101,14 +100,12 @@ export class CatalogController {
     return listResponse(categories.map(toPublicCategory), total, page);
   }
 
-  // مكان تبويب "العروض" وسط الأقسام
   @Get("layout")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async layout() {
     return this.getLayout.execute();
   }
 
-  // ترتيب الأقسام (ومعاهم "combos") بالترتيب المطلوب
   @Put("categories/order")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async reorder(@Body() dto: ReorderMenuCategoriesDto) {
@@ -266,7 +263,6 @@ export class CatalogController {
     return recipe ? toPublicRecipe(recipe) : null;
   }
 
-  // العروض النشطة بس - نفس GET /api/combos بالريبو القديم (لأي حد يقدر يسجّل/يشوف طلبات)
   @Get("combos")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async combos(@Query() query: ListQueryDto) {
@@ -275,7 +271,6 @@ export class CatalogController {
     return listResponse(rows.map(toPublicCombo), total, page);
   }
 
-  // كل العروض (نشطة وغير نشطة) - نفس GET /api/combos/all بالريبو القديم (لشاشة الإدارة بس)
   @Get("combos/all")
   @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async allCombos(@Query() query: ListQueryDto) {
@@ -323,7 +318,7 @@ function toPublicItem(item: MenuItem) {
     imageUrl: item.imageUrl,
     isBest: item.isBest,
     isActive: item.isActive,
-    variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, talabatPrice: v.talabatPrice })),
+    variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price })),
     modifiers: item.modifiers.map((m) => ({
       id: m.id,
       name: m.name,

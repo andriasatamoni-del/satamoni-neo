@@ -8,7 +8,7 @@ export interface RegisterMenuItemCommand {
   description?: string | null;
   imageUrl?: string | null;
   isBest?: boolean;
-  variants?: { label: string; price: number; talabatPrice?: number | null }[];
+  variants?: { label: string; price: number }[];
 }
 
 @Injectable()

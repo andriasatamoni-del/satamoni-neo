@@ -28,7 +28,6 @@ import { BranchDayModule } from "./contexts/branch-day/branch-day.module";
 import { ExpensesModule } from "./contexts/expenses/expenses.module";
 import { PurchasesModule } from "./contexts/purchases/purchases.module";
 import { CustomersModule } from "./contexts/customers/customers.module";
-import { TalabatModule } from "./contexts/talabat/talabat.module";
 import { HomeTilesModule } from "./contexts/home-tiles/home-tiles.module";
 import { NotificationsModule } from "./contexts/notifications/notifications.module";
 import { StorefrontModule } from "./contexts/storefront/storefront.module";
@@ -38,11 +37,6 @@ import { MediaModule } from "./contexts/media/media.module";
 
 @Module({
   imports: [
-    // حماية عامة من brute-force/DoS بسيط على كل الـAPI - حد افتراضي سخي (100 طلب/دقيقة لكل IP)،
-    // وحد أضيق مخصوص على POST /auth/login (راجع @Throttle هناك) عشان محاولات تخمين كلمة السر تتقفل
-    // بعد عدد قليل من المحاولات الفاشلة. THROTTLE_LIMIT قابل للتعديل عبر بيئة التشغيل - بيئة الاختبار
-    // (test/integration/setup.ts) بترفعه عشان اختبارات الـe2e بتعمل عشرات طلبات متتالية على نفس IP
-    // في نفس الدقيقة كسيناريو اختبار طبيعي، مش هجوم فعلي
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT) || 100 }]),
     DatabaseModule,
     EventsModule,
@@ -69,7 +63,6 @@ import { MediaModule } from "./contexts/media/media.module";
     ExpensesModule,
     PurchasesModule,
     CustomersModule,
-    TalabatModule,
     HomeTilesModule,
     NotificationsModule,
     LoyaltyModule,
