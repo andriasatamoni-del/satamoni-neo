@@ -10,7 +10,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   const { className = "", ...rest } = props;
-  return <select className={`${controlClasses} ${className}`} {...rest} />;
+  return <select className={`${controlClasses} select-chevron appearance-none pe-9 ${className}`} {...rest} />;
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
