@@ -40,7 +40,7 @@ export function OpenShiftCard() {
           <div className="flex flex-wrap items-end gap-3">
             {needsBranchPick && (
               <Field label="الفرع">
-                <Select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="max-w-[220px]">
+                <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
                   <option value="">اختار الفرع</option>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
