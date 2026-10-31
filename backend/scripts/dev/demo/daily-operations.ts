@@ -1,8 +1,7 @@
-import { createHmac, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
-import { talabatOrders } from "../../../src/contexts/talabat/infrastructure/persistence/talabat.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { RegisterOrderHandler } from "../../../src/contexts/orders/application/commands/register-order.handler";
 import { AdvanceKitchenStatusHandler } from "../../../src/contexts/orders/application/commands/advance-kitchen-status.handler";
@@ -26,7 +25,6 @@ import { RequestPaymentAdjustmentHandler } from "../../../src/contexts/payment-c
 import { ApprovePaymentAdjustmentHandler } from "../../../src/contexts/payment-control/application/commands/approve-payment-adjustment.handler";
 import { RegisterReconciliationRecordHandler } from "../../../src/contexts/payment-control/application/commands/register-reconciliation-record.handler";
 import { PlaceOnlineOrderHandler } from "../../../src/contexts/storefront/application/commands/place-online-order.handler";
-import { ReceiveTalabatWebhookHandler } from "../../../src/contexts/talabat/application/commands/receive-talabat-webhook.handler";
 import { ReceiveWhatsappMessageHandler } from "../../../src/contexts/whatsapp/application/commands/receive-whatsapp-message.handler";
 import { RegisterPendingOrderHandler } from "../../../src/contexts/whatsapp/application/commands/register-pending-order.handler";
 import { ConfirmPendingOrderHandler } from "../../../src/contexts/whatsapp/application/commands/confirm-pending-order.handler";
@@ -42,14 +40,11 @@ import { ClaimPrintJobHandler } from "../../../src/contexts/printing/application
 import { MarkPrintJobPrintedHandler } from "../../../src/contexts/printing/application/commands/mark-print-job-printed.handler";
 import { AuditLogService } from "../../../src/shared/audit/audit-log.service";
 import { BRANCHES, COMPLAINT_TEXTS, INVENTORY, MENU, PAYMENT_METHODS, RATING_COMMENTS, STAFF, egyptianMobile, egyptianName, type BranchSpec } from "./demo-data";
-import { talabatItemId } from "./master-data";
 import { cairoTime } from "./clock";
 import { between, count, handler, pick, round2, weighted, type CustomerRef, type SeedContext } from "./seed-context";
 
-export const TALABAT_SEED_SECRET = "local-demo-talabat-secret";
-
 type OrderLine = { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] };
-type Channel = "pos" | "callcenter" | "website" | "talabat" | "whatsapp";
+type Channel = "pos" | "callcenter" | "website" | "whatsapp";
 
 interface PlacedOrder {
   id: string;
@@ -85,7 +80,6 @@ export interface OpenComplaint {
 export const openComplaints: OpenComplaint[] = [];
 export const instapayPayments: { orderId: string; amount: number; branchId: string; day: string }[] = [];
 export const weeklyCardSales: Record<string, Record<string, number>> = {};
-let talabatSequence = 880_000;
 let waSequence = 1;
 
 const SHOW_ERRORS = 8;
@@ -216,7 +210,7 @@ export async function runBranchDay(ctx: SeedContext, day: string, spec: BranchSp
   const drawerAt = new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)]);
   for (const [i, at] of times.entries()) {
     ctx.clock.set(at);
-    const channel = weighted<Channel>(ctx.rand, ["pos", "callcenter", "website", "talabat", "whatsapp"], (c) => ({ pos: 66, callcenter: 9, website: 9, talabat: 12, whatsapp: 4 })[c]);
+    const channel = weighted<Channel>(ctx.rand, ["pos", "callcenter", "website", "whatsapp"], (c) => ({ pos: 78, callcenter: 9, website: 9, whatsapp: 4 })[c]);
     try {
       const placed = await placeOrder(ctx, day, state, channel);
       if (placed) await fulfil(ctx, day, state, placed, channel);
@@ -234,7 +228,6 @@ export async function runBranchDay(ctx: SeedContext, day: string, spec: BranchSp
 
 async function placeOrder(ctx: SeedContext, day: string, state: BranchDayState, channel: Channel): Promise<PlacedOrder | null> {
   const branchCustomers = ctx.customers.filter((c) => c.branchKey === state.spec.key);
-  if (channel === "talabat") return placeTalabatOrder(ctx, state);
   if (channel === "whatsapp") return placeWhatsappOrder(ctx, day, state);
   if (channel === "website") return placeWebsiteOrder(ctx, day, state, pick(ctx.rand, branchCustomers));
 
@@ -309,48 +302,6 @@ async function placeWebsiteOrder(ctx: SeedContext, day: string, state: BranchDay
   return { id: result.orderId, total: Number(result.total), orderType, paymentKey: "cash", ratingToken: result.trackingToken, customerPhone: customer.phone, ownDelivery: orderType === "delivery" };
 }
 
-async function placeTalabatOrder(ctx: SeedContext, state: BranchDayState): Promise<PlacedOrder | null> {
-  const talabatOrderId = `TB-${++talabatSequence}`;
-  const brokenMapping = ctx.rand() < 0.03;
-  const items = basket(ctx, "", { online: false, combos: false }).map((line) => {
-    const [itemKey, ref] = Object.entries(ctx.menuItems).find(([, r]) => r.variants.some((v) => v.id === line.variantId))!;
-    const label = ref.variants.find((v) => v.id === line.variantId)!.label;
-    return { talabatItemId: talabatItemId(itemKey, label), quantity: line.quantity };
-  });
-  if (brokenMapping) items.push({ talabatItemId: "TLB-NEW-ITEM-NOT-MAPPED", quantity: 1 });
-  const who = guest(ctx);
-  const online = ctx.rand() < 0.7;
-  const rawBody = JSON.stringify({
-    talabatOrderId,
-    status: "CREATED",
-    talabatBranchId: state.spec.talabatBranchId,
-    talabatPaymentCode: online ? "ONLINE" : "COD",
-    customerName: who.name,
-    customerPhone: who.phone,
-    addressDetails: guestAddress(ctx, state.spec.key),
-    items,
-  });
-  await handler(ctx, ReceiveTalabatWebhookHandler).execute({ rawBody, signatureHeader: `sha256=${createHmac("sha256", TALABAT_SEED_SECRET).update(rawBody).digest("hex")}` });
-  count(ctx, "talabatWebhooks");
-  const [row] = await ctx.db.select({ posOrderId: talabatOrders.pos_order_id }).from(talabatOrders).where(eq(talabatOrders.talabat_order_id, talabatOrderId));
-  if (!row?.posOrderId) {
-    count(ctx, "talabatMappingErrors");
-    return null;
-  }
-  count(ctx, "orders:talabat");
-  const placed: PlacedOrder = { id: row.posOrderId, total: await orderTotal(ctx, row.posOrderId), orderType: "delivery", paymentKey: online ? "talabatOnline" : "talabatCash", ratingToken: null, customerPhone: who.phone, ownDelivery: false };
-  trackCardSale(ctx, state, placed);
-
-  if (ctx.rand() < 0.04) {
-    ctx.clock.advanceMinutes(4);
-    const cancelBody = JSON.stringify({ talabatOrderId, status: "CANCELED", talabatBranchId: state.spec.talabatBranchId });
-    await handler(ctx, ReceiveTalabatWebhookHandler).execute({ rawBody: cancelBody, signatureHeader: createHmac("sha256", TALABAT_SEED_SECRET).update(cancelBody).digest("hex") });
-    count(ctx, "orders:talabatCancelled");
-    return null;
-  }
-  return placed;
-}
-
 async function placeWhatsappOrder(ctx: SeedContext, day: string, state: BranchDayState): Promise<PlacedOrder | null> {
   const known = pick(ctx.rand, ctx.customers.filter((c) => c.branchKey === state.spec.key));
   const agent = ctx.users.callcenter;
@@ -410,7 +361,7 @@ async function fulfil(ctx: SeedContext, day: string, state: BranchDayState, plac
   state.completed.push(placed);
   count(ctx, "orders:completed");
 
-  if (ctx.rand() < 0.13 && channel !== "talabat") {
+  if (ctx.rand() < 0.13) {
     const stars = weighted(ctx.rand, [5, 4, 3, 2, 1], (s) => [52, 28, 11, 6, 3][5 - s]);
     await handler(ctx, SubmitOrderRatingHandler).execute({
       orderId: placed.id,
@@ -467,7 +418,7 @@ async function maybePaymentAdjustment(ctx: SeedContext, day: string, state: Bran
   });
   ctx.clock.advanceMinutes(8);
   const high = target.total >= 500;
-  await handler(ctx, ApprovePaymentAdjustmentHandler).execute({ requestId: request.id, decidedBy: high ? ctx.users.opsAdmin : state.managerId, hasHighApproval: high, hasTalabatOverride: false });
+  await handler(ctx, ApprovePaymentAdjustmentHandler).execute({ requestId: request.id, decidedBy: high ? ctx.users.opsAdmin : state.managerId, hasHighApproval: high });
   state.cashierCashSales = round2(state.cashierCashSales - target.total);
   const tally = (weeklyCardSales[state.spec.key] ??= {});
   tally.cash = round2((tally.cash ?? 0) - target.total);

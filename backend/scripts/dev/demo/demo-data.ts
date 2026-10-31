@@ -11,7 +11,6 @@ export interface BranchSpec {
   lng: number;
   isCentralKitchen?: boolean;
   supportsDineIn?: boolean;
-  talabatBranchId?: string;
   dailyOrders: [number, number];
   lanSubnet: string;
 }
@@ -38,7 +37,6 @@ export const BRANCHES: BranchSpec[] = [
     hours: "12:00 م - 2:00 ص",
     lat: 30.0566,
     lng: 31.3443,
-    talabatBranchId: "TLB-CAI-48211",
     dailyOrders: [22, 34],
     lanSubnet: "192.168.20",
   },
@@ -50,7 +48,6 @@ export const BRANCHES: BranchSpec[] = [
     hours: "12:00 م - 1:00 ص",
     lat: 30.0915,
     lng: 31.3236,
-    talabatBranchId: "TLB-CAI-48212",
     dailyOrders: [18, 28],
     lanSubnet: "192.168.30",
   },
@@ -63,7 +60,6 @@ export const BRANCHES: BranchSpec[] = [
     lat: 29.9602,
     lng: 31.2569,
     supportsDineIn: false,
-    talabatBranchId: "TLB-CAI-48213",
     dailyOrders: [14, 22],
     lanSubnet: "192.168.40",
   },
@@ -159,7 +155,6 @@ export const CHART_OF_ACCOUNTS: AccountSpec[] = [
   { code: "1000", name: "الأصول", type: "ASSET" },
   { code: "1100", name: "النقدية بالصناديق", type: "ASSET", parent: "1000", system: true },
   { code: "1300", name: "العملاء والمدينون", type: "ASSET", parent: "1000" },
-  { code: "1310", name: "مستحقات طلبات (Talabat)", type: "ASSET", parent: "1300" },
   { code: "1320", name: "مستحقات شركات الدفع الإلكتروني", type: "ASSET", parent: "1300" },
   { code: "1400", name: "المخزون", type: "ASSET", parent: "1000", system: true },
   { code: "1500", name: "الأصول الثابتة", type: "ASSET", parent: "1000" },
@@ -284,7 +279,6 @@ export const SUPPLIERS: SupplierSpec[] = [
 export interface VariantSpec {
   label: string;
   price: number;
-  talabatPrice: number;
   recipe: Record<string, number>;
 }
 
@@ -313,7 +307,6 @@ function pizzaSizes(prices: [number, number, number], recipe: Record<string, num
   return labels.map((label, i) => ({
     label,
     price: prices[i],
-    talabatPrice: Math.round((prices[i] * 1.12) / 5) * 5,
     recipe: Object.fromEntries(
       Object.entries({ dough: 0.28, sauce: 0.08, ...recipe }).map(([k, q]) => [k, k === "pizzaBox" ? 1 : Math.round(q * scale[i] * 1000) / 1000])
     ),
@@ -325,7 +318,6 @@ function feteerSizes(prices: [number, number], recipe: Record<string, number>): 
   return ["صغير", "كبير"].map((label, i) => ({
     label,
     price: prices[i],
-    talabatPrice: Math.round((prices[i] * 1.12) / 5) * 5,
     recipe: Object.fromEntries(
       Object.entries({ flour: 0.25, samna: 0.06, feteerBox: 1, ...recipe }).map(([k, q]) => [k, k === "feteerBox" ? 1 : Math.round(q * scale[i] * 1000) / 1000])
     ),
@@ -333,7 +325,7 @@ function feteerSizes(prices: [number, number], recipe: Record<string, number>): 
 }
 
 function single(label: string, price: number, recipe: Record<string, number>): VariantSpec[] {
-  return [{ label, price, talabatPrice: Math.round((price * 1.12) / 5) * 5, recipe }];
+  return [{ label, price, recipe }];
 }
 
 const PIZZA_EXTRAS = [
@@ -376,9 +368,9 @@ export const MENU: CategorySpec[] = [
     station: "grill",
     color: [121, 72, 44],
     items: [
-      { key: "classicBurger", name: "كلاسيك برجر", description: "لحم بقري 150 جم مع خس وطماطم وصوص ساتاموني", variants: [{ label: "سينجل", price: 155, talabatPrice: 175, recipe: { bun: 1, mince: 0.15, tomato: 0.03, onion: 0.02 } }, { label: "دبل", price: 235, talabatPrice: 265, recipe: { bun: 1, mince: 0.3, tomato: 0.03, onion: 0.02 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 5 },
-      { key: "cheeseBurger", name: "تشيز برجر", description: "لحم بقري مع شريحتين شيدر وبصل مكرمل", isBest: true, variants: [{ label: "سينجل", price: 175, talabatPrice: 195, recipe: { bun: 1, mince: 0.15, cheddar: 0.04, onion: 0.03 } }, { label: "دبل", price: 260, talabatPrice: 290, recipe: { bun: 1, mince: 0.3, cheddar: 0.06, onion: 0.03 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 6 },
-      { key: "chickenBurger", name: "برجر فراخ كريسبي", description: "صدر فراخ مقرمش مع صوص رانش", variants: [{ label: "سينجل", price: 165, talabatPrice: 185, recipe: { bun: 1, chicken: 0.16, flour: 0.03, cornOil: 0.05 } }, { label: "دبل", price: 245, talabatPrice: 275, recipe: { bun: 1, chicken: 0.32, flour: 0.05, cornOil: 0.08 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }], popularity: 4 },
+      { key: "classicBurger", name: "كلاسيك برجر", description: "لحم بقري 150 جم مع خس وطماطم وصوص ساتاموني", variants: [{ label: "سينجل", price: 155, recipe: { bun: 1, mince: 0.15, tomato: 0.03, onion: 0.02 } }, { label: "دبل", price: 235, recipe: { bun: 1, mince: 0.3, tomato: 0.03, onion: 0.02 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 5 },
+      { key: "cheeseBurger", name: "تشيز برجر", description: "لحم بقري مع شريحتين شيدر وبصل مكرمل", isBest: true, variants: [{ label: "سينجل", price: 175, recipe: { bun: 1, mince: 0.15, cheddar: 0.04, onion: 0.03 } }, { label: "دبل", price: 260, recipe: { bun: 1, mince: 0.3, cheddar: 0.06, onion: 0.03 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 6 },
+      { key: "chickenBurger", name: "برجر فراخ كريسبي", description: "صدر فراخ مقرمش مع صوص رانش", variants: [{ label: "سينجل", price: 165, recipe: { bun: 1, chicken: 0.16, flour: 0.03, cornOil: 0.05 } }, { label: "دبل", price: 245, recipe: { bun: 1, chicken: 0.32, flour: 0.05, cornOil: 0.08 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }], popularity: 4 },
     ],
   },
   {
@@ -400,7 +392,7 @@ export const MENU: CategorySpec[] = [
     color: [86, 140, 74],
     items: [
       { key: "fastingPizza", name: "بيتزا خضار صيامي", description: "بدون جبن - خضروات مشوية وزيتون وصلصة", variants: pizzaSizes([140, 195, 255], { pepper: 0.06, mushroom: 0.05, onion: 0.03, olives: 0.03, pizzaBox: 1 }), popularity: 2 },
-      { key: "fastingTuna", name: "فطير تونة صيامي", description: "تونة وخضار بزيت الذرة بدل السمن", variants: [{ label: "صغير", price: 160, talabatPrice: 180, recipe: { flour: 0.25, cornOil: 0.06, tuna: 1, pepper: 0.03, feteerBox: 1 } }, { label: "كبير", price: 245, talabatPrice: 275, recipe: { flour: 0.4, cornOil: 0.1, tuna: 2, pepper: 0.05, feteerBox: 1 } }], popularity: 2 },
+      { key: "fastingTuna", name: "فطير تونة صيامي", description: "تونة وخضار بزيت الذرة بدل السمن", variants: [{ label: "صغير", price: 160, recipe: { flour: 0.25, cornOil: 0.06, tuna: 1, pepper: 0.03, feteerBox: 1 } }, { label: "كبير", price: 245, recipe: { flour: 0.4, cornOil: 0.1, tuna: 2, pepper: 0.05, feteerBox: 1 } }], popularity: 2 },
     ],
   },
   {
@@ -430,8 +422,6 @@ export const PAYMENT_METHODS = [
   { key: "vodafone", name: "فودافون كاش", kind: "card_or_wallet", settlementChannel: "vodafone_cash", weight: 7 },
   { key: "orange", name: "أورانج كاش", kind: "card_or_wallet", settlementChannel: "orange_cash", weight: 2 },
   { key: "corporate", name: "آجل - حسابات الشركات", kind: "credit", weight: 0 },
-  { key: "talabatOnline", name: "طلبات - دفع أونلاين", kind: "card_or_wallet", talabatPaymentCode: "ONLINE", weight: 0 },
-  { key: "talabatCash", name: "طلبات - كاش عند الاستلام", kind: "cash", talabatPaymentCode: "COD", weight: 0 },
 ] as const;
 
 export const EXPENSE_CATEGORIES = [

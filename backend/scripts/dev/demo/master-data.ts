@@ -3,7 +3,6 @@ import { treasuries } from "../../../src/contexts/treasury/infrastructure/persis
 import { UpdatePosSettingsHandler } from "../../../src/contexts/settings/application/commands/update-pos-settings.handler";
 import { RegisterAccountHandler } from "../../../src/contexts/accounting/application/commands/register-account.handler";
 import { RegisterBranchHandler } from "../../../src/contexts/branches/application/commands/register-branch.handler";
-import { UpdateBranchHandler } from "../../../src/contexts/branches/application/commands/update-branch.handler";
 import { RegisterBankHandler } from "../../../src/contexts/treasury/application/commands/register-bank.handler";
 import { RegisterBankAccountHandler } from "../../../src/contexts/treasury/application/commands/register-bank-account.handler";
 import { RegisterUserHandler } from "../../../src/contexts/identity-access/application/commands/register-user.handler";
@@ -11,7 +10,6 @@ import { RegisterDepartmentHandler } from "../../../src/contexts/hr-payroll/appl
 import { RegisterPositionHandler } from "../../../src/contexts/hr-payroll/application/commands/register-position.handler";
 import { RegisterEmployeeHandler } from "../../../src/contexts/hr-payroll/application/commands/register-employee.handler";
 import { RegisterPaymentMethodHandler } from "../../../src/contexts/payment-control/application/commands/register-payment-method.handler";
-import { LinkTalabatPaymentCodeHandler } from "../../../src/contexts/payment-control/application/commands/link-talabat-payment-code.handler";
 import { RegisterInventoryItemHandler } from "../../../src/contexts/inventory/application/commands/register-inventory-item.handler";
 import { UpdateStockThresholdHandler } from "../../../src/contexts/inventory/application/commands/update-stock-threshold.handler";
 import { RecordStockMovementHandler } from "../../../src/contexts/inventory/application/commands/record-stock-movement.handler";
@@ -33,7 +31,6 @@ import { RegisterDriverHandler } from "../../../src/contexts/delivery/applicatio
 import { RegisterCustomerHandler } from "../../../src/contexts/customers/application/commands/register-customer.handler";
 import { RegisterExpenseCategoryHandler } from "../../../src/contexts/expenses/application/commands/register-expense-category.handler";
 import { SaveLoyaltyRewardHandler } from "../../../src/contexts/loyalty/application/commands/save-loyalty-reward.handler";
-import { UpsertProductMappingHandler } from "../../../src/contexts/talabat/application/commands/upsert-product-mapping.handler";
 import { RegisterJournalEntryHandler } from "../../../src/contexts/accounting/application/commands/register-journal-entry.handler";
 import { PostJournalEntryHandler } from "../../../src/contexts/accounting/application/commands/post-journal-entry.handler";
 import { AuditLogService } from "../../../src/shared/audit/audit-log.service";
@@ -84,7 +81,6 @@ export async function seedMasterData(ctx: SeedContext): Promise<void> {
   await seedCustomers(ctx);
   await seedExpenseCategories(ctx);
   await seedLoyaltyRewards(ctx);
-  await seedTalabatMappings(ctx);
   await seedOpeningBalances(ctx);
 }
 
@@ -121,7 +117,6 @@ async function seedChartOfAccounts(ctx: SeedContext) {
 
 async function seedBranches(ctx: SeedContext) {
   const register = handler(ctx, RegisterBranchHandler);
-  const update = handler(ctx, UpdateBranchHandler);
   for (const spec of BRANCHES) {
     const branch = await register.execute({
       name: spec.name,
@@ -134,7 +129,6 @@ async function seedBranches(ctx: SeedContext) {
       supportsDineIn: spec.supportsDineIn ?? true,
     });
     ctx.branches[spec.key] = branch.id;
-    if (spec.talabatBranchId) await update.execute({ branchId: branch.id, talabatBranchId: spec.talabatBranchId });
     const [main] = await ctx.db
       .select({ id: treasuries.id })
       .from(treasuries)
@@ -236,9 +230,6 @@ async function seedPaymentMethods(ctx: SeedContext) {
       kind: spec.kind,
       settlementChannel: "settlementChannel" in spec ? spec.settlementChannel : null,
     });
-    if ("talabatPaymentCode" in spec) {
-      await handler(ctx, LinkTalabatPaymentCodeHandler).execute({ paymentMethodId: method.id, talabatPaymentCode: spec.talabatPaymentCode });
-    }
     ctx.paymentMethods[spec.key] = { id: method.id, kind: spec.kind };
   }
 }
@@ -357,7 +348,7 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
         description: spec.description,
         imageUrl: image.url,
         isBest: spec.isBest ?? false,
-        variants: spec.variants.map((v) => ({ label: v.label, price: v.price, talabatPrice: v.talabatPrice })),
+        variants: spec.variants.map((v) => ({ label: v.label, price: v.price })),
       });
       const ref = {
         id: item.id,
@@ -505,22 +496,6 @@ async function seedLoyaltyRewards(ctx: SeedContext) {
     const view = await save.create({ ...reward, isActive: true });
     ctx.rewards.push(view.id);
   }
-}
-
-async function seedTalabatMappings(ctx: SeedContext) {
-  const upsert = handler(ctx, UpsertProductMappingHandler);
-  for (const branchKey of RETAIL_BRANCH_KEYS) {
-    for (const [itemKey, ref] of Object.entries(ctx.menuItems)) {
-      for (const variant of ref.variants) {
-        await upsert.execute({ branchId: ctx.branches[branchKey], talabatItemId: talabatItemId(itemKey, variant.label), menuItemId: ref.id, variantId: variant.id });
-      }
-    }
-  }
-}
-
-export function talabatItemId(itemKey: string, label: string): string {
-  const sizes: Record<string, string> = { صغير: "S", وسط: "M", كبير: "L", سينجل: "1", دبل: "2" };
-  return `TLB-${itemKey.toUpperCase()}-${sizes[label] ?? "U"}`;
 }
 
 async function seedOpeningBalances(ctx: SeedContext) {

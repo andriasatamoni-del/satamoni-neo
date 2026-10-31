@@ -11,7 +11,6 @@ import { PaymentRepository } from "./infrastructure/persistence/payment.reposito
 import { PaymentAdjustmentRequestRepository } from "./infrastructure/persistence/payment-adjustment-request.repository";
 import { ReconciliationRecordRepository } from "./infrastructure/persistence/reconciliation-record.repository";
 import { RegisterPaymentMethodHandler } from "./application/commands/register-payment-method.handler";
-import { LinkTalabatPaymentCodeHandler } from "./application/commands/link-talabat-payment-code.handler";
 import { LockPaymentForOrderHandler } from "./application/commands/lock-payment-for-order.handler";
 import { RequestPaymentAdjustmentHandler } from "./application/commands/request-payment-adjustment.handler";
 import { ApprovePaymentAdjustmentHandler } from "./application/commands/approve-payment-adjustment.handler";
@@ -40,7 +39,6 @@ import type { OrderRegisteredEvent } from "../orders/domain/events/order-registe
     { provide: PAYMENT_ADJUSTMENT_REQUEST_REPOSITORY, useClass: PaymentAdjustmentRequestRepository },
     { provide: RECONCILIATION_RECORD_REPOSITORY, useClass: ReconciliationRecordRepository },
     RegisterPaymentMethodHandler,
-    LinkTalabatPaymentCodeHandler,
     LockPaymentForOrderHandler,
     RequestPaymentAdjustmentHandler,
     ApprovePaymentAdjustmentHandler,
@@ -67,9 +65,6 @@ export class PaymentControlModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // تاني مستهلك لـOrderRegisteredEvent (بعد Accounting) - قفل الدفعة فوره وقت تسجيل الطلب لو
-    // paymentMethodId متحدد
-    // critical: the payment is part of the order transaction (BL-09) - a failure rolls the whole order back
     this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (event) => this.lockPaymentForOrder.handle(event), { critical: true });
   }
 }

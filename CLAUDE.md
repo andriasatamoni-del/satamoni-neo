@@ -127,7 +127,7 @@ Every new branch-owned endpoint needs these decorators. `test/integration/phase3
 The business day is the **Africa/Cairo calendar date**. The process and DB sessions run in UTC, and `main.ts` pins `TZ=UTC`. Always use `src/shared/time/business-date.ts` (`businessDate()`, `businessDateString()`) or `businessDateSql(column)` inside a query. Never use `toISOString().slice(0,10)` or `::date` on a timestamp, because that puts late-night sales on the wrong day or month.
 
 ### Other backend notes
-- `main.ts` enables `rawBody` for Talabat webhook HMAC verification. It sets CORS from `FRONTEND_ORIGIN` (comma-separated, default `http://localhost:5173`).
+- `main.ts` enables `rawBody` for Meta webhook HMAC verification. It sets CORS from `FRONTEND_ORIGIN` (comma-separated, default `http://localhost:5173`).
 - Throttling: a global limit (`THROTTLE_LIMIT`, default 100/min) plus tighter per-route limits (`THROTTLE_LOGIN_LIMIT`, `THROTTLE_STOREFRONT_ORDER_LIMIT`).
 - Optional integrations (WhatsApp/Meta bot via Gemini, SMS, storefront) degrade gracefully when their env vars are unset. See `backend/docs/WHATSAPP-BOT.md` and `STOREFRONT.md`.
 

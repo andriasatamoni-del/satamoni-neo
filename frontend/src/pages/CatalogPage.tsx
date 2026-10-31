@@ -25,7 +25,7 @@ interface MenuCategory {
   isArchived: boolean;
 }
 
-interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
+interface MenuItemVariant { id: string; label: string; price: number; }
 interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
 interface MenuItemModifier {
   id: string;
@@ -54,7 +54,6 @@ interface Combo {
   isActive: boolean;
   imageUrl: string | null;
   description: string | null;
-  // عرض حصري لموقع الطلب - مابيظهرش في الكاشير
   onlineOnly: boolean;
   items: ComboItem[];
 }
@@ -74,10 +73,8 @@ const PRICE_FIELD_LABELS: Record<string, string> = { price: "السعر", talaba
 
 export function CatalogPage() {
   const queryClient = useQueryClient();
-  // من غير catalog.items.manage الصفحة عرض بس: مفيش إضافة/تعديل/أرشفة، والعروض النشطة بس (combos/all للإدارة)
   const canManage = useCan()(PERMISSION.CATALOG_ITEMS_MANAGE);
   const categoriesQuery = useQuery({ queryKey: ["catalog", "categories"], queryFn: () => apiRequest<MenuCategory[]>("/catalog/categories") });
-  // القائمة الكاملة لسه لازمة لاختيار الأحجام في العروض وأسماء الأصناف؛ جدول الأصناف نفسه صفحات من السيرفر (NEO-6)
   const itemsQuery = useQuery({ queryKey: ["catalog", "items"], queryFn: () => apiRequest<MenuItem[]>("/catalog/items") });
   const itemsList = useListState(["q", "categoryId", "status"] as const, { prefix: "items." });
   const itemsPageQuery = usePaginatedQuery<MenuItem>(["catalog", "items"], "/catalog/items", itemsList.params);
@@ -109,7 +106,6 @@ export function CatalogPage() {
     },
   });
 
-  // ترتيب الأقسام (والعروض وسطها): كل ضغطة سهم بتحفظ الترتيب الكامل
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const onCategoryError = (err: unknown) => setCategoryError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع");
   const reorderCategories = useMutation({
@@ -117,7 +113,6 @@ export function CatalogPage() {
     onSuccess: () => { setCategoryError(null); invalidateCatalog(); },
     onError: onCategoryError,
   });
-  // "إلغاء/شيل" قسم = أرشفة (الأصناف والطلبات القديمة مبتتلمسش) - ممكن ترجّعه من "الأقسام المؤرشفة"
   const archiveCategory = useMutation({
     mutationFn: (id: string) => apiRequest(`/catalog/categories/${id}/archive`, { method: "POST" }),
     onSuccess: () => { setCategoryError(null); invalidateCatalog(); queryClient.invalidateQueries({ queryKey: ["catalog", "categories", "archived"] }); },
@@ -282,7 +277,6 @@ export function CatalogPage() {
   }
 
   const categories = categoriesQuery.data ?? [];
-  // صفوف الترتيب: الأقسام + صف "العروض" في مكانه (نفس منطق شاشة الطلبات: الرقم ثم الاسم)
   const orderRows = [
     ...categories.map((c) => ({ key: c.id, order: c.displayOrder, rank: 1, category: c })),
     { key: "combos", order: layoutQuery.data?.combosPosition ?? -1, rank: 0, category: null as MenuCategory | null },

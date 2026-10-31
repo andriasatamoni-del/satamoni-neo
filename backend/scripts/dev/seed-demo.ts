@@ -15,8 +15,6 @@ const EXTERNAL_SERVICE_KEYS = [
   "WHATSAPP_PHONE_NUMBER_ID",
   "WHATSAPP_STAFF_NOTIFY_NUMBER",
   "META_PAGE_ACCESS_TOKEN",
-  "TALABAT_CLIENT_ID",
-  "TALABAT_CLIENT_SECRET",
 ];
 
 function parseDays(argv: string[]): number {
@@ -31,10 +29,8 @@ async function main() {
   assertLocalDevDatabase(url);
   const days = parseDays(process.argv);
 
-  const { TALABAT_SEED_SECRET } = await import("./demo/daily-operations");
   process.env.TZ = "UTC";
   process.env.ACCOUNTING_ENFORCEMENT = "strict";
-  process.env.TALABAT_WEBHOOK_SECRET = TALABAT_SEED_SECRET;
   for (const key of EXTERNAL_SERVICE_KEYS) delete process.env[key];
 
   const { businessDateString } = await import("../../src/shared/time/business-date");
@@ -119,7 +115,7 @@ async function main() {
 
 function ordersSoFar(ctx: SeedContext): number {
   return Object.entries(ctx.stats)
-    .filter(([key]) => key.startsWith("orders:") && !["orders:completed", "orders:cancelled", "orders:talabatCancelled"].includes(key))
+    .filter(([key]) => key.startsWith("orders:") && !["orders:completed", "orders:cancelled"].includes(key))
     .reduce((sum, [, value]) => sum + value, 0);
 }
 

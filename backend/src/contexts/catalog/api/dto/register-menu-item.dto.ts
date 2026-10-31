@@ -8,7 +8,6 @@ export class VariantInputDto {
   @IsNumber()
   price!: number;
 
-  @IsOptional() @IsNumber() talabatPrice?: number;
 }
 
 export class RegisterMenuItemDto {

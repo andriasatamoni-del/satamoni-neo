@@ -11,7 +11,6 @@ export interface MenuItemVariant {
   id: string;
   label: string;
   price: number;
-  talabatPrice: number | null;
   legacyVariantId: number | null;
 }
 
@@ -40,15 +39,9 @@ export interface MenuItemProps {
   modifiers: MenuItemModifier[];
   legacyMenuItemId: number | null;
   createdAt: Date;
-  // توجيه الطباعة (TIER3-4) - محطة التحضير بتاعة الصنف نفسه؛ لو NULL بيرجع لتوجيه القسم (categoryId's
-  // station) بدل ما يبقى مفيش توجيه خالص. نفس مفهوم menu_items.station_id في الريبو القديم بالظبط
   stationId: string | null;
 }
 
-// MenuItem - نفس مفهوم menu_items في الريبو القديم، بس هنا الأحجام (variants) والمرفقات (modifiers) جزء
-// من نفس الـaggregate (entities تابعة، مالهاش دورة حياة مستقلة عن الصنف) بدل جداول منفصلة بتتقرا/تتحدّث
-// لوحدها - أي تعديل بيعدّي من الصنف نفسه، نفس مبدأ DDD aggregate boundary. مش متضاف هنا: الكومبوهات
-// وسجل تاريخ الأسعار - مؤجلين لسلايس تاني (راجع خطة إعادة البناء).
 export class MenuItem {
   private constructor(
     public readonly id: string,
@@ -85,25 +78,23 @@ export class MenuItem {
     return new MenuItem(id, props);
   }
 
-  addVariant(input: { label: string; price: number; talabatPrice?: number | null; legacyVariantId?: number | null }): MenuItemVariant {
+  addVariant(input: { label: string; price: number; legacyVariantId?: number | null }): MenuItemVariant {
     const label = input.label.trim();
     if (this.props.variants.some((v) => v.label === label)) throw new DuplicateVariantLabelError(label);
     const variant: MenuItemVariant = {
       id: randomUUID(),
       label,
       price: input.price,
-      talabatPrice: input.talabatPrice ?? null,
       legacyVariantId: input.legacyVariantId ?? null,
     };
     this.props.variants.push(variant);
     return variant;
   }
 
-  updateVariantPrice(variantId: string, price: number, talabatPrice?: number | null): void {
+  updateVariantPrice(variantId: string, price: number): void {
     const variant = this.props.variants.find((v) => v.id === variantId);
     if (!variant) throw new VariantNotFoundError();
     variant.price = price;
-    if (talabatPrice !== undefined) variant.talabatPrice = talabatPrice;
   }
 
   addModifier(input: { name: string; priceDelta: number; legacyModifierId?: number | null }): MenuItemModifier {
@@ -133,10 +124,6 @@ export class MenuItem {
     if (input.isActive !== undefined) modifier.isActive = input.isActive;
   }
 
-  // سعر مخصوص للمرفق ده على حجم معيّن من نفس الصنف - بيغلب السعر الافتراضي (priceDelta) بس لما العميل
-  // يختار الحجم ده بالظبط (راجع resolveModifierPrice). مفيش تحقق إن variantId فعلًا حجم تابع لنفس
-  // الصنف هنا عمدًا - التحقق ده مسؤولية الـapplication layer (بيحتاج يقرا variants أصلًا عشان يلاقي
-  // الحجم المطلوب، فمفيش داعي يتكرر جوّه الـaggregate)
   setModifierVariantPrice(modifierId: string, variantId: string, priceDelta: number): void {
     const modifier = this.props.modifiers.find((m) => m.id === modifierId);
     if (!modifier) throw new ModifierNotFoundError();
@@ -151,8 +138,6 @@ export class MenuItem {
     modifier.variantPrices = modifier.variantPrices.filter((vp) => vp.variantId !== variantId);
   }
 
-  // السعر الفعلي لمرفق على حجم معيّن - سعر مخصوص للحجم ده لو موجود، وإلا السعر الافتراضي. نفس منطق
-  // الريبو القديم بالظبط (LEFT JOIN menu_item_modifier_variant_prices، fallback للسعر الافتراضي)
   resolveModifierPrice(modifierId: string, variantId: string): number {
     const modifier = this.props.modifiers.find((m) => m.id === modifierId);
     if (!modifier) throw new ModifierNotFoundError();

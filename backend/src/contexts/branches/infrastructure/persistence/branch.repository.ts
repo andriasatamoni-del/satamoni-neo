@@ -27,7 +27,6 @@ export class BranchRepository implements BranchRepositoryPort {
           lng: row.lng,
           is_central_kitchen: row.is_central_kitchen,
           supports_dine_in: row.supports_dine_in,
-          talabat_branch_id: row.talabat_branch_id,
         },
       });
   }
@@ -39,11 +38,6 @@ export class BranchRepository implements BranchRepositoryPort {
 
   async findByLegacyBranchId(legacyBranchId: number): Promise<Branch | null> {
     const [row] = await this.db.select().from(branches).where(eq(branches.legacy_branch_id, legacyBranchId)).limit(1);
-    return row ? this.toDomain(row) : null;
-  }
-
-  async findByTalabatBranchId(talabatBranchId: string): Promise<Branch | null> {
-    const [row] = await this.db.select().from(branches).where(eq(branches.talabat_branch_id, talabatBranchId)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
@@ -69,7 +63,6 @@ export class BranchRepository implements BranchRepositoryPort {
       is_central_kitchen: branch.isCentralKitchen,
       supports_dine_in: branch.supportsDineIn,
       legacy_branch_id: branch.legacyBranchId,
-      talabat_branch_id: branch.talabatBranchId,
     };
   }
 
@@ -84,7 +77,6 @@ export class BranchRepository implements BranchRepositoryPort {
       isCentralKitchen: row.is_central_kitchen,
       supportsDineIn: row.supports_dine_in,
       legacyBranchId: row.legacy_branch_id,
-      talabatBranchId: row.talabat_branch_id,
     });
   }
 }

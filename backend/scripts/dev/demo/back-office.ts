@@ -303,7 +303,6 @@ async function weeklySettlements(ctx: SeedContext, day: string) {
     const entries: [string, string, number][] = [
       ["visa_settlement", "visa", 0.0225],
       ["orange_cash", "orange", 0.015],
-      ["talabat_statement", "talabatOnline", 0.18],
     ];
     for (const [source, key, fee] of entries) {
       const gross = tally[key] ?? 0;
@@ -486,7 +485,7 @@ async function priceIncrease(ctx: SeedContext, day: string) {
     const ref = ctx.menuItems[itemKey];
     for (const variant of spec.variants) {
       const price = variant.price + 10;
-      await update.execute({ itemId: ref.id, variantId: ctx.variants[`${itemKey}:${variant.label}`], price, talabatPrice: Math.round((price * 1.12) / 5) * 5, changedBy: ctx.users.owner });
+      await update.execute({ itemId: ref.id, variantId: ctx.variants[`${itemKey}:${variant.label}`], price, changedBy: ctx.users.owner });
       count(ctx, "priceChanges");
     }
   }

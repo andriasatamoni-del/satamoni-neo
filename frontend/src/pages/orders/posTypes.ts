@@ -1,7 +1,7 @@
 export interface Branch { id: string; name: string; }
 export type MenuGroup = "regular" | "fasting";
 export interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: MenuGroup; isActive: boolean; }
-export interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number | null; }
+export interface MenuItemVariant { id: string; label: string; price: number; }
 export interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
 export interface MenuItemModifier {
   id: string;

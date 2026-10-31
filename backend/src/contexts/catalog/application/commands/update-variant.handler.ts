@@ -8,7 +8,6 @@ export interface UpdateVariantCommand {
   itemId: string;
   variantId: string;
   price: number;
-  talabatPrice?: number | null;
   changedBy?: string | null;
 }
 
@@ -26,22 +25,14 @@ export class UpdateVariantHandler {
     const before = item.variants.find((v) => v.id === command.variantId);
     if (!before) throw new VariantNotFoundError();
     const oldPrice = before.price;
-    const oldTalabatPrice = before.talabatPrice;
 
-    item.updateVariantPrice(command.variantId, command.price, command.talabatPrice);
+    item.updateVariantPrice(command.variantId, command.price);
     await this.items.save(item);
 
-    const changedBy = command.changedBy ?? null;
     await this.priceHistory.recordChange({
       entityType: "variant", entityId: command.variantId, fieldName: "price",
-      oldPrice, newPrice: command.price, changedBy,
+      oldPrice, newPrice: command.price, changedBy: command.changedBy ?? null,
     });
-    if (command.talabatPrice !== undefined) {
-      await this.priceHistory.recordChange({
-        entityType: "variant", entityId: command.variantId, fieldName: "talabat_price",
-        oldPrice: oldTalabatPrice, newPrice: command.talabatPrice, changedBy,
-      });
-    }
 
     return item;
   }

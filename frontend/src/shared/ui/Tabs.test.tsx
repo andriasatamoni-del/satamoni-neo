@@ -38,7 +38,7 @@ describe("isTabAllowed", () => {
   });
 
   it("hides companyWideOnly tabs from branch-bound users even when they hold the permission", () => {
-    const tab: TabItem = { key: "errors", label: "Errors", perm: PERMISSION.TALABAT_VIEW, companyWideOnly: true };
+    const tab: TabItem = { key: "errors", label: "Errors", perm: PERMISSION.HR_SELF_VIEW, companyWideOnly: true };
     expect(isTabAllowed(seededUser("branch_manager"), tab)).toBe(false);
     expect(isTabAllowed(seededUser("cashier"), tab)).toBe(false);
     expect(isTabAllowed(seededUser("accountant"), tab)).toBe(true);

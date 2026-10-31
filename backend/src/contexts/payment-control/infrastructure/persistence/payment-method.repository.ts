@@ -21,7 +21,6 @@ export class PaymentMethodRepository implements PaymentMethodRepositoryPort {
           kind: row.kind,
           settlement_channel: row.settlement_channel,
           is_active: row.is_active,
-          talabat_payment_code: row.talabat_payment_code,
         },
       });
   }
@@ -33,11 +32,6 @@ export class PaymentMethodRepository implements PaymentMethodRepositoryPort {
 
   async findByLegacyPaymentMethodId(legacyId: number): Promise<PaymentMethod | null> {
     const [row] = await this.db.select().from(paymentMethods).where(eq(paymentMethods.legacy_payment_method_id, legacyId)).limit(1);
-    return row ? this.toDomain(row) : null;
-  }
-
-  async findByTalabatPaymentCode(code: string): Promise<PaymentMethod | null> {
-    const [row] = await this.db.select().from(paymentMethods).where(eq(paymentMethods.talabat_payment_code, code)).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
@@ -54,7 +48,6 @@ export class PaymentMethodRepository implements PaymentMethodRepositoryPort {
       settlement_channel: method.settlementChannel,
       is_active: method.isActive,
       legacy_payment_method_id: method.legacyPaymentMethodId,
-      talabat_payment_code: method.talabatPaymentCode,
       created_at: method.createdAt,
     };
   }
@@ -66,7 +59,6 @@ export class PaymentMethodRepository implements PaymentMethodRepositoryPort {
       settlementChannel: row.settlement_channel as SettlementChannel | null,
       isActive: row.is_active,
       legacyPaymentMethodId: row.legacy_payment_method_id,
-      talabatPaymentCode: row.talabat_payment_code,
       createdAt: row.created_at,
     });
   }

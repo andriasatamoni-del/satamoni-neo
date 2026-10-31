@@ -28,7 +28,6 @@ import type {
 } from "../../domain/ports/sales-ops-reader.port";
 import { businessDayStartUtc, businessDayEndUtc } from "../../../../shared/time/business-date";
 
-// Cairo business day of a timestamptz column as plain text (no JS Date / server time zone involved)
 function cairoDay(column: PgColumn): SQL<string> {
   return sql<string>`to_char((${column} AT TIME ZONE 'Africa/Cairo'), 'YYYY-MM-DD')`;
 }
@@ -40,7 +39,6 @@ function toDateStr(d: Date | string): string {
 
 const REVENUE = sql<string>`COALESCE(SUM(${orders.total}), 0)`;
 
-// a select-list alias (GROUP BY / ORDER BY "alias")
 const selected = (alias: string) => sql`${sql.identifier(alias)}`;
 
 @Injectable()
@@ -51,7 +49,6 @@ export class SalesOpsReader implements SalesOpsReaderPort {
     return { fromTs: businessDayStartUtc(from), toTs: businessDayEndUtc(to) };
   }
 
-  // Non-cancelled orders created in the range (optionally one branch)
   private activeOrdersIn(fromTs: Date, toTs: Date, branchId: string | null): SQL | undefined {
     return and(
       ne(orders.status, "cancelled"),
@@ -265,8 +262,6 @@ export class SalesOpsReader implements SalesOpsReaderPort {
           costIncomplete: unitCost === null,
         };
       }),
-      // تكلفة العروض (Combos) مش محسوبة هنا - محتاجة تفكيك لكل مكوّناتها والريسبي بتاعهم، نطاق تكميلي
-      // مؤجّل صراحة (نفس فلسفة قرارات النطاق الموثّقة في هذا القارئ)
       ...comboRows.map((r) => ({
         name: r.name,
         quantity: Number(r.quantity),
@@ -311,7 +306,6 @@ export class SalesOpsReader implements SalesOpsReaderPort {
         variant_id: menuItemVariants.id,
         label: menuItemVariants.label,
         price: menuItemVariants.price,
-        talabat_price: menuItemVariants.talabat_price,
       })
       .from(menuItemVariants)
       .innerJoin(menuItems, eq(menuItems.id, menuItemVariants.item_id))
@@ -332,7 +326,6 @@ export class SalesOpsReader implements SalesOpsReaderPort {
           variantId: v.variant_id,
           label: v.label,
           price: Number(v.price),
-          talabatPrice: v.talabat_price != null ? Number(v.talabat_price) : null,
           quantitySold: sales.quantity,
           revenue: sales.revenue,
         };

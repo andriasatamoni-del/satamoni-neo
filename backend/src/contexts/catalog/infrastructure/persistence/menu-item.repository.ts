@@ -16,8 +16,6 @@ type ModifierWithPrices = {
 export class MenuItemRepository implements MenuItemRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  // بيسجّل الصنف وكل أحجامه (variants) في معاملة واحدة - الأحجام entities تابعة لنفس الـaggregate
-  // (راجع تعليق MenuItem)، مش aggregate منفصل بيتسجّل لوحده
   async save(item: MenuItem): Promise<void> {
     await this.db.transaction(async (tx) => {
       const itemRow = {
@@ -56,12 +54,11 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             item_id: item.id,
             label: variant.label,
             price: variant.price,
-            talabat_price: variant.talabatPrice,
             legacy_variant_id: variant.legacyVariantId,
           })
           .onConflictDoUpdate({
             target: menuItemVariants.id,
-            set: { label: variant.label, price: variant.price, talabat_price: variant.talabatPrice },
+            set: { label: variant.label, price: variant.price },
           });
       }
 
@@ -81,9 +78,6 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             set: { name: modifier.name, price_delta: modifier.priceDelta, is_active: modifier.isActive },
           });
 
-        // مزامنة كاملة لأسعار الأحجام المخصوصة للمرفق ده - بيمسح أي حجم متشال من قايمة الـaggregate
-        // في الذاكرة (clearModifierVariantPrice) وبيحدّث/يضيف الموجودين، في خطوة واحدة بدل ما نحتاج
-        // نتتبّع إيه اتغيّر بالظبط
         const variantIds = modifier.variantPrices.map((vp) => vp.variantId);
         await tx
           .delete(menuItemModifierVariantPrices)
@@ -148,7 +142,6 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
     return { items: await this.withChildren(rows), total };
   }
 
-  // NEO-6: variants, modifiers and modifier prices of many items in three batched queries instead of one per item/modifier
   private async withChildren(rows: (typeof menuItems.$inferSelect)[]): Promise<MenuItem[]> {
     if (rows.length === 0) return [];
     const variantRows: (typeof menuItemVariants.$inferSelect)[] = [];
@@ -192,7 +185,6 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
         id: v.id,
         label: v.label,
         price: Number(v.price),
-        talabatPrice: v.talabat_price != null ? Number(v.talabat_price) : null,
         legacyVariantId: v.legacy_variant_id,
       })),
       modifiers: modifierRows.map(({ row: m, variantPrices }) => ({

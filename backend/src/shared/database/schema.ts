@@ -1,4 +1,3 @@
-// Every Drizzle table in the system. The Drizzle client and drizzle-kit both read this file.
 export * from "../../contexts/accounting/infrastructure/persistence/accounting.tables";
 export * from "../../contexts/branch-day/infrastructure/persistence/branch-day.tables";
 export * from "../../contexts/branches/infrastructure/persistence/branches.tables";
@@ -22,7 +21,6 @@ export * from "../../contexts/production/infrastructure/persistence/production.t
 export * from "../../contexts/purchases/infrastructure/persistence/purchases.tables";
 export * from "../../contexts/settings/infrastructure/persistence/settings.tables";
 export * from "../../contexts/shifts/infrastructure/persistence/shifts.tables";
-export * from "../../contexts/talabat/infrastructure/persistence/talabat.tables";
 export * from "../../contexts/treasury/infrastructure/persistence/treasury.tables";
 export * from "../../contexts/whatsapp/infrastructure/persistence/whatsapp.tables";
 export * from "./shared.tables";
