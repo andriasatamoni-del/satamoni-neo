@@ -15,7 +15,7 @@ export function PillButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full py-1.5 font-semibold transition-colors ${className} ${
+      className={`max-w-full rounded-full py-1.5 font-semibold wrap-anywhere transition-colors ${className} ${
         active ? "bg-brand-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
       }`}
     >

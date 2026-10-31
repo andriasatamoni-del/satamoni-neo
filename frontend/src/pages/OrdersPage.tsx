@@ -66,7 +66,7 @@ export function OrdersPage() {
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="الفرع">
-          <Select value={branchId} onChange={(e) => handleBranchChange(e.target.value)} className="max-w-[220px]">
+          <Select value={branchId} onChange={(e) => handleBranchChange(e.target.value)}>
             {canListBranches && <option value="">كل الفروع</option>}
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>
@@ -75,7 +75,7 @@ export function OrdersPage() {
 
       {canCreateOrders && (
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
             <MenuBrowser catalog={catalog} cart={cart} onItemClick={handleItemClick} onComboClick={cart.addCombo} />
             <CartPanel
               cart={cart}
