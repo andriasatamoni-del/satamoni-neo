@@ -14,9 +14,6 @@ import { paymentMethods, payments } from "../../../src/contexts/payment-control/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import type { Database } from "../../../src/shared/database/database.token";
 
-// e2e لثلاث قراءات جديدة بتخدم سيناريو "تحصيل مجمع" عند الكاشير: معاينة تسوية سائق قبل تسجيلها،
-// قايمة السائقين اللي عندهم كاش معلّق في الفرع، وتقرير كل أوردرات السائق المُسلَّمة في يوم معيّن
-// (محصّلة ولسه معلّقة) - نفس مفهوم /preview و/pending-drivers و/driver-orders في الريبو القديم
 describe("Delivery: معاينة تسوية السائق وتقرير أوردرات اليوم", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -81,7 +78,7 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-تقارير-سائقين-جست" });
-    const variant = item.addVariant({ label: "وسط", price: 80 });
+    const variant = item.addVariant({ label: "وسط", price: 80, talabatPrice: 80 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
@@ -152,7 +149,7 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
     expect(preview.body.codExpected).toBe(160);
     expect(preview.body.codCollected).toBe(160);
     expect(preview.body.expectedHandover).toBe(160);
-    expect(preview.body.bonusTotal).toBe(10); // 5ج × 2 طلب
+    expect(preview.body.bonusTotal).toBe(10);
 
     const pending = await request(app.getHttpServer())
       .get(`/delivery/settlements/pending-drivers?branchId=${branchId}`)
@@ -175,7 +172,6 @@ describe("Delivery: معاينة تسوية السائق وتقرير أوردر
     expect(dayReport.body.cashCollectedCount).toBe(0);
     expect(dayReport.body.orders.every((o: { collected: boolean }) => o.collected === false)).toBe(true);
 
-    // بعد التسوية - الأوردرات تبقى "محصّلة" في التقرير وتختفي من قايمة السائقين المعلّقين
     const settleRes = await request(app.getHttpServer())
       .post("/delivery/settlements")
       .set("Authorization", `Bearer ${adminToken}`)

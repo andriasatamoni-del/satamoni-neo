@@ -9,8 +9,6 @@ import { eq, inArray } from "drizzle-orm";
 import { catalogLayout, menuCategories, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
-// POS category groups: user-defined order (with the "العروض" tab placed among the categories) and archiving a category
-// instead of deleting it. Real application, real PostgreSQL.
 describe("Catalog - category groups: order + archive (e2e)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -80,7 +78,6 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     const mine = await ours();
     expect(mine.map((c) => c.name)).toEqual([names.a, names.b, names.c]);
 
-    // move the offers between the first and second category, and put the third category first
     const res2 = await request(server()).put("/catalog/categories/order").set(auth()).send({ order: [ids.c, "combos", ids.a, ids.b] });
     expect(res2.status).toBe(200);
     expect((await ours()).map((c) => c.name)).toEqual([names.c, names.a, names.b]);
@@ -88,7 +85,7 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     expect(layout.combosPosition).toBe(1);
     const all = await list();
     const orderValues = all.map((c) => c.displayOrder);
-    expect(new Set(orderValues).size).toBe(orderValues.length); // every category has its own position
+    expect(new Set(orderValues).size).toBe(orderValues.length);
     const firstThree = all.slice(0, 3).map((c) => c.id);
     expect(firstThree[0]).toBe(ids.c);
   });
@@ -109,7 +106,7 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
   });
 
   test("archiving: the category disappears from the list and the storefront, is paused, and its items are kept", async () => {
-    const created = await request(server()).post("/catalog/items").set(auth()).send({ name: "صنف-قسم-مؤرشف-جست", categoryId: ids.b, variants: [{ label: "عادي", price: 50 }] });
+    const created = await request(server()).post("/catalog/items").set(auth()).send({ name: "صنف-قسم-مؤرشف-جست", categoryId: ids.b, variants: [{ label: "عادي", price: 50, talabatPrice: 50 }] });
     expect(created.status).toBe(201);
     itemId = created.body.id;
     await request(server()).patch(`/catalog/categories/${ids.b}`).set(auth()).send({ isActive: true });
@@ -131,7 +128,7 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
 
     const items = await request(server()).get("/catalog/items").set(auth());
     const kept = items.body.find((i: { id: string }) => i.id === itemId);
-    expect(kept).toMatchObject({ id: itemId, categoryId: ids.b }); // nothing deleted, history stays intact
+    expect(kept).toMatchObject({ id: itemId, categoryId: ids.b });
   });
 
   test("an archived category cannot be archived again, activated by a PATCH, or included in an order", async () => {
@@ -163,6 +160,6 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     expect((await request(server()).post(`/catalog/categories/${ids.a}/restore`).set(auth(cashierToken))).status).toBe(403);
     expect((await request(server()).put("/catalog/categories/order").set(auth(cashierToken)).send({ order: [ids.a] })).status).toBe(403);
     expect((await request(server()).post("/catalog/categories/00000000-0000-0000-0000-000000000000/archive").set(auth())).status).toBe(404);
-    expect((await ours()).map((c) => c.id)).toContain(ids.a); // the refused calls changed nothing
+    expect((await ours()).map((c) => c.id)).toContain(ids.a);
   });
 });

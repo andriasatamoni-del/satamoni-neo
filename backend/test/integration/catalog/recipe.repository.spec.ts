@@ -23,7 +23,7 @@ describe("RecipeRepository", () => {
 
     const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "بيتزا-وصفات-جست" });
-    const variant = item.addVariant({ label: "وسط", price: 90 });
+    const variant = item.addVariant({ label: "وسط", price: 90, talabatPrice: 90 });
     await menuItemRepo.save(item);
     variantId = variant.id;
     menuItemId = item.id;

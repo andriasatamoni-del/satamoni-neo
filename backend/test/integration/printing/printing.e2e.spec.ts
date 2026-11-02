@@ -56,7 +56,7 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-طباعة-جست", categoryId });
-    const variant = item.addVariant({ label: "عادي", price: 90 });
+    const variant = item.addVariant({ label: "عادي", price: 90, talabatPrice: 90 });
     await menuItemRepo.save(item);
     variantId = variant.id;
   });
@@ -236,7 +236,6 @@ describe("نظام الطباعة (TIER3-4) - طابعات + محطات تحضي
     expect(billRes.status).toBe(201);
     expect(billRes.body.printType).toBe("DINE_IN_BILL");
 
-    // إعادة الطلب لنفس الـendpoint بترجع نفس صف الفاتورة (idempotency_key ثابت لكل طلب)
     const billAgainRes = await request(app.getHttpServer())
       .post(`/printing/print-jobs/dine-in-bill/${dineinOrderId}`)
       .set("Authorization", `Bearer ${adminToken}`);

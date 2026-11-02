@@ -34,7 +34,7 @@ describe("PaymentRepository", () => {
 
     const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف دفعات-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 60 });
+    const variant = item.addVariant({ label: "عادي", price: 60, talabatPrice: 60 });
     await menuItemRepo.save(item);
 
     const order = Order.register({ branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 60 }] });
@@ -85,7 +85,7 @@ describe("PaymentRepository", () => {
     expect(found?.settlementChannel).toBe("visa_pos");
 
     const all = await repo.list({ branchId });
-    expect(all).toHaveLength(1); // تحديث مش تكرار
+    expect(all).toHaveLength(1);
   });
 
   test("list بيفلتر بالـsettlementChannel صح", async () => {

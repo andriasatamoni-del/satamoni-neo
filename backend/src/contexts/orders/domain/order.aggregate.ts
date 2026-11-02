@@ -18,6 +18,8 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_SOURCES = ["pos", "website", "whatsapp", "talabat"] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
+export const POS_ORDER_SOURCES = ["pos", "talabat"] as const satisfies readonly OrderSource[];
+export type PosOrderSource = (typeof POS_ORDER_SOURCES)[number];
 
 export const KITCHEN_STATUSES = ["NEW", "ACCEPTED", "PREPARING", "READY"] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];

@@ -1,11 +1,11 @@
 import { Badge } from "../../shared/ui/Badge";
 import { Card, CardBody } from "../../shared/ui/Card";
 import { Input } from "../../shared/ui/Field";
-import { itemPriceLabel } from "./menuPricing";
+import { itemPriceLabel, sellableVariants } from "./menuPricing";
 import { MenuTile, MenuTileGrid } from "./MenuTile";
 import { PillButton } from "./PillButton";
 import { formatPrice, MENU_GROUP_LABELS } from "./posLabels";
-import type { Combo, MenuItem } from "./posTypes";
+import type { Combo, MenuItem, PriceMenu } from "./posTypes";
 import type { Cart } from "./useCart";
 import { MENU_GROUP_FILTERS, useMenuBrowser } from "./useMenuBrowser";
 import type { PosCatalog } from "./usePosCatalog";
@@ -13,15 +13,20 @@ import type { PosCatalog } from "./usePosCatalog";
 export function MenuBrowser({
   catalog,
   cart,
+  priceMenu,
+  onPriceMenuChange,
   onItemClick,
   onComboClick,
 }: {
   catalog: PosCatalog;
   cart: Cart;
+  priceMenu: PriceMenu;
+  onPriceMenuChange: (priceMenu: PriceMenu) => void;
   onItemClick: (item: MenuItem) => void;
   onComboClick: (combo: Combo) => void;
 }) {
-  const menu = useMenuBrowser(catalog);
+  const isTalabat = priceMenu === "talabat";
+  const menu = useMenuBrowser(isTalabat ? { ...catalog, combos: [] } : catalog);
 
   return (
     <Card>
@@ -42,7 +47,16 @@ export function MenuBrowser({
               ))}
             </div>
           )}
+          <PillButton active={isTalabat} onClick={() => onPriceMenuChange(isTalabat ? "regular" : "talabat")} className="ms-auto px-3 text-xs">
+            منيو طلبات
+          </PillButton>
         </div>
+
+        {isTalabat && (
+          <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+            الأسعار دي أسعار طلبات. الأصناف اللي مالهاش سعر طلبات مش متاحة، والعروض مخفية.
+          </p>
+        )}
 
         <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
           {menu.tabs.map((tab) => (
@@ -79,9 +93,10 @@ export function MenuBrowser({
             <MenuTile
               key={item.id}
               name={item.name}
-              priceLabel={itemPriceLabel(item)}
+              priceLabel={itemPriceLabel(item, priceMenu)}
               badge={item.isBest && <Badge tone="warning" className="mb-0.5">الأكثر طلبًا</Badge>}
               cartQuantity={cart.itemQuantity(item)}
+              disabled={sellableVariants(item, priceMenu).length === 0}
               onClick={() => onItemClick(item)}
             />
           ))}

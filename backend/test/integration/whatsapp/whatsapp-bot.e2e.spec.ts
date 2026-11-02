@@ -21,8 +21,6 @@ import { posSettings } from "../../../src/contexts/settings/infrastructure/persi
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
-// Gemini مكانه "سكريبت" ثابت: بيقرا آخر رسالة من العميل وبينده نفس الأدوات الحقيقية اللي الموديل كان
-// هينده عليها - كده الاختبار بيغطي الأدوات والقاعدة والمسودة والتأكيد فعليًا، من غير أي اتصال بـGoogle
 class ScriptedAi implements AiChatClientPort {
   configured = true;
   toolResults: { name: string; result: string }[] = [];
@@ -154,7 +152,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     const item = await request(server())
       .post("/catalog/items")
       .set(auth())
-      .send({ name: "بيتزا-بوت-جست", variants: [{ label: "وسط", price: 50 }, { label: "كبير", price: 80 }] });
+      .send({ name: "بيتزا-بوت-جست", variants: [{ label: "وسط", price: 50, talabatPrice: 50 }, { label: "كبير", price: 80, talabatPrice: 80 }] });
     itemId = item.body.id;
     await request(server()).post(`/catalog/items/${itemId}/modifiers`).set(auth()).send({ name: "جبنة زيادة", priceDelta: 10 });
   });
@@ -247,7 +245,6 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     expect(Number(draft.total)).toBe(180);
     expect(draft.branch_id).toBe(branchId);
 
-    // المسودة مش بتظهر في طابور المراجعة قبل تأكيد العميل
     const beforeSubmit = await request(server()).get("/whatsapp/pending-orders").set(auth());
     expect(beforeSubmit.body.some((o: { id: string }) => o.id === draft.id)).toBe(false);
 

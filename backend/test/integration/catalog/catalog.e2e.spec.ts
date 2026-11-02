@@ -81,7 +81,7 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     const res = await request(app.getHttpServer())
       .post("/catalog/items")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "مارجريتا-e2e-جست", variants: [{ label: "وسط", price: 90 }] });
+      .send({ name: "مارجريتا-e2e-جست", variants: [{ label: "وسط", price: 90, talabatPrice: 90 }] });
     expect(res.status).toBe(201);
     expect(res.body.variants).toHaveLength(1);
     itemId = res.body.id;
@@ -92,7 +92,7 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     const res = await request(app.getHttpServer())
       .post(`/catalog/items/${itemId}/variants`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ label: "كبير", price: 130 });
+      .send({ label: "كبير", price: 130, talabatPrice: 130 });
     expect(res.status).toBe(201);
     expect(res.body.variants).toHaveLength(2);
   });
@@ -152,7 +152,6 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     expect(res.body.name).toBe("مارجريتا معدّلة-e2e-جست");
     expect(res.body.isActive).toBe(false);
 
-    // نرجّعه نشط تاني عشان مايأثرش على استخدامه في اختبارات لاحقة لو اتضافت
     await request(app.getHttpServer())
       .patch(`/catalog/items/${itemId}`)
       .set("Authorization", `Bearer ${adminToken}`)

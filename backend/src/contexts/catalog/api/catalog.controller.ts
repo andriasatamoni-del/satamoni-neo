@@ -318,7 +318,7 @@ function toPublicItem(item: MenuItem) {
     imageUrl: item.imageUrl,
     isBest: item.isBest,
     isActive: item.isActive,
-    variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price })),
+    variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, talabatPrice: v.talabatPrice })),
     modifiers: item.modifiers.map((m) => ({
       id: m.id,
       name: m.name,

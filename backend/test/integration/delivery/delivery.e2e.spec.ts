@@ -59,7 +59,7 @@ describe("Delivery & Dispatch - /delivery (e2e ضد تطبيق حقيقي كام
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-توصيل-جست" });
-    const variant = item.addVariant({ label: "وسط", price: 90 });
+    const variant = item.addVariant({ label: "وسط", price: 90, talabatPrice: 90 });
     await menuItemRepo.save(item);
 
     const orderRes = await request(app.getHttpServer())

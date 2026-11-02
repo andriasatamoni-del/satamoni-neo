@@ -51,7 +51,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
     const itemRes = await request(app.getHttpServer())
       .post("/catalog/items")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "بيتزا-واتساب-جست", variants: [{ label: "وسط", price: 50 }] });
+      .send({ name: "بيتزا-واتساب-جست", variants: [{ label: "وسط", price: 50, talabatPrice: 50 }] });
     variantId = itemRes.body.variants[0].id;
   });
 

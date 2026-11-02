@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { PosCustomer } from "./posCustomer";
-import type { CartLine } from "./posTypes";
+import type { CartLine, PriceMenu } from "./posTypes";
 
 export interface OrderDraft {
   orderType: string;
+  priceMenu: PriceMenu;
   tableNumber: string;
   customer: PosCustomer | null;
   customerAddressId: string;
@@ -16,6 +17,7 @@ export interface OrderDraft {
 
 const EMPTY_DRAFT: OrderDraft = {
   orderType: "takeaway",
+  priceMenu: "regular",
   tableNumber: "",
   customer: null,
   customerAddressId: "",
@@ -31,7 +33,7 @@ export function useOrderDraft() {
   return {
     draft,
     update: (patch: Partial<OrderDraft>) => setDraft((current) => ({ ...current, ...patch })),
-    resetKeepingOrderType: () => setDraft((current) => ({ ...EMPTY_DRAFT, orderType: current.orderType })),
+    resetForNextOrder: () => setDraft((current) => ({ ...EMPTY_DRAFT, orderType: current.orderType, priceMenu: current.priceMenu })),
   };
 }
 
@@ -75,6 +77,7 @@ export function buildOrderPayload(branchId: string, draft: OrderDraft, lines: Ca
   return {
     branchId,
     orderType: draft.orderType,
+    source: draft.priceMenu === "talabat" ? "talabat" : undefined,
     tableNumber: draft.orderType === "dinein" && draft.tableNumber ? draft.tableNumber : undefined,
     ...customerFields(draft),
     items: lines.map((l) =>

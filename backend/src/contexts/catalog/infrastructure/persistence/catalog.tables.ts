@@ -9,6 +9,7 @@ export const menuItemVariants = pgTable("menu_item_variants", {
   item_id: uuid().notNull(),
   label: text().notNull(),
   price: numeric().notNull().$type<number>(),
+  talabat_price: numeric().notNull().$type<number>(),
   legacy_variant_id: integer(),
 }, (table) => [
   foreignKey({

@@ -73,7 +73,6 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
       .send({ name: "فرع مركز-تنبيهات-جست" });
     branchId = branchRes.body.id;
 
-    // 1) رصيد سالب: صنف ALLOW_WITH_APPROVAL، استلام 5 ثم استهلاك 10 بموافقة صريحة
     const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const negItem = InventoryItem.register({ name: "صنف-سالب-جست", unit: "كيلو", negativeStockPolicy: "ALLOW_WITH_APPROVAL" });
     await inventoryRepo.save(negItem);
@@ -87,13 +86,12 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: negativeStockItemId, branchId, movementType: "CONSUMPTION", quantityDelta: -10, approved: true });
 
-    // 2) صنف من غير تكلفة وحدة، مستخدم في وصفة نشطة
     const missingCostItem = InventoryItem.register({ name: "صنف-بدون-تكلفة-جست", unit: "كيلو" });
     await inventoryRepo.save(missingCostItem);
     missingCostItemId = missingCostItem.id;
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const menuItem = MenuItem.register({ name: "صنف-مركز-تنبيهات-جست" });
-    const variant = menuItem.addVariant({ label: "عادي", price: 10 });
+    const variant = menuItem.addVariant({ label: "عادي", price: 10, talabatPrice: 10 });
     await menuItemRepo.save(menuItem);
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
@@ -102,7 +100,6 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    // 3) مصروف بمبلغ أعلى من حد التنبيه
     const categoryRes = await request(app.getHttpServer())
       .post("/expenses/categories")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -112,7 +109,6 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, businessDate: today, categoryId: categoryRes.body.id, amount: 150 });
 
-    // 4) شكوى عميل فاضلة من زمان (backdated مباشرة في القاعدة - مفيش API لإنشاء شكوى مباشرة)
     const complaintRepo = new ComplaintRepository(app.get<Database>(DATABASE));
     const complaint = Complaint.register({
       channel: "phone_followup", branchId, customerPhone: "01000000000", category: "late_order", status: "open",
@@ -121,7 +117,6 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     complaintId = complaint.id;
     await app.get<Database>(DATABASE).update(complaints).set({ created_at: sql`now() - interval '5 days'` }).where(eq(complaints.id, complaintId));
 
-    // 5) فاتورة مورد فات معاد استحقاقها ولسه من غير سداد
     const supplierRes = await request(app.getHttpServer())
       .post("/procurement/suppliers")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -177,7 +172,7 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const lastHighIndex = severities.lastIndexOf("HIGH");
     if (firstMediumIndex !== -1 && lastHighIndex !== -1) expect(lastHighIndex).toBeLessThan(firstMediumIndex);
 
-    expect(res.body.countsBySeverity.HIGH).toBeGreaterThanOrEqual(2); // NEGATIVE_STOCK + ITEMS_MISSING_COST
+    expect(res.body.countsBySeverity.HIGH).toBeGreaterThanOrEqual(2);
     expect(res.body.countsBySeverity.MEDIUM).toBeGreaterThanOrEqual(3);
 
     const negativeStockAlert = res.body.alerts.find((a: { type: string }) => a.type === "NEGATIVE_STOCK");

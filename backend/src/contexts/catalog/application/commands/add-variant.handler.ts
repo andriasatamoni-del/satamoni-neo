@@ -7,6 +7,7 @@ export interface AddVariantCommand {
   itemId: string;
   label: string;
   price: number;
+  talabatPrice: number;
 }
 
 @Injectable()

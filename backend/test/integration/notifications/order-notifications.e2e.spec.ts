@@ -17,7 +17,6 @@ import { posSettings } from "../../../src/contexts/settings/infrastructure/persi
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import type { Database } from "../../../src/shared/database/database.token";
 
-// CHAN-1: رسايل SMS للعميل (تأكيد + طلب تقييم) - بوابة SMS حقيقية بـHTTP (سيرفر محلي في الاختبار)
 describe("Notifications - رسايل العميل التلقائية (e2e)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -91,7 +90,7 @@ describe("Notifications - رسايل العميل التلقائية (e2e)", () 
     branchId = branch.id;
 
     const item = MenuItem.register({ name: "صنف-رسايل-جست" });
-    variantId = item.addVariant({ label: "عادي", price: 75 }).id;
+    variantId = item.addVariant({ label: "عادي", price: 75, talabatPrice: 75 }).id;
     await new MenuItemRepository(app.get<Database>(DATABASE)).save(item);
   });
 

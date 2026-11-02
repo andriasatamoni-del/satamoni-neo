@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
 import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from "class-validator";
-import { ORDER_TYPES } from "../../domain/order.aggregate";
+import { ORDER_TYPES, POS_ORDER_SOURCES, type PosOrderSource } from "../../domain/order.aggregate";
 
 export class OrderItemInputDto {
   @IsOptional() @IsUUID() variantId?: string;
@@ -23,6 +23,7 @@ export class RegisterOrderDto {
   @IsIn(ORDER_TYPES)
   orderType!: string;
 
+  @IsOptional() @IsIn(POS_ORDER_SOURCES) source?: PosOrderSource;
   @IsOptional() @IsString() tableNumber?: string;
   @IsOptional() @IsString() customerName?: string;
   @IsOptional() @IsString() customerPhone?: string;

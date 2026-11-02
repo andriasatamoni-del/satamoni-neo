@@ -41,7 +41,7 @@ describe("Customers - staff lookup / register / phones / addresses, and POS orde
     branchId = branch.id;
 
     const item = MenuItem.register({ name: `صنف ${tag}` });
-    variantId = item.addVariant({ label: "عادي", price: 50 }).id;
+    variantId = item.addVariant({ label: "عادي", price: 50, talabatPrice: 50 }).id;
     await new MenuItemRepository(db).save(item);
 
     cashierToken = (await createSecondUser(app, `manager-${tag}@jest.test`, "branch_manager", branchId)).token;

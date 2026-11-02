@@ -1,23 +1,26 @@
 import { useState } from "react";
 import { Button } from "../../shared/ui/Button";
-import { activeModifiersOf, resolveModifierPrice } from "./menuPricing";
+import { activeModifiersOf, resolveModifierPrice, sellableVariants, type SellableVariant } from "./menuPricing";
 import { formatPrice } from "./posLabels";
-import type { MenuItem, MenuItemVariant } from "./posTypes";
+import type { MenuItem, PriceMenu } from "./posTypes";
 
 export function ItemPickerDialog({
   item,
+  priceMenu,
   onAdd,
   onClose,
 }: {
   item: MenuItem;
-  onAdd: (variant: MenuItemVariant, modifierIds: string[]) => void;
+  priceMenu: PriceMenu;
+  onAdd: (variant: SellableVariant, modifierIds: string[]) => void;
   onClose: () => void;
 }) {
-  const [variantId, setVariantId] = useState(item.variants[0]?.id ?? null);
+  const variants = sellableVariants(item, priceMenu);
+  const [variantId, setVariantId] = useState(variants[0]?.id ?? null);
   const [modifierIds, setModifierIds] = useState<string[]>([]);
 
   const activeModifiers = activeModifiersOf(item);
-  const selectedVariant = item.variants.find((v) => v.id === variantId) ?? item.variants[0];
+  const selectedVariant = variants.find((v) => v.id === variantId) ?? variants[0];
   const modifierTotal = activeModifiers
     .filter((m) => modifierIds.includes(m.id))
     .reduce((sum, m) => sum + resolveModifierPrice(m, selectedVariant.id), 0);
@@ -34,9 +37,9 @@ export function ItemPickerDialog({
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700">×</button>
         </div>
 
-        {item.variants.length > 1 && (
+        {variants.length > 1 && (
           <div className="mb-3 space-y-2">
-            {item.variants.map((v) => (
+            {variants.map((v) => (
               <button
                 key={v.id}
                 type="button"
@@ -46,7 +49,7 @@ export function ItemPickerDialog({
                 }`}
               >
                 <span>{v.label}</span>
-                <span className="text-brand-700">{formatPrice(v.price)}</span>
+                <span className="text-brand-700">{formatPrice(v.salePrice)}</span>
               </button>
             ))}
           </div>
@@ -67,7 +70,7 @@ export function ItemPickerDialog({
 
         <div className="flex items-center justify-between border-t border-slate-100 pt-3">
           <span className="text-sm font-semibold text-slate-500">السعر</span>
-          <span className="text-lg font-bold text-brand-700">{formatPrice(selectedVariant.price + modifierTotal)}</span>
+          <span className="text-lg font-bold text-brand-700">{formatPrice(selectedVariant.salePrice + modifierTotal)}</span>
         </div>
         <Button className="mt-3 w-full" onClick={() => onAdd(selectedVariant, modifierIds)}>
           إضافة للسلة

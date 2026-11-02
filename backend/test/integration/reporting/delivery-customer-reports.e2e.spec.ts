@@ -86,7 +86,7 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-تقارير-توصيل-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 100 });
+    const variant = item.addVariant({ label: "عادي", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
@@ -96,7 +96,6 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
       .send({ name: "سائق-تقارير-توصيل-جست", branchId });
     driverId = driverRes.body.id;
 
-    // أوردر دليفري 1 - هيوصل بنجاح (DELIVERED)
     const orderARes = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -118,7 +117,6 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ status: "DELIVERED", collectedAmount: 100 });
 
-    // أوردر دليفري 2 - نفس العميل، هيفشل توصيله (FAILED)
     const orderBRes = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -134,7 +132,6 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ status: "FAILED", failureReason: "العميل مردّش" });
 
-    // فئة مصروف بحد تنبيه 50 + مصروف بقيمة 100 (أعلى من الحد - عشان anomalies)
     const categoryRes = await request(app.getHttpServer())
       .post("/expenses/categories")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -147,7 +144,6 @@ describe("Reporting - تقارير التوصيل والعملاء والمصر�
     expenseId = expenseRes.body.id;
     expect(expenseRes.body.status).toBe("POSTED");
 
-    // مشترى نقدي بفئة "صيانة" بقيمة 300 - هيتأكد عشان يتحسب في التقرير
     const purchaseRes = await request(app.getHttpServer())
       .post("/purchases")
       .set("Authorization", `Bearer ${adminToken}`)

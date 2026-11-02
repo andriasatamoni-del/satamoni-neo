@@ -76,7 +76,6 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     await inventoryRepo.save(ingredient);
     ingredientItemId = ingredient.id;
 
-    // رصيد افتتاحي 10 كيلو للمكوّن ده في الفرع ده - عن طريق حركة RECEIPT مباشرة (نفس أسلوب سكريبتات الاستيراد)
     const movementRepo = new StockMovementRepository(app.get<Database>(DATABASE));
     await movementRepo.recordMovement(
       StockMovement.register({ inventoryItemId: ingredientItemId, branchId, movementType: "RECEIPT", quantityDelta: 10 }),
@@ -85,8 +84,8 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-طلبات-جست" });
-    const variantWithRecipe = item.addVariant({ label: "وسط", price: 100 });
-    const variantWithoutRecipe = item.addVariant({ label: "كبير", price: 150 });
+    const variantWithRecipe = item.addVariant({ label: "وسط", price: 100, talabatPrice: 100 });
+    const variantWithoutRecipe = item.addVariant({ label: "كبير", price: 150, talabatPrice: 150 });
     await menuItemRepo.save(item);
     variantWithRecipeId = variantWithRecipe.id;
     variantWithoutRecipeId = variantWithoutRecipe.id;
@@ -94,7 +93,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variantWithRecipeId });
     const version = recipe.createDraftVersion({});
-    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو جبنة لكل بيتزا وسط
+    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
   });
@@ -128,11 +127,10 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId: variantWithRecipeId, quantity: 2 }] });
     expect(res.status).toBe(201);
-    expect(res.body.total).toBe(200); // 2 * 100
+    expect(res.body.total).toBe(200);
     expect(res.body.status).toBe("preparing");
     expect(res.body.kitchenStatus).toBe("NEW");
 
-    // 2 بيتزا × 2 كيلو جبنة لكل واحدة = 4 كيلو استهلاك -> الرصيد يبقى 6
     const balanceAfter = await request(app.getHttpServer())
       .get(`/inventory/balances?branchId=${branchId}&inventoryItemId=${ingredientItemId}`)
       .set("Authorization", `Bearer ${adminToken}`);
@@ -157,20 +155,20 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
         .get(`/inventory/balances?branchId=${branchId}&inventoryItemId=${ingredientItemId}`)
         .set("Authorization", `Bearer ${adminToken}`)
     ).body.quantity;
-    expect(balanceAfter).toBe(balanceBefore); // مفيش وصفة، مفيش استهلاك
+    expect(balanceAfter).toBe(balanceBefore);
   });
 
   test("POST /orders بكمية هتخلي رصيد المكوّن سالب على صنف STRICT -> 409 ومفيش طلب اتسجّل", async () => {
     const res = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ branchId, orderType: "takeaway", items: [{ variantId: variantWithRecipeId, quantity: 10 }] }); // محتاج 20 كيلو، الرصيد 6
+      .send({ branchId, orderType: "takeaway", items: [{ variantId: variantWithRecipeId, quantity: 10 }] });
     expect(res.status).toBe(409);
 
     const orders = await request(app.getHttpServer())
       .get(`/orders?branchId=${branchId}`)
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(orders.body).toHaveLength(2); // نفس الطلبين السابقين بس، الطلب الفاشل ده مسجّلش
+    expect(orders.body).toHaveLength(2);
   });
 
   test("PATCH /orders/:id/status بيحدّث الحالة، ومينفعش يتعدّل تاني بعد ما يتقفل", async () => {
@@ -208,7 +206,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     const skip = await request(app.getHttpServer())
       .patch(`/orders/${orderId}/kitchen-status`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ kitchenStatus: "PREPARING" }); // NEW -> PREPARING مباشرة، مرفوض
+      .send({ kitchenStatus: "PREPARING" });
     expect(skip.status).toBe(400);
 
     const accepted = await request(app.getHttpServer())
@@ -233,7 +231,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "dinein", items: [{ variantId: variantWithoutRecipeId, quantity: 1 }], clientRequestId });
     expect(retry.status).toBe(201);
-    expect(retry.body.id).toBe(first.body.id); // نفس الطلب بالظبط، مش طلب جديد
+    expect(retry.body.id).toBe(first.body.id);
 
     const orders = await request(app.getHttpServer())
       .get(`/orders?branchId=${branchId}`)

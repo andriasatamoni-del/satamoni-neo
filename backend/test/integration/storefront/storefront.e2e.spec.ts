@@ -20,8 +20,6 @@ import { posSettings } from "../../../src/contexts/settings/infrastructure/persi
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import type { Database } from "../../../src/shared/database/database.token";
 
-// STORE-1/2: موقع الطلب أونلاين بحساب إلزامي - من المنيو العام، للتسجيل مرة واحدة بالعنوان، للطلب بضغطة،
-// لحد الكاشير والمطبخ والتتبّع ونقاط الولاء (كسب بعد التسليم + صرف في مكافأة)
 describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -115,20 +113,20 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
 
     const itemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "بيتزا-موقع-جست", categoryId, description: "بالجبنة", isBest: true, imageUrl: "/media/images/pizza" });
-    smallId = item.addVariant({ label: "صغير", price: 60 }).id;
-    largeId = item.addVariant({ label: "كبير", price: 100 }).id;
+    smallId = item.addVariant({ label: "صغير", price: 60, talabatPrice: 60 }).id;
+    largeId = item.addVariant({ label: "كبير", price: 100, talabatPrice: 100 }).id;
     modifierId = item.addModifier({ name: "جبنة زيادة", priceDelta: 10 }).id;
     item.setModifierVariantPrice(modifierId, largeId, 15);
     await itemRepo.save(item);
     itemId = item.id;
 
     const hidden = MenuItem.register({ name: "صنف-موقوف-موقع-جست", categoryId });
-    hidden.addVariant({ label: "عادي", price: 40 });
+    hidden.addVariant({ label: "عادي", price: 40, talabatPrice: 40 });
     hidden.deactivate();
     await itemRepo.save(hidden);
 
     const scarce = MenuItem.register({ name: "صنف-ناقص-موقع-جست", categoryId });
-    scarceVariantId = scarce.addVariant({ label: "عادي", price: 30 }).id;
+    scarceVariantId = scarce.addVariant({ label: "عادي", price: 30, talabatPrice: 30 }).id;
     await itemRepo.save(scarce);
     const ingredient = InventoryItem.register({ name: "مكوّن-ناقص-موقع-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
     await new InventoryItemRepository(app.get<Database>(DATABASE)).save(ingredient);
@@ -240,7 +238,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   test("طلب توصيل بضغطة: الاسم والتليفونين والعنوان من الحساب، أسعار السيرفر، مصدر website، وبيوصل للمطبخ والكاشير", async () => {
     const res = await place(order());
     expect(res.status).toBe(201);
-    expect(res.body.total).toBe(380); // (100 + 15) × 2 + عرض 150
+    expect(res.body.total).toBe(380);
     orderId = res.body.orderId;
     trackingToken = res.body.trackingToken;
 
@@ -281,7 +279,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     await request(server()).patch(`/orders/${orderId}/status`).set(staff()).send({ status: "out_for_delivery" });
     expect(await balance()).toBe(0);
     await request(server()).patch(`/orders/${orderId}/status`).set(staff()).send({ status: "completed" });
-    expect(await balance()).toBe(38); // 380 × 0.1
+    expect(await balance()).toBe(38);
 
     const loyalty = (await request(server()).get("/loyalty/me").set(customer())).body;
     expect(loyalty.history[0]).toMatchObject({ kind: "earn", points: 38, orderId });
@@ -296,7 +294,6 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     expect(res.body).toMatchObject({ total: 100, discount: 60 });
     expect(await balance()).toBe(8);
 
-    // نفس الطلب اتبعت تاني (النت فصل) - نفس الطلب ومفيش خصم نقاط تاني
     const replay = await place(body);
     expect(replay.body.orderId).toBe(res.body.orderId);
     expect(await balance()).toBe(8);
@@ -307,7 +304,6 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     );
     expect(tracked.body.customerNotes).toContain("🎁 مكافأة نقاط: بيتزا صغيرة هدية");
 
-    // الطلب اتلغى -> النقاط بترجع
     const cancel = await request(server()).patch(`/orders/${res.body.orderId}/cancel`).set(staff());
     expect(cancel.status).toBe(200);
     expect(await balance()).toBe(38);

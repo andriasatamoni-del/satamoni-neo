@@ -1,0 +1,2 @@
+UPDATE "menu_item_variants" SET "talabat_price" = round("price" * 1.4, 2) WHERE "talabat_price" IS NULL;--> statement-breakpoint
+ALTER TABLE "menu_item_variants" ALTER COLUMN "talabat_price" SET NOT NULL;

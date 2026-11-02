@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from "class-validator";
 
 export class VariantInputDto {
   @IsString()
@@ -8,6 +8,7 @@ export class VariantInputDto {
   @IsNumber()
   price!: number;
 
+  @IsNumber() @Min(0) talabatPrice!: number;
 }
 
 export class RegisterMenuItemDto {

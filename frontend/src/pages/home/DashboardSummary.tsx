@@ -32,11 +32,12 @@ const RANGE_PRESETS = [
   { key: "30d", label: "آخر 30 يوم", days: 30 },
 ] as const;
 
+const CAIRO_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" });
+
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return CAIRO_DATE_FORMAT.format(d);
 }
 
-// en-US مش ar-EG عمدًا - نفس اتفاقية باقي الشاشات في المشروع (أرقام إنجليزية عادية رغم النص عربي)
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
 }
@@ -50,8 +51,6 @@ export function DashboardSummary() {
   const to = toDateStr(new Date());
   const from = toDateStr(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000));
 
-  // مدير الفرع مقفول على فرعه من السيرفر أصلًا (نفس نطاق الريبو القديم) - فلتر الفرع هنا للأدمن/المحاسب بس
-  // (نطاق الفرع من الأدوار by design؛ ولستة الفروع نفسها محتاجة branches.view)
   const canSeeDashboard = can(user, PERMISSION.REPORTS_VIEW);
   const showBranchFilter = hasRole(user, "admin", "accountant") && can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
   const branchesQuery = useQuery({
@@ -68,8 +67,6 @@ export function DashboardSummary() {
     enabled: canSeeDashboard,
   });
 
-  // كاشير/كول سنتر/سائق معندهمش reports.view - اللوحة مش بتظهر خالص ومفيش طلب بيتبعت.
-  // الخطأ (مثلًا الصلاحية اتشالت بعد آخر /auth/me) برضه بيخفي اللوحة بدل رسالة خطأ.
   if (!canSeeDashboard || summaryQuery.isError) return null;
 
   const data = summaryQuery.data;
@@ -87,7 +84,7 @@ export function DashboardSummary() {
                 key={p.key}
                 type="button"
                 onClick={() => setPreset(p.key)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-2xl px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors ${
                   preset === p.key ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >

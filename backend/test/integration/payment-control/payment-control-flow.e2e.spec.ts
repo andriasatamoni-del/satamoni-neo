@@ -54,7 +54,7 @@ describe("Payment Control - الحلقة الكاملة (e2e ضد تطبيق ح�
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف دفعات-e2e" });
-    const variant = item.addVariant({ label: "عادي", price: 100 });
+    const variant = item.addVariant({ label: "عادي", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 

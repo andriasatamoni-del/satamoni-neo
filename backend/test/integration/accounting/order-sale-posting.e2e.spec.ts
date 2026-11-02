@@ -14,9 +14,6 @@ import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { truncate } from "../helpers/db";
 
-// e2e حقيقي بيثبت إن الـdomain event bus شغّال فعليًا عبر الـcontexts: تسجيل طلب (Orders) ->
-// OrderRegisteredEvent -> Accounting (subscriber) بيترحّل قيد بيع تلقائي POSTED على حسابي الكاش/مبيعات
-// الطعام (1100/4100) - نفس الأكواد الحقيقية اللي هيستوردها سكريبت استيراد دليل الحسابات
 describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -59,7 +56,7 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "ساندوتش-محاسبة-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 75 });
+    const variant = item.addVariant({ label: "عادي", price: 75, talabatPrice: 75 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
@@ -74,8 +71,6 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
 
   afterAll(async () => {
     const db = app.get<Database>(DATABASE);
-    // TRUNCATE عمدًا (مش DELETE) - القيود اتسجّلت POSTED فعليًا، وDELETE هيترفض من الـtrigger اللي
-    // بيمنع أي تعديل على سطور قيد POSTED (نفس السبب في journal-entry.repository.spec.ts)
     await truncate(db, journalEntryLines, journalEntries);
     await db.delete(accounts).where(inArray(accounts.id, [cashAccountId, salesAccountId]));
     await db.delete(printJobs);
@@ -94,7 +89,7 @@ describe("Orders -> EventBus -> Accounting (قيد بيع تلقائي)", () => 
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 3 }] });
     expect(res.status).toBe(201);
-    expect(res.body.total).toBe(225); // 3 * 75
+    expect(res.body.total).toBe(225);
 
     const entries = await request(app.getHttpServer())
       .get(`/accounting/journal-entries?sourceType=order_sale`)

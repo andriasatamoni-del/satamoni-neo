@@ -68,6 +68,12 @@ export class InvalidOrderItemError extends DomainError {
   }
 }
 
+export class TalabatPriceMissingForOrderError extends DomainError {
+  constructor() {
+    super("في سطر مالوش سعر طلبات");
+  }
+}
+
 export class ComboNotFoundForOrderError extends DomainError {
   constructor() {
     super("في سطر بيشاور على عرض مش موجود أو متوقف حاليًا");

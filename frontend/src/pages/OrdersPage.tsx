@@ -11,14 +11,15 @@ import { MenuBrowser } from "./orders/MenuBrowser";
 import { CartPanel } from "./orders/CartPanel";
 import { ItemPickerDialog } from "./orders/ItemPickerDialog";
 import { OrdersListCard, useOrdersListState } from "./orders/OrdersListCard";
-import { needsOptionPicker } from "./orders/menuPricing";
+import { PriceMenuSwitchDialog } from "./orders/PriceMenuSwitchDialog";
+import { needsOptionPicker, sellableVariants } from "./orders/menuPricing";
 import { useOrderDraft } from "./orders/orderDraft";
 import { useCart } from "./orders/useCart";
 import { useCreateOrder } from "./orders/useCreateOrder";
 import { errorMessage } from "../shared/api/errorMessage";
 import { usePosBranches } from "./orders/usePosBranches";
 import { usePosCatalog } from "./orders/usePosCatalog";
-import type { MenuItem } from "./orders/posTypes";
+import type { MenuItem, PriceMenu } from "./orders/posTypes";
 
 export function OrdersPage() {
   const { user } = useAuth();
@@ -36,14 +37,28 @@ export function OrdersPage() {
   const orderDraft = useOrderDraft();
   const createOrder = useCreateOrder(() => {
     cart.clear();
-    orderDraft.resetKeepingOrderType();
+    orderDraft.resetForNextOrder();
   });
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [pendingPriceMenu, setPendingPriceMenu] = useState<PriceMenu | null>(null);
+  const { priceMenu } = orderDraft.draft;
 
   function handleItemClick(item: MenuItem) {
-    if (item.variants.length === 0) return;
-    if (needsOptionPicker(item)) setPickerItem(item);
-    else cart.addItem(item, item.variants[0], []);
+    const variants = sellableVariants(item, priceMenu);
+    if (variants.length === 0) return;
+    if (needsOptionPicker(item, priceMenu)) setPickerItem(item);
+    else cart.addItem(item, variants[0], []);
+  }
+
+  function handlePriceMenuChange(next: PriceMenu) {
+    if (cart.lines.length > 0) setPendingPriceMenu(next);
+    else orderDraft.update({ priceMenu: next });
+  }
+
+  function confirmPriceMenuSwitch(next: PriceMenu) {
+    cart.clear();
+    orderDraft.update({ priceMenu: next });
+    setPendingPriceMenu(null);
   }
 
   function handleBranchChange(id: string) {
@@ -76,7 +91,14 @@ export function OrdersPage() {
       {canCreateOrders && (
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <MenuBrowser catalog={catalog} cart={cart} onItemClick={handleItemClick} onComboClick={cart.addCombo} />
+            <MenuBrowser
+              catalog={catalog}
+              cart={cart}
+              priceMenu={priceMenu}
+              onPriceMenuChange={handlePriceMenuChange}
+              onItemClick={handleItemClick}
+              onComboClick={cart.addCombo}
+            />
             <CartPanel
               cart={cart}
               draft={orderDraft.draft}
@@ -94,11 +116,20 @@ export function OrdersPage() {
         <ItemPickerDialog
           key={pickerItem.id}
           item={pickerItem}
+          priceMenu={priceMenu}
           onClose={() => setPickerItem(null)}
           onAdd={(variant, modifierIds) => {
             cart.addItem(pickerItem, variant, modifierIds);
             setPickerItem(null);
           }}
+        />
+      )}
+
+      {pendingPriceMenu && (
+        <PriceMenuSwitchDialog
+          priceMenu={pendingPriceMenu}
+          onConfirm={() => confirmPriceMenuSwitch(pendingPriceMenu)}
+          onClose={() => setPendingPriceMenu(null)}
         />
       )}
 

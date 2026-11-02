@@ -36,7 +36,7 @@ describe("PaymentAdjustmentRequestRepository", () => {
 
     const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف تعديل-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 60 });
+    const variant = item.addVariant({ label: "عادي", price: 60, talabatPrice: 60 });
     await menuItemRepo.save(item);
     const order = Order.register({ branchId, orderType: "takeaway", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 60 }] });
     await new OrderRepository(db).save(order);

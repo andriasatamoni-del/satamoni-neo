@@ -14,10 +14,6 @@ import { accounts, journalEntries, journalEntryLines } from "../../../src/contex
 import { payrollAdjustments, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 import { branchStockBalances } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 
-// Phase 3.1 regression harness: boots the REAL application against the disposable integration database (guarded by
-// test/safety/assert-disposable-db.js), in STRICT accounting mode (the production default), with a small but complete world:
-//   two branches (A, B) - users of every relevant role - chart of accounts - an inventory item with a known cost, stocked in both
-//   branches - a menu variant (price 100) with a recipe (2 x item, item cost 5 -> COGS 10 per unit) - a cash payment method.
 
 export interface World {
   app: INestApplication;
@@ -50,7 +46,7 @@ const REQUIRED_ACCOUNT_CODES = REQUIRED_ACCOUNT_DEFS.map(([code]) => code);
 export const INGREDIENT_UNIT_COST = 5;
 export const RECIPE_QTY = 2;
 export const VARIANT_PRICE = 100;
-export const COGS_PER_UNIT = INGREDIENT_UNIT_COST * RECIPE_QTY; // 10
+export const COGS_PER_UNIT = INGREDIENT_UNIT_COST * RECIPE_QTY;
 
 export async function bootstrap(tag: string, options: { accounts?: boolean; stock?: number } = {}): Promise<World> {
   process.env.ACCOUNTING_ENFORCEMENT = "strict";
@@ -128,7 +124,7 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
 
   const menuRepo = new MenuItemRepository(db);
   const item = MenuItem.register({ name: `صنف-${tag}` });
-  const variant = item.addVariant({ label: "عادي", price: VARIANT_PRICE });
+  const variant = item.addVariant({ label: "عادي", price: VARIANT_PRICE, talabatPrice: VARIANT_PRICE });
   await menuRepo.save(item);
   const recipeRepo = new RecipeRepository(db);
   const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
@@ -160,13 +156,11 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   };
 }
 
-/** Removes everything a Phase 3.1 spec created (the integration DB is disposable; specs must leave it clean for the next one). */
 export async function teardown(world: World): Promise<void> {
   const { db } = world;
   const userIds = Object.values(world.userIds);
   for (const table of INJECTED_TABLES) await testDdl(world, sql`DROP TRIGGER IF EXISTS p31_fail_trigger ON ${sql.identifier(table)}`).catch(() => undefined);
   await deleteAuditLogsForTest(db);
-  // the ledger is immutable for normal roles: empty it - and, like TRUNCATE ... CASCADE, every table referencing it - with triggers off
   await asReplica(db, async (tx) => {
     for (const table of referencingClosure([journalEntryLines, journalEntries])) await tx.delete(table);
   }).catch(() => undefined);
@@ -218,7 +212,6 @@ export async function teardown(world: World): Promise<void> {
   ]) {
     await step().catch(() => undefined);
   }
-  // whatever the individual specs created on top of the world (stocktakes, shifts, categories, transfers ...): cascade by the FK graph
   await purge(db, "branches", [world.branchA, world.branchB]);
   await purge(db, "users", userIds);
   for (const name of ["inventory_items", "menu_items", "suppliers", "payment_methods", "expense_categories"]) {
@@ -278,7 +271,6 @@ export async function journalsFor(world: World, sourceType: string, sourceId: st
     .orderBy(journalEntries.created_at);
 }
 
-/** Net debit - credit of an account code over POSTED entries (reversals are POSTED entries of their own). */
 export async function accountBalance(world: World, code: string): Promise<number> {
   const [row] = await world.db
     .select({ bal: sql<string | null>`COALESCE(SUM(${journalEntryLines.debit} - ${journalEntryLines.credit}), 0)::text` })
@@ -289,7 +281,6 @@ export async function accountBalance(world: World, code: string): Promise<number
   return Number(row.bal ?? 0);
 }
 
-/** The whole ledger must always balance (debits == credits) - the accounting reconciliation invariant. */
 export async function ledgerImbalance(world: World): Promise<number> {
   const [row] = await world.db
     .select({ d: sql<string | null>`COALESCE(SUM(${journalEntryLines.debit}) - SUM(${journalEntryLines.credit}), 0)::text` })
@@ -299,12 +290,10 @@ export async function ledgerImbalance(world: World): Promise<number> {
   return Number(row.d ?? 0);
 }
 
-/** Fires `n` identical requests at the same instant and returns their status codes (the concurrency primitive). */
 export async function fireConcurrently<T>(n: number, make: (i: number) => Promise<T>): Promise<T[]> {
   return Promise.all(Array.from({ length: n }, (_, i) => make(i)));
 }
 
-/** Number of REVERSAL entries that reverse the journal(s) of a business transaction. */
 export async function reversalsOf(world: World, sourceType: string, sourceId: string): Promise<number> {
   const originals = world.db
     .select({ id: journalEntries.id })
@@ -313,15 +302,10 @@ export async function reversalsOf(world: World, sourceType: string, sourceId: st
   return count(world, journalEntries, inArray(journalEntries.reversal_of_entry_id, originals));
 }
 
-/**
- * Test-database-only statements the query builder has no form for: the failure-injection trigger DDL below and the TRUNCATE that
- * the append-only check asserts is refused. Application code never issues raw statements.
- */
 export async function testDdl(world: World, statement: SQL): Promise<void> {
   await world.db.execute(statement);
 }
 
-// ---- failure injection (test database only): a trigger that makes every INSERT into `table` raise ----
 const INJECTED_TABLES = ["journal_entries", "stock_movements", "payments", "audit_logs", "payroll_runs", "branch_stock_balances"];
 
 export async function injectInsertFailure(world: World, table: (typeof INJECTED_TABLES)[number]): Promise<() => Promise<void>> {
@@ -336,7 +320,6 @@ export async function injectInsertFailure(world: World, table: (typeof INJECTED_
   };
 }
 
-/** Snapshot of every business table an order touches - used to prove a rejected command wrote NOTHING. */
 export async function orderWriteFootprint(world: World): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const t of ["orders", "order_items", "payments", "stock_movements", "journal_entries", "journal_entry_lines", "print_jobs"]) out[t] = await count(world, tableOf(t));
@@ -344,7 +327,6 @@ export async function orderWriteFootprint(world: World): Promise<Record<string, 
   return out;
 }
 
-// ---- the foreign-key graph, read from the Drizzle schema (it mirrors the database; the drizzle-kit drift check keeps it so) ----
 const ALL_TABLES = (Object.values(schema) as unknown[]).filter((t): t is PgTable => is(t, PgTable));
 
 function tableOf(name: string): PgTable {
@@ -359,7 +341,6 @@ function columnOf(table: PgTable, name: string): PgColumn {
   return column;
 }
 
-/** Single-column foreign keys pointing at `parent`, as [child table, referencing column]. */
 function foreignKeysTo(parent: PgTable): Array<{ child: PgTable; column: PgColumn }> {
   return ALL_TABLES.flatMap((child) =>
     getTableConfig(child)
@@ -369,7 +350,6 @@ function foreignKeysTo(parent: PgTable): Array<{ child: PgTable; column: PgColum
   );
 }
 
-/** `roots` plus every table that (transitively) references one of them: what TRUNCATE ... CASCADE would empty. */
 function referencingClosure(roots: PgTable[]): PgTable[] {
   const out = new Set<PgTable>(roots);
   const queue = [...roots];
@@ -383,7 +363,6 @@ function referencingClosure(roots: PgTable[]): PgTable[] {
   return [...out];
 }
 
-/** Runs `fn` in a transaction with triggers and FK checks off (superuser-only session_replication_role; test database only). */
 async function asReplica(db: Database, fn: (tx: DatabaseTx) => Promise<void>): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.select({ role: sql`set_config('session_replication_role', 'replica', true)` }).from(sql`(VALUES (1)) AS cfg`);
@@ -391,11 +370,6 @@ async function asReplica(db: Database, fn: (tx: DatabaseTx) => Promise<void>): P
   });
 }
 
-/**
- * Deletes `ids` of `table` AND, recursively, every row that references them through a foreign key (test database only; runs with
- * triggers/constraints disabled via session_replication_role so immutable ledgers can be cleaned). Used by specs to leave the shared
- * disposable database exactly as they found it.
- */
 export async function purge(db: Database, table: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await asReplica(db, async (tx) => {
@@ -406,7 +380,6 @@ export async function purge(db: Database, table: string, ids: string[]): Promise
         const key = `${getTableName(child)}.${column.name}<-${getTableName(parent)}:${parentIds.join(",")}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        // ids are compared as text: a child id is not necessarily a uuid (audit_logs.id is a bigint)
         const childId = (getTableColumns(child) as Record<string, PgColumn | undefined>).id;
         if (childId) {
           const rows = await tx

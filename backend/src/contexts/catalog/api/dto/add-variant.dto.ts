@@ -1,4 +1,4 @@
-import { IsNumber, IsString } from "class-validator";
+import { IsNumber, IsString, Min } from "class-validator";
 
 export class AddVariantDto {
   @IsString()
@@ -6,4 +6,6 @@ export class AddVariantDto {
 
   @IsNumber()
   price!: number;
+
+  @IsNumber() @Min(0) talabatPrice!: number;
 }

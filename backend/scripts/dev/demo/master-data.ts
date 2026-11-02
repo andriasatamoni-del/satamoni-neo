@@ -57,6 +57,8 @@ import {
 import { placeholderPng } from "./png";
 import { between, count, handler, pick, round2, type SeedContext } from "./seed-context";
 
+const DEMO_TALABAT_MARKUP = 1.4;
+
 const KITCHEN_STATIONS = [
   { key: "pizza", name: "فرن البيتزا", printer: "طابعة فرن البيتزا" },
   { key: "feteer", name: "ركن الفطير", printer: "طابعة ركن الفطير" },
@@ -348,7 +350,7 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
         description: spec.description,
         imageUrl: image.url,
         isBest: spec.isBest ?? false,
-        variants: spec.variants.map((v) => ({ label: v.label, price: v.price })),
+        variants: spec.variants.map((v) => ({ label: v.label, price: v.price, talabatPrice: Math.round(v.price * DEMO_TALABAT_MARKUP) })),
       });
       const ref = {
         id: item.id,
