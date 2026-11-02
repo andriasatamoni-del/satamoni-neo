@@ -73,7 +73,7 @@ describe("تقييم الطلب - صفحة عامة بدون تسجيل دخول
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-تقييمات-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 120 });
+    const variant = item.addVariant({ label: "عادي", price: 120, talabatPrice: 120 });
     await menuItemRepo.save(item);
     variantId = variant.id;
   });

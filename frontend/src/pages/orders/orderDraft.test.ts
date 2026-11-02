@@ -15,6 +15,7 @@ const CUSTOMER: PosCustomer = {
 function draft(patch: Partial<OrderDraft>): OrderDraft {
   return {
     orderType: "takeaway",
+    priceMenu: "regular",
     tableNumber: "",
     customer: null,
     customerAddressId: "",
@@ -26,6 +27,13 @@ function draft(patch: Partial<OrderDraft>): OrderDraft {
     ...patch,
   };
 }
+
+describe("buildOrderPayload source", () => {
+  it("marks only Talabat menu orders with the talabat source", () => {
+    expect(buildOrderPayload("b1", draft({ priceMenu: "talabat" }), []).source).toBe("talabat");
+    expect(buildOrderPayload("b1", draft({}), []).source).toBeUndefined();
+  });
+});
 
 describe("buildOrderPayload customer fields", () => {
   it("sends only the customer id, chosen phone and address id for a selected customer", () => {

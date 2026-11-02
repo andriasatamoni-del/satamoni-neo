@@ -94,7 +94,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "برجر-تسويات-سائقين-جست" });
-    const variant = item.addVariant({ label: "وسط", price: 100 });
+    const variant = item.addVariant({ label: "وسط", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
@@ -149,11 +149,11 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
   });
 
   test("تسوية كاش سائق: فرق داخل حد الاعتماد (30ج) -> NONE، من غير قيد محاسبي", async () => {
-    await createDeliveredCashAssignment(100); // قيمة الطلب 100، السائق قال إنه حصّل 100
+    await createDeliveredCashAssignment(100);
     const res = await request(app.getHttpServer())
       .post("/delivery/settlements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, branchId, actualHandover: 100 }); // سلّم بالظبط زي ما حصّل
+      .send({ driverId, branchId, actualHandover: 100 });
     expect(res.status).toBe(201);
     expect(res.body.orderCount).toBe(1);
     expect(res.body.codCollected).toBe(100);
@@ -171,7 +171,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     const res = await request(app.getHttpServer())
       .post("/delivery/settlements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, branchId, actualHandover: 50 }); // سلّم 50 بس من أصل 100 - عجز 50 (أكبر من حد 30ج)
+      .send({ driverId, branchId, actualHandover: 50 });
     expect(res.status).toBe(201);
     expect(res.body.handoverVariance).toBe(-50);
     expect(res.body.varianceStatus).toBe("PENDING_REVIEW");
@@ -180,16 +180,14 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     const journalAfter = await request(app.getHttpServer())
       .get("/accounting/journal-entries")
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(journalAfter.body.length).toBe(cashBefore + 1); // قيد فرق واحد جديد اترحّل
+    expect(journalAfter.body.length).toBe(cashBefore + 1);
 
-    // نفس الطلب المسلَّم اتحسب في تسوية بالفعل - محاولة تسوية تانية من غير طلبات جديدة تفشل
     const nothingLeft = await request(app.getHttpServer())
       .post("/delivery/settlements")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ driverId, branchId, actualHandover: 0 });
     expect(nothingLeft.status).toBe(400);
 
-    // مراجعة الفرق - اعتماد
     const reviewed = await request(app.getHttpServer())
       .post(`/delivery/settlements/${settlementId}/review`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -197,7 +195,6 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     expect(reviewed.status).toBe(201);
     expect(reviewed.body.varianceStatus).toBe("APPROVED");
 
-    // مراجعة تانية على نفس التسوية بعد ما خلصت -> 400
     const reviewAgain = await request(app.getHttpServer())
       .post(`/delivery/settlements/${settlementId}/review`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -220,8 +217,6 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
       .send({ driverId, branchId });
     expect(checkInAgain.status).toBe(409);
 
-    // طلب بيتسلّم أثناء الشيفت نفسه - عشان البونص يتحسب (بونص = عدد الطلبات المُسلَّمة من checked_in_at
-    // لحد دلوقتي، مش الطلبات القديمة من قبل الدخول)
     await createDeliveredCashAssignment(100);
 
     const cashBefore = (
@@ -236,27 +231,23 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     expect(checkOut.body.status).toBe("CLOSED");
     expect(checkOut.body.hourlyRate).toBe(33);
     expect(checkOut.body.hoursWorked).toBeGreaterThanOrEqual(0);
-    expect(checkOut.body.totalPay).toBeGreaterThan(0); // wageAmount (ممكن يكون قريب من صفر) + bonusTotal (2 طلبات اتسلّموا فعلًا)
+    expect(checkOut.body.totalPay).toBeGreaterThan(0);
 
     const journalAfter = await request(app.getHttpServer())
       .get("/accounting/journal-entries")
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(journalAfter.body.length).toBe(cashBefore + 1); // قيد أجر واحد جديد اترحّل
+    expect(journalAfter.body.length).toBe(cashBefore + 1);
 
-    // نفس الشيفت المقفول - دخول جديد لازم ينجح (مفيش شيفت ACTIVE تاني)
     const checkInAfterClose = await request(app.getHttpServer())
       .post("/delivery/attendance-shifts/check-in")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ driverId, branchId });
     expect(checkInAfterClose.status).toBe(201);
-    // ننضّف الشيفت الجديد ده فورًا عشان مايأثرش على afterAll لو اتنفّذ بعد كده
     await request(app.getHttpServer())
       .post(`/delivery/attendance-shifts/${checkInAfterClose.body.id}/check-out`)
       .set("Authorization", `Bearer ${adminToken}`)
       .send({});
 
-    // الطلب اللي اتسلّم أثناء الشيفت لسه مش متسوّى - نسوّيه هنا عشان مايفضلش يتراكم على الاختبارات
-    // اللي جايّة (بيأثر على حساب الفرق لأي تسوية تانية لنفس السائق)
     await request(app.getHttpServer())
       .post("/delivery/settlements")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -275,7 +266,7 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
     const userRepo = new UserRepository(app.get<Database>(DATABASE));
     const hasher = new BcryptPasswordHasher();
     const cashier = User.register({
-      name: "كاشير-تسويات-سائقين-جست", email: "cashier-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"], branchId, // Phase 3.1: cashier is branch-bound
+      name: "كاشير-تسويات-سائقين-جست", email: "cashier-driver-settlements@jest.test", passwordHash: await hasher.hash("12345678"), roles: ["cashier"], branchId,
     });
     await userRepo.save(cashier);
     const loginRes = await request(app.getHttpServer())
@@ -288,7 +279,6 @@ describe("Delivery - تسويات كاش السائقين وشيفتات الح�
       .send({ decision: "approve" });
     expect(res.status).toBe(403);
 
-    // بالمقابل - كاشير مسموحله يعمل تسوية (delivery.settlements.create)
     await createDeliveredCashAssignment(100);
     const createRes = await request(app.getHttpServer())
       .post("/delivery/settlements")

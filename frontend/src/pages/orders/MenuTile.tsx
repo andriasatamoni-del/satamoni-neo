@@ -6,6 +6,7 @@ export function MenuTile({
   badge,
   cartQuantity,
   highlighted = false,
+  disabled = false,
   onClick,
 }: {
   name: string;
@@ -13,15 +14,17 @@ export function MenuTile({
   badge?: ReactNode;
   cartQuantity: number;
   highlighted?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`relative flex flex-col items-start gap-1 rounded-xl border p-3 text-start shadow-sm transition-colors hover:border-brand-400 hover:shadow-md ${
-        highlighted ? "border-brand-300 bg-brand-50/50" : "border-slate-200 bg-white"
-      }`}
+      className={`relative flex flex-col items-start gap-1 rounded-xl border p-3 text-start shadow-sm transition-colors ${
+        disabled ? "cursor-not-allowed opacity-50" : "hover:border-brand-400 hover:shadow-md"
+      } ${highlighted ? "border-brand-300 bg-brand-50/50" : "border-slate-200 bg-white"}`}
     >
       {cartQuantity > 0 && (
         <span className="absolute end-2 top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">

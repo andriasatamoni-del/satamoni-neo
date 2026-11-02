@@ -13,8 +13,6 @@ import { branchStockBalances, inventoryItems, stockMovements } from "../../../sr
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
-// e2e لتسجيل طلب فيه سطر عرض (combo) - بيتأكد إن استهلاك المخزون بيتفكّ لأصناف العرض الأصلية عن طريق
-// وصفة كل حجم (نفس فلسفة combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
 describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -79,26 +77,26 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const pizza = MenuItem.register({ name: "بيتزا-طلبات-عروض-جست" });
-    const pizzaVariant = pizza.addVariant({ label: "وسط", price: 100 });
+    const pizzaVariant = pizza.addVariant({ label: "وسط", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(pizza);
     pizzaVariantId = pizzaVariant.id;
 
     const drink = MenuItem.register({ name: "مشروب-طلبات-عروض-جست" });
-    const drinkVariant = drink.addVariant({ label: "عادي", price: 15 });
+    const drinkVariant = drink.addVariant({ label: "عادي", price: 15, talabatPrice: 15 });
     await menuItemRepo.save(drink);
     drinkVariantId = drinkVariant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: pizzaVariantId });
     const version = recipe.createDraftVersion({});
-    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو جبنة لكل بيتزا وسط
+    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
     const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({
       name: "عرض بيتزا+مشروب-طلبات-عروض-جست",
-      price: 100, // أرخص من مجموع الأصناف (115) - نفس فكرة العروض
+      price: 100,
       items: [
         { variantId: pizzaVariantId, quantity: 1 },
         { variantId: drinkVariantId, quantity: 1 },
@@ -139,13 +137,12 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ comboId, quantity: 2 }] });
     expect(res.status).toBe(201);
-    expect(res.body.total).toBe(200); // 2 * 100 (سعر العرض) مش 2 * 115 (مجموع الأصناف)
+    expect(res.body.total).toBe(200);
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].comboId).toBe(comboId);
     expect(res.body.items[0].menuItemId).toBeNull();
     expect(res.body.items[0].variantId).toBeNull();
 
-    // 2 عرض × 1 بيتزا لكل عرض × 2 كيلو جبنة لكل بيتزا = 4 كيلو استهلاك -> الرصيد يبقى 6 (المشروب مالوش وصفة)
     const balance = await request(app.getHttpServer())
       .get(`/inventory/balances?branchId=${branchId}&inventoryItemId=${ingredientItemId}`)
       .set("Authorization", `Bearer ${adminToken}`);
@@ -173,7 +170,7 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
         ],
       });
     expect(res.status).toBe(201);
-    expect(res.body.total).toBe(115); // 15 (مشروب) + 100 (عرض)
+    expect(res.body.total).toBe(115);
     expect(res.body.items).toHaveLength(2);
   });
 

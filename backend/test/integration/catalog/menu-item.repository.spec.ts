@@ -24,8 +24,8 @@ describe("MenuItemRepository", () => {
 
   test("save بيسجّل صنف وأحجامه مع بعض، وfindById بيرجّعهم بنفس البيانات", async () => {
     const item = MenuItem.register({ name: "بيتزا-جست" });
-    item.addVariant({ label: "وسط", price: 90 });
-    item.addVariant({ label: "كبير", price: 120 });
+    item.addVariant({ label: "وسط", price: 90, talabatPrice: 90 });
+    item.addVariant({ label: "كبير", price: 120, talabatPrice: 120 });
     await repo.save(item);
 
     const found = await repo.findById(item.id);
@@ -35,7 +35,7 @@ describe("MenuItemRepository", () => {
 
   test("findByVariantId بيلاقي الصنف الأب لحجم معيّن", async () => {
     const item = MenuItem.register({ name: "فطير-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 60 });
+    const variant = item.addVariant({ label: "عادي", price: 60, talabatPrice: 60 });
     await repo.save(item);
 
     const found = await repo.findByVariantId(variant.id);
@@ -44,11 +44,11 @@ describe("MenuItemRepository", () => {
 
   test("save تاني بيضيف حجم جديد من غير ما يكرر القديم", async () => {
     const item = MenuItem.register({ name: "برجر-جست" });
-    item.addVariant({ label: "سنجل", price: 70 });
+    item.addVariant({ label: "سنجل", price: 70, talabatPrice: 70 });
     await repo.save(item);
 
     const reloaded = await repo.findById(item.id);
-    reloaded!.addVariant({ label: "دبل", price: 100 });
+    reloaded!.addVariant({ label: "دبل", price: 100, talabatPrice: 100 });
     await repo.save(reloaded!);
 
     const final = await repo.findById(item.id);

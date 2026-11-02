@@ -8,6 +8,7 @@ import {
   ComboNotFoundForOrderError,
   CustomerNotFoundForOrderError,
   DeliveryAddressRequiredError,
+  TalabatPriceMissingForOrderError,
 } from "../../domain/errors";
 import { CUSTOMER_REPOSITORY, type CustomerRepositoryPort } from "../../../customers/domain/ports/customer-repository.port";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
@@ -82,6 +83,7 @@ export class RegisterOrderHandler {
     const comboLineComponents = new Map<string, { variantId: string; quantity: number }[]>();
     for (const item of command.items) {
       if (item.comboId) {
+        if (command.source === "talabat") throw new TalabatPriceMissingForOrderError();
         const combo = await this.combos.findById(item.comboId);
         if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
 
@@ -101,6 +103,7 @@ export class RegisterOrderHandler {
       const menuItem = await this.menuItems.findByVariantId(item.variantId);
       const variant = menuItem?.variants.find((v) => v.id === item.variantId);
       if (!menuItem || !variant) throw new VariantNotFoundForOrderError();
+      const basePrice = command.source === "talabat" ? variant.talabatPrice : variant.price;
 
       const modifiers: OrderItemModifierLine[] = [];
       let modifierTotal = 0;
@@ -117,7 +120,7 @@ export class RegisterOrderHandler {
         variantId: item.variantId,
         comboId: null,
         quantity: item.quantity,
-        unitPrice: variant.price + modifierTotal,
+        unitPrice: basePrice + modifierTotal,
         modifiers,
       });
     }
@@ -137,7 +140,7 @@ export class RegisterOrderHandler {
     for (const consumption of variantConsumptions) {
       const recipe = await this.recipes.findByVariantId(consumption.variantId);
       const activeVersion = recipe?.activeVersion;
-      if (!activeVersion) continue; // مفيش وصفة نشطة لسه - مفيش استهلاك ليه، مش خطأ
+      if (!activeVersion) continue;
       for (const ingredient of activeVersion.ingredients) {
         const current = requiredByIngredient.get(ingredient.ingredientItemId) ?? 0;
         requiredByIngredient.set(ingredient.ingredientItemId, current + ingredient.quantity * consumption.quantity);

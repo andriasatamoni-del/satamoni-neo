@@ -76,14 +76,14 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-مبيعات-تشغيل-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 50 });
+    const variant = item.addVariant({ label: "عادي", price: 50, talabatPrice: 50 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
-    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // تكلفة وحدة = 2×5 = 10
+    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
@@ -92,13 +92,11 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "كاش-مبيعات-تشغيل-جست", kind: "cash" });
 
-    // أوردر فعّال بكاش - كمية 2 (إيراد 100)
     await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 2 }], paymentMethodId: methodRes.body.id });
 
-    // أوردر هيتلغي
     const toCancel = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)

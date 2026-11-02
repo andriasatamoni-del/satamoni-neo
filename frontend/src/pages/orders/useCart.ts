@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { resolveModifierPrice } from "./menuPricing";
-import type { CartLine, CartLineModifier, Combo, MenuItem, MenuItemVariant } from "./posTypes";
+import { resolveModifierPrice, type SellableVariant } from "./menuPricing";
+import type { CartLine, CartLineModifier, Combo, MenuItem } from "./posTypes";
 
 function sumQuantities(lines: CartLine[]): number {
   return lines.reduce((sum, l) => sum + l.quantity, 0);
@@ -17,7 +17,7 @@ export function useCart() {
     );
   }
 
-  function addItem(item: MenuItem, variant: MenuItemVariant, modifierIds: string[]) {
+  function addItem(item: MenuItem, variant: SellableVariant, modifierIds: string[]) {
     const modifiers: CartLineModifier[] = modifierIds.map((id) => {
       const modifier = item.modifiers.find((m) => m.id === id)!;
       return { modifierId: modifier.id, name: modifier.name, priceDelta: resolveModifierPrice(modifier, variant.id) };
@@ -29,7 +29,7 @@ export function useCart() {
       comboId: null,
       itemName: item.name,
       variantLabel: variant.label,
-      unitPrice: variant.price + modifierTotal,
+      unitPrice: variant.salePrice + modifierTotal,
       modifiers,
     });
   }

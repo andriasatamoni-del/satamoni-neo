@@ -15,6 +15,7 @@ import { useListState } from "../shared/ui/useListState";
 import { useClientPagination } from "../shared/ui/useClientPagination";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { ImageUploadButton } from "../shared/ui/ImageUploadButton";
+import type { PriceMenu } from "./orders/posTypes";
 
 interface MenuCategory {
   id: string;
@@ -25,7 +26,7 @@ interface MenuCategory {
   isArchived: boolean;
 }
 
-interface MenuItemVariant { id: string; label: string; price: number; }
+interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number; }
 interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
 interface MenuItemModifier {
   id: string;
@@ -68,6 +69,8 @@ interface PriceHistoryEntry {
   changedByName: string | null;
   createdAt: string;
 }
+
+const EMPTY_ITEM_FORM = { name: "", categoryId: "", variantLabel: "", variantPrice: "", variantTalabatPrice: "" };
 
 const PRICE_FIELD_LABELS: Record<string, string> = { price: "السعر", talabat_price: "سعر طلبات", price_delta: "سعر المرفق" };
 
@@ -125,7 +128,7 @@ export function CatalogPage() {
   });
   const [showArchived, setShowArchived] = useState(false);
 
-  const [itemForm, setItemForm] = useState({ name: "", categoryId: "", variantLabel: "", variantPrice: "" });
+  const [itemForm, setItemForm] = useState(EMPTY_ITEM_FORM);
   const [itemError, setItemError] = useState<string | null>(null);
   const createItem = useMutation({
     mutationFn: () =>
@@ -134,11 +137,13 @@ export function CatalogPage() {
         body: {
           name: itemForm.name,
           categoryId: itemForm.categoryId || undefined,
-          variants: itemForm.variantLabel ? [{ label: itemForm.variantLabel, price: Number(itemForm.variantPrice) }] : undefined,
+          variants: itemForm.variantLabel
+            ? [{ label: itemForm.variantLabel, price: Number(itemForm.variantPrice), talabatPrice: Number(itemForm.variantTalabatPrice) }]
+            : undefined,
         },
       }),
     onSuccess: () => {
-      setItemForm({ name: "", categoryId: "", variantLabel: "", variantPrice: "" });
+      setItemForm(EMPTY_ITEM_FORM);
       setItemError(null);
       invalidateCatalog();
     },
@@ -156,10 +161,11 @@ export function CatalogPage() {
     },
   });
 
+  const [priceMenu, setPriceMenu] = useState<PriceMenu>("regular");
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>({});
   const updateVariant = useMutation({
     mutationFn: ({ itemId, variantId, price }: { itemId: string; variantId: string; price: number }) =>
-      apiRequest(`/catalog/items/${itemId}/variants/${variantId}`, { method: "PATCH", body: { price } }),
+      apiRequest(`/catalog/items/${itemId}/variants/${variantId}`, { method: "PATCH", body: priceMenu === "talabat" ? { talabatPrice: price } : { price } }),
     onSuccess: () => invalidateCatalog(),
   });
 
@@ -429,7 +435,10 @@ export function CatalogPage() {
                     <Input value={itemForm.variantLabel} onChange={(e) => setItemForm({ ...itemForm, variantLabel: e.target.value })} />
                   </Field>
                   <Field label="السعر">
-                    <Input type="number" value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} />
+                    <Input type="number" min="0" required={itemForm.variantLabel !== ""} value={itemForm.variantPrice} onChange={(e) => setItemForm({ ...itemForm, variantPrice: e.target.value })} />
+                  </Field>
+                  <Field label="سعر طلبات">
+                    <Input type="number" min="0" required={itemForm.variantLabel !== ""} value={itemForm.variantTalabatPrice} onChange={(e) => setItemForm({ ...itemForm, variantTalabatPrice: e.target.value })} />
                   </Field>
                 </div>
                 {itemError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{itemError}</p>}
@@ -442,7 +451,13 @@ export function CatalogPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>الأصناف ({itemsPageQuery.data?.total ?? 0})</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>الأصناف ({itemsPageQuery.data?.total ?? 0})</CardTitle>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant={priceMenu === "regular" ? "primary" : "secondary"} onClick={() => setPriceMenu("regular")}>أسعار المنيو العادي</Button>
+              <Button size="sm" variant={priceMenu === "talabat" ? "primary" : "secondary"} onClick={() => setPriceMenu("talabat")}>أسعار طلبات</Button>
+            </div>
+          </div>
         </CardHeader>
         <CardBody className="p-0">
           <ListFilters
@@ -527,22 +542,29 @@ export function CatalogPage() {
                           "—"
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {i.variants.map((v) => (
+                            {i.variants.map((v) => {
+                              const savedPrice = priceMenu === "talabat" ? v.talabatPrice : v.price;
+                              const draftKey = `${priceMenu}:${v.id}`;
+                              const enteredText = variantPrices[draftKey] ?? String(savedPrice);
+                              const enteredPrice = enteredText.trim() === "" ? null : Number(enteredText);
+                              return (
                               <div key={v.id} className="flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1">
                                 <span className="text-xs text-slate-500">{v.label}:</span>
                                 {canManage ? (
                                   <>
                                     <Input
                                       type="number"
-                                      value={variantPrices[v.id] ?? String(v.price)}
-                                      onChange={(e) => setVariantPrices({ ...variantPrices, [v.id]: e.target.value })}
+                                      min="0"
+                                      value={enteredText}
+                                      aria-label={`${priceMenu === "talabat" ? "سعر طلبات" : "السعر"} ${i.name} ${v.label}`}
+                                      onChange={(e) => setVariantPrices({ ...variantPrices, [draftKey]: e.target.value })}
                                       className="w-20 py-0.5 text-xs"
                                     />
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => updateVariant.mutate({ itemId: i.id, variantId: v.id, price: Number(variantPrices[v.id] ?? v.price) })}
-                                      disabled={updateVariant.isPending || Number(variantPrices[v.id] ?? v.price) === v.price}
+                                      onClick={() => enteredPrice !== null && updateVariant.mutate({ itemId: i.id, variantId: v.id, price: enteredPrice })}
+                                      disabled={updateVariant.isPending || enteredPrice === null || enteredPrice === savedPrice}
                                     >
                                       حفظ
                                     </Button>
@@ -555,10 +577,11 @@ export function CatalogPage() {
                                     </Button>
                                   </>
                                 ) : (
-                                  <span className="text-xs font-semibold text-slate-800">{v.price}</span>
+                                  <span className="text-xs font-semibold text-slate-800">{savedPrice}</span>
                                 )}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </TD>

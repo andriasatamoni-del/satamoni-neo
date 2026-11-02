@@ -12,8 +12,6 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 
-// e2e لمرفقات الصنف (modifiers) - من ضبطها في المنيو لحد استخدامها فعليًا في طلب حقيقي: سعر افتراضي،
-// سعر مخصوص لحجم معيّن بيغلبه، والسعر النهائي بيتسجّل (snapshot) على سطر الطلب وقت البيع
 describe("Catalog Modifiers - مرفقات الصنف", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -58,13 +56,13 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
     const smallRes = await request(app.getHttpServer())
       .post(`/catalog/items/${itemId}/variants`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ label: "صغير", price: 60 });
+      .send({ label: "صغير", price: 60, talabatPrice: 84 });
     smallVariantId = smallRes.body.variants.find((v: { label: string }) => v.label === "صغير").id;
 
     const largeRes = await request(app.getHttpServer())
       .post(`/catalog/items/${itemId}/variants`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ label: "كبير", price: 120 });
+      .send({ label: "كبير", price: 120, talabatPrice: 168 });
     largeVariantId = largeRes.body.variants.find((v: { label: string }) => v.label === "كبير").id;
   });
 
@@ -131,12 +129,12 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
     expect(res.status).toBe(201);
 
     const smallLine = res.body.items.find((i: { variantId: string }) => i.variantId === smallVariantId);
-    expect(smallLine.unitPrice).toBe(70); // 60 + 10 (افتراضي)
-    expect(smallLine.lineTotal).toBe(140); // 70 × 2
+    expect(smallLine.unitPrice).toBe(70);
+    expect(smallLine.lineTotal).toBe(140);
     expect(smallLine.modifiers).toEqual([{ modifierId, nameAtSale: "إضافة جبنة", priceAtSale: 10 }]);
 
     const largeLine = res.body.items.find((i: { variantId: string }) => i.variantId === largeVariantId);
-    expect(largeLine.unitPrice).toBe(138); // 120 + 18 (مخصوص)
+    expect(largeLine.unitPrice).toBe(138);
     expect(largeLine.modifiers).toEqual([{ modifierId, nameAtSale: "إضافة جبنة", priceAtSale: 18 }]);
 
     expect(res.body.total).toBe(140 + 138);
@@ -154,7 +152,7 @@ describe("Catalog Modifiers - مرفقات الصنف", () => {
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId: largeVariantId, quantity: 1, modifierIds: [modifierId] }] });
-    expect(orderRes.body.items[0].unitPrice).toBe(130); // 120 + 10 (افتراضي بعد ما اتشال المخصوص)
+    expect(orderRes.body.items[0].unitPrice).toBe(130);
   });
 
   test("PATCH modifier - بيقفّل المرفق (isActive=false)", async () => {

@@ -14,9 +14,6 @@ import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import type { Database } from "../../../src/shared/database/database.token";
 
-// e2e لطابور متابعة العملاء (followup-queue) - بيشتغل على أوردرات دليفري حقيقية اتسلّمت فعليًا
-// (delivery_assignments.status='DELIVERED') مش بس المستوردة من الريبو القديم (راجع migration 030 -
-// customer_followups بقى ليه orderId حقيقي (FK) جنب legacyOrderId)
 describe("CRM Followup Queue - /crm/followup-queue", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -56,7 +53,7 @@ describe("CRM Followup Queue - /crm/followup-queue", () => {
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "ساندوتش-طابور-متابعة-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 60 });
+    const variant = item.addVariant({ label: "عادي", price: 60, talabatPrice: 60 });
     await menuItemRepo.save(item);
 
     const orderRes = await request(app.getHttpServer())

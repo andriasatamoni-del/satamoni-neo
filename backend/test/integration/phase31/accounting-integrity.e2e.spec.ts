@@ -25,10 +25,7 @@ import { and, count as dbCount, desc, eq, inArray, isNull, like, lt, ne, or, sql
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
 
-// BL-06 (payment adjustments), BL-07 (COGS), BL-10 (payroll cancellation + adjustments <-> runs) and the accounting reconciliation
-// invariants: every business fact has exactly the journal(s) it should, reversals mirror originals, the ledger always balances.
 
-/** Net (debit - credit) on an account code produced by the journals of the given (sourceType, sourceId) pairs - reversals included. */
 async function netFor(w: World, code: string, sources: Array<[string, string]>): Promise<number> {
   let total = 0;
   for (const [type, id] of sources) {
@@ -75,7 +72,6 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       expect(await netFor(w, "5100", [["order_cogs", id]])).toBe(3 * COGS_PER_UNIT);
       expect(await netFor(w, "1400", [["order_cogs", id]])).toBe(-3 * COGS_PER_UNIT);
       expect(await stockOf(w, w.branchA)).toBe(stock - 3 * RECIPE_QTY);
-      // the COGS journal is NOT the sale journal (separate source types, one each)
       expect((await journalsFor(w, "order_sale", id)).length).toBe(1);
       expect((await journalsFor(w, "order_cogs", id)).length).toBe(1);
       expect(await ledgerImbalance(w)).toBe(0);
@@ -87,14 +83,14 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const id = res.body.id as string;
       const cogsBefore = await accountBalance(w, "5100");
 
-      await w.db.update(inventoryItems).set({ unit_cost: INGREDIENT_UNIT_COST + 4 }).where(eq(inventoryItems.id, w.ingredientId)); // 9 now
+      await w.db.update(inventoryItems).set({ unit_cost: INGREDIENT_UNIT_COST + 4 }).where(eq(inventoryItems.id, w.ingredientId));
       const cancelled = await request(w.http()).patch(`/orders/${id}/cancel`).set(auth(w.tokens.managerA));
       expect(cancelled.status).toBe(200);
       await w.db.update(inventoryItems).set({ unit_cost: INGREDIENT_UNIT_COST }).where(eq(inventoryItems.id, w.ingredientId));
 
       expect(await stockOf(w, w.branchA)).toBe(stock);
       const restore = await w.db.select({ unit_cost: stockMovements.unit_cost, total_cost: stockMovements.total_cost }).from(stockMovements).where(and(eq(stockMovements.reference_type, "order_cancellation"), eq(stockMovements.reference_id, id)));
-      expect(Number(restore[0].unit_cost)).toBe(INGREDIENT_UNIT_COST); // original cost, not 9
+      expect(Number(restore[0].unit_cost)).toBe(INGREDIENT_UNIT_COST);
       expect(await netFor(w, "5100", [["order_cogs", id]])).toBe(0);
       expect(await netFor(w, "1100", [["order_sale", id]])).toBe(0);
       expect(await accountBalance(w, "5100")).toBe(cogsBefore - 2 * COGS_PER_UNIT);
@@ -114,7 +110,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       expect(during.revenue).toBe(before.revenue + 4 * VARIANT_PRICE);
       expect((await request(w.http()).patch(`/orders/${created.body.id}/cancel`).set(auth(w.tokens.managerA))).status).toBe(200);
       const after = await tb();
-      expect(after).toEqual(before); // revenue, cash, COGS and inventory are back where they were
+      expect(after).toEqual(before);
       expect(after.balanced).toBe(true);
 
       const today = businessDateString();
@@ -126,7 +122,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const { MenuItemRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/menu-item.repository");
       const { MenuItem } = await import("../../../src/contexts/catalog/domain/menu-item.aggregate");
       const item = MenuItem.register({ name: "صنف-بدون-وصفة-acct" });
-      const variant = item.addVariant({ label: "عادي", price: 40 });
+      const variant = item.addVariant({ label: "عادي", price: 40, talabatPrice: 40 });
       await new MenuItemRepository(w.db).save(item);
 
       const res = await request(w.http())
@@ -155,12 +151,12 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
         { allowNegativeBalance: true }
       );
       const item = MenuItem.register({ name: "صنف-مركب-acct" });
-      const variant = item.addVariant({ label: "عادي", price: 90 });
+      const variant = item.addVariant({ label: "عادي", price: 90, talabatPrice: 90 });
       await new MenuItemRepository(w.db).save(item);
       const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
       const version = recipe.createDraftVersion({});
-      recipe.addIngredient(version.id, { ingredientItemId: w.ingredientId, quantity: 1 }); // 1 x 5
-      recipe.addIngredient(version.id, { ingredientItemId: second.id, quantity: 4 }); //      4 x 3
+      recipe.addIngredient(version.id, { ingredientItemId: w.ingredientId, quantity: 1 });
+      recipe.addIngredient(version.id, { ingredientItemId: second.id, quantity: 4 });
       recipe.activateVersion(version.id);
       await new RecipeRepository(w.db).save(recipe);
 
@@ -193,13 +189,12 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
 
       expect(await netFor(w, "6950", [["payment_adjustment", adj.body.id]])).toBe(20);
       expect(await netFor(w, "1100", [["payment_adjustment", adj.body.id]])).toBe(-20);
-      expect(await netFor(w, "1100", [["order_sale", orderId], ["payment_adjustment", adj.body.id]])).toBe(80); // net cash of the order
+      expect(await netFor(w, "1100", [["order_sale", orderId], ["payment_adjustment", adj.body.id]])).toBe(80);
       const row = await w.db.select({ previous_amount: paymentAdjustmentRequests.previous_amount, previous_payment_method_id: paymentAdjustmentRequests.previous_payment_method_id }).from(paymentAdjustmentRequests).where(eq(paymentAdjustmentRequests.id, adj.body.id));
       expect(Number(row[0].previous_amount)).toBe(VARIANT_PRICE);
       expect(row[0].previous_payment_method_id).toBe(w.cashMethodId);
       expect((await w.db.select({ payment_method_id: orders.payment_method_id }).from(orders).where(eq(orders.id, orderId)))[0].payment_method_id).toBe(w.visaMethodId);
 
-      // cancelling the order reverses the sale, the COGS AND the adjustment correction
       const cancel = await request(w.http()).patch(`/orders/${orderId}/cancel`).set(auth(w.tokens.managerA));
       expect(cancel.status).toBe(200);
       expect(await reversalsOf(w, "payment_adjustment", adj.body.id)).toBe(1);
@@ -291,14 +286,14 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       expect(await netFor(w, "6100", [["payroll_run", run.body.id]])).toBe(0);
       expect((await request(w.http()).post(`/hr/payroll-runs/${run.body.id}/cancel`).set(auth(w.tokens.admin2)).send({ reason: "تاني" })).status).toBe(409);
       expect(await reversalsOf(w, "payroll_run", run.body.id)).toBe(1);
-      expect((await registerRun(2033, 1)).status).toBe(201); // month is free again
+      expect((await registerRun(2033, 1)).status).toBe(201);
     });
 
     test("registered adjustments are applied to the run line automatically and LINKED to it (never omitted, never applied twice)", async () => {
       await adjust("advance", 300, "2033-05-10");
       await adjust("penalty", 50, "2033-05-12");
-      await adjust("bonus", 100, "2033-05-31"); // last day of the month still belongs to May
-      await adjust("bonus", 999, "2033-06-01"); // next month - must NOT be consumed by the May run
+      await adjust("bonus", 100, "2033-05-31");
+      await adjust("bonus", 999, "2033-06-01");
 
       const run = await registerRun(2033, 5);
       expect(run.status).toBe(201);
@@ -310,11 +305,9 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const june = await w.db.select({ payroll_run_id: payrollAdjustments.payroll_run_id }).from(payrollAdjustments).where(eq(payrollAdjustments.amount, 999));
       expect(june[0].payroll_run_id).toBeNull();
 
-      // a consumed adjustment can not be cancelled behind the run's back
       const adjId = (await w.db.select({ id: payrollAdjustments.id }).from(payrollAdjustments).where(eq(payrollAdjustments.amount, 300)))[0].id;
       expect((await request(w.http()).post(`/hr/adjustments/${adjId}/cancel`).set(auth(w.tokens.admin)).send({ reason: "تراجع" })).status).toBe(409);
 
-      // deleting the draft frees them again
       expect((await request(w.http()).delete(`/hr/payroll-runs/${run.body.id}`).set(auth(w.tokens.admin))).status).toBe(200);
       const free = await w.db.select({ n: dbCount() }).from(payrollAdjustments).where(and(isNull(payrollAdjustments.payroll_run_id), eq(payrollAdjustments.status, "ACTIVE"), lt(payrollAdjustments.entry_date, sql`${"2033-06-01"}::date`)));
       expect(Number(free[0].n)).toBe(3);
@@ -331,7 +324,7 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const audit = await w.db.select({ metadata: auditLogs.metadata }).from(auditLogs).where(like(auditLogs.action, "POST /hr/payroll-runs%")).orderBy(desc(auditLogs.created_at)).limit(1);
       expect(audit.length).toBe(1);
 
-      const plain = await registerRun(2033, 8, { advances: 25 }); // no adjustments in August: legacy behaviour
+      const plain = await registerRun(2033, 8, { advances: 25 });
       expect(plain.status).toBe(201);
       expect(plain.body.employees[0].advances).toBe(25);
     });
@@ -339,13 +332,12 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
     test("approval is refused while an eligible adjustment of the month was never applied (registered after the draft was built)", async () => {
       const run = await registerRun(2033, 9);
       expect(run.status).toBe(201);
-      await adjust("advance", 120, "2033-09-15"); // arrives after the draft
+      await adjust("advance", 120, "2033-09-15");
       const blocked = await request(w.http()).post(`/hr/payroll-runs/${run.body.id}/approve`).set(auth(w.tokens.admin2));
       expect(blocked.status).toBe(409);
       expect((await w.db.select({ status: payrollRuns.status }).from(payrollRuns).where(eq(payrollRuns.id, run.body.id)))[0].status).toBe("DRAFT");
       expect((await journalsFor(w, "payroll_run", run.body.id)).length).toBe(0);
 
-      // rebuild the draft: the adjustment is now applied and approval goes through
       await request(w.http()).delete(`/hr/payroll-runs/${run.body.id}`).set(auth(w.tokens.admin));
       const rebuilt = await registerRun(2033, 9);
       expect(rebuilt.body.employees[0].advances).toBe(120);

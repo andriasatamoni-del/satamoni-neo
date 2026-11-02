@@ -69,7 +69,6 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
     await branchRepo.save(branch);
     branchId = branch.id;
 
-    // مكوّن بسعر وحدة معروف (10 جنيه/كيلو) - أساس التكلفة النظرية
     const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({
       name: "دقيق-تكلفة-طعام-جست", unit: "كيلو", negativeStockPolicy: "STRICT", unitCost: 10,
@@ -84,24 +83,22 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "عيش-تكلفة-طعام-جست" });
-    const variant = item.addVariant({ label: "رغيف", price: 20 });
+    const variant = item.addVariant({ label: "رغيف", price: 20, talabatPrice: 20 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
-    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو دقيق لكل رغيف - تكلفة نظرية 20 جنيه
+    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
-    // أوردر أول (هيفضل فعّال) - يستهلك 2 كيلو (تكلفة نظرية 20 جنيه)
     await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 1 }] });
 
-    // أوردر تاني هيتلغي - يستهلك 2 كيلو تانية وبعدين يترجعوا بـADJUSTMENT (يقلل الفعلي عن النظري)
     const toCancel = await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -135,8 +132,8 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
       .get(`/reports/food-cost?branchId=${branchId}&from=${today}&to=${today}`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.totals.theoreticalCost).toBe(40); // 2 أوردر × 20 قبل الإلغاء
-    expect(res.body.totals.actualUsageCost).toBe(20); // بعد ما إلغاء التاني اترجع كامل
+    expect(res.body.totals.theoreticalCost).toBe(40);
+    expect(res.body.totals.actualUsageCost).toBe(20);
     expect(res.body.totals.variance).toBe(-20);
     const item = res.body.byItem.find((i: { inventoryItemId: string }) => i.inventoryItemId === ingredientItemId);
     expect(item).toMatchObject({ theoreticalCost: 40, actualUsageCost: 20, variance: -20 });

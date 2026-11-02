@@ -44,7 +44,7 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     const itemRes = await request(app.getHttpServer())
       .post("/catalog/items")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "بيتزا-سجل-أسعار-جست", variants: [{ label: "وسط", price: 100 }] });
+      .send({ name: "بيتزا-سجل-أسعار-جست", variants: [{ label: "وسط", price: 100, talabatPrice: 100 }] });
     itemId = itemRes.body.id;
     variantId = itemRes.body.variants[0].id;
 

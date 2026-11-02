@@ -11,6 +11,7 @@ export interface MenuItemVariant {
   id: string;
   label: string;
   price: number;
+  talabatPrice: number;
   legacyVariantId: number | null;
 }
 
@@ -78,23 +79,25 @@ export class MenuItem {
     return new MenuItem(id, props);
   }
 
-  addVariant(input: { label: string; price: number; legacyVariantId?: number | null }): MenuItemVariant {
+  addVariant(input: { label: string; price: number; talabatPrice: number; legacyVariantId?: number | null }): MenuItemVariant {
     const label = input.label.trim();
     if (this.props.variants.some((v) => v.label === label)) throw new DuplicateVariantLabelError(label);
     const variant: MenuItemVariant = {
       id: randomUUID(),
       label,
       price: input.price,
+      talabatPrice: input.talabatPrice,
       legacyVariantId: input.legacyVariantId ?? null,
     };
     this.props.variants.push(variant);
     return variant;
   }
 
-  updateVariantPrice(variantId: string, price: number): void {
+  updateVariantPrice(variantId: string, price?: number, talabatPrice?: number): void {
     const variant = this.props.variants.find((v) => v.id === variantId);
     if (!variant) throw new VariantNotFoundError();
-    variant.price = price;
+    if (price !== undefined) variant.price = price;
+    if (talabatPrice !== undefined) variant.talabatPrice = talabatPrice;
   }
 
   addModifier(input: { name: string; priceDelta: number; legacyModifierId?: number | null }): MenuItemModifier {

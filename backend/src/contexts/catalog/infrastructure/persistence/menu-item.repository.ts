@@ -54,11 +54,12 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             item_id: item.id,
             label: variant.label,
             price: variant.price,
+            talabat_price: variant.talabatPrice,
             legacy_variant_id: variant.legacyVariantId,
           })
           .onConflictDoUpdate({
             target: menuItemVariants.id,
-            set: { label: variant.label, price: variant.price },
+            set: { label: variant.label, price: variant.price, talabat_price: variant.talabatPrice },
           });
       }
 
@@ -185,6 +186,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
         id: v.id,
         label: v.label,
         price: Number(v.price),
+        talabatPrice: Number(v.talabat_price),
         legacyVariantId: v.legacy_variant_id,
       })),
       modifiers: modifierRows.map(({ row: m, variantPrices }) => ({

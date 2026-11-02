@@ -74,7 +74,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-تقارير-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 100 });
+    const variant = item.addVariant({ label: "عادي", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
@@ -84,7 +84,6 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .send({ name: "كاش-تقارير-جست", kind: "cash" });
     paymentMethodId = methodRes.body.id;
 
-    // طلب واحد فعّال بقيمة 200 (2 × 100) مربوط بدفعة كاش، وطلب تاني هيتلغي بعد كده
     await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -150,7 +149,7 @@ describe("Reporting - GET /reports/dashboard (e2e ضد تطبيق حقيقي ك�
       .get(`/reports/dashboard?from=${today}&to=${today}`)
       .set("Authorization", `Bearer ${branchManagerToken}`);
     expect(own.status).toBe(200);
-    expect(own.body.revenue).toBe(200); // نفس نتيجة فرعه هو، مش صفر
+    expect(own.body.revenue).toBe(200);
   });
 
   test("كاشير معندوش reports.view -> 403", async () => {

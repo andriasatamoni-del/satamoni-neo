@@ -9,8 +9,6 @@ import { eq, inArray, like } from "drizzle-orm";
 import { comboItems, combos, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
-// e2e لإدارة العروض (combos/combo_items) - راجع تعليق combo.aggregate.ts للفلسفة (نفس مفهوم الريبو
-// القديم بالظبط: أكتر من حجم بسعر واحد)
 describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
   let adminToken: string;
@@ -41,12 +39,12 @@ describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () =
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const itemA = MenuItem.register({ name: "برجر-عروض-جست" });
-    const variantA = itemA.addVariant({ label: "عادي", price: 60 });
+    const variantA = itemA.addVariant({ label: "عادي", price: 60, talabatPrice: 60 });
     await menuItemRepo.save(itemA);
     variantAId = variantA.id;
 
     const itemB = MenuItem.register({ name: "بيبسي-عروض-جست" });
-    const variantB = itemB.addVariant({ label: "وسط", price: 15 });
+    const variantB = itemB.addVariant({ label: "وسط", price: 15, talabatPrice: 15 });
     await menuItemRepo.save(itemB);
     variantBId = variantB.id;
   });
@@ -118,7 +116,6 @@ describe("Combos - العروض (e2e ضد تطبيق حقيقي كامل)", () =
     const allList = await request(app.getHttpServer()).get("/catalog/combos/all").set("Authorization", `Bearer ${adminToken}`);
     expect(allList.body.some((c: { id: string }) => c.id === comboId)).toBe(true);
 
-    // نرجّعه نشط تاني عشان تيست الطلبات (orders-combos.e2e.spec.ts) لو استخدمه
     await request(app.getHttpServer()).patch(`/catalog/combos/${comboId}`).set("Authorization", `Bearer ${adminToken}`).send({ isActive: true });
   });
 

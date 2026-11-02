@@ -35,7 +35,7 @@ describe("ReconciliationRecordRepository", () => {
 
     const menuItemRepo = new MenuItemRepository(db);
     const item = MenuItem.register({ name: "صنف مطابقة-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 50 });
+    const variant = item.addVariant({ label: "عادي", price: 50, talabatPrice: 50 });
     await menuItemRepo.save(item);
     const order = Order.register({ branchId, orderType: "delivery", items: [{ menuItemId: item.id, variantId: variant.id, quantity: 1, unitPrice: 50 }] });
     await new OrderRepository(db).save(order);

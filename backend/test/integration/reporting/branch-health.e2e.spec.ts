@@ -80,7 +80,6 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
     await userRepo.save(branchManager);
     branchManagerToken = (await request(app.getHttpServer()).post("/auth/login").send({ email: "manager-branchhealth@jest.test", password: "12345678" })).body.token;
 
-    // مكوّن بتكلفة وحدة معروفة + وصفة نشطة + أوردر - تكلفة نظرية 20 على إيراد 100 = 20% تكلفة طعام
     const inventoryRepo = new InventoryItemRepository(app.get<Database>(DATABASE));
     const ingredient = InventoryItem.register({ name: "مكوّن-صحة-فروع-جست", unit: "كيلو", unitCost: 10 });
     await inventoryRepo.save(ingredient);
@@ -92,23 +91,22 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
 
     const menuItemRepo = new MenuItemRepository(app.get<Database>(DATABASE));
     const item = MenuItem.register({ name: "صنف-صحة-فروع-جست" });
-    const variant = item.addVariant({ label: "عادي", price: 100 });
+    const variant = item.addVariant({ label: "عادي", price: 100, talabatPrice: 100 });
     await menuItemRepo.save(item);
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
     const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
     const version = recipe.createDraftVersion({});
-    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 }); // 2 كيلو × 10 = 20 تكلفة نظرية
+    recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
 
     await request(app.getHttpServer())
       .post("/orders")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 1 }] }); // إيراد 100
+      .send({ branchId, orderType: "takeaway", items: [{ variantId, quantity: 1 }] });
 
-    // صنف رصيد سالب
     const negItem = InventoryItem.register({ name: "صنف-سالب-صحة-فروع-جست", unit: "قطعة", negativeStockPolicy: "ALLOW_WITH_APPROVAL" });
     await inventoryRepo.save(negItem);
     await request(app.getHttpServer())
@@ -116,7 +114,6 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ inventoryItemId: negItem.id, branchId, movementType: "CONSUMPTION", quantityDelta: -3, approved: true });
 
-    // شيفت كاشير اتقفل بفرق كاش كبير -> PENDING_REVIEW
     const openRes = await request(app.getHttpServer())
       .post("/shifts/open")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -157,7 +154,7 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
 
     const branchIds = res.body.branches.map((b: { branchId: string }) => b.branchId);
     expect(branchIds).toContain(branchId);
-    expect(branchIds).not.toContain(centralKitchenId); // سنتر الكيتشن مستبعد
+    expect(branchIds).not.toContain(centralKitchenId);
 
     const row = res.body.branches.find((b: { branchId: string }) => b.branchId === branchId);
     expect(row.revenue).toBe(100);

@@ -64,6 +64,20 @@
       "when": 1793473268982,
       "tag": "0008_remove_talabat_permissions_and_system_user",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793483439970,
+      "tag": "0009_add_talabat_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793645211127,
+      "tag": "0010_require_talabat_price",
+      "breakpoints": true
     }
   ]
 }

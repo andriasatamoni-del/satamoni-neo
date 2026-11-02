@@ -21,20 +21,20 @@ describe("MenuItem aggregate", () => {
 
   it("addVariant بيضيف حجم جديد", () => {
     const item = MenuItem.register({ name: "بيتزا" });
-    const variant = item.addVariant({ label: "وسط", price: 90 });
+    const variant = item.addVariant({ label: "وسط", price: 90, talabatPrice: 90 });
     expect(item.variants).toHaveLength(1);
     expect(variant.price).toBe(90);
   });
 
   it("addVariant بيرفض حجم بنفس الاسم مرتين", () => {
     const item = MenuItem.register({ name: "بيتزا" });
-    item.addVariant({ label: "وسط", price: 90 });
-    expect(() => item.addVariant({ label: "وسط", price: 100 })).toThrow(DuplicateVariantLabelError);
+    item.addVariant({ label: "وسط", price: 90, talabatPrice: 90 });
+    expect(() => item.addVariant({ label: "وسط", price: 100, talabatPrice: 100 })).toThrow(DuplicateVariantLabelError);
   });
 
   it("updateVariantPrice بيحدّث سعر حجم موجود ويرفض حجم مش موجود", () => {
     const item = MenuItem.register({ name: "بيتزا" });
-    const variant = item.addVariant({ label: "كبير", price: 120 });
+    const variant = item.addVariant({ label: "كبير", price: 120, talabatPrice: 120 });
     item.updateVariantPrice(variant.id, 130);
     expect(item.variants[0].price).toBe(130);
     expect(() => item.updateVariantPrice("ghost-id", 100)).toThrow(VariantNotFoundError);
@@ -94,8 +94,8 @@ describe("MenuItem aggregate", () => {
 
     it("setModifierVariantPrice/resolveModifierPrice - سعر مخصوص لحجم بيغلب الافتراضي، وإلا الافتراضي", () => {
       const item = MenuItem.register({ name: "بيتزا" });
-      const small = item.addVariant({ label: "صغير", price: 60 });
-      const large = item.addVariant({ label: "كبير", price: 120 });
+      const small = item.addVariant({ label: "صغير", price: 60, talabatPrice: 60 });
+      const large = item.addVariant({ label: "كبير", price: 120, talabatPrice: 120 });
       const modifier = item.addModifier({ name: "إضافة سجق", priceDelta: 10 });
 
       expect(item.resolveModifierPrice(modifier.id, small.id)).toBe(10);
@@ -108,7 +108,7 @@ describe("MenuItem aggregate", () => {
 
     it("clearModifierVariantPrice بيرجّع السعر للافتراضي", () => {
       const item = MenuItem.register({ name: "بيتزا" });
-      const large = item.addVariant({ label: "كبير", price: 120 });
+      const large = item.addVariant({ label: "كبير", price: 120, talabatPrice: 120 });
       const modifier = item.addModifier({ name: "إضافة سجق", priceDelta: 10 });
       item.setModifierVariantPrice(modifier.id, large.id, 18);
       item.clearModifierVariantPrice(modifier.id, large.id);
