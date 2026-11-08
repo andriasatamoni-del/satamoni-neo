@@ -13,6 +13,11 @@ import { BranchStockThresholdRepository } from "./infrastructure/persistence/bra
 import { TransferRequestRepository } from "./infrastructure/persistence/transfer-request.repository";
 import { InventoryBatchRepository } from "./infrastructure/persistence/inventory-batch.repository";
 import { RegisterInventoryItemHandler } from "./application/commands/register-inventory-item.handler";
+import { UpdateInventoryItemHandler } from "./application/commands/update-inventory-item.handler";
+import { InventoryItemsTabular } from "./application/tabular/inventory-items.tabular";
+import { ExportInventoryItemsQueryDto } from "./api/dto/export-inventory-items-query.dto";
+import { TabularController } from "../../shared/tabular/tabular.controller";
+import { PERMISSION } from "../identity-access/domain/permission";
 import { RecordStockMovementHandler } from "./application/commands/record-stock-movement.handler";
 import { RegisterStocktakeHandler } from "./application/commands/register-stocktake.handler";
 import { UpdateStockThresholdHandler } from "./application/commands/update-stock-threshold.handler";
@@ -39,7 +44,18 @@ import { InventoryController } from "./api/inventory.controller";
 
 @Module({
   imports: [IdentityAccessModule],
-  controllers: [InventoryController],
+  controllers: [
+    InventoryController,
+    TabularController({
+      path: "inventory/items",
+      adapter: InventoryItemsTabular,
+      exportQuery: ExportInventoryItemsQueryDto,
+      permissions: {
+        export: [PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE],
+        import: [PERMISSION.INVENTORY_ITEMS_MANAGE],
+      },
+    }),
+  ],
   providers: [
     { provide: INVENTORY_ITEM_REPOSITORY, useClass: InventoryItemRepository },
     { provide: STOCK_MOVEMENT_REPOSITORY, useClass: StockMovementRepository },
@@ -50,6 +66,8 @@ import { InventoryController } from "./api/inventory.controller";
     { provide: REQUISITION_SUGGESTION_READER, useClass: RequisitionSuggestionReader },
     GetRequisitionSuggestionHandler,
     RegisterInventoryItemHandler,
+    UpdateInventoryItemHandler,
+    InventoryItemsTabular,
     RecordStockMovementHandler,
     RegisterStocktakeHandler,
     UpdateStockThresholdHandler,

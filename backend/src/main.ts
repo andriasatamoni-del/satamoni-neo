@@ -12,6 +12,7 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.FRONTEND_ORIGIN?.split(",").map((s) => s.trim()) ?? "http://localhost:5173",
     credentials: true,
+    exposedHeaders: ["Content-Disposition"],
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   const port = Number(process.env.PORT) || 4100;

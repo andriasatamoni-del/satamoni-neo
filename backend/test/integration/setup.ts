@@ -8,6 +8,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "neo_test_secret_do_not_use_i
 process.env.THROTTLE_LIMIT = "100000";
 process.env.THROTTLE_LOGIN_LIMIT = "100000";
 process.env.THROTTLE_STOREFRONT_ORDER_LIMIT = "100000";
+process.env.THROTTLE_IMPORT_LIMIT = "100000";
 process.env.META_APP_SECRET = "neo_test_meta_app_secret";
 process.env.META_VERIFY_TOKEN = "neo_test_meta_verify_token";
 for (const key of [

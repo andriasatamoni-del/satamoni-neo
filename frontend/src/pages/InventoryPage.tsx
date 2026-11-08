@@ -15,6 +15,7 @@ import { Pagination } from "../shared/ui/Pagination";
 import { useListState } from "../shared/ui/useListState";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
+import { TabularImportExport } from "../shared/ui/TabularImportExport";
 
 interface InventoryItem {
   id: string;
@@ -148,7 +149,6 @@ const MOVEMENT_TYPES = [
 
 const TABS = [
   { key: "items", label: "الأصناف والحركات" },
-  // GET /inventory/stocktakes* محتاج inventory.items.view بالذات (مش manage)
   { key: "stocktake", label: "الجرد الفعلي", perm: PERMISSION.INVENTORY_ITEMS_VIEW },
   { key: "low-stock", label: "حدود المخزون والتنبيهات" },
   { key: "transfers", label: "طلبات التحويل بين الفروع" },
@@ -167,7 +167,6 @@ export function InventoryPage() {
   const canManageBatches = allowed(PERMISSION.INVENTORY_BATCHES_MANAGE);
   const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
   const itemsQuery = useQuery({ queryKey: ["inventory", "items"], queryFn: () => apiRequest<InventoryItem[]>("/inventory/items") });
-  // جدول الأصناف صفحات من السيرفر (NEO-6)؛ القائمة الكاملة فوق لسه للقوايم المنسدلة
   const itemsList = useListState(["q", "itemType"] as const, { prefix: "items." });
   const itemsPageQuery = usePaginatedQuery<InventoryItem>(["inventory", "items"], "/inventory/items", itemsList.params);
   const pageItems = itemsPageQuery.data?.items ?? [];
@@ -340,7 +339,6 @@ export function InventoryPage() {
     onError: (err) => setTransferError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  // REQ-1: اقتراح الطلبية - معاينة بس، المدير بيراجع الكميات وبعدين ينقلها لفورم طلب التحويل
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [suggestionForm, setSuggestionForm] = useState({ branchId: "", targetDate: tomorrow, nextReplenishmentDate: "" });
   const [suggestionRequest, setSuggestionRequest] = useState<typeof suggestionForm | null>(null);
@@ -492,8 +490,15 @@ export function InventoryPage() {
           )}
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>الأصناف ({itemsPageQuery.data?.total ?? 0})</CardTitle>
+              <TabularImportExport
+                path="/inventory/items"
+                title="أصناف المخزون"
+                permissions={{ export: [PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE], import: [PERMISSION.INVENTORY_ITEMS_MANAGE] }}
+                exportQuery={itemsList.filters}
+                refreshQueryKey={["inventory", "items"]}
+              />
             </CardHeader>
             <CardBody className="p-0">
               <ListFilters
