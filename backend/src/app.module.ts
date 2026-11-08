@@ -4,6 +4,7 @@ import { BranchListFilterInterceptor } from "./shared/authorization/branch-scope
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { HealthController } from "./health.controller";
 import { DatabaseModule } from "./shared/database/database.module";
+import { TabularModule } from "./shared/tabular/tabular.module";
 import { EventsModule } from "./shared/events/events.module";
 import { AuditModule } from "./shared/audit/audit.module";
 import { IdentityAccessModule } from "./contexts/identity-access/identity-access.module";
@@ -39,6 +40,7 @@ import { MediaModule } from "./contexts/media/media.module";
   imports: [
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT) || 100 }]),
     DatabaseModule,
+    TabularModule,
     EventsModule,
     AuditModule,
     IdentityAccessModule,

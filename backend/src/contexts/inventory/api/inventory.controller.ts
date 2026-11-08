@@ -179,14 +179,11 @@ export class InventoryController {
     return toPublicStocktake(await this.registerStocktake.execute({ ...dto, createdBy: req.user.id }));
   }
 
-  // طلبات التحويل بين الفروع - نفس مفهوم kitchen_orders في الريبو القديم بس معمّم (راجع تعليق
-  // transfer-request.aggregate.ts). صلاحية واحدة للعرض، وواحدة لكل فعل بيغيّر حالة الطلب
   @BranchScoped()
   @Get("transfer-requests")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async transferRequests(@Query() query: ListTransferRequestsQueryDto, @CurrentBranchScope() scope: BranchScope) {
     const page = pageRequestOf(query);
-    // a branch-bound user only sees transfers where its own branch is the sender or the receiver
     const { rows, total } = await this.listTransferRequests.execute(
       { fromBranchId: query.fromBranchId, toBranchId: query.toBranchId, status: query.status, involvingBranchId: scopedBranchId(scope) },
       page
@@ -198,7 +195,6 @@ export class InventoryController {
   @Post("transfer-requests")
   @RequirePermission(PERMISSION.INVENTORY_MOVEMENTS_RECORD)
   async createTransferRequest(@Body() dto: RegisterTransferRequestDto, @Req() req: Request & { user: AuthenticatedUser }) {
-    // a branch can only request stock FOR itself (the receiving branch is the caller's own branch)
     assertBranchAccess(req.user, dto.toBranchId);
     return toPublicTransferRequest(
       await this.registerTransferRequest.execute({
@@ -276,8 +272,6 @@ export class InventoryController {
     return toPublicTransferRequest(await this.cancelTransferRequest.execute({ requestId: id, cancelledBy: req.user.id, reason: dto.reason }));
   }
 
-  // BATCH-1: دفعات/لوط - راجع تعليق inventory-batch.aggregate.ts لنطاق الميزة (استلام رسمي/إنتاج بس،
-  // استهلاك يدوي، تتبّع مستوى واحد)
   @BranchScoped()
   @Get("items/:id/batches")
   @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)

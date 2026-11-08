@@ -151,3 +151,9 @@ export class InventoryBatchNotActiveError extends ConflictDomainError {
     super("الدفعة دي مش نشطة (خلصت أو انتهت صلاحيتها بالفعل)");
   }
 }
+
+export class InventoryItemIdentityChangeError extends DomainError {
+  constructor(name: string, field: string) {
+    super(`مينفعش تغيّر ${field} لصنف موجود (${name}) - اعمل صنف جديد باسم مختلف`);
+  }
+}
