@@ -19,6 +19,11 @@ import { SearchCustomersHandler } from "./application/queries/search-customers.h
 import { RegisterCustomerByStaffHandler } from "./application/commands/register-customer-by-staff.handler";
 import { AddCustomerPhoneHandler } from "./application/commands/add-customer-phone.handler";
 import { IdentityAccessModule } from "../identity-access/identity-access.module";
+import { PERMISSION } from "../identity-access/domain/permission";
+import { TabularController } from "../../shared/tabular/tabular.controller";
+import { UpdateCustomerByStaffHandler } from "./application/commands/update-customer-by-staff.handler";
+import { CustomersTabular } from "./application/tabular/customers.tabular";
+import { ExportCustomersQueryDto } from "./api/dto/export-customers-query.dto";
 
 @Module({
   imports: [
@@ -28,7 +33,19 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
       signOptions: { expiresIn: "180d" },
     }),
   ],
-  controllers: [CustomerAuthController, CustomersController],
+  controllers: [
+    CustomerAuthController,
+    CustomersController,
+    TabularController({
+      path: "customers",
+      adapter: CustomersTabular,
+      exportQuery: ExportCustomersQueryDto,
+      permissions: {
+        export: [PERMISSION.CUSTOMERS_VIEW],
+        import: [PERMISSION.CUSTOMERS_MANAGE],
+      },
+    }),
+  ],
   providers: [
     { provide: CUSTOMER_REPOSITORY, useClass: CustomerRepository },
     { provide: CUSTOMER_PASSWORD_HASHER, useClass: BcryptCustomerPasswordHasher },
@@ -37,6 +54,8 @@ import { IdentityAccessModule } from "../identity-access/identity-access.module"
     SearchCustomersHandler,
     RegisterCustomerByStaffHandler,
     AddCustomerPhoneHandler,
+    UpdateCustomerByStaffHandler,
+    CustomersTabular,
     RegisterCustomerHandler,
     LoginCustomerHandler,
     AddCustomerAddressHandler,
