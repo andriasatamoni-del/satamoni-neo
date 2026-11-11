@@ -80,9 +80,15 @@ export class ComboNotFoundForOrderError extends DomainError {
   }
 }
 
-export class ModifierNotFoundForOrderError extends DomainError {
+export class AddonNotFoundForOrderError extends DomainError {
   constructor() {
-    super("في سطر بيشاور على مرفق مش موجود أو مش تابع للصنف ده أو مش نشط");
+    super("في إضافة مش موجودة أو موقوفة حاليًا");
+  }
+}
+
+export class AddonOrderedAloneError extends DomainError {
+  constructor() {
+    super("الإضافة لازم تتضاف على صنف، مينفعش تتباع لوحدها");
   }
 }
 

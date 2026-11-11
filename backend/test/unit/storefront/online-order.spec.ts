@@ -28,7 +28,7 @@ describe("normalizeOnlineOrder - قواعد طلب الموقع", () => {
       tableNumber: null,
       customerNotes: "من غير بصل",
     });
-    expect(result.items).toEqual([{ variantId: VARIANT, comboId: undefined, quantity: 2, modifierIds: [] }]);
+    expect(result.items).toEqual([{ variantId: VARIANT, comboId: undefined, quantity: 2, addons: [] }]);
   });
 
   test("دليفري من غير عنوان مرفوض", () => {
@@ -56,7 +56,8 @@ describe("normalizeOnlineOrder - قواعد طلب الموقع", () => {
     ["سطر من غير صنف", { items: [{ quantity: 1 }] }, "صنف غير صالح"],
     ["كمية صفر", { items: [{ variantId: VARIANT, quantity: 0 }] }, "الكمية غير صالحة"],
     ["كمية كسر", { items: [{ variantId: VARIANT, quantity: 1.5 }] }, "الكمية غير صالحة"],
-    ["إضافات على عرض", { items: [{ comboId: COMBO, quantity: 1, modifierIds: [VARIANT] }] }, "العروض مالهاش إضافات"],
+    ["إضافات على عرض", { items: [{ comboId: COMBO, quantity: 1, addons: [{ variantId: VARIANT, quantity: 1 }] }] }, "العروض مالهاش إضافات"],
+    ["كمية إضافة غلط", { items: [{ variantId: VARIANT, quantity: 1, addons: [{ variantId: VARIANT, quantity: 0 }] }] }, "كمية الإضافة غير صالحة"],
   ])("مرفوض: %s", (_label, overrides, message) => {
     expect(() => normalizeOnlineOrder(input(overrides as Partial<OnlineOrderInput>))).toThrow(InvalidOnlineOrderError);
     expect(() => normalizeOnlineOrder(input(overrides as Partial<OnlineOrderInput>))).toThrow(message as string);

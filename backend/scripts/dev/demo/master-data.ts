@@ -20,8 +20,6 @@ import { RouteMenuCategoryHandler } from "../../../src/contexts/printing/applica
 import { UploadImageHandler } from "../../../src/contexts/media/application/upload-image.handler";
 import { RegisterMenuCategoryHandler } from "../../../src/contexts/catalog/application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "../../../src/contexts/catalog/application/commands/register-menu-item.handler";
-import { AddModifierHandler } from "../../../src/contexts/catalog/application/commands/add-modifier.handler";
-import { SetModifierVariantPriceHandler } from "../../../src/contexts/catalog/application/commands/set-modifier-variant-price.handler";
 import { RegisterRecipeHandler } from "../../../src/contexts/catalog/application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "../../../src/contexts/catalog/application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "../../../src/contexts/catalog/application/commands/activate-recipe-version.handler";
@@ -45,6 +43,7 @@ import {
   EXPENSE_CATEGORIES,
   INVENTORY,
   MANUFACTURED_RECIPES,
+  ADDONS,
   MENU,
   PAYMENT_METHODS,
   POSITIONS,
@@ -327,6 +326,17 @@ async function seedPrinting(ctx: SeedContext): Promise<Record<string, string>> {
 async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
   const upload = handler(ctx, UploadImageHandler);
   const order: string[] = [];
+  const addonVariantIds: Record<string, string> = {};
+  for (const addon of ADDONS) {
+    const registered = await handler(ctx, RegisterMenuItemHandler).execute({
+      kind: "addon",
+      name: addon.name,
+      variants: [{ label: "عادي", price: addon.price, talabatPrice: Math.round(addon.price * DEMO_TALABAT_MARKUP) }],
+    });
+    addonVariantIds[addon.key] = registered.variants[0].id;
+    await registerActiveRecipe(ctx, { recipeType: "sellable_variant", variantId: registered.variants[0].id }, addon.recipe);
+    count(ctx, "menuItems");
+  }
   for (const [categoryIndex, category] of MENU.entries()) {
     const registeredCategory = await handler(ctx, RegisterMenuCategoryHandler).execute({
       name: category.name,
@@ -357,24 +367,10 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
         categoryKey: category.key,
         popularity: spec.popularity,
         variants: item.variants.map((v) => ({ id: v.id, label: v.label })),
-        modifiers: [] as { id: string; name: string }[],
+        addonVariantIds: (spec.addons ?? []).map((key) => addonVariantIds[key]),
       };
       for (const v of ref.variants) ctx.variants[`${spec.key}:${v.label}`] = v.id;
 
-      for (const modifierSpec of spec.modifiers ?? []) {
-        const { modifier } = await handler(ctx, AddModifierHandler).execute({ itemId: item.id, name: modifierSpec.name, priceDelta: modifierSpec.priceDelta });
-        ref.modifiers.push({ id: modifier.id, name: modifier.name });
-        if (!modifierSpec.perVariant) continue;
-        for (const [i, v] of ref.variants.entries()) {
-          await handler(ctx, SetModifierVariantPriceHandler).execute({
-            itemId: item.id,
-            modifierId: modifier.id,
-            variantId: v.id,
-            priceDelta: modifierSpec.perVariant[i],
-            changedBy: ctx.users.opsAdmin,
-          });
-        }
-      }
       ctx.menuItems[spec.key] = ref;
       count(ctx, "menuItems");
 

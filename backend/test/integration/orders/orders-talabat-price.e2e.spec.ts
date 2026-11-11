@@ -7,7 +7,7 @@ import { AppModule } from "../../../src/app.module";
 import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
-import { comboItems, combos, menuItemModifiers, menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { comboItems, combos, menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
@@ -22,7 +22,8 @@ describe("Talabat menu prices (e2e)", () => {
   let itemId: string;
   let pricedVariantId: string;
   let largeVariantId: string;
-  let modifierId: string;
+  let addonId: string;
+  let addonVariantId: string;
   let comboId: string;
 
   const api = () => request(app.getHttpServer());
@@ -59,8 +60,13 @@ describe("Talabat menu prices (e2e)", () => {
     pricedVariantId = created.body.variants[0].id;
     largeVariantId = created.body.variants[1].id;
 
-    const withModifier = await asAdmin(api().post(`/catalog/items/${itemId}/modifiers`)).send({ name: "جبنة زيادة", priceDelta: 10 });
-    modifierId = withModifier.body.modifiers[0].id;
+    const addon = await asAdmin(api().post("/catalog/items")).send({
+      kind: "addon",
+      name: `جبنة زيادة-${TAG}`,
+      variants: [{ label: "عادي", price: 10, talabatPrice: 14 }],
+    });
+    addonId = addon.body.id;
+    addonVariantId = addon.body.variants[0].id;
 
     const combo = await asAdmin(api().post("/catalog/combos")).send({ name: `عرض-${TAG}`, price: 40, items: [{ variantId: pricedVariantId, quantity: 1 }] });
     comboId = combo.body.id;
@@ -74,9 +80,8 @@ describe("Talabat menu prices (e2e)", () => {
     await db.delete(comboItems);
     await db.delete(combos).where(like(combos.name, `%${TAG}%`));
     await db.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, [pricedVariantId, largeVariantId]));
-    await db.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
-    await db.delete(menuItemVariants).where(eq(menuItemVariants.item_id, itemId));
-    await db.delete(menuItems).where(eq(menuItems.id, itemId));
+    await db.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, [itemId, addonId]));
+    await db.delete(menuItems).where(inArray(menuItems.id, [itemId, addonId]));
     await db.delete(branches).where(eq(branches.id, branchId));
     await db.delete(users).where(eq(users.email, ADMIN_EMAIL));
     await app.close();
@@ -89,12 +94,13 @@ describe("Talabat menu prices (e2e)", () => {
     expect(res.body.total).toBe(100);
   });
 
-  test("a Talabat order uses the Talabat variant price and the normal modifier price", async () => {
-    const res = await placeOrder({ source: "talabat", items: [{ variantId: pricedVariantId, quantity: 2, modifierIds: [modifierId] }] });
+  test("a Talabat order uses the Talabat price for the item and its addons", async () => {
+    const res = await placeOrder({ source: "talabat", items: [{ variantId: pricedVariantId, quantity: 2, addons: [{ variantId: addonVariantId, quantity: 1 }] }] });
     expect(res.status).toBe(201);
     expect(res.body.source).toBe("talabat");
-    expect(res.body.items[0].unitPrice).toBe(70);
-    expect(res.body.total).toBe(140);
+    expect(res.body.items[0].unitPrice).toBe(60);
+    expect(res.body.items[0].addons[0]).toEqual(expect.objectContaining({ quantity: 2, unitPrice: 14, lineTotal: 28 }));
+    expect(res.body.total).toBe(148);
   });
 
   test("a menu item cannot be created without a Talabat price", async () => {

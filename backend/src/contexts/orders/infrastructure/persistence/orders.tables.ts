@@ -30,22 +30,6 @@ export const orderRatings = pgTable("order_ratings", {
   check("order_ratings_stars_check", sql`(stars >= 1) AND (stars <= 5)`),
 ]);
 
-export const orderItemModifiers = pgTable("order_item_modifiers", {
-  id: uuid().defaultRandom().primaryKey().notNull(),
-  order_item_id: uuid().notNull(),
-  modifier_id: uuid(),
-  name_at_sale: text().notNull(),
-  price_at_sale: numeric().default('0').notNull().$type<number>(),
-}, (table) => [
-  index("idx_order_item_modifiers_order_item").using("btree", table.order_item_id.asc().nullsLast()),
-  foreignKey({
-      columns: [table.order_item_id],
-      foreignColumns: [orderItems.id],
-      name: "order_item_modifiers_order_item_id_fkey"
-    }).onDelete("cascade"),
-  unique("order_item_modifiers_item_modifier_unique").on(table.order_item_id, table.modifier_id),
-]);
-
 export const orderItems = pgTable("order_items", {
   id: uuid().defaultRandom().primaryKey().notNull(),
   order_id: uuid().notNull(),
@@ -55,7 +39,16 @@ export const orderItems = pgTable("order_items", {
   unit_price: numeric().notNull().$type<number>(),
   line_total: numeric().notNull().$type<number>(),
   combo_id: uuid(),
+  parent_order_item_id: uuid(),
 }, (table) => [
+  unique("order_items_order_id_id_unique").on(table.order_id, table.id),
+  index("idx_order_items_parent").using("btree", table.parent_order_item_id.asc().nullsLast()),
+  foreignKey({
+      columns: [table.order_id, table.parent_order_item_id],
+      foreignColumns: [table.order_id, table.id],
+      name: "order_items_parent_same_order_fkey"
+    }).onDelete("cascade"),
+  check("order_items_addon_not_combo", sql`(parent_order_item_id IS NULL) OR (combo_id IS NULL)`),
   index("idx_order_items_order").using("btree", table.order_id.asc().nullsLast()),
   foreignKey({
       columns: [table.combo_id],

@@ -1,14 +1,18 @@
-// كل حاجة هنا على جهاز العميل بس (localStorage) - السلة وآخر طلبات الضيف. أي قراءة/كتابة ممكن تفشل
-// (تصفح خاص، تخزين مقفول) فبنلفّها كلها في try/catch والصفحة بتشتغل عادي من غيرها
+export interface CartLineAddon {
+  variantId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 export interface CartLine {
   key: string;
   kind: "item" | "combo";
-  refId: string; // variantId أو comboId
+  refId: string;
   name: string;
   variantLabel: string | null;
-  modifierIds: string[];
-  modifierNames: string[];
-  unitPrice: number; // للعرض بس - السيرفر بيحسب السعر الحقيقي
+  addons: CartLineAddon[];
+  unitPrice: number;
   quantity: number;
 }
 
@@ -19,7 +23,7 @@ export interface RecentOrder {
   createdAt: string;
 }
 
-const CART_KEY = "satamoni-neo:storefront-cart";
+const CART_KEY = "satamoni-neo:storefront-cart-v2";
 const RECENT_KEY = "satamoni-neo:storefront-recent-orders";
 const BRANCH_KEY = "satamoni-neo:storefront-branch";
 
@@ -36,7 +40,7 @@ function write(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // التخزين مقفول - السلة هتفضل في الذاكرة بس
+    return;
   }
 }
 
@@ -47,11 +51,9 @@ export function rememberOrder(order: RecentOrder): void {
   write(RECENT_KEY, [order, ...loadRecentOrders().filter((o) => o.id !== order.id)].slice(0, 10));
 }
 
-// آخر فرع طلب منه العميل - بيتختار تلقائيًا المرة الجاية
 export const loadLastBranch = () => read<string | null>(BRANCH_KEY, null);
 export const rememberBranch = (branchId: string) => write(BRANCH_KEY, branchId);
 
-// crypto.randomUUID مش متاح على http عادي (غير localhost) - fallback بنفس شكل UUID v4
 export function newRequestId(): string {
   const c: Crypto = globalThis.crypto;
   if (typeof c.randomUUID === "function") return c.randomUUID();

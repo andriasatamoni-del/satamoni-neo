@@ -7,8 +7,6 @@ import { money, ORDER_TYPE_LABELS } from "./types";
 
 const KITCHEN_ORDER = ["NEW", "ACCEPTED", "PREPARING", "READY"];
 
-// خطوات التتبّع حسب نوع الطلب - مبنية من حالتين مستقلين زي باقي النظام: kitchenStatus (المطبخ) و status
-// (الطلب نفسه: خرج للتوصيل/اتسلّم/اتلغى)
 export function trackingSteps(order: Pick<TrackedOrder, "orderType" | "status" | "kitchenStatus">) {
   const kitchen = KITCHEN_ORDER.indexOf(order.kitchenStatus);
   const done = order.status === "completed";
@@ -108,7 +106,11 @@ export function TrackOrderPage() {
                 <span>
                   {line.quantity}× {line.name}
                   {line.variantLabel && <span className="text-slate-500"> · {line.variantLabel}</span>}
-                  {line.modifiers.length > 0 && <span className="block text-xs text-slate-500">+ {line.modifiers.join("، ")}</span>}
+                  {line.addons.map((addon, j) => (
+                    <span key={j} className="block text-xs text-slate-500">
+                      + {addon.quantity}× {addon.name} · {money(addon.lineTotal)}
+                    </span>
+                  ))}
                 </span>
                 <span className="shrink-0">{money(line.lineTotal)}</span>
               </li>

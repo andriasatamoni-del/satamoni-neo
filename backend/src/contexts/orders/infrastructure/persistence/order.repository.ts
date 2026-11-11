@@ -5,9 +5,9 @@ import { Order, type OrderStatus, type KitchenStatus, type OrderType, type Order
 import type { OrderListFilter, OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
-import { orderItemModifiers, orderItems, orders } from "./orders.tables";
+import { orderItems, orders } from "./orders.tables";
 
-type ItemWithModifiers = { item: typeof orderItems.$inferSelect; modifiers: (typeof orderItemModifiers.$inferSelect)[] };
+type OrderItemRow = typeof orderItems.$inferSelect;
 
 @Injectable()
 export class OrderRepository implements OrderRepositoryPort {
@@ -64,20 +64,10 @@ export class OrderRepository implements OrderRepositoryPort {
             quantity: item.quantity,
             unit_price: item.unitPrice,
             line_total: item.lineTotal,
+            parent_order_item_id: item.parentLineId,
           })
           .onConflictDoNothing({ target: orderItems.id });
 
-        for (const modifier of item.modifiers) {
-          await tx
-            .insert(orderItemModifiers)
-            .values({
-              order_item_id: item.id,
-              modifier_id: modifier.modifierId,
-              name_at_sale: modifier.nameAtSale,
-              price_at_sale: modifier.priceAtSale,
-            })
-            .onConflictDoNothing({ target: [orderItemModifiers.order_item_id, orderItemModifiers.modifier_id] });
-        }
       }
     });
   }
@@ -132,23 +122,16 @@ export class OrderRepository implements OrderRepositoryPort {
     return { orders: await this.withItems(rows), total };
   }
 
-  private async loadItems(orderId: string): Promise<ItemWithModifiers[]> {
+  private async loadItems(orderId: string): Promise<OrderItemRow[]> {
     return (await this.loadItemsFor([orderId])).get(orderId) ?? [];
   }
 
-  private async loadItemsFor(orderIds: string[]): Promise<Map<string, ItemWithModifiers[]>> {
-    const byOrder = new Map<string, ItemWithModifiers[]>();
+  private async loadItemsFor(orderIds: string[]): Promise<Map<string, OrderItemRow[]>> {
+    const byOrder = new Map<string, OrderItemRow[]>();
     if (orderIds.length === 0) return byOrder;
-    const itemRows: (typeof orderItems.$inferSelect)[] = [];
+    const itemRows: OrderItemRow[] = [];
     for (const ids of inListChunks(orderIds)) itemRows.push(...(await this.db.select().from(orderItems).where(inArray(orderItems.order_id, ids))));
-    const modifierRows: (typeof orderItemModifiers.$inferSelect)[] = [];
-    for (const ids of inListChunks(itemRows.map((i) => i.id))) {
-      modifierRows.push(...(await this.db.select().from(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, ids))));
-    }
-    const modifiersByItem = groupBy(modifierRows, (m) => m.order_item_id);
-    for (const [orderId, items] of groupBy(itemRows, (i) => i.order_id)) {
-      byOrder.set(orderId, items.map((item) => ({ item, modifiers: modifiersByItem.get(item.id) ?? [] })));
-    }
+    for (const [orderId, items] of groupBy(itemRows, (i) => i.order_id)) byOrder.set(orderId, parentsFollowedByAddons(items));
     return byOrder;
   }
 
@@ -157,7 +140,7 @@ export class OrderRepository implements OrderRepositoryPort {
     return rows.map((row) => this.toDomain(row, items.get(row.id) ?? []));
   }
 
-  private toDomain(row: typeof orders.$inferSelect, itemRows: ItemWithModifiers[]): Order {
+  private toDomain(row: typeof orders.$inferSelect, itemRows: OrderItemRow[]): Order {
     return Order.reconstitute(row.id, {
       branchId: row.branch_id,
       orderType: row.order_type as OrderType,
@@ -166,7 +149,7 @@ export class OrderRepository implements OrderRepositoryPort {
       customerId: row.customer_id,
       customerPhone: row.customer_phone,
       addressDetails: row.address_details,
-      items: itemRows.map(({ item: i, modifiers }) => ({
+      items: itemRows.map((i) => ({
         id: i.id,
         menuItemId: i.menu_item_id,
         variantId: i.variant_id,
@@ -174,11 +157,7 @@ export class OrderRepository implements OrderRepositoryPort {
         quantity: i.quantity,
         unitPrice: Number(i.unit_price),
         lineTotal: Number(i.line_total),
-        modifiers: modifiers.map((m) => ({
-          modifierId: m.modifier_id,
-          nameAtSale: m.name_at_sale,
-          priceAtSale: Number(m.price_at_sale),
-        })),
+        parentLineId: i.parent_order_item_id,
       })),
       subtotal: Number(row.subtotal),
       discount: Number(row.discount),
@@ -197,4 +176,9 @@ export class OrderRepository implements OrderRepositoryPort {
       customerNotes: row.customer_notes,
     });
   }
+}
+
+function parentsFollowedByAddons(rows: OrderItemRow[]): OrderItemRow[] {
+  const addonsByParent = groupBy(rows.filter((r) => r.parent_order_item_id !== null), (r) => r.parent_order_item_id!);
+  return rows.filter((r) => r.parent_order_item_id === null).flatMap((parent) => [parent, ...(addonsByParent.get(parent.id) ?? [])]);
 }

@@ -1,6 +1,3 @@
-// Drizzle table definitions for the whatsapp tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, jsonb, timestamp, unique, check, uuid, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
@@ -93,7 +90,7 @@ export const whatsappPendingOrderLines = pgTable("whatsapp_pending_order_lines",
   item_name: text().notNull(),
   quantity: numeric().notNull().$type<number>(),
   unit_price: numeric().notNull().$type<number>(),
-  modifier_ids: jsonb().default([]).notNull().$type<string[]>(),
+  addons: jsonb().default([]).notNull().$type<{ variantId: string; name: string; quantity: number; unitPrice: number }[]>(),
 }, (table) => [
   foreignKey({
       columns: [table.pending_order_id],

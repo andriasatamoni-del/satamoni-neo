@@ -41,7 +41,6 @@ export class WhatsappController {
     private readonly bot: WhatsappBotService
   ) {}
 
-  // حالة البوت للواجهة: مفعّل من الإعدادات؟ مفتاح Gemini متضاف؟ الإرسال لكل قناة متظبط؟
   @Get("bot-status")
   @RequirePermission(PERMISSION.WHATSAPP_VIEW)
   async botStatus() {
@@ -145,7 +144,7 @@ function toPublicPendingOrder(order: WhatsappPendingOrder) {
     branchId: order.branchId,
     addressDetails: order.addressDetails,
     lines: order.lines.map((l) => ({
-      variantId: l.variantId, itemName: l.itemName, quantity: l.quantity, unitPrice: l.unitPrice, modifierIds: l.modifierIds,
+      variantId: l.variantId, itemName: l.itemName, quantity: l.quantity, unitPrice: l.unitPrice, addons: l.addons,
     })),
     total: order.total,
     status: order.status,

@@ -8,7 +8,7 @@ import type { Customer } from "../../../customers/domain/customer.aggregate";
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 import { LoyaltyRedemptionService, type PreparedRedemption } from "../../../loyalty/application/services/loyalty-redemption.service";
 import { STOREFRONT_READER, type StorefrontReaderPort } from "../../domain/ports/storefront-reader.port";
-import { normalizeOnlineOrder } from "../../domain/online-order";
+import { normalizeOnlineOrder, type OnlineOrderItem } from "../../domain/online-order";
 import {
   CustomerBlockedForOnlineOrderError,
   IncompleteCustomerProfileError,
@@ -27,7 +27,7 @@ export interface PlaceOnlineOrderCommand {
   tableNumber?: string;
   notes?: string;
   rewardId?: string;
-  items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
+  items: OnlineOrderItem[];
 }
 
 @Injectable()

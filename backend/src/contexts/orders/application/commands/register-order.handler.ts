@@ -1,14 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Order, type OrderItemModifierLine, type OrderSource } from "../../domain/order.aggregate";
+import { Order, type OrderAddonInput, type OrderLineInput, type OrderSource } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import {
   VariantNotFoundForOrderError,
   InsufficientStockForOrderError,
-  ModifierNotFoundForOrderError,
+  AddonNotFoundForOrderError,
+  AddonOrderedAloneError,
   ComboNotFoundForOrderError,
   CustomerNotFoundForOrderError,
   DeliveryAddressRequiredError,
   TalabatPriceMissingForOrderError,
+  InvalidOrderItemError,
 } from "../../domain/errors";
 import { CUSTOMER_REPOSITORY, type CustomerRepositoryPort } from "../../../customers/domain/ports/customer-repository.port";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../../catalog/domain/ports/menu-item-repository.port";
@@ -37,7 +39,12 @@ export interface RegisterOrderCommand {
   addressDetails?: string | null;
   customerId?: string | null;
   customerAddressId?: string | null;
-  items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
+  items: {
+    variantId?: string;
+    comboId?: string;
+    quantity: number;
+    addons?: { variantId: string; quantity: number }[];
+  }[];
   discount?: number;
   createdBy?: string | null;
   stockApproved?: boolean;
@@ -72,29 +79,16 @@ export class RegisterOrderHandler {
       if (existing) return existing;
     }
 
-    const resolvedItems: {
-      menuItemId: string | null;
-      variantId: string | null;
-      comboId: string | null;
-      quantity: number;
-      unitPrice: number;
-      modifiers: OrderItemModifierLine[];
-    }[] = [];
+    const resolvedItems: OrderLineInput[] = [];
     const comboLineComponents = new Map<string, { variantId: string; quantity: number }[]>();
     for (const item of command.items) {
       if (item.comboId) {
         if (command.source === "talabat") throw new TalabatPriceMissingForOrderError();
         const combo = await this.combos.findById(item.comboId);
         if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
+        if ((item.addons?.length ?? 0) > 0) throw new InvalidOrderItemError();
 
-        resolvedItems.push({
-          menuItemId: null,
-          variantId: null,
-          comboId: combo.id,
-          quantity: item.quantity,
-          unitPrice: combo.price,
-          modifiers: [],
-        });
+        resolvedItems.push({ comboId: combo.id, quantity: item.quantity, unitPrice: combo.price });
         comboLineComponents.set(combo.id, combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })));
         continue;
       }
@@ -103,25 +97,27 @@ export class RegisterOrderHandler {
       const menuItem = await this.menuItems.findByVariantId(item.variantId);
       const variant = menuItem?.variants.find((v) => v.id === item.variantId);
       if (!menuItem || !variant) throw new VariantNotFoundForOrderError();
-      const basePrice = command.source === "talabat" ? variant.talabatPrice : variant.price;
+      if (menuItem.isAddon) throw new AddonOrderedAloneError();
 
-      const modifiers: OrderItemModifierLine[] = [];
-      let modifierTotal = 0;
-      for (const modifierId of item.modifierIds ?? []) {
-        const modifier = menuItem.modifiers.find((m) => m.id === modifierId && m.isActive);
-        if (!modifier) throw new ModifierNotFoundForOrderError();
-        const priceAtSale = menuItem.resolveModifierPrice(modifierId, item.variantId);
-        modifiers.push({ modifierId: modifier.id, nameAtSale: modifier.name, priceAtSale });
-        modifierTotal += priceAtSale;
+      const addons: OrderAddonInput[] = [];
+      for (const addon of item.addons ?? []) {
+        const addonItem = await this.menuItems.findByVariantId(addon.variantId);
+        const addonVariant = addonItem?.variants.find((v) => v.id === addon.variantId);
+        if (!addonItem || !addonVariant || !addonItem.isAddon || !addonItem.isActive) throw new AddonNotFoundForOrderError();
+        addons.push({
+          menuItemId: addonItem.id,
+          variantId: addonVariant.id,
+          quantity: addon.quantity * item.quantity,
+          unitPrice: this.priceFor(addonVariant, command.source),
+        });
       }
 
       resolvedItems.push({
         menuItemId: menuItem.id,
         variantId: item.variantId,
-        comboId: null,
         quantity: item.quantity,
-        unitPrice: basePrice + modifierTotal,
-        modifiers,
+        unitPrice: this.priceFor(variant, command.source),
+        addons,
       });
     }
 
@@ -131,9 +127,10 @@ export class RegisterOrderHandler {
         for (const component of comboLineComponents.get(item.comboId) ?? []) {
           variantConsumptions.push({ variantId: component.variantId, quantity: component.quantity * item.quantity });
         }
-      } else if (item.variantId) {
-        variantConsumptions.push({ variantId: item.variantId, quantity: item.quantity });
+        continue;
       }
+      if (item.variantId) variantConsumptions.push({ variantId: item.variantId, quantity: item.quantity });
+      for (const addon of item.addons ?? []) variantConsumptions.push({ variantId: addon.variantId, quantity: addon.quantity });
     }
 
     const requiredByIngredient = new Map<string, number>();
@@ -200,6 +197,10 @@ export class RegisterOrderHandler {
     );
 
     return order;
+  }
+
+  private priceFor(variant: { price: number; talabatPrice: number }, source: OrderSource | undefined): number {
+    return source === "talabat" ? variant.talabatPrice : variant.price;
   }
 
   private async resolveCustomerContact(command: RegisterOrderCommand) {

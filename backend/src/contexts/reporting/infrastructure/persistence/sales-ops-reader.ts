@@ -224,6 +224,7 @@ export class SalesOpsReader implements SalesOpsReaderPort {
       .select({
         variant_id: orderItems.variant_id,
         item_name: menuItems.name,
+        kind: menuItems.kind,
         label: menuItemVariants.label,
         quantity: sum(orderItems.quantity),
         revenue: sum(orderItems.line_total),
@@ -233,7 +234,7 @@ export class SalesOpsReader implements SalesOpsReaderPort {
       .innerJoin(menuItemVariants, eq(menuItemVariants.id, orderItems.variant_id))
       .innerJoin(menuItems, eq(menuItems.id, menuItemVariants.item_id))
       .where(and(where, isNotNull(orderItems.variant_id)))
-      .groupBy(orderItems.variant_id, menuItems.name, menuItemVariants.label);
+      .groupBy(orderItems.variant_id, menuItems.name, menuItems.kind, menuItemVariants.label);
 
     const comboRows = await this.db
       .select({ combo_id: orderItems.combo_id, name: combos.name, quantity: sum(orderItems.quantity), revenue: sum(orderItems.line_total) })
@@ -254,7 +255,7 @@ export class SalesOpsReader implements SalesOpsReaderPort {
         const unitCost = costInfo?.cost ?? null;
         const cost = unitCost !== null ? unitCost * quantity : 0;
         return {
-          name: `${r.item_name} - ${r.label}`,
+          name: r.kind === "addon" ? `إضافة: ${r.item_name}` : `${r.item_name} - ${r.label}`,
           quantity,
           revenue,
           cost,
@@ -302,6 +303,7 @@ export class SalesOpsReader implements SalesOpsReaderPort {
         item_id: menuItems.id,
         item_name: menuItems.name,
         category: menuCategories.name,
+        kind: menuItems.kind,
         is_active: menuItems.is_active,
         variant_id: menuItemVariants.id,
         label: menuItemVariants.label,
@@ -321,7 +323,7 @@ export class SalesOpsReader implements SalesOpsReaderPort {
         return {
           itemId: v.item_id,
           itemName: v.item_name,
-          category: v.category,
+          category: v.kind === "addon" ? "إضافات" : v.category,
           isActive: v.is_active,
           variantId: v.variant_id,
           label: v.label,

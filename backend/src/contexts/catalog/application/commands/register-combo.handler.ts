@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { Combo } from "../../domain/combo.aggregate";
 import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../domain/ports/combo-repository.port";
-import { DuplicateComboNameError, InvalidComboItemError } from "../../domain/errors";
+import { DuplicateComboNameError, InvalidComboItemError, AddonNotAllowedInComboError } from "../../domain/errors";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 
 export interface RegisterComboCommand {
@@ -25,6 +25,7 @@ export class RegisterComboHandler {
     for (const it of command.items) {
       const menuItem = await this.menuItems.findByVariantId(it.variantId);
       if (!menuItem) throw new InvalidComboItemError();
+      if (menuItem.isAddon) throw new AddonNotAllowedInComboError();
     }
 
     const combo = Combo.register(command);

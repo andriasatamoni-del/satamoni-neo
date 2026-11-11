@@ -10,7 +10,7 @@ import { OUTBOUND_MESSENGER, type OutboundMessengerPort } from "../../../src/con
 import { signMeta, socialPayload, whatsappPayload } from "./meta-webhook.helpers";
 import { journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
-import { menuItemModifiers, menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { complaints } from "../../../src/contexts/crm/infrastructure/persistence/crm.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
@@ -19,7 +19,7 @@ import { truncate } from "../helpers/db";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 
 class ScriptedAi implements AiChatClientPort {
   configured = true;
@@ -45,7 +45,7 @@ class ScriptedAi implements AiChatClientPort {
         orderType: "takeaway",
         customerName: "أحمد-بوت-جست",
         branchName: this.branchName(),
-        items: [{ itemName: "بيتزا-بوت-جست", variantLabel: "كبير", quantity: 2, modifierNames: ["جبنة"] }],
+        items: [{ itemName: "بيتزا-بوت-جست", variantLabel: "كبير", quantity: 2, addonNames: ["جبنة زيادة-بوت-جست"] }],
       });
     }
     if (last.includes("صنف مش موجود")) return call("save_draft_order", { items: [{ itemName: "كباب-مش-موجود", quantity: 1 }] });
@@ -72,6 +72,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
   let branchId: string;
   let branchName: string;
   let itemId: string;
+  let addonId: string;
   const phone = "+201000000077";
   const messengerId = "psid-bot-jest-1";
   const ai = new ScriptedAi(() => branchName);
@@ -154,7 +155,11 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
       .set(auth())
       .send({ name: "بيتزا-بوت-جست", variants: [{ label: "وسط", price: 50, talabatPrice: 50 }, { label: "كبير", price: 80, talabatPrice: 80 }] });
     itemId = item.body.id;
-    await request(server()).post(`/catalog/items/${itemId}/modifiers`).set(auth()).send({ name: "جبنة زيادة", priceDelta: 10 });
+    const addon = await request(server())
+      .post("/catalog/items")
+      .set(auth())
+      .send({ kind: "addon", name: "جبنة زيادة-بوت-جست", variants: [{ label: "عادي", price: 10, talabatPrice: 14 }] });
+    addonId = addon.body.id;
   });
 
   afterAll(async () => {
@@ -168,13 +173,11 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     await database.delete(whatsappConversations).where(inArray(whatsappConversations.phone, [phone, messengerId]));
     await truncate(database, journalEntryLines, journalEntries);
     await database.delete(printJobs).where(eq(printJobs.branch_id, branchId));
-    await database.delete(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, database.select({ id: orderItems.id }).from(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId)))))).catch(() => undefined);
     await database.delete(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, branchId))));
     await database.delete(orders).where(eq(orders.branch_id, branchId));
-    await database.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, database.select({ id: menuItemModifiers.id }).from(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId))));
-    await database.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
-    await database.delete(menuItemVariants).where(eq(menuItemVariants.item_id, itemId));
-    await database.delete(menuItems).where(eq(menuItems.id, itemId));
+    await database.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, database.select({ id: menuItemVariants.id }).from(menuItemVariants).where(inArray(menuItemVariants.item_id, [itemId, addonId]))));
+    await database.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, [itemId, addonId]));
+    await database.delete(menuItems).where(inArray(menuItems.id, [itemId, addonId]));
     await database.delete(treasuries).where(eq(treasuries.branch_id, branchId));
     await database.delete(branches).where(eq(branches.id, branchId));
     await database.update(posSettings).set({ updated_by: null }).where(inArray(posSettings.updated_by, database.select({ id: users.id }).from(users).where(eq(users.email, "admin-bot@jest.test"))));
@@ -237,7 +240,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
     await sendInbound("عايز 2 بيتزا كبير بجبنة زيادة، استلام");
     await waitForOutbound(2);
     const summary = ai.toolResults.at(-1)!.result;
-    expect(summary).toContain("2× بيتزا-بوت-جست (كبير) + جبنة زيادة = 180.00 ج.م");
+    expect(summary).toContain("2× بيتزا-بوت-جست (كبير) + جبنة زيادة-بوت-جست = 180.00 ج.م");
     expect(summary).toContain("كل حاجة كاملة");
 
     let draft = await draftFor();
@@ -256,7 +259,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
 
     const queue = await request(server()).get("/whatsapp/pending-orders").set(auth());
     const pending = queue.body.find((o: { id: string }) => o.id === draft.id);
-    expect(pending.lines[0].modifierIds).toHaveLength(1);
+    expect(pending.lines[0].addons).toEqual([expect.objectContaining({ name: "جبنة زيادة-بوت-جست", quantity: 1, unitPrice: 10 })]);
 
     const confirm = await request(server()).post(`/whatsapp/pending-orders/${draft.id}/confirm`).set(auth()).send({});
     expect(confirm.status).toBe(201);

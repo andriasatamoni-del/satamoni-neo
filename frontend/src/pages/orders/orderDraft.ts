@@ -86,7 +86,7 @@ export function buildOrderPayload(branchId: string, draft: OrderDraft, lines: Ca
         : {
             variantId: l.variantId,
             quantity: l.quantity,
-            modifierIds: l.modifiers.length > 0 ? l.modifiers.map((m) => m.modifierId) : undefined,
+            addons: l.addons.length > 0 ? l.addons.map((a) => ({ variantId: a.variantId, quantity: a.quantity })) : undefined,
           }
     ),
     discount: discount > 0 ? discount : undefined,
@@ -96,5 +96,7 @@ export function buildOrderPayload(branchId: string, draft: OrderDraft, lines: Ca
 }
 
 export function cartSummary(lines: CartLine[]): string {
-  return lines.map((l) => `${l.itemName} × ${l.quantity}`).join("، ");
+  return lines
+    .map((l) => `${l.itemName} × ${l.quantity}${l.addons.length > 0 ? ` (+ ${l.addons.map((a) => a.name).join("، ")})` : ""}`)
+    .join("، ");
 }

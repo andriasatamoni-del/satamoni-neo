@@ -8,6 +8,15 @@ const PHONE_RE = /^\d{8,15}$/;
 export const MAX_ONLINE_ORDER_LINES = 30;
 export const MAX_ONLINE_LINE_QUANTITY = 50;
 
+export const MAX_ONLINE_ADDON_QUANTITY = 10;
+
+export interface OnlineOrderItem {
+  variantId?: string;
+  comboId?: string;
+  quantity: number;
+  addons?: { variantId: string; quantity: number }[];
+}
+
 export interface OnlineOrderInput {
   branch: { id: string; supportsDineIn: boolean };
   orderType: string;
@@ -18,7 +27,7 @@ export interface OnlineOrderInput {
   distinguishingMark?: string | null;
   tableNumber?: string | null;
   notes?: string | null;
-  items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
+  items: OnlineOrderItem[];
 }
 
 export interface NormalizedOnlineOrder {
@@ -29,13 +38,9 @@ export interface NormalizedOnlineOrder {
   addressDetails: string | null;
   tableNumber: string | null;
   customerNotes: string | null;
-  items: { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] }[];
+  items: OnlineOrderItem[];
 }
 
-// قواعد طلب الموقع (نفس تحقق public/order.html + POST /api/orders source=website في الريبو القديم) -
-// دالة نقية من غير DB: الأسعار نفسها مش هنا خالص، بتتحسب على السيرفر من المنيو الحقيقي في
-// RegisterOrderHandler (العميل مابيبعتش أي سعر). neo مفيهوش أعمدة منفصلة لـ"علامة مميزة" و"تليفون تاني"
-// على الطلب - بيتضافوا لنص العنوان نفسه عشان يوصلوا للطيار في بون التوصيل زي ما هم.
 export function normalizeOnlineOrder(input: OnlineOrderInput): NormalizedOnlineOrder {
   if (!ONLINE_ORDER_TYPES.includes(input.orderType as OnlineOrderType)) {
     throw new InvalidOnlineOrderError("نوع الطلب لازم يكون توصيل أو استلام من الفرع أو في الصالة");
@@ -58,7 +63,12 @@ export function normalizeOnlineOrder(input: OnlineOrderInput): NormalizedOnlineO
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_ONLINE_LINE_QUANTITY) {
       throw new InvalidOnlineOrderError("الكمية غير صالحة");
     }
-    if (item.comboId && item.modifierIds?.length) throw new InvalidOnlineOrderError("العروض مالهاش إضافات");
+    if (item.comboId && item.addons?.length) throw new InvalidOnlineOrderError("العروض مالهاش إضافات");
+    for (const addon of item.addons ?? []) {
+      if (!Number.isInteger(addon.quantity) || addon.quantity < 1 || addon.quantity > MAX_ONLINE_ADDON_QUANTITY) {
+        throw new InvalidOnlineOrderError("كمية الإضافة غير صالحة");
+      }
+    }
   }
 
   let addressDetails: string | null = null;
@@ -88,6 +98,6 @@ export function normalizeOnlineOrder(input: OnlineOrderInput): NormalizedOnlineO
     addressDetails,
     tableNumber,
     customerNotes: notes || null,
-    items: input.items.map((i) => ({ variantId: i.variantId, comboId: i.comboId, quantity: i.quantity, modifierIds: i.modifierIds ?? [] })),
+    items: input.items.map((i) => ({ variantId: i.variantId, comboId: i.comboId, quantity: i.quantity, addons: i.addons ?? [] })),
   };
 }

@@ -6,14 +6,13 @@ import {
   comboItems,
   combos,
   menuCategories,
-  menuItemModifiers,
-  menuItemModifierVariantPrices,
   menuItems,
   menuItemVariants,
 } from "../../../catalog/infrastructure/persistence/catalog.tables";
-import { orderItemModifiers, orderItems, orderRatings, orders } from "../../../orders/infrastructure/persistence/orders.tables";
+import { orderItems, orderRatings, orders } from "../../../orders/infrastructure/persistence/orders.tables";
 import { paymentMethods } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
 import type {
+  StorefrontAddon,
   StorefrontBranch,
   StorefrontCategory,
   StorefrontCombo,
@@ -21,8 +20,6 @@ import type {
   TrackedOrder,
 } from "../../domain/ports/storefront-reader.port";
 
-// قراءة بس (read model) - المنيو العام بيعرض الأصناف النشطة في أقسام نشطة من مجموعة "regular" (نفس فلتر
-// البوت بالظبط)، وأي صنف من غير حجم بسعر بيتخفى (مايتطلبش أصلًا)
 @Injectable()
 export class StorefrontReader implements StorefrontReaderPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -70,6 +67,7 @@ export class StorefrontReader implements StorefrontReaderPort {
       .where(
         and(
           eq(menuItems.is_active, true),
+          eq(menuItems.kind, "item"),
           or(isNull(menuCategories.id), and(eq(menuCategories.is_active, true), eq(menuCategories.menu_group, "regular")))
         )
       )
@@ -77,38 +75,11 @@ export class StorefrontReader implements StorefrontReaderPort {
     if (items.length === 0) return [];
 
     const ids = items.map((i) => i.id);
-    const [variants, modifiers] = await Promise.all([
-      this.db
-        .select({ id: menuItemVariants.id, item_id: menuItemVariants.item_id, label: menuItemVariants.label, price: menuItemVariants.price })
-        .from(menuItemVariants)
-        .where(inArray(menuItemVariants.item_id, ids))
-        .orderBy(asc(menuItemVariants.price)),
-      this.db
-        .select({
-          id: menuItemModifiers.id,
-          item_id: menuItemModifiers.item_id,
-          name: menuItemModifiers.name,
-          price_delta: menuItemModifiers.price_delta,
-        })
-        .from(menuItemModifiers)
-        .where(and(inArray(menuItemModifiers.item_id, ids), eq(menuItemModifiers.is_active, true)))
-        .orderBy(asc(menuItemModifiers.name)),
-    ]);
-    const overrides = modifiers.length
-      ? await this.db
-          .select({
-            modifier_id: menuItemModifierVariantPrices.modifier_id,
-            variant_id: menuItemModifierVariantPrices.variant_id,
-            price_delta: menuItemModifierVariantPrices.price_delta,
-          })
-          .from(menuItemModifierVariantPrices)
-          .where(
-            inArray(
-              menuItemModifierVariantPrices.modifier_id,
-              modifiers.map((m) => m.id)
-            )
-          )
-      : [];
+    const variants = await this.db
+      .select({ id: menuItemVariants.id, item_id: menuItemVariants.item_id, label: menuItemVariants.label, price: menuItemVariants.price })
+      .from(menuItemVariants)
+      .where(inArray(menuItemVariants.item_id, ids))
+      .orderBy(asc(menuItemVariants.price));
 
     const categories = new Map<string, StorefrontCategory>();
     for (const i of items) {
@@ -123,22 +94,20 @@ export class StorefrontReader implements StorefrontReaderPort {
         imageUrl: i.image_url,
         isBest: i.is_best,
         variants: itemVariants,
-        modifiers: modifiers
-          .filter((m) => m.item_id === i.id)
-          .map((m) => ({
-            id: m.id,
-            name: m.name,
-            prices: Object.fromEntries(
-              itemVariants.map((v) => {
-                const override = overrides.find((o) => o.modifier_id === m.id && o.variant_id === v.id);
-                return [v.id, Number(override ? override.price_delta : m.price_delta)];
-              })
-            ),
-          })),
       });
       categories.set(key, category);
     }
     return [...categories.values()];
+  }
+
+  async addons(): Promise<StorefrontAddon[]> {
+    const rows = await this.db
+      .select({ variant_id: menuItemVariants.id, name: menuItems.name, image_url: menuItems.image_url, price: menuItemVariants.price })
+      .from(menuItems)
+      .innerJoin(menuItemVariants, eq(menuItemVariants.item_id, menuItems.id))
+      .where(and(eq(menuItems.kind, "addon"), eq(menuItems.is_active, true)))
+      .orderBy(asc(menuItems.name));
+    return rows.map((r) => ({ variantId: r.variant_id, name: r.name, imageUrl: r.image_url, price: Number(r.price) }));
   }
 
   async combos(): Promise<StorefrontCombo[]> {
@@ -208,6 +177,7 @@ export class StorefrontReader implements StorefrontReaderPort {
         .select({
           id: orderItems.id,
           order_id: orderItems.order_id,
+          parent_order_item_id: orderItems.parent_order_item_id,
           quantity: orderItems.quantity,
           line_total: orderItems.line_total,
           item_name: menuItems.name,
@@ -221,17 +191,6 @@ export class StorefrontReader implements StorefrontReaderPort {
         .where(inArray(orderItems.order_id, orderIds)),
       this.db.select({ order_id: orderRatings.order_id }).from(orderRatings).where(inArray(orderRatings.order_id, orderIds)),
     ]);
-    const modifiers = lines.length
-      ? await this.db
-          .select({ order_item_id: orderItemModifiers.order_item_id, name_at_sale: orderItemModifiers.name_at_sale })
-          .from(orderItemModifiers)
-          .where(
-            inArray(
-              orderItemModifiers.order_item_id,
-              lines.map((l) => l.id)
-            )
-          )
-      : [];
     const rated = new Set(ratings.map((r) => r.order_id));
 
     return rows.map((r) => {
@@ -256,13 +215,15 @@ export class StorefrontReader implements StorefrontReaderPort {
         kitchenReadyAt: r.kitchen_ready_at,
         branch: branch ? { name: branch.name, phone: branch.phone } : null,
         lines: lines
-          .filter((l) => l.order_id === r.id)
+          .filter((l) => l.order_id === r.id && l.parent_order_item_id === null)
           .map((l) => ({
             name: l.combo_name ?? l.item_name ?? "صنف",
             variantLabel: l.combo_name ? null : l.label,
             quantity: Number(l.quantity),
             lineTotal: Number(l.line_total),
-            modifiers: modifiers.filter((m) => m.order_item_id === l.id).map((m) => m.name_at_sale),
+            addons: lines
+              .filter((a) => a.parent_order_item_id === l.id)
+              .map((a) => ({ name: a.item_name ?? "إضافة", quantity: Number(a.quantity), lineTotal: Number(a.line_total) })),
           })),
         rated: rated.has(r.id),
       };

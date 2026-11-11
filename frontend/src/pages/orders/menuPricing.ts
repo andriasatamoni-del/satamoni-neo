@@ -1,15 +1,13 @@
 import { formatPrice } from "./posLabels";
-import type { MenuItem, MenuItemModifier, MenuItemVariant, PriceMenu } from "./posTypes";
+import type { CartLine, MenuItem, MenuItemVariant, PriceMenu } from "./posTypes";
 
 export interface SellableVariant extends MenuItemVariant { salePrice: number; }
 
-export function resolveModifierPrice(modifier: MenuItemModifier, variantId: string): number {
-  const override = modifier.variantPrices.find((vp) => vp.variantId === variantId);
-  return override ? override.priceDelta : modifier.priceDelta;
-}
-
-export function activeModifiersOf(item: MenuItem): MenuItemModifier[] {
-  return item.modifiers.filter((m) => m.isActive);
+export interface SellableAddon {
+  menuItemId: string;
+  variantId: string;
+  name: string;
+  salePrice: number;
 }
 
 export function sellableVariants(item: MenuItem, priceMenu: PriceMenu): SellableVariant[] {
@@ -19,8 +17,24 @@ export function sellableVariants(item: MenuItem, priceMenu: PriceMenu): Sellable
   });
 }
 
+export function sellableAddons(addons: MenuItem[], priceMenu: PriceMenu): SellableAddon[] {
+  return addons.flatMap((addon) => {
+    if (!addon.isActive) return [];
+    const [variant] = sellableVariants(addon, priceMenu);
+    return variant ? [{ menuItemId: addon.id, variantId: variant.id, name: addon.name, salePrice: variant.salePrice }] : [];
+  });
+}
+
 export function needsOptionPicker(item: MenuItem, priceMenu: PriceMenu): boolean {
-  return sellableVariants(item, priceMenu).length > 1 || activeModifiersOf(item).length > 0;
+  return sellableVariants(item, priceMenu).length > 1;
+}
+
+export function addonsPerUnit(line: CartLine): number {
+  return line.addons.reduce((sum, a) => sum + a.quantity * a.unitPrice, 0);
+}
+
+export function cartLineTotal(line: CartLine): number {
+  return (line.unitPrice + addonsPerUnit(line)) * line.quantity;
 }
 
 export function itemPriceLabel(item: MenuItem, priceMenu: PriceMenu): string {

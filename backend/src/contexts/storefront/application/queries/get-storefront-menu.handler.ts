@@ -3,8 +3,6 @@ import { STOREFRONT_READER, type StorefrontReaderPort } from "../../domain/ports
 import { GetPosSettingsHandler } from "../../../settings/application/queries/get-pos-settings.handler";
 import { ListLoyaltyRewardsHandler } from "../../../loyalty/application/queries/list-loyalty-rewards.handler";
 
-// GET /storefront/menu - نفس /api/config/full بتاع public/order.html في الريبو القديم: المنيو + الفروع +
-// هل الطلب مفتوح. الدفع: كاش عند الاستلام بس (الدفع أونلاين كان "قريبًا" في القديم برضه)
 @Injectable()
 export class GetStorefrontMenuHandler {
   constructor(
@@ -14,10 +12,11 @@ export class GetStorefrontMenuHandler {
   ) {}
 
   async execute() {
-    const [settings, branches, categories, combos, rewards] = await Promise.all([
+    const [settings, branches, categories, addons, combos, rewards] = await Promise.all([
       this.settings.execute(),
       this.reader.branches(),
       this.reader.categories(),
+      this.reader.addons(),
       this.reader.combos(),
       this.rewards.execute({ activeOnly: true }),
     ]);
@@ -26,8 +25,8 @@ export class GetStorefrontMenuHandler {
       paymentMethods: [{ key: "cash", label: "كاش عند الاستلام" }],
       branches,
       categories,
+      addons,
       combos,
-      // الزائر بيشوف إزاي بيكسب نقاط وإيه المكافآت قبل ما يعمل حساب
       loyalty: { pointsPerEgp: settings.loyaltyPointsPerEgp, rewards },
     };
   }

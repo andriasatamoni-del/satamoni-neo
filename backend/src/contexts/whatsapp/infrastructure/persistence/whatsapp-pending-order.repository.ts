@@ -48,10 +48,8 @@ export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepos
           },
         });
 
-      // المسودة بتتعدّل بالكامل كل مرة (البوت بيبعت قايمة الأصناف كاملة) - أبسط وأصح من diff سطر بسطر
       await tx.delete(whatsappPendingOrderLines).where(eq(whatsappPendingOrderLines.pending_order_id, order.id));
       for (const line of order.lines) {
-        // modifier_ids is jsonb: Drizzle serialises the array.
         await tx.insert(whatsappPendingOrderLines).values({
           id: line.id,
           pending_order_id: order.id,
@@ -59,7 +57,7 @@ export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepos
           item_name: line.itemName,
           quantity: line.quantity,
           unit_price: line.unitPrice,
-          modifier_ids: [...line.modifierIds],
+          addons: line.addons.map((a) => ({ ...a })),
         });
       }
     });
@@ -81,7 +79,6 @@ export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepos
     return this.toDomain(row, await this.loadLines(row.id));
   }
 
-  // المسودات (اللي البوت لسه بيجمّعها) مش بتظهر لطاقم المراجعة إلا لو اتطلبت صراحة بالحالة
   async list(filter?: { status?: string }): Promise<WhatsappPendingOrder[]> {
     return (await this.listPage(filter)).rows;
   }
@@ -116,7 +113,7 @@ export class WhatsappPendingOrderRepository implements WhatsappPendingOrderRepos
         itemName: l.item_name,
         quantity: Number(l.quantity),
         unitPrice: Number(l.unit_price),
-        modifierIds: Array.isArray(l.modifier_ids) ? l.modifier_ids : [],
+        addons: Array.isArray(l.addons) ? l.addons : [],
       })),
       total: Number(row.total),
       status: row.status as WhatsappPendingOrderStatus,

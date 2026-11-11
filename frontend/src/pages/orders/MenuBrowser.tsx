@@ -1,11 +1,12 @@
 import { Badge } from "../../shared/ui/Badge";
+import { Button } from "../../shared/ui/Button";
 import { Card, CardBody } from "../../shared/ui/Card";
 import { Input } from "../../shared/ui/Field";
-import { itemPriceLabel, sellableVariants } from "./menuPricing";
+import { itemPriceLabel, sellableAddons, sellableVariants, type SellableAddon } from "./menuPricing";
 import { MenuTile, MenuTileGrid } from "./MenuTile";
 import { PillButton } from "./PillButton";
 import { formatPrice, MENU_GROUP_LABELS } from "./posLabels";
-import type { Combo, MenuItem, PriceMenu } from "./posTypes";
+import type { CartLine, Combo, MenuItem, PriceMenu } from "./posTypes";
 import type { Cart } from "./useCart";
 import { MENU_GROUP_FILTERS, useMenuBrowser } from "./useMenuBrowser";
 import type { PosCatalog } from "./usePosCatalog";
@@ -27,6 +28,20 @@ export function MenuBrowser({
 }) {
   const isTalabat = priceMenu === "talabat";
   const menu = useMenuBrowser(isTalabat ? { ...catalog, combos: [] } : catalog);
+  const addons = sellableAddons(catalog.addons, priceMenu);
+  const selectedLine = cart.selectedLine;
+
+  if (selectedLine && addons.length > 0) {
+    return (
+      <AddonsGrid
+        line={selectedLine}
+        addons={addons}
+        quantityOf={cart.addonQuantity}
+        onAddonClick={(addon) => cart.addAddon(selectedLine.key, addon)}
+        onDone={() => cart.selectLine(null)}
+      />
+    );
+  }
 
   return (
     <Card>
@@ -105,6 +120,48 @@ export function MenuBrowser({
               {menu.searching ? "مفيش أصناف مطابقة للبحث" : "مفيش أصناف في القسم ده"}
             </p>
           )}
+        </MenuTileGrid>
+      </CardBody>
+    </Card>
+  );
+}
+
+function AddonsGrid({
+  line,
+  addons,
+  quantityOf,
+  onAddonClick,
+  onDone,
+}: {
+  line: CartLine;
+  addons: SellableAddon[];
+  quantityOf: (variantId: string) => number;
+  onAddonClick: (addon: SellableAddon) => void;
+  onDone: () => void;
+}) {
+  return (
+    <Card>
+      <CardBody>
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-slate-500">إضافات على</p>
+            <p className="text-base font-bold text-slate-900">
+              {line.itemName}
+              {line.variantLabel && <span className="ms-1 text-sm font-medium text-slate-500">({line.variantLabel})</span>}
+            </p>
+          </div>
+          <Button type="button" onClick={onDone}>تم</Button>
+        </div>
+        <MenuTileGrid>
+          {addons.map((addon) => (
+            <MenuTile
+              key={addon.variantId}
+              name={addon.name}
+              priceLabel={`+${formatPrice(addon.salePrice)}`}
+              cartQuantity={quantityOf(addon.variantId)}
+              onClick={() => onAddonClick(addon)}
+            />
+          ))}
         </MenuTileGrid>
       </CardBody>
     </Card>

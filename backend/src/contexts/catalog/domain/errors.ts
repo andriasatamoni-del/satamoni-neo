@@ -56,15 +56,21 @@ export class MenuItemNotFoundError extends DomainError {
   }
 }
 
-export class DuplicateModifierNameError extends DomainError {
-  constructor(name: string) {
-    super(`في مرفق بنفس الاسم ده بالفعل في الصنف: ${name}`);
+export class AddonPlacementNotAllowedError extends DomainError {
+  constructor() {
+    super("الإضافة مالهاش قسم ولا محطة مطبخ - بتتطبع مع الصنف بتاعها");
   }
 }
 
-export class ModifierNotFoundError extends DomainError {
+export class AddonSingleVariantError extends DomainError {
   constructor() {
-    super("المرفق ده مش موجود في الصنف");
+    super("الإضافة ليها سعر واحد بس، مينفعش يبقى ليها أكتر من حجم");
+  }
+}
+
+export class AddonNotAllowedInComboError extends DomainError {
+  constructor() {
+    super("الإضافات مينفعش تدخل في عرض - اختار أصناف عادية بس");
   }
 }
 

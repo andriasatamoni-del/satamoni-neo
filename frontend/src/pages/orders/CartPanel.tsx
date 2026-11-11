@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Field, Input, Select } from "../../shared/ui/Field";
 import { CustomerPicker } from "./CustomerPicker";
 import { offlineFallbackQuery } from "./offlineFallbackQuery";
+import { cartLineTotal } from "./menuPricing";
 import { missingCustomerDetails, orderTotal, takesCustomer, type OrderDraft } from "./orderDraft";
 import { PillButton } from "./PillButton";
 import { formatPrice, ORDER_TYPES } from "./posLabels";
@@ -41,7 +42,10 @@ export function CartPanel({
             <CartLineRow
               key={line.key}
               line={line}
+              selected={cart.selectedLine?.key === line.key}
+              onSelect={() => cart.selectLine(cart.selectedLine?.key === line.key ? null : line.key)}
               onChangeQuantity={(delta) => cart.changeQuantity(line.key, delta)}
+              onChangeAddonQuantity={(variantId, delta) => cart.changeAddonQuantity(line.key, variantId, delta)}
               onRemove={() => cart.removeLine(line.key)}
             />
           ))}
@@ -95,21 +99,57 @@ function OrderDetailsFields({ draft, onChange }: { draft: OrderDraft; onChange: 
   );
 }
 
-function CartLineRow({ line, onChangeQuantity, onRemove }: { line: CartLine; onChangeQuantity: (delta: number) => void; onRemove: () => void }) {
+function CartLineRow({
+  line,
+  selected,
+  onSelect,
+  onChangeQuantity,
+  onChangeAddonQuantity,
+  onRemove,
+}: {
+  line: CartLine;
+  selected: boolean;
+  onSelect: () => void;
+  onChangeQuantity: (delta: number) => void;
+  onChangeAddonQuantity: (variantId: string, delta: number) => void;
+  onRemove: () => void;
+}) {
+  const canTakeAddons = !line.comboId;
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <div className="flex-1">
-        <p className="font-semibold text-slate-800">{line.itemName}</p>
-        {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
-        {line.modifiers.length > 0 && <p className="text-xs text-brand-600">{line.modifiers.map((m) => m.name).join("، ")}</p>}
+    <div className={`rounded-lg px-2 py-1.5 text-sm ${selected ? "bg-brand-50 ring-1 ring-brand-300" : ""}`}>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onSelect}
+          disabled={!canTakeAddons}
+          aria-label={`إضافات ${line.itemName}`}
+          className="flex-1 text-start disabled:cursor-default"
+        >
+          <p className="font-semibold text-slate-800">{line.itemName}</p>
+          {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
+          {canTakeAddons && !selected && <p className="text-xs text-brand-600">+ إضافات</p>}
+        </button>
+        <div className="flex items-center gap-1">
+          <QuantityButton onClick={() => onChangeQuantity(-1)}>−</QuantityButton>
+          <span className="w-5 text-center font-semibold">{line.quantity}</span>
+          <QuantityButton onClick={() => onChangeQuantity(1)}>+</QuantityButton>
+        </div>
+        <span className="w-14 text-end font-bold text-slate-900">{formatPrice(cartLineTotal(line))}</span>
+        <button type="button" onClick={onRemove} className="text-red-500 hover:text-red-700">×</button>
       </div>
-      <div className="flex items-center gap-1">
-        <QuantityButton onClick={() => onChangeQuantity(-1)}>−</QuantityButton>
-        <span className="w-5 text-center font-semibold">{line.quantity}</span>
-        <QuantityButton onClick={() => onChangeQuantity(1)}>+</QuantityButton>
-      </div>
-      <span className="w-14 text-end font-bold text-slate-900">{formatPrice(line.unitPrice * line.quantity)}</span>
-      <button type="button" onClick={onRemove} className="text-red-500 hover:text-red-700">×</button>
+      {line.addons.length > 0 && (
+        <ul className="mt-1 space-y-1 border-s-2 border-brand-200 ps-3">
+          {line.addons.map((addon) => (
+            <li key={addon.variantId} className="flex items-center gap-2 text-xs text-slate-600">
+              <span className="flex-1">+ {addon.name}</span>
+              <QuantityButton onClick={() => onChangeAddonQuantity(addon.variantId, -1)}>−</QuantityButton>
+              <span className="w-4 text-center font-semibold">{addon.quantity}</span>
+              <QuantityButton onClick={() => onChangeAddonQuantity(addon.variantId, 1)}>+</QuantityButton>
+              <span className="w-14 text-end">{formatPrice(addon.unitPrice * addon.quantity * line.quantity)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

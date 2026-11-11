@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterMenuCategoryHandler } from "../application/commands/register-menu-category.handler";
 import { RegisterMenuItemHandler } from "../application/commands/register-menu-item.handler";
@@ -6,10 +6,6 @@ import { AddVariantHandler } from "../application/commands/add-variant.handler";
 import { UpdateMenuCategoryHandler } from "../application/commands/update-menu-category.handler";
 import { UpdateMenuItemHandler } from "../application/commands/update-menu-item.handler";
 import { UpdateVariantHandler } from "../application/commands/update-variant.handler";
-import { AddModifierHandler } from "../application/commands/add-modifier.handler";
-import { UpdateModifierHandler } from "../application/commands/update-modifier.handler";
-import { SetModifierVariantPriceHandler } from "../application/commands/set-modifier-variant-price.handler";
-import { ClearModifierVariantPriceHandler } from "../application/commands/clear-modifier-variant-price.handler";
 import { RegisterRecipeHandler } from "../application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "../application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "../application/commands/activate-recipe-version.handler";
@@ -32,9 +28,6 @@ import { ReorderMenuCategoriesDto } from "./dto/reorder-menu-categories.dto";
 import { UpdateMenuCategoryDto } from "./dto/update-menu-category.dto";
 import { UpdateMenuItemDto } from "./dto/update-menu-item.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
-import { AddModifierDto } from "./dto/add-modifier.dto";
-import { UpdateModifierDto } from "./dto/update-modifier.dto";
-import { SetModifierVariantPriceDto } from "./dto/set-modifier-variant-price.dto";
 import { RegisterRecipeDto } from "./dto/register-recipe.dto";
 import { CreateRecipeVersionDto } from "./dto/create-recipe-version.dto";
 import { RegisterComboDto } from "./dto/register-combo.dto";
@@ -64,10 +57,6 @@ export class CatalogController {
     private readonly updateCategory: UpdateMenuCategoryHandler,
     private readonly updateItem: UpdateMenuItemHandler,
     private readonly updateVariant: UpdateVariantHandler,
-    private readonly addModifier: AddModifierHandler,
-    private readonly updateModifier: UpdateModifierHandler,
-    private readonly setModifierVariantPrice: SetModifierVariantPriceHandler,
-    private readonly clearModifierVariantPrice: ClearModifierVariantPriceHandler,
     private readonly registerRecipe: RegisterRecipeHandler,
     private readonly createRecipeVersion: CreateRecipeVersionHandler,
     private readonly activateRecipeVersion: ActivateRecipeVersionHandler,
@@ -141,7 +130,8 @@ export class CatalogController {
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
   async items(@Query() query: ListMenuItemsQueryDto) {
     const { page, filter } = splitListQuery(query);
-    const { items, total } = await this.listItems.execute(filter, page);
+    const { kind = "item", ...rest } = filter;
+    const { items, total } = await this.listItems.execute({ ...rest, kind: kind === "all" ? undefined : kind }, page);
     return listResponse(items.map(toPublicItem), total, page);
   }
 
@@ -179,54 +169,6 @@ export class CatalogController {
   @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
   async variantPriceHistory(@Param("variantId") variantId: string) {
     return this.priceHistory.listByVariant(variantId);
-  }
-
-  @Post("items/:id/modifiers")
-  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async createModifier(@Param("id") id: string, @Body() dto: AddModifierDto) {
-    const { item } = await this.addModifier.execute({ itemId: id, ...dto });
-    return toPublicItem(item);
-  }
-
-  @Patch("items/:id/modifiers/:modifierId")
-  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async updateModifierHandler(
-    @Param("id") id: string,
-    @Param("modifierId") modifierId: string,
-    @Body() dto: UpdateModifierDto,
-    @Req() req: Request & { user: AuthenticatedUser }
-  ) {
-    return toPublicItem(await this.updateModifier.execute({ itemId: id, modifierId, ...dto, changedBy: req.user.id }));
-  }
-
-  @Get("items/:id/modifiers/:modifierId/price-history")
-  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async modifierPriceHistory(@Param("modifierId") modifierId: string, @Query("variantId") variantId?: string) {
-    return this.priceHistory.listByModifier(modifierId, variantId);
-  }
-
-  @Put("items/:id/modifiers/:modifierId/variant-prices/:variantId")
-  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async setModifierVariantPriceRoute(
-    @Param("id") id: string,
-    @Param("modifierId") modifierId: string,
-    @Param("variantId") variantId: string,
-    @Body() dto: SetModifierVariantPriceDto,
-    @Req() req: Request & { user: AuthenticatedUser }
-  ) {
-    return toPublicItem(
-      await this.setModifierVariantPrice.execute({ itemId: id, modifierId, variantId, ...dto, changedBy: req.user.id })
-    );
-  }
-
-  @Delete("items/:id/modifiers/:modifierId/variant-prices/:variantId")
-  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE)
-  async clearModifierVariantPriceRoute(
-    @Param("id") id: string,
-    @Param("modifierId") modifierId: string,
-    @Param("variantId") variantId: string
-  ) {
-    return toPublicItem(await this.clearModifierVariantPrice.execute({ itemId: id, modifierId, variantId }));
   }
 
   @Post("recipes")
@@ -312,6 +254,7 @@ function toPublicCategory(category: MenuCategory) {
 function toPublicItem(item: MenuItem) {
   return {
     id: item.id,
+    kind: item.kind,
     categoryId: item.categoryId,
     name: item.name,
     description: item.description,
@@ -319,13 +262,6 @@ function toPublicItem(item: MenuItem) {
     isBest: item.isBest,
     isActive: item.isActive,
     variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, talabatPrice: v.talabatPrice })),
-    modifiers: item.modifiers.map((m) => ({
-      id: m.id,
-      name: m.name,
-      priceDelta: m.priceDelta,
-      isActive: m.isActive,
-      variantPrices: m.variantPrices.map((vp) => ({ variantId: vp.variantId, priceDelta: vp.priceDelta })),
-    })),
   };
 }
 

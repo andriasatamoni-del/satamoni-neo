@@ -24,10 +24,20 @@ export type PosOrderSource = (typeof POS_ORDER_SOURCES)[number];
 export const KITCHEN_STATUSES = ["NEW", "ACCEPTED", "PREPARING", "READY"] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 
-export interface OrderItemModifierLine {
-  modifierId: string | null;
-  nameAtSale: string;
-  priceAtSale: number;
+export interface OrderAddonInput {
+  menuItemId: string;
+  variantId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface OrderLineInput {
+  menuItemId?: string | null;
+  variantId?: string | null;
+  comboId?: string | null;
+  quantity: number;
+  unitPrice: number;
+  addons?: OrderAddonInput[];
 }
 
 export interface OrderItemLine {
@@ -38,7 +48,7 @@ export interface OrderItemLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
-  modifiers: OrderItemModifierLine[];
+  parentLineId: string | null;
 }
 
 export interface OrderProps {
@@ -81,14 +91,7 @@ export class Order {
     customerId?: string | null;
     customerPhone?: string | null;
     addressDetails?: string | null;
-    items: {
-      menuItemId?: string | null;
-      variantId?: string | null;
-      comboId?: string | null;
-      quantity: number;
-      unitPrice: number;
-      modifiers?: OrderItemModifierLine[];
-    }[];
+    items: OrderLineInput[];
     discount?: number;
     createdBy?: string | null;
     legacyOrderId?: number | null;
@@ -100,10 +103,12 @@ export class Order {
     if (!ORDER_TYPES.includes(input.orderType as OrderType)) throw new UnknownOrderTypeError(input.orderType);
     if (input.items.length === 0) throw new EmptyOrderError();
 
-    const items: OrderItemLine[] = input.items.map((i) => {
+    const items: OrderItemLine[] = input.items.flatMap((i) => {
       const isCombo = !!i.comboId;
       if (isCombo ? i.menuItemId || i.variantId : !i.menuItemId || !i.variantId) throw new InvalidOrderItemError();
-      return {
+      const addons = i.addons ?? [];
+      if (isCombo && addons.length > 0) throw new InvalidOrderItemError();
+      const parent: OrderItemLine = {
         id: randomUUID(),
         menuItemId: isCombo ? null : i.menuItemId!,
         variantId: isCombo ? null : i.variantId!,
@@ -111,8 +116,22 @@ export class Order {
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         lineTotal: i.quantity * i.unitPrice,
-        modifiers: i.modifiers ?? [],
+        parentLineId: null,
       };
+      const children: OrderItemLine[] = addons.map((a) => {
+        if (a.quantity <= 0) throw new InvalidOrderItemError();
+        return {
+          id: randomUUID(),
+          menuItemId: a.menuItemId,
+          variantId: a.variantId,
+          comboId: null,
+          quantity: a.quantity,
+          unitPrice: a.unitPrice,
+          lineTotal: a.quantity * a.unitPrice,
+          parentLineId: parent.id,
+        };
+      });
+      return [parent, ...children];
     });
     const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
     const discount = Math.min(Math.max(input.discount ?? 0, 0), subtotal);
@@ -177,6 +196,8 @@ export class Order {
   get customerPhone(): string | null { return this.props.customerPhone; }
   get addressDetails(): string | null { return this.props.addressDetails; }
   get items(): readonly OrderItemLine[] { return this.props.items; }
+  get topLevelItems(): readonly OrderItemLine[] { return this.props.items.filter((i) => i.parentLineId === null); }
+  addonsOf(lineId: string): readonly OrderItemLine[] { return this.props.items.filter((i) => i.parentLineId === lineId); }
   get subtotal(): number { return this.props.subtotal; }
   get discount(): number { return this.props.discount; }
   get total(): number { return this.props.total; }

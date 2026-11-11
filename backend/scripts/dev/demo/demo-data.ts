@@ -288,7 +288,7 @@ export interface MenuItemSpec {
   description: string;
   isBest?: boolean;
   variants: VariantSpec[];
-  modifiers?: { name: string; priceDelta: number; perVariant?: number[] }[];
+  addons?: AddonKey[];
   popularity: number;
 }
 
@@ -328,11 +328,27 @@ function single(label: string, price: number, recipe: Record<string, number>): V
   return [{ label, price, recipe }];
 }
 
-const PIZZA_EXTRAS = [
-  { name: "جبنة موتزاريلا إضافية", priceDelta: 40, perVariant: [30, 40, 55] },
-  { name: "حرف محشي جبنة", priceDelta: 60, perVariant: [45, 60, 80] },
-  { name: "زيتون إضافي", priceDelta: 15 },
-];
+export interface AddonSpec {
+  key: string;
+  name: string;
+  price: number;
+  recipe: Record<string, number>;
+}
+
+export const ADDONS = [
+  { key: "mozzarellaExtra", name: "جبنة موتزاريلا إضافية", price: 40, recipe: { mozzarella: 0.05 } },
+  { key: "stuffedCrust", name: "حرف محشي جبنة", price: 60, recipe: { mozzarella: 0.06 } },
+  { key: "olivesExtra", name: "زيتون إضافي", price: 15, recipe: { olives: 0.02 } },
+  { key: "creamExtra", name: "قشطة إضافية", price: 30, recipe: { cream: 0.04 } },
+  { key: "honeyExtra", name: "عسل إضافي", price: 20, recipe: { honey: 0.03 } },
+  { key: "cheeseExtra", name: "جبنة إضافية", price: 35, recipe: { mozzarella: 0.05 } },
+  { key: "cheddarSlice", name: "شريحة شيدر", price: 25, recipe: { cheddar: 0.02 } },
+  { key: "egg", name: "بيضة", price: 15, recipe: { eggs: 1 } },
+] as const satisfies readonly AddonSpec[];
+
+export type AddonKey = (typeof ADDONS)[number]["key"];
+
+const PIZZA_EXTRAS: AddonKey[] = ["mozzarellaExtra", "stuffedCrust", "olivesExtra"];
 
 export const MENU: CategorySpec[] = [
   {
@@ -341,12 +357,12 @@ export const MENU: CategorySpec[] = [
     station: "pizza",
     color: [214, 69, 45],
     items: [
-      { key: "margherita", name: "بيتزا مارجريتا", description: "صلصة طماطم إيطالي وموتزاريلا وريحان", isBest: true, variants: pizzaSizes([150, 210, 280], { mozzarella: 0.15, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 9 },
-      { key: "veggie", name: "بيتزا خضروات", description: "فلفل ألوان ومشروم وبصل وزيتون أسود", variants: pizzaSizes([165, 230, 300], { mozzarella: 0.12, pepper: 0.05, mushroom: 0.04, onion: 0.03, olives: 0.02, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 5 },
-      { key: "sausage", name: "بيتزا سجق", description: "سجق شرقي بالفلفل والبصل", isBest: true, variants: pizzaSizes([195, 270, 350], { mozzarella: 0.13, sausage: 0.12, pepper: 0.03, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 8 },
-      { key: "bbqChicken", name: "بيتزا فراخ باربكيو", description: "فراخ مشوية بصوص الباربكيو وبصل أحمر", variants: pizzaSizes([210, 290, 370], { mozzarella: 0.13, chicken: 0.13, onion: 0.03, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 7 },
-      { key: "supreme", name: "بيتزا سوبر سوبريم", description: "سجق ولحم مفروم وفراخ وخضروات", isBest: true, variants: pizzaSizes([235, 325, 415], { mozzarella: 0.15, sausage: 0.06, mince: 0.06, chicken: 0.05, pepper: 0.03, mushroom: 0.03, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 7 },
-      { key: "tunaPizza", name: "بيتزا تونة", description: "تونة وبصل وفلفل أخضر وزيتون", variants: pizzaSizes([190, 260, 335], { mozzarella: 0.12, tuna: 1, onion: 0.03, olives: 0.02, pizzaBox: 1 }), modifiers: PIZZA_EXTRAS, popularity: 4 },
+      { key: "margherita", name: "بيتزا مارجريتا", description: "صلصة طماطم إيطالي وموتزاريلا وريحان", isBest: true, variants: pizzaSizes([150, 210, 280], { mozzarella: 0.15, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 9 },
+      { key: "veggie", name: "بيتزا خضروات", description: "فلفل ألوان ومشروم وبصل وزيتون أسود", variants: pizzaSizes([165, 230, 300], { mozzarella: 0.12, pepper: 0.05, mushroom: 0.04, onion: 0.03, olives: 0.02, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 5 },
+      { key: "sausage", name: "بيتزا سجق", description: "سجق شرقي بالفلفل والبصل", isBest: true, variants: pizzaSizes([195, 270, 350], { mozzarella: 0.13, sausage: 0.12, pepper: 0.03, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 8 },
+      { key: "bbqChicken", name: "بيتزا فراخ باربكيو", description: "فراخ مشوية بصوص الباربكيو وبصل أحمر", variants: pizzaSizes([210, 290, 370], { mozzarella: 0.13, chicken: 0.13, onion: 0.03, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 7 },
+      { key: "supreme", name: "بيتزا سوبر سوبريم", description: "سجق ولحم مفروم وفراخ وخضروات", isBest: true, variants: pizzaSizes([235, 325, 415], { mozzarella: 0.15, sausage: 0.06, mince: 0.06, chicken: 0.05, pepper: 0.03, mushroom: 0.03, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 7 },
+      { key: "tunaPizza", name: "بيتزا تونة", description: "تونة وبصل وفلفل أخضر وزيتون", variants: pizzaSizes([190, 260, 335], { mozzarella: 0.12, tuna: 1, onion: 0.03, olives: 0.02, pizzaBox: 1 }), addons: PIZZA_EXTRAS, popularity: 4 },
     ],
   },
   {
@@ -355,11 +371,11 @@ export const MENU: CategorySpec[] = [
     station: "feteer",
     color: [222, 160, 52],
     items: [
-      { key: "meshaltet", name: "فطير مشلتت سادة", description: "فطير بالسمن البلدي يقدم مع العسل والقشطة", isBest: true, variants: feteerSizes([130, 205], { cream: 0.05, honey: 0.04 }), modifiers: [{ name: "قشطة إضافية", priceDelta: 30 }, { name: "عسل إضافي", priceDelta: 20 }], popularity: 6 },
-      { key: "feteerSausage", name: "فطير بالسجق", description: "سجق شرقي وفلفل وموتزاريلا", variants: feteerSizes([175, 265], { sausage: 0.12, mozzarella: 0.08, pepper: 0.03 }), modifiers: [{ name: "جبنة إضافية", priceDelta: 35 }], popularity: 5 },
-      { key: "feteerBasterma", name: "فطير بالبسطرمة والبيض", description: "بسطرمة وبيض وجبنة رومي", variants: feteerSizes([195, 295], { basterma: 0.07, eggs: 2, roumi: 0.05 }), modifiers: [{ name: "جبنة إضافية", priceDelta: 35 }], popularity: 4 },
+      { key: "meshaltet", name: "فطير مشلتت سادة", description: "فطير بالسمن البلدي يقدم مع العسل والقشطة", isBest: true, variants: feteerSizes([130, 205], { cream: 0.05, honey: 0.04 }), addons: ["creamExtra", "honeyExtra"], popularity: 6 },
+      { key: "feteerSausage", name: "فطير بالسجق", description: "سجق شرقي وفلفل وموتزاريلا", variants: feteerSizes([175, 265], { sausage: 0.12, mozzarella: 0.08, pepper: 0.03 }), addons: ["cheeseExtra"], popularity: 5 },
+      { key: "feteerBasterma", name: "فطير بالبسطرمة والبيض", description: "بسطرمة وبيض وجبنة رومي", variants: feteerSizes([195, 295], { basterma: 0.07, eggs: 2, roumi: 0.05 }), addons: ["cheeseExtra"], popularity: 4 },
       { key: "feteerMix", name: "فطير ميكس جبن", description: "موتزاريلا ورومي وشيدر", variants: feteerSizes([170, 255], { mozzarella: 0.08, roumi: 0.05, cheddar: 0.04 }), popularity: 4 },
-      { key: "feteerNutella", name: "فطير نوتيلا", description: "شوكولاتة بالبندق وسكر بودرة", variants: feteerSizes([160, 245], { nutella: 0.08, sugar: 0.01 }), modifiers: [{ name: "قشطة إضافية", priceDelta: 30 }], popularity: 5 },
+      { key: "feteerNutella", name: "فطير نوتيلا", description: "شوكولاتة بالبندق وسكر بودرة", variants: feteerSizes([160, 245], { nutella: 0.08, sugar: 0.01 }), addons: ["creamExtra"], popularity: 5 },
     ],
   },
   {
@@ -368,9 +384,9 @@ export const MENU: CategorySpec[] = [
     station: "grill",
     color: [121, 72, 44],
     items: [
-      { key: "classicBurger", name: "كلاسيك برجر", description: "لحم بقري 150 جم مع خس وطماطم وصوص ساتاموني", variants: [{ label: "سينجل", price: 155, recipe: { bun: 1, mince: 0.15, tomato: 0.03, onion: 0.02 } }, { label: "دبل", price: 235, recipe: { bun: 1, mince: 0.3, tomato: 0.03, onion: 0.02 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 5 },
-      { key: "cheeseBurger", name: "تشيز برجر", description: "لحم بقري مع شريحتين شيدر وبصل مكرمل", isBest: true, variants: [{ label: "سينجل", price: 175, recipe: { bun: 1, mince: 0.15, cheddar: 0.04, onion: 0.03 } }, { label: "دبل", price: 260, recipe: { bun: 1, mince: 0.3, cheddar: 0.06, onion: 0.03 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }, { name: "بيضة", priceDelta: 15 }], popularity: 6 },
-      { key: "chickenBurger", name: "برجر فراخ كريسبي", description: "صدر فراخ مقرمش مع صوص رانش", variants: [{ label: "سينجل", price: 165, recipe: { bun: 1, chicken: 0.16, flour: 0.03, cornOil: 0.05 } }, { label: "دبل", price: 245, recipe: { bun: 1, chicken: 0.32, flour: 0.05, cornOil: 0.08 } }], modifiers: [{ name: "شريحة شيدر", priceDelta: 25 }], popularity: 4 },
+      { key: "classicBurger", name: "كلاسيك برجر", description: "لحم بقري 150 جم مع خس وطماطم وصوص ساتاموني", variants: [{ label: "سينجل", price: 155, recipe: { bun: 1, mince: 0.15, tomato: 0.03, onion: 0.02 } }, { label: "دبل", price: 235, recipe: { bun: 1, mince: 0.3, tomato: 0.03, onion: 0.02 } }], addons: ["cheddarSlice", "egg"], popularity: 5 },
+      { key: "cheeseBurger", name: "تشيز برجر", description: "لحم بقري مع شريحتين شيدر وبصل مكرمل", isBest: true, variants: [{ label: "سينجل", price: 175, recipe: { bun: 1, mince: 0.15, cheddar: 0.04, onion: 0.03 } }, { label: "دبل", price: 260, recipe: { bun: 1, mince: 0.3, cheddar: 0.06, onion: 0.03 } }], addons: ["cheddarSlice", "egg"], popularity: 6 },
+      { key: "chickenBurger", name: "برجر فراخ كريسبي", description: "صدر فراخ مقرمش مع صوص رانش", variants: [{ label: "سينجل", price: 165, recipe: { bun: 1, chicken: 0.16, flour: 0.03, cornOil: 0.05 } }, { label: "دبل", price: 245, recipe: { bun: 1, chicken: 0.32, flour: 0.05, cornOil: 0.08 } }], addons: ["cheddarSlice"], popularity: 4 },
     ],
   },
   {
