@@ -3,16 +3,10 @@ export type MenuGroup = "regular" | "fasting";
 export interface MenuCategory { id: string; name: string; displayOrder: number; menuGroup: MenuGroup; isActive: boolean; }
 export type PriceMenu = "regular" | "talabat";
 export interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number; }
-export interface MenuItemModifierVariantPrice { variantId: string; priceDelta: number; }
-export interface MenuItemModifier {
-  id: string;
-  name: string;
-  priceDelta: number;
-  isActive: boolean;
-  variantPrices: MenuItemModifierVariantPrice[];
-}
+export type MenuItemKind = "item" | "addon";
 export interface MenuItem {
   id: string;
+  kind: MenuItemKind;
   categoryId: string | null;
   name: string;
   description: string | null;
@@ -20,22 +14,29 @@ export interface MenuItem {
   isBest: boolean;
   isActive: boolean;
   variants: MenuItemVariant[];
-  modifiers: MenuItemModifier[];
 }
 export interface ComboItem { variantId: string; quantity: number; }
 export interface Combo { id: string; name: string; price: number; isActive: boolean; onlineOnly?: boolean; items: ComboItem[]; }
 export interface CatalogLayout { combosPosition: number; }
 export interface PaymentMethod { id: string; name: string; }
 
-export interface OrderLineModifier { modifierId: string | null; nameAtSale: string; priceAtSale: number; }
+export interface OrderLineAddon {
+  id: string;
+  menuItemId: string | null;
+  variantId: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
 export interface OrderLine {
+  id: string;
   menuItemId: string | null;
   variantId: string | null;
   comboId: string | null;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
-  modifiers: OrderLineModifier[];
+  addons: OrderLineAddon[];
 }
 export interface Order {
   id: string;
@@ -56,7 +57,7 @@ export interface Order {
   addressDetails?: string | null;
 }
 
-export interface CartLineModifier { modifierId: string; name: string; priceDelta: number; }
+export interface CartLineAddon { variantId: string; name: string; quantity: number; unitPrice: number; }
 export interface CartLine {
   key: string;
   variantId: string | null;
@@ -65,5 +66,5 @@ export interface CartLine {
   variantLabel: string;
   unitPrice: number;
   quantity: number;
-  modifiers: CartLineModifier[];
+  addons: CartLineAddon[];
 }

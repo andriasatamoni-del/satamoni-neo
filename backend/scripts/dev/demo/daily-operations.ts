@@ -43,7 +43,7 @@ import { BRANCHES, COMPLAINT_TEXTS, INVENTORY, MENU, PAYMENT_METHODS, RATING_COM
 import { cairoTime } from "./clock";
 import { between, count, handler, pick, round2, weighted, type CustomerRef, type SeedContext } from "./seed-context";
 
-type OrderLine = { variantId?: string; comboId?: string; quantity: number; modifierIds?: string[] };
+type OrderLine = { variantId?: string; comboId?: string; quantity: number; addons?: { variantId: string; quantity: number }[] };
 type Channel = "pos" | "callcenter" | "website" | "whatsapp";
 
 interface PlacedOrder {
@@ -135,7 +135,7 @@ function basket(ctx: SeedContext, day: string, opts: { online: boolean; combos: 
     const variant = item.variants.length === 3 ? weighted(ctx.rand, item.variants, (v) => (v.label === "وسط" ? 45 : v.label === "كبير" ? 35 : 20)) : pick(ctx.rand, item.variants);
     const isDrink = MENU.find((c) => c.key === "drinks")!.items.some((i) => i.key === key);
     const line: OrderLine = { variantId: variant.id, quantity: isDrink ? between(ctx.rand, 1, 3) : ctx.rand() < 0.12 ? 2 : 1 };
-    if (item.modifiers.length > 0 && ctx.rand() < 0.22) line.modifierIds = [pick(ctx.rand, item.modifiers).id];
+    if (item.addonVariantIds.length > 0 && ctx.rand() < 0.22) line.addons = [{ variantId: pick(ctx.rand, item.addonVariantIds), quantity: 1 }];
     lines.push(line);
   }
   return lines;

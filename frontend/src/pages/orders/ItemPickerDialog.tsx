@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "../../shared/ui/Button";
-import { activeModifiersOf, resolveModifierPrice, sellableVariants, type SellableVariant } from "./menuPricing";
+import { sellableVariants, type SellableVariant } from "./menuPricing";
 import { formatPrice } from "./posLabels";
 import type { MenuItem, PriceMenu } from "./posTypes";
 
@@ -12,22 +12,12 @@ export function ItemPickerDialog({
 }: {
   item: MenuItem;
   priceMenu: PriceMenu;
-  onAdd: (variant: SellableVariant, modifierIds: string[]) => void;
+  onAdd: (variant: SellableVariant) => void;
   onClose: () => void;
 }) {
   const variants = sellableVariants(item, priceMenu);
   const [variantId, setVariantId] = useState(variants[0]?.id ?? null);
-  const [modifierIds, setModifierIds] = useState<string[]>([]);
-
-  const activeModifiers = activeModifiersOf(item);
   const selectedVariant = variants.find((v) => v.id === variantId) ?? variants[0];
-  const modifierTotal = activeModifiers
-    .filter((m) => modifierIds.includes(m.id))
-    .reduce((sum, m) => sum + resolveModifierPrice(m, selectedVariant.id), 0);
-
-  function toggleModifier(id: string) {
-    setModifierIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -55,24 +45,11 @@ export function ItemPickerDialog({
           </div>
         )}
 
-        {activeModifiers.length > 0 && (
-          <div className="mb-3 space-y-1.5 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold text-slate-500">إضافات</p>
-            {activeModifiers.map((m) => (
-              <label key={m.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-1.5 text-sm">
-                <input type="checkbox" checked={modifierIds.includes(m.id)} onChange={() => toggleModifier(m.id)} />
-                <span className="flex-1">{m.name}</span>
-                <span className="text-slate-500">+{formatPrice(resolveModifierPrice(m, selectedVariant.id))}</span>
-              </label>
-            ))}
-          </div>
-        )}
-
         <div className="flex items-center justify-between border-t border-slate-100 pt-3">
           <span className="text-sm font-semibold text-slate-500">السعر</span>
-          <span className="text-lg font-bold text-brand-700">{formatPrice(selectedVariant.salePrice + modifierTotal)}</span>
+          <span className="text-lg font-bold text-brand-700">{formatPrice(selectedVariant.salePrice)}</span>
         </div>
-        <Button className="mt-3 w-full" onClick={() => onAdd(selectedVariant, modifierIds)}>
+        <Button className="mt-3 w-full" onClick={() => onAdd(selectedVariant)}>
           إضافة للسلة
         </Button>
       </div>

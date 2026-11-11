@@ -2,8 +2,14 @@ import { IsBoolean, IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, QueryBoolean } from "../../../../shared/http/list-query.dto";
 import { MENU_GROUPS } from "../../domain/menu-category.aggregate";
 
+export const MENU_ITEM_KIND_FILTERS = ["item", "addon", "all"] as const;
+export type MenuItemKindFilter = (typeof MENU_ITEM_KIND_FILTERS)[number];
+
 export class ListMenuItemsQueryDto extends ListQueryDto {
-  /** a category id, or `none` for items without a category */
+  @IsOptional()
+  @IsIn(MENU_ITEM_KIND_FILTERS)
+  kind?: MenuItemKindFilter;
+
   @IsOptional()
   @IsString()
   categoryId?: string;
@@ -19,7 +25,6 @@ export class ListMenuItemsQueryDto extends ListQueryDto {
 }
 
 export class ListMenuCategoriesQueryDto extends ListQueryDto {
-  // ?archived=true بيرجّع الأقسام المؤرشفة بس (قائمة الاسترجاع في الإعدادات)؛ الافتراضي غير المؤرشفة
   @IsOptional()
   @QueryBoolean()
   @IsBoolean()

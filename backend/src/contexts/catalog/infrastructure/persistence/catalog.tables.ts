@@ -1,8 +1,10 @@
-import { pgTable, text, timestamp, unique, check, uuid, boolean, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, timestamp, unique, check, uuid, boolean, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
 import { inventoryItems } from "../../../inventory/infrastructure/persistence/inventory.tables";
 import { kitchenStations } from "../../../printing/infrastructure/persistence/printing.tables";
+
+export const menuItemKind = pgEnum("menu_item_kind", ["item", "addon"]);
 
 export const menuItemVariants = pgTable("menu_item_variants", {
   id: uuid().defaultRandom().primaryKey().notNull(),
@@ -98,7 +100,10 @@ export const menuItems = pgTable("menu_items", {
   legacy_menu_item_id: integer(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
   station_id: uuid(),
+  kind: menuItemKind().default("item").notNull(),
 }, (table) => [
+  index("menu_items_active_kind_idx").using("btree", table.kind.asc().nullsLast()).where(sql`is_active`),
+  check("menu_items_addon_has_no_category_or_station", sql`kind = 'item'::menu_item_kind OR (category_id IS NULL AND station_id IS NULL)`),
   foreignKey({
       columns: [table.category_id],
       foreignColumns: [menuCategories.id],
@@ -109,41 +114,6 @@ export const menuItems = pgTable("menu_items", {
       foreignColumns: [kitchenStations.id],
       name: "menu_items_station_id_fkey"
     }).onDelete("set null"),
-]);
-
-export const menuItemModifiers = pgTable("menu_item_modifiers", {
-  id: uuid().primaryKey().notNull(),
-  item_id: uuid().notNull(),
-  name: text().notNull(),
-  price_delta: numeric().default('0').notNull().$type<number>(),
-  is_active: boolean().default(true).notNull(),
-  legacy_modifier_id: integer(),
-}, (table) => [
-  foreignKey({
-      columns: [table.item_id],
-      foreignColumns: [menuItems.id],
-      name: "menu_item_modifiers_item_id_fkey"
-    }).onDelete("cascade"),
-  unique("menu_item_modifiers_item_name_unique").on(table.item_id, table.name),
-]);
-
-export const menuItemModifierVariantPrices = pgTable("menu_item_modifier_variant_prices", {
-  id: uuid().defaultRandom().primaryKey().notNull(),
-  modifier_id: uuid().notNull(),
-  variant_id: uuid().notNull(),
-  price_delta: numeric().notNull().$type<number>(),
-}, (table) => [
-  foreignKey({
-      columns: [table.modifier_id],
-      foreignColumns: [menuItemModifiers.id],
-      name: "menu_item_modifier_variant_prices_modifier_id_fkey"
-    }).onDelete("cascade"),
-  foreignKey({
-      columns: [table.variant_id],
-      foreignColumns: [menuItemVariants.id],
-      name: "menu_item_modifier_variant_prices_variant_id_fkey"
-    }).onDelete("cascade"),
-  unique("menu_item_modifier_variant_prices_unique").on(table.modifier_id, table.variant_id),
 ]);
 
 export const comboItems = pgTable("combo_items", {
@@ -189,7 +159,7 @@ export const menuPriceHistory = pgTable("menu_price_history", {
       foreignColumns: [menuItemVariants.id],
       name: "menu_price_history_variant_id_fkey"
     }).onDelete("cascade"),
-  check("menu_price_history_entity_type_check", sql`entity_type = ANY (ARRAY['variant'::text, 'modifier'::text, 'modifier_variant_price'::text])`),
+  check("menu_price_history_entity_type_check", sql`entity_type = 'variant'::text`),
 ]);
 
 export const combos = pgTable("combos", {

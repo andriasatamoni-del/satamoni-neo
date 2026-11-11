@@ -1,6 +1,15 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { ORDER_TYPES, POS_ORDER_SOURCES, type PosOrderSource } from "../../domain/order.aggregate";
+
+export class OrderAddonInputDto {
+  @IsUUID() variantId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  quantity!: number;
+}
 
 export class OrderItemInputDto {
   @IsOptional() @IsUUID() variantId?: string;
@@ -12,8 +21,9 @@ export class OrderItemInputDto {
 
   @IsOptional()
   @IsArray()
-  @IsUUID(undefined, { each: true })
-  modifierIds?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => OrderAddonInputDto)
+  addons?: OrderAddonInputDto[];
 }
 
 export class RegisterOrderDto {

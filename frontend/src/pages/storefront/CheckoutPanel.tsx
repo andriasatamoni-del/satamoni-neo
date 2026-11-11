@@ -30,8 +30,6 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   return 6371 * 2 * Math.asin(Math.sqrt(h));
 }
 
-// السلة + تأكيد الطلب. الحساب إلزامي (STORE-2): العميل المسجّل مابيكتبش أي بيانات - اسمه وتليفوناته
-// وعنوانه الافتراضي جاهزين، والطلب بضغطة واحدة (وممكن يختار مكافأة بنقاطه)
 export function CheckoutPanel({
   menu,
   cart,
@@ -72,7 +70,11 @@ export function CheckoutPanel({
                     {l.name}
                     {l.variantLabel && <span className="text-slate-500"> · {l.variantLabel}</span>}
                   </p>
-                  {l.modifierNames.length > 0 && <p className="text-xs text-slate-500">+ {l.modifierNames.join("، ")}</p>}
+                  {l.addons.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      + {l.addons.map((a) => (a.quantity > 1 ? `${a.quantity}× ${a.name}` : a.name)).join("، ")}
+                    </p>
+                  )}
                   <p className="text-xs text-slate-500">{money(l.unitPrice * l.quantity)}</p>
                 </div>
                 <div className="flex items-center rounded-lg border border-slate-200">
@@ -151,7 +153,6 @@ function OrderForm({
   const [notes, setNotes] = useState("");
   const [rewardId, setRewardId] = useState("");
   const [locating, setLocating] = useState<string | null>(null);
-  // نفس المعرّف لحد ما الطلب ينجح - لو داس مرتين أو النت فصل بعد الإرسال، السيرفر بيرجّع نفس الطلب
   const requestId = useRef(newRequestId());
 
   const addressesQuery = useQuery({
@@ -191,7 +192,6 @@ function OrderForm({
 
   const rewards = (loyaltyQuery.data?.rewards ?? []).filter((r) => r.affordable);
   const reward = rewards.find((r) => r.id === rewardId);
-  // تقدير للعرض بس - السيرفر بيحسب الخصم الحقيقي. الهدية بتتضاف ببلاش، والخصم مايعديش الطلب
   const discount = reward ? (reward.kind === "discount" ? Math.min(reward.value ?? 0, total) : 0) : 0;
   const finalTotal = total - discount;
 
@@ -208,7 +208,9 @@ function OrderForm({
           notes: notes || undefined,
           rewardId: rewardId || undefined,
           items: cart.map((l) =>
-            l.kind === "combo" ? { comboId: l.refId, quantity: l.quantity } : { variantId: l.refId, quantity: l.quantity, modifierIds: l.modifierIds }
+            l.kind === "combo"
+              ? { comboId: l.refId, quantity: l.quantity }
+              : { variantId: l.refId, quantity: l.quantity, addons: l.addons.map((a) => ({ variantId: a.variantId, quantity: a.quantity })) }
           ),
         },
       }),

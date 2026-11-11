@@ -16,8 +16,13 @@ export interface StorefrontMenuItem {
   imageUrl: string | null;
   isBest: boolean;
   variants: { id: string; label: string; price: number }[];
-  // السعر لكل حجم (سعر خاص بالحجم لو متحدد، وإلا السعر العام) - نفس MenuItem.resolveModifierPrice
-  modifiers: { id: string; name: string; prices: Record<string, number> }[];
+}
+
+export interface StorefrontAddon {
+  variantId: string;
+  name: string;
+  imageUrl: string | null;
+  price: number;
 }
 
 export interface StorefrontCategory {
@@ -41,7 +46,7 @@ export interface TrackedOrderLine {
   variantLabel: string | null;
   quantity: number;
   lineTotal: number;
-  modifiers: string[];
+  addons: { name: string; quantity: number; lineTotal: number }[];
 }
 
 export interface TrackedOrder {
@@ -70,6 +75,7 @@ export interface TrackedOrder {
 export interface StorefrontReaderPort {
   branches(): Promise<StorefrontBranch[]>;
   categories(): Promise<StorefrontCategory[]>;
+  addons(): Promise<StorefrontAddon[]>;
   combos(): Promise<StorefrontCombo[]>;
   cashPaymentMethodId(): Promise<string | null>;
   findOrder(orderId: string): Promise<TrackedOrder | null>;

@@ -10,9 +10,6 @@ import type { StorefrontCombo, StorefrontItem, StorefrontMenu } from "./types";
 import { egpPerPoint, money } from "./types";
 import { loadCart, saveCart, type CartLine } from "./storefrontStorage";
 
-// موقع الطلب أونلاين (STORE-1/2) - نفس public/order.html في الريبو القديم: العروض الحصرية بالصور فوق، نقاط
-// الولاء، منيو بالأقسام والصور والإضافات، سلة، وطلب بضغطة للعميل المسجّل (QR: ?branch=<id>&table=<رقم>).
-// صفحة عامة - الفرجة من غير حساب، والطلب بحساب (راجع CheckoutPanel)
 export function StorefrontPage() {
   const [params] = useSearchParams();
   const customer = useStorefrontCustomer();
@@ -34,12 +31,14 @@ export function StorefrontPage() {
 
   const menu = menuQuery.data;
 
-  // أصناف اتشالت من المنيو من ساعة ما اتحطت في السلة (السلة محفوظة على الجهاز) - بتتشال لوحدها
   useEffect(() => {
     if (!menu) return;
     const variants = new Set(menu.categories.flatMap((c) => c.items.flatMap((i) => i.variants.map((v) => v.id))));
     const combos = new Set(menu.combos.map((c) => c.id));
-    const valid = cart.filter((l) => (l.kind === "combo" ? combos.has(l.refId) : variants.has(l.refId)));
+    const addons = new Set(menu.addons.map((a) => a.variantId));
+    const valid = cart.filter((l) =>
+      l.kind === "combo" ? combos.has(l.refId) : variants.has(l.refId) && l.addons.every((a) => addons.has(a.variantId))
+    );
     if (valid.length !== cart.length) setCart(valid);
   }, [menu]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -62,7 +61,11 @@ export function StorefrontPage() {
   }, [menu, activeCategory, search]);
 
   function addLine(line: Omit<CartLine, "key">) {
-    const key = `${line.kind}:${line.refId}:${[...line.modifierIds].sort().join(",")}`;
+    const addonsKey = line.addons
+      .map((a) => `${a.variantId}x${a.quantity}`)
+      .sort()
+      .join(",");
+    const key = `${line.kind}:${line.refId}:${addonsKey}`;
     const existing = cart.find((l) => l.key === key);
     setCart(
       existing
@@ -73,7 +76,7 @@ export function StorefrontPage() {
   }
 
   function addCombo(combo: StorefrontCombo) {
-    addLine({ kind: "combo", refId: combo.id, name: combo.name, variantLabel: null, modifierIds: [], modifierNames: [], unitPrice: combo.price, quantity: 1 });
+    addLine({ kind: "combo", refId: combo.id, name: combo.name, variantLabel: null, addons: [], unitPrice: combo.price, quantity: 1 });
   }
 
   const count = cart.reduce((sum, l) => sum + l.quantity, 0);
@@ -225,6 +228,7 @@ export function StorefrontPage() {
       {selected && (
         <ItemDialog
           item={selected}
+          addons={menu.addons}
           onClose={() => setSelected(null)}
           onAdd={(line) => {
             addLine(line);

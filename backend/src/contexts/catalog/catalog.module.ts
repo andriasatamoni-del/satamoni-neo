@@ -14,10 +14,6 @@ import { AddVariantHandler } from "./application/commands/add-variant.handler";
 import { UpdateMenuCategoryHandler } from "./application/commands/update-menu-category.handler";
 import { UpdateMenuItemHandler } from "./application/commands/update-menu-item.handler";
 import { UpdateVariantHandler } from "./application/commands/update-variant.handler";
-import { AddModifierHandler } from "./application/commands/add-modifier.handler";
-import { UpdateModifierHandler } from "./application/commands/update-modifier.handler";
-import { SetModifierVariantPriceHandler } from "./application/commands/set-modifier-variant-price.handler";
-import { ClearModifierVariantPriceHandler } from "./application/commands/clear-modifier-variant-price.handler";
 import { RegisterRecipeHandler } from "./application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "./application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "./application/commands/activate-recipe-version.handler";
@@ -54,10 +50,6 @@ import { CatalogController } from "./api/catalog.controller";
     GetCatalogLayoutHandler,
     UpdateMenuItemHandler,
     UpdateVariantHandler,
-    AddModifierHandler,
-    UpdateModifierHandler,
-    SetModifierVariantPriceHandler,
-    ClearModifierVariantPriceHandler,
     RegisterRecipeHandler,
     CreateRecipeVersionHandler,
     ActivateRecipeVersionHandler,

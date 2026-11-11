@@ -4,7 +4,7 @@ import { DATABASE, type Database } from "../../../../shared/database/database.to
 import { users } from "../../../identity-access/infrastructure/persistence/identity-access.tables";
 import { menuPriceHistory } from "../../infrastructure/persistence/catalog.tables";
 
-export type MenuPriceHistoryEntityType = "variant" | "modifier" | "modifier_variant_price";
+export type MenuPriceHistoryEntityType = "variant";
 
 export interface MenuPriceHistoryEntry {
   id: string;
@@ -32,9 +32,6 @@ const ENTRY_COLUMNS = {
   created_at: menuPriceHistory.created_at,
 };
 
-// سجل تغييرات أسعار المنيو - append-only، نفس فلسفة EmployeeHistoryService بالظبط (وnفس منطق
-// db/menu-price-history.js بالريبو القديم بالحرف): سطر واحد بس لما السعر فعليًا يتغيّر (لو نفس القيمة
-// القديمة، أو الاتنين null، مفيش سطر يتسجّل خالص).
 @Injectable()
 export class MenuPriceHistoryService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -72,20 +69,6 @@ export class MenuPriceHistoryService {
       .where(and(eq(menuPriceHistory.entity_type, "variant"), eq(menuPriceHistory.entity_id, variantId)))
       .orderBy(desc(menuPriceHistory.created_at));
 
-    return rows.map(toEntry);
-  }
-
-  async listByModifier(modifierId: string, variantId?: string | null): Promise<MenuPriceHistoryEntry[]> {
-    const typeFilter = variantId
-      ? and(eq(menuPriceHistory.entity_type, "modifier_variant_price"), eq(menuPriceHistory.variant_id, variantId))
-      : eq(menuPriceHistory.entity_type, "modifier");
-
-    const rows = await this.db
-      .select(ENTRY_COLUMNS)
-      .from(menuPriceHistory)
-      .leftJoin(users, eq(users.id, menuPriceHistory.changed_by))
-      .where(and(eq(menuPriceHistory.entity_id, modifierId), typeFilter))
-      .orderBy(desc(menuPriceHistory.created_at));
     return rows.map(toEntry);
   }
 }

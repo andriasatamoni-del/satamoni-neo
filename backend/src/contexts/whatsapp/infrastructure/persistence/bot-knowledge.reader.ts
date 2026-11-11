@@ -6,13 +6,12 @@ import {
   comboItems,
   combos,
   menuCategories,
-  menuItemModifiers,
-  menuItemModifierVariantPrices,
   menuItems,
   menuItemVariants,
 } from "../../../catalog/infrastructure/persistence/catalog.tables";
 import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
 import type {
+  BotAddon,
   BotBranch,
   BotCombo,
   BotKnowledgeReaderPort,
@@ -21,7 +20,6 @@ import type {
   BotRecentOrder,
 } from "../../domain/ports/bot-knowledge-reader.port";
 
-// بيهرّب % و_ و\ قبل ILIKE - عشان كلام العميل مايتفسّرش كـwildcard
 function likeContains(value: string): string {
   return `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
@@ -44,6 +42,7 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
       .where(
         and(
           eq(menuItems.is_active, true),
+          eq(menuItems.kind, "item"),
           or(isNull(menuCategories.id), and(eq(menuCategories.is_active, true), eq(menuCategories.menu_group, "regular")))
         )
       )
@@ -51,23 +50,11 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
     if (items.length === 0) return [];
 
     const ids = items.map((i) => i.id);
-    const [variants, modifiers] = await Promise.all([
-      this.db
-        .select({ id: menuItemVariants.id, item_id: menuItemVariants.item_id, label: menuItemVariants.label, price: menuItemVariants.price })
-        .from(menuItemVariants)
-        .where(inArray(menuItemVariants.item_id, ids))
-        .orderBy(asc(menuItemVariants.price)),
-      this.db
-        .select({
-          id: menuItemModifiers.id,
-          item_id: menuItemModifiers.item_id,
-          name: menuItemModifiers.name,
-          price_delta: menuItemModifiers.price_delta,
-        })
-        .from(menuItemModifiers)
-        .where(and(inArray(menuItemModifiers.item_id, ids), eq(menuItemModifiers.is_active, true)))
-        .orderBy(asc(menuItemModifiers.name)),
-    ]);
+    const variants = await this.db
+      .select({ id: menuItemVariants.id, item_id: menuItemVariants.item_id, label: menuItemVariants.label, price: menuItemVariants.price })
+      .from(menuItemVariants)
+      .where(inArray(menuItemVariants.item_id, ids))
+      .orderBy(asc(menuItemVariants.price));
 
     return items
       .map((i) => ({
@@ -76,9 +63,18 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
         category: i.category ?? "أخرى",
         isBest: i.is_best,
         variants: variants.filter((v) => v.item_id === i.id).map((v) => ({ id: v.id, label: v.label, price: Number(v.price) })),
-        modifiers: modifiers.filter((m) => m.item_id === i.id).map((m) => ({ id: m.id, name: m.name, priceDelta: Number(m.price_delta) })),
       }))
       .filter((i) => i.variants.length > 0);
+  }
+
+  async activeAddons(): Promise<BotAddon[]> {
+    const rows = await this.db
+      .select({ variant_id: menuItemVariants.id, name: menuItems.name, price: menuItemVariants.price })
+      .from(menuItems)
+      .innerJoin(menuItemVariants, eq(menuItemVariants.item_id, menuItems.id))
+      .where(and(eq(menuItems.kind, "addon"), eq(menuItems.is_active, true)))
+      .orderBy(asc(menuItems.name));
+    return rows.map((r) => ({ variantId: r.variant_id, name: r.name, price: Number(r.price) }));
   }
 
   async activeCombos(): Promise<BotCombo[]> {
@@ -129,7 +125,13 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
     const items = await this.db
       .select({ id: menuItems.id, name: menuItems.name })
       .from(menuItems)
-      .where(and(eq(menuItems.is_active, true), or(eq(sql`lower(${menuItems.name})`, lowered), ilike(menuItems.name, likeContains(name)))))
+      .where(
+        and(
+          eq(menuItems.is_active, true),
+          eq(menuItems.kind, "item"),
+          or(eq(sql`lower(${menuItems.name})`, lowered), ilike(menuItems.name, likeContains(name)))
+        )
+      )
       .orderBy(desc(sql`(lower(${menuItems.name}) = ${lowered})`), asc(menuItems.name))
       .limit(5);
     if (items.length === 0) return [];
@@ -153,28 +155,21 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
     }));
   }
 
-  async findActiveModifier(itemId: string, variantId: string, name: string) {
+  async findActiveAddon(name: string): Promise<BotAddon | null> {
     const lowered = name.toLowerCase();
     const [row] = await this.db
-      .select({
-        id: menuItemModifiers.id,
-        name: menuItemModifiers.name,
-        price_delta: sql<string>`COALESCE(${menuItemModifierVariantPrices.price_delta}, ${menuItemModifiers.price_delta})`,
-      })
-      .from(menuItemModifiers)
-      .leftJoin(
-        menuItemModifierVariantPrices,
-        and(eq(menuItemModifierVariantPrices.modifier_id, menuItemModifiers.id), eq(menuItemModifierVariantPrices.variant_id, variantId))
-      )
+      .select({ variant_id: menuItemVariants.id, name: menuItems.name, price: menuItemVariants.price })
+      .from(menuItems)
+      .innerJoin(menuItemVariants, eq(menuItemVariants.item_id, menuItems.id))
       .where(
         and(
-          eq(menuItemModifiers.item_id, itemId),
-          eq(menuItemModifiers.is_active, true),
-          or(eq(sql`lower(${menuItemModifiers.name})`, lowered), ilike(menuItemModifiers.name, likeContains(name)))
+          eq(menuItems.kind, "addon"),
+          eq(menuItems.is_active, true),
+          or(eq(sql`lower(${menuItems.name})`, lowered), ilike(menuItems.name, likeContains(name)))
         )
       )
-      .orderBy(desc(sql`(lower(${menuItemModifiers.name}) = ${lowered})`))
+      .orderBy(desc(sql`(lower(${menuItems.name}) = ${lowered})`), asc(menuItems.name))
       .limit(1);
-    return row ? { id: row.id, name: row.name, priceDelta: Number(row.price_delta) } : null;
+    return row ? { variantId: row.variant_id, name: row.name, price: Number(row.price) } : null;
   }
 }

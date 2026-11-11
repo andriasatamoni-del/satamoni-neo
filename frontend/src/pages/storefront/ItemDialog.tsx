@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/Button";
 import { resolveImageUrl } from "../../shared/api/images";
-import type { StorefrontItem } from "./types";
+import type { StorefrontAddon, StorefrontItem } from "./types";
 import { money } from "./types";
 import type { CartLine } from "./storefrontStorage";
 
-// اختيار الحجم والإضافات والكمية - سعر الإضافة بيتغيّر حسب الحجم (سعر خاص بالحجم لو متحدد في المنيو)
 export function ItemDialog({
   item,
+  addons,
   onClose,
   onAdd,
 }: {
   item: StorefrontItem;
+  addons: StorefrontAddon[];
   onClose: () => void;
   onAdd: (line: Omit<CartLine, "key">) => void;
 }) {
   const [variantId, setVariantId] = useState(item.variants[0].id);
-  const [modifierIds, setModifierIds] = useState<string[]>([]);
+  const [addonQuantities, setAddonQuantities] = useState<Record<string, number>>({});
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
@@ -26,8 +27,14 @@ export function ItemDialog({
   }, [onClose]);
 
   const variant = item.variants.find((v) => v.id === variantId)!;
-  const chosen = item.modifiers.filter((m) => modifierIds.includes(m.id));
-  const unitPrice = variant.price + chosen.reduce((sum, m) => sum + (m.prices[variantId] ?? 0), 0);
+  const chosen = addons
+    .filter((a) => (addonQuantities[a.variantId] ?? 0) > 0)
+    .map((a) => ({ variantId: a.variantId, name: a.name, quantity: addonQuantities[a.variantId], unitPrice: a.price }));
+  const unitPrice = variant.price + chosen.reduce((sum, a) => sum + a.quantity * a.unitPrice, 0);
+
+  function changeAddon(variantId: string, delta: number) {
+    setAddonQuantities((current) => ({ ...current, [variantId]: Math.min(10, Math.max(0, (current[variantId] ?? 0) + delta)) }));
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 sm:items-center" onClick={onClose}>
@@ -70,23 +77,35 @@ export function ItemDialog({
           </fieldset>
         )}
 
-        {item.modifiers.length > 0 && (
+        {addons.length > 0 && (
           <fieldset className="mt-4">
             <legend className="mb-2 text-sm font-semibold text-slate-700">إضافات</legend>
             <div className="space-y-2">
-              {item.modifiers.map((m) => (
-                <label key={m.id} className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <span className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={modifierIds.includes(m.id)}
-                      onChange={(e) => setModifierIds((ids) => (e.target.checked ? [...ids, m.id] : ids.filter((id) => id !== m.id)))}
-                    />
-                    {m.name}
-                  </span>
-                  <span className="text-slate-500">+{money(m.prices[variantId] ?? 0)}</span>
-                </label>
-              ))}
+              {addons.map((a) => {
+                const quantity = addonQuantities[a.variantId] ?? 0;
+                return (
+                  <div
+                    key={a.variantId}
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
+                      quantity > 0 ? "border-brand-500 bg-brand-50" : "border-slate-200"
+                    }`}
+                  >
+                    <span>
+                      {a.name}
+                      <span className="ms-2 text-slate-500">+{money(a.price)}</span>
+                    </span>
+                    <span className="flex items-center rounded-lg border border-slate-200 bg-white">
+                      <button type="button" className="px-2 py-1" onClick={() => changeAddon(a.variantId, -1)} aria-label={`أقل ${a.name}`}>
+                        −
+                      </button>
+                      <span className="w-6 text-center font-bold">{quantity}</span>
+                      <button type="button" className="px-2 py-1" onClick={() => changeAddon(a.variantId, 1)} aria-label={`أكتر ${a.name}`}>
+                        +
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </fieldset>
         )}
@@ -112,8 +131,7 @@ export function ItemDialog({
                 refId: variantId,
                 name: item.name,
                 variantLabel: item.variants.length > 1 ? variant.label : null,
-                modifierIds: chosen.map((m) => m.id),
-                modifierNames: chosen.map((m) => m.name),
+                addons: chosen,
                 unitPrice,
                 quantity,
               })

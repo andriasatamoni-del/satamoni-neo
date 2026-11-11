@@ -1,8 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { MenuItem } from "../../domain/menu-item.aggregate";
+import { MenuItem, type MenuItemKind } from "../../domain/menu-item.aggregate";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 
 export interface RegisterMenuItemCommand {
+  kind?: MenuItemKind;
   categoryId?: string | null;
   name: string;
   description?: string | null;

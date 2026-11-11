@@ -1,16 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, count, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
-import { MenuItem } from "../../domain/menu-item.aggregate";
+import { MenuItem, type MenuItemKind } from "../../domain/menu-item.aggregate";
 import type { MenuItemListFilter, MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { businessDayRangeCondition, groupBy, inListChunks, orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
-import { menuItemModifiers, menuItemModifierVariantPrices, menuItems, menuItemVariants } from "./catalog.tables";
-
-type ModifierWithPrices = {
-  row: typeof menuItemModifiers.$inferSelect;
-  variantPrices: (typeof menuItemModifierVariantPrices.$inferSelect)[];
-};
+import { menuItems, menuItemVariants } from "./catalog.tables";
 
 @Injectable()
 export class MenuItemRepository implements MenuItemRepositoryPort {
@@ -20,6 +15,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
     await this.db.transaction(async (tx) => {
       const itemRow = {
         id: item.id,
+        kind: item.kind,
         category_id: item.categoryId,
         name: item.name,
         description: item.description,
@@ -62,43 +58,6 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             set: { label: variant.label, price: variant.price, talabat_price: variant.talabatPrice },
           });
       }
-
-      for (const modifier of item.modifiers) {
-        await tx
-          .insert(menuItemModifiers)
-          .values({
-            id: modifier.id,
-            item_id: item.id,
-            name: modifier.name,
-            price_delta: modifier.priceDelta,
-            is_active: modifier.isActive,
-            legacy_modifier_id: modifier.legacyModifierId,
-          })
-          .onConflictDoUpdate({
-            target: menuItemModifiers.id,
-            set: { name: modifier.name, price_delta: modifier.priceDelta, is_active: modifier.isActive },
-          });
-
-        const variantIds = modifier.variantPrices.map((vp) => vp.variantId);
-        await tx
-          .delete(menuItemModifierVariantPrices)
-          .where(
-            and(
-              eq(menuItemModifierVariantPrices.modifier_id, modifier.id),
-              variantIds.length > 0 ? notInArray(menuItemModifierVariantPrices.variant_id, variantIds) : undefined
-            )
-          );
-
-        for (const vp of modifier.variantPrices) {
-          await tx
-            .insert(menuItemModifierVariantPrices)
-            .values({ modifier_id: modifier.id, variant_id: vp.variantId, price_delta: vp.priceDelta })
-            .onConflictDoUpdate({
-              target: [menuItemModifierVariantPrices.modifier_id, menuItemModifierVariantPrices.variant_id],
-              set: { price_delta: vp.priceDelta },
-            });
-        }
-      }
     });
   }
 
@@ -121,12 +80,15 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
     return row ? (await this.withChildren([row]))[0] : null;
   }
 
-  async list(): Promise<MenuItem[]> {
-    return this.withChildren(await this.db.select().from(menuItems).orderBy(asc(menuItems.name)));
+  async list(kind?: MenuItemKind): Promise<MenuItem[]> {
+    return this.withChildren(
+      await this.db.select().from(menuItems).where(kind ? eq(menuItems.kind, kind) : undefined).orderBy(asc(menuItems.name))
+    );
   }
 
   async search(filter: MenuItemListFilter, page?: PageRequest): Promise<{ items: MenuItem[]; total: number }> {
     const where = and(
+      filter.kind ? eq(menuItems.kind, filter.kind) : undefined,
       filter.categoryId === "none" ? isNull(menuItems.category_id) : filter.categoryId ? eq(menuItems.category_id, filter.categoryId) : undefined,
       filter.status ? eq(menuItems.is_active, filter.status === "active") : undefined,
       filter.isBest !== undefined ? eq(menuItems.is_best, filter.isBest) : undefined,
@@ -146,33 +108,16 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
   private async withChildren(rows: (typeof menuItems.$inferSelect)[]): Promise<MenuItem[]> {
     if (rows.length === 0) return [];
     const variantRows: (typeof menuItemVariants.$inferSelect)[] = [];
-    const modifierRows: (typeof menuItemModifiers.$inferSelect)[] = [];
     for (const ids of inListChunks(rows.map((r) => r.id))) {
       variantRows.push(...(await this.db.select().from(menuItemVariants).where(inArray(menuItemVariants.item_id, ids)).orderBy(asc(menuItemVariants.label))));
-      modifierRows.push(...(await this.db.select().from(menuItemModifiers).where(inArray(menuItemModifiers.item_id, ids)).orderBy(asc(menuItemModifiers.name))));
-    }
-    const priceRows: (typeof menuItemModifierVariantPrices.$inferSelect)[] = [];
-    for (const ids of inListChunks(modifierRows.map((m) => m.id))) {
-      priceRows.push(...(await this.db.select().from(menuItemModifierVariantPrices).where(inArray(menuItemModifierVariantPrices.modifier_id, ids))));
     }
     const variantsByItem = groupBy(variantRows, (v) => v.item_id);
-    const modifiersByItem = groupBy(modifierRows, (m) => m.item_id);
-    const pricesByModifier = groupBy(priceRows, (p) => p.modifier_id);
-    return rows.map((row) =>
-      this.toDomain(
-        row,
-        variantsByItem.get(row.id) ?? [],
-        (modifiersByItem.get(row.id) ?? []).map((m) => ({ row: m, variantPrices: pricesByModifier.get(m.id) ?? [] }))
-      )
-    );
+    return rows.map((row) => this.toDomain(row, variantsByItem.get(row.id) ?? []));
   }
 
-  private toDomain(
-    row: typeof menuItems.$inferSelect,
-    variantRows: (typeof menuItemVariants.$inferSelect)[],
-    modifierRows: ModifierWithPrices[]
-  ): MenuItem {
+  private toDomain(row: typeof menuItems.$inferSelect, variantRows: (typeof menuItemVariants.$inferSelect)[]): MenuItem {
     return MenuItem.reconstitute(row.id, {
+      kind: row.kind,
       categoryId: row.category_id,
       name: row.name,
       description: row.description,
@@ -188,14 +133,6 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
         price: Number(v.price),
         talabatPrice: Number(v.talabat_price),
         legacyVariantId: v.legacy_variant_id,
-      })),
-      modifiers: modifierRows.map(({ row: m, variantPrices }) => ({
-        id: m.id,
-        name: m.name,
-        priceDelta: Number(m.price_delta),
-        isActive: m.is_active,
-        legacyModifierId: m.legacy_modifier_id,
-        variantPrices: variantPrices.map((vp) => ({ variantId: vp.variant_id, priceDelta: Number(vp.price_delta) })),
       })),
     });
   }

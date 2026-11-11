@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from "class-validator";
+import { MENU_ITEM_KINDS, type MenuItemKind } from "../../domain/menu-item.aggregate";
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from "class-validator";
 
 export class VariantInputDto {
   @IsString()
@@ -12,6 +13,7 @@ export class VariantInputDto {
 }
 
 export class RegisterMenuItemDto {
+  @IsOptional() @IsIn(MENU_ITEM_KINDS) kind?: MenuItemKind;
   @IsOptional() @IsUUID() categoryId?: string;
 
   @IsString()

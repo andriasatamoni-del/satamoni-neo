@@ -20,9 +20,6 @@ export interface OrderPrintData {
   items: ResolvedPrintItem[];
 }
 
-// بيجمّع كل البيانات اللي أي print template محتاجها من الطلب - نقطة مشتركة واحدة بدل ما كل handler
-// (order creation/dinein preparing/delivery handover/dinein bill) يكرر نفس منطق تحميل الطلب + حل اسم
-// الصنف/الحجم/المحطة بتاعه من الكتالوج
 @Injectable()
 export class OrderPrintDataBuilder {
   constructor(
@@ -42,9 +39,7 @@ export class OrderPrintDataBuilder {
     const paymentMethod = order.paymentMethodId ? await this.paymentMethods.findById(order.paymentMethodId) : null;
 
     const items: ResolvedPrintItem[] = [];
-    for (const line of order.items) {
-      // سطر عرض (combo) - بيتفكّ لأصنافه الأصلية عشان كل صنف يوصل لمحطة تحضيره الصحيحة (نفس فلسفة
-      // combo_components بالريبو القديم بالظبط - راجع تعليق register-order.handler.ts)
+    for (const line of order.topLevelItems) {
       if (line.comboId) {
         const combo = await this.combos.findById(line.comboId);
         const components = combo?.items ?? [];
@@ -56,8 +51,6 @@ export class OrderPrintDataBuilder {
             const category = await this.menuCategories.findById(menuItem.categoryId);
             stationId = category?.stationId ?? null;
           }
-          // سعر العرض بالكامل بيتحط على أول مكوّن بس (عشان مجموع أعمدة السعر في الفاتورة يطابق سعر
-          // العرض الحقيقي) - باقي المكوّنات بسعر صفر، نفس فكرة الريبو القديم في تفكيك الـcombo_components
           items.push({
             name: `${combo?.name ?? "عرض"}: ${menuItem?.name ?? "صنف"}`,
             variantLabel: variant?.label ?? null,
@@ -85,6 +78,17 @@ export class OrderPrintDataBuilder {
         lineTotal: line.lineTotal,
         stationId,
       });
+      for (const addon of order.addonsOf(line.id)) {
+        const addonItem = await this.menuItems.findByVariantId(addon.variantId!);
+        items.push({
+          name: `+ ${addonItem?.name ?? "إضافة"}`,
+          variantLabel: null,
+          quantity: addon.quantity,
+          unitPrice: addon.unitPrice,
+          lineTotal: addon.lineTotal,
+          stationId,
+        });
+      }
     }
 
     const summary: PrintOrderSummary = {
@@ -106,8 +110,6 @@ export class OrderPrintDataBuilder {
   }
 }
 
-// بتفكك أصناف الطلب لمجموعات حسب محطة التحضير - المفتاح null يعني "مفيش محطة معروفة" (بتتجمع في تذكرة
-// واحدة FAILED واضحة بدل ما تضيع بصمت، راجع insertPrintJob/errorReason في application layer)
 export function splitItemsByStation(items: ResolvedPrintItem[]): Map<string | null, PrintItemLine[]> {
   const buckets = new Map<string | null, PrintItemLine[]>();
   for (const item of items) {

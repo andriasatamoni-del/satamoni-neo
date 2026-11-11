@@ -1,0 +1,1 @@
+ALTER TABLE "whatsapp_pending_order_lines" DROP COLUMN "modifier_ids";

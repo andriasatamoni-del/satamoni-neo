@@ -12,12 +12,17 @@ export type WhatsappPendingOrderStatus = (typeof WHATSAPP_PENDING_ORDER_STATUSES
 export interface WhatsappPendingOrderLine {
   id: string;
   variantId: string;
-  // اسم الصنف + الحجم + الإضافات جاهز للعرض (السعر والاسم مجمّدين وقت الطلب)
   itemName: string;
   quantity: number;
-  // سعر الحجم + الإضافات
   unitPrice: number;
-  modifierIds: string[];
+  addons: PendingOrderLineAddon[];
+}
+
+export interface PendingOrderLineAddon {
+  variantId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
 }
 
 export interface PendingOrderLineInput {
@@ -25,7 +30,7 @@ export interface PendingOrderLineInput {
   itemName: string;
   quantity: number;
   unitPrice: number;
-  modifierIds?: string[];
+  addons?: PendingOrderLineAddon[];
 }
 
 export interface WhatsappPendingOrderProps {
@@ -52,7 +57,7 @@ function toLines(input: PendingOrderLineInput[]): WhatsappPendingOrderLine[] {
     itemName: l.itemName,
     quantity: l.quantity,
     unitPrice: l.unitPrice,
-    modifierIds: l.modifierIds ?? [],
+    addons: l.addons ?? [],
   }));
 }
 
@@ -60,11 +65,6 @@ function sumLines(lines: WhatsappPendingOrderLine[]): number {
   return lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
 }
 
-// WhatsappPendingOrder - نفس مفهوم whatsapp_pending_orders في الريبو القديم. طريقين للإنشاء:
-// 1. register(): موظف كول سنتر بيدخل الأصناف مباشرة بعد ما يقرا المحادثة -> PENDING على طول.
-// 2. startDraft()/updateDraft()/submit(): البوت بيجمّع الطلب تدريجيًا من كلام العميل (DRAFT)، ولما العميل
-//    يأكد بيتحول PENDING للمراجعة البشرية. البوت عمره ما بيسجّل أوردر حقيقي بنفسه.
-// confirm() بس هو اللي بيعمل أوردر حقيقي (عن طريق RegisterOrderHandler) - مفيش منطق مخزون/محاسبة هنا.
 export class WhatsappPendingOrder {
   private constructor(
     public readonly id: string,
@@ -123,7 +123,6 @@ export class WhatsappPendingOrder {
     return new WhatsappPendingOrder(id, props);
   }
 
-  // كل حقل undefined بيفضل زي ما هو - lines لو اتبعتت بتستبدل القايمة كلها (البوت بيبعت القايمة الكاملة)
   updateDraft(input: {
     orderType?: string;
     branchId?: string | null;

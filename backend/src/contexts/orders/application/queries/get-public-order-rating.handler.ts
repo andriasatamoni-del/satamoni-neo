@@ -20,9 +20,6 @@ export interface PublicOrderRatingView {
   existingRating: { stars: number; comment: string | null } | null;
 }
 
-// GET /api/order-ratings/:orderId?token=... - نفس رد الريبو القديم بالظبط (routes/order-ratings.js):
-// توكن غلط أو مطابق لطلب تاني -> نفس الخطأ الموحّد (InvalidRatingTokenError، 404) عشان محدش يقدر
-// يشوف طلب مش بتاعه بمجرد تخمين رقم الطلب
 @Injectable()
 export class GetPublicOrderRatingHandler {
   constructor(
@@ -39,7 +36,7 @@ export class GetPublicOrderRatingHandler {
 
     const branch = await this.branches.findById(order.branchId);
     const items = [];
-    for (const line of order.items) {
+    for (const line of order.topLevelItems) {
       if (line.comboId) {
         const combo = await this.combos.findById(line.comboId);
         items.push({ name: combo?.name ?? "عرض", variant: null, quantity: line.quantity });

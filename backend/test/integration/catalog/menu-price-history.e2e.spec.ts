@@ -6,7 +6,7 @@ import { AppModule } from "../../../src/app.module";
 import { DATABASE } from "../../../src/shared/database/database.module";
 import type { Database } from "../../../src/shared/database/database.token";
 import { eq, inArray } from "drizzle-orm";
-import { menuItemModifierVariantPrices, menuItemModifiers, menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { menuItemVariants, menuItems, menuPriceHistory } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 
 describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد تطبيق حقيقي كامل)", () => {
@@ -14,7 +14,8 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
   let adminToken: string;
   let itemId: string;
   let variantId: string;
-  let modifierId: string;
+  let addonId: string;
+  let addonVariantId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -48,20 +49,19 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     itemId = itemRes.body.id;
     variantId = itemRes.body.variants[0].id;
 
-    const modifierRes = await request(app.getHttpServer())
-      .post(`/catalog/items/${itemId}/modifiers`)
+    const addonRes = await request(app.getHttpServer())
+      .post("/catalog/items")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "جبنة إضافية-جست", priceDelta: 10 });
-    modifierId = modifierRes.body.modifiers[0].id;
+      .send({ kind: "addon", name: "جبنة إضافية-سجل-جست", variants: [{ label: "عادي", price: 10, talabatPrice: 14 }] });
+    addonId = addonRes.body.id;
+    addonVariantId = addonRes.body.variants[0].id;
   });
 
   afterAll(async () => {
     const db = app.get<Database>(DATABASE);
-    await db.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, [variantId, modifierId]));
-    await db.delete(menuItemModifierVariantPrices).where(eq(menuItemModifierVariantPrices.modifier_id, modifierId));
-    await db.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
-    await db.delete(menuItemVariants).where(eq(menuItemVariants.item_id, itemId));
-    await db.delete(menuItems).where(eq(menuItems.id, itemId));
+    await db.delete(menuPriceHistory).where(inArray(menuPriceHistory.entity_id, [variantId, addonVariantId]));
+    await db.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, [itemId, addonId]));
+    await db.delete(menuItems).where(inArray(menuItems.id, [itemId, addonId]));
     await db.delete(users).where(eq(users.email, "admin-price-history@jest.test"));
     await app.close();
   });
@@ -97,43 +97,20 @@ describe("Catalog - سجل تاريخ أسعار المنيو (HIST-2, e2e ضد 
     expect(priceRows).toHaveLength(1);
   });
 
-  test("PATCH modifier priceDelta بيسجّل صف تاريخ", async () => {
+  test("تغيير سعر الإضافة بيتسجّل في نفس سجل أسعار الأحجام", async () => {
     const res = await request(app.getHttpServer())
-      .patch(`/catalog/items/${itemId}/modifiers/${modifierId}`)
+      .patch(`/catalog/items/${addonId}/variants/${addonVariantId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ priceDelta: 15 });
+      .send({ price: 15 });
     expect(res.status).toBe(200);
 
     const history = await request(app.getHttpServer())
-      .get(`/catalog/items/${itemId}/modifiers/${modifierId}/price-history`)
+      .get(`/catalog/items/${addonId}/variants/${addonVariantId}/price-history`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(history.status).toBe(200);
     expect(history.body).toHaveLength(1);
+    expect(history.body[0].entityType).toBe("variant");
     expect(history.body[0].oldPrice).toBe(10);
     expect(history.body[0].newPrice).toBe(15);
-  });
-
-  test("PUT modifier variant-price مخصوص بيسجّل صف تاريخ من نوع modifier_variant_price", async () => {
-    const res = await request(app.getHttpServer())
-      .put(`/catalog/items/${itemId}/modifiers/${modifierId}/variant-prices/${variantId}`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ priceDelta: 25 });
-    expect(res.status).toBe(200);
-
-    const history = await request(app.getHttpServer())
-      .get(`/catalog/items/${itemId}/modifiers/${modifierId}/price-history?variantId=${variantId}`)
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(history.status).toBe(200);
-    expect(history.body).toHaveLength(1);
-    expect(history.body[0].oldPrice).toBeNull();
-    expect(history.body[0].newPrice).toBe(25);
-    expect(history.body[0].variantId).toBe(variantId);
-
-    const generalHistory = await request(app.getHttpServer())
-      .get(`/catalog/items/${itemId}/modifiers/${modifierId}/price-history`)
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(generalHistory.body).toHaveLength(1);
-    expect(generalHistory.body[0].fieldName).toBe("price_delta");
-    expect(generalHistory.body[0].newPrice).toBe(15);
   });
 });

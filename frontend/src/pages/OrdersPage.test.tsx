@@ -15,14 +15,13 @@ const PAGE_RENDER_TIMEOUT_MS = 4000;
 
 function menuItem(id: string, name: string, price: number, talabatPrice?: number) {
   return {
-    id, categoryId: "c1", name, description: null, imageUrl: null, isBest: false, isActive: true,
+    id, kind: "item", categoryId: "c1", name, description: null, imageUrl: null, isBest: false, isActive: true,
     variants: [{ id: `${id}-v`, label: "عادي", price, ...(talabatPrice === undefined ? {} : { talabatPrice }) }],
-    modifiers: [],
   };
 }
 
 function tile(name: string) {
-  return screen.findByRole("button", { name: new RegExp(name) }, { timeout: PAGE_RENDER_TIMEOUT_MS });
+  return screen.findByRole("button", { name: new RegExp(`^[0-9 ]*${name}`) }, { timeout: PAGE_RENDER_TIMEOUT_MS });
 }
 
 async function renderPos() {
@@ -95,5 +94,42 @@ describe("POS Talabat menu", () => {
 
     expect(await screen.findByText("السلة فاضية")).toBeInTheDocument();
     expect(await tile("فطير جبنة")).toHaveTextContent(formatPrice(50));
+  });
+});
+
+describe("POS addons", () => {
+  const cheeseAddon = {
+    id: "a1", kind: "addon", categoryId: null, name: "جبنة زيادة", description: null, imageUrl: null, isBest: false, isActive: true,
+    variants: [{ id: "a1-v", label: "عادي", price: 15, talabatPrice: 20 }],
+  };
+
+  beforeEach(() => {
+    apiMock.responses["/catalog/items?kind=addon"] = [cheeseAddon];
+  });
+
+  it("opens the addons for the item just added and adds them to that line", async () => {
+    await renderPos();
+    fireEvent.click(await tile("فطير جبنة"));
+
+    expect(await screen.findByText("إضافات على")).toBeInTheDocument();
+    fireEvent.click(await tile("جبنة زيادة"));
+    fireEvent.click(await tile("جبنة زيادة"));
+
+    expect(screen.getByText("+ جبنة زيادة")).toBeInTheDocument();
+    expect(screen.getAllByText(formatPrice(80)).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "تم" }));
+    expect(await tile("بيبسي")).toBeInTheDocument();
+    expect(screen.queryByText("إضافات على")).not.toBeInTheDocument();
+  });
+
+  it("keeps a line with addons apart from a new tap on the same item", async () => {
+    await renderPos();
+    fireEvent.click(await tile("فطير جبنة"));
+    fireEvent.click(await tile("جبنة زيادة"));
+    fireEvent.click(screen.getByRole("button", { name: "تم" }));
+
+    fireEvent.click(await tile("فطير جبنة"));
+    expect(screen.getByText("السلة (2)")).toBeInTheDocument();
   });
 });

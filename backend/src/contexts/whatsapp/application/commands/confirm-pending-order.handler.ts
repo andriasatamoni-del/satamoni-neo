@@ -13,9 +13,6 @@ export interface ConfirmPendingOrderCommand {
   reviewedBy: string | null;
 }
 
-// بيسجّل الطلب الحقيقي بنفس RegisterOrderHandler اللي POST /orders العادي بيستخدمه بالظبط (استهلاك
-// مخزون + حدث OrderRegistered لترحيل قيد المحاسبة تلقائيًا) - مفيش أي منطق مخزون/محاسبة مكرر هنا، نفس
-// القرار الموثّق في تعليق migration 023_create_whatsapp_intake_tables.ts
 @Injectable()
 export class ConfirmPendingOrderHandler {
   constructor(
@@ -35,7 +32,11 @@ export class ConfirmPendingOrderHandler {
       customerName: pendingOrder.customerName,
       customerPhone: pendingOrder.customerPhone,
       addressDetails: pendingOrder.addressDetails,
-      items: pendingOrder.lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, modifierIds: l.modifierIds })),
+      items: pendingOrder.lines.map((l) => ({
+        variantId: l.variantId,
+        quantity: l.quantity,
+        addons: l.addons.map((a) => ({ variantId: a.variantId, quantity: a.quantity })),
+      })),
       createdBy: command.reviewedBy,
       paymentMethodId: command.paymentMethodId,
       source: "whatsapp",

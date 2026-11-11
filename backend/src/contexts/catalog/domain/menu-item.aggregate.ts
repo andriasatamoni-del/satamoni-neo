@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
-  DuplicateModifierNameError,
+  AddonPlacementNotAllowedError,
+  AddonSingleVariantError,
   DuplicateVariantLabelError,
   MenuItemNameRequiredError,
-  ModifierNotFoundError,
   VariantNotFoundError,
 } from "./errors";
+
+export const MENU_ITEM_KINDS = ["item", "addon"] as const;
+export type MenuItemKind = (typeof MENU_ITEM_KINDS)[number];
 
 export interface MenuItemVariant {
   id: string;
@@ -15,21 +18,8 @@ export interface MenuItemVariant {
   legacyVariantId: number | null;
 }
 
-export interface MenuItemModifierVariantPrice {
-  variantId: string;
-  priceDelta: number;
-}
-
-export interface MenuItemModifier {
-  id: string;
-  name: string;
-  priceDelta: number;
-  isActive: boolean;
-  variantPrices: MenuItemModifierVariantPrice[];
-  legacyModifierId: number | null;
-}
-
 export interface MenuItemProps {
+  kind: MenuItemKind;
   categoryId: string | null;
   name: string;
   description: string | null;
@@ -37,7 +27,6 @@ export interface MenuItemProps {
   isBest: boolean;
   isActive: boolean;
   variants: MenuItemVariant[];
-  modifiers: MenuItemModifier[];
   legacyMenuItemId: number | null;
   createdAt: Date;
   stationId: string | null;
@@ -50,6 +39,7 @@ export class MenuItem {
   ) {}
 
   static register(input: {
+    kind?: MenuItemKind;
     categoryId?: string | null;
     name: string;
     description?: string | null;
@@ -59,16 +49,19 @@ export class MenuItem {
   }): MenuItem {
     const name = input.name.trim();
     if (!name) throw new MenuItemNameRequiredError();
+    const kind = input.kind ?? "item";
+    const categoryId = input.categoryId ?? null;
+    if (kind === "addon" && categoryId !== null) throw new AddonPlacementNotAllowedError();
 
     return new MenuItem(randomUUID(), {
-      categoryId: input.categoryId ?? null,
+      kind,
+      categoryId,
       name,
       description: input.description ?? null,
       imageUrl: input.imageUrl ?? null,
-      isBest: !!input.isBest,
+      isBest: kind === "item" && !!input.isBest,
       isActive: true,
       variants: [],
-      modifiers: [],
       legacyMenuItemId: input.legacyMenuItemId ?? null,
       createdAt: new Date(),
       stationId: null,
@@ -80,6 +73,7 @@ export class MenuItem {
   }
 
   addVariant(input: { label: string; price: number; talabatPrice: number; legacyVariantId?: number | null }): MenuItemVariant {
+    if (this.isAddon && this.props.variants.length > 0) throw new AddonSingleVariantError();
     const label = input.label.trim();
     if (this.props.variants.some((v) => v.label === label)) throw new DuplicateVariantLabelError(label);
     const variant: MenuItemVariant = {
@@ -100,54 +94,6 @@ export class MenuItem {
     if (talabatPrice !== undefined) variant.talabatPrice = talabatPrice;
   }
 
-  addModifier(input: { name: string; priceDelta: number; legacyModifierId?: number | null }): MenuItemModifier {
-    const name = input.name.trim();
-    if (this.props.modifiers.some((m) => m.name === name)) throw new DuplicateModifierNameError(name);
-    const modifier: MenuItemModifier = {
-      id: randomUUID(),
-      name,
-      priceDelta: input.priceDelta,
-      isActive: true,
-      variantPrices: [],
-      legacyModifierId: input.legacyModifierId ?? null,
-    };
-    this.props.modifiers.push(modifier);
-    return modifier;
-  }
-
-  updateModifier(modifierId: string, input: { name?: string; priceDelta?: number; isActive?: boolean }): void {
-    const modifier = this.props.modifiers.find((m) => m.id === modifierId);
-    if (!modifier) throw new ModifierNotFoundError();
-    if (input.name !== undefined) {
-      const name = input.name.trim();
-      if (this.props.modifiers.some((m) => m.id !== modifierId && m.name === name)) throw new DuplicateModifierNameError(name);
-      modifier.name = name;
-    }
-    if (input.priceDelta !== undefined) modifier.priceDelta = input.priceDelta;
-    if (input.isActive !== undefined) modifier.isActive = input.isActive;
-  }
-
-  setModifierVariantPrice(modifierId: string, variantId: string, priceDelta: number): void {
-    const modifier = this.props.modifiers.find((m) => m.id === modifierId);
-    if (!modifier) throw new ModifierNotFoundError();
-    const existing = modifier.variantPrices.find((vp) => vp.variantId === variantId);
-    if (existing) existing.priceDelta = priceDelta;
-    else modifier.variantPrices.push({ variantId, priceDelta });
-  }
-
-  clearModifierVariantPrice(modifierId: string, variantId: string): void {
-    const modifier = this.props.modifiers.find((m) => m.id === modifierId);
-    if (!modifier) throw new ModifierNotFoundError();
-    modifier.variantPrices = modifier.variantPrices.filter((vp) => vp.variantId !== variantId);
-  }
-
-  resolveModifierPrice(modifierId: string, variantId: string): number {
-    const modifier = this.props.modifiers.find((m) => m.id === modifierId);
-    if (!modifier) throw new ModifierNotFoundError();
-    const override = modifier.variantPrices.find((vp) => vp.variantId === variantId);
-    return override ? override.priceDelta : modifier.priceDelta;
-  }
-
   rename(name: string): void {
     const trimmed = name.trim();
     if (!trimmed) throw new MenuItemNameRequiredError();
@@ -160,16 +106,24 @@ export class MenuItem {
     imageUrl?: string | null;
     isBest?: boolean;
   }): void {
+    if (this.isAddon && (input.categoryId ?? null) !== null) throw new AddonPlacementNotAllowedError();
     if (input.categoryId !== undefined) this.props.categoryId = input.categoryId;
     if (input.description !== undefined) this.props.description = input.description;
     if (input.imageUrl !== undefined) this.props.imageUrl = input.imageUrl;
-    if (input.isBest !== undefined) this.props.isBest = input.isBest;
+    if (input.isBest !== undefined) this.props.isBest = this.isItem && input.isBest;
   }
 
   activate(): void { this.props.isActive = true; }
   deactivate(): void { this.props.isActive = false; }
-  setStationId(stationId: string | null): void { this.props.stationId = stationId; }
 
+  setStationId(stationId: string | null): void {
+    if (this.isAddon && stationId !== null) throw new AddonPlacementNotAllowedError();
+    this.props.stationId = stationId;
+  }
+
+  get kind(): MenuItemKind { return this.props.kind; }
+  get isAddon(): boolean { return this.props.kind === "addon"; }
+  get isItem(): boolean { return this.props.kind === "item"; }
   get categoryId(): string | null { return this.props.categoryId; }
   get name(): string { return this.props.name; }
   get description(): string | null { return this.props.description; }
@@ -177,7 +131,6 @@ export class MenuItem {
   get isBest(): boolean { return this.props.isBest; }
   get isActive(): boolean { return this.props.isActive; }
   get variants(): readonly MenuItemVariant[] { return this.props.variants; }
-  get modifiers(): readonly MenuItemModifier[] { return this.props.modifiers; }
   get legacyMenuItemId(): number | null { return this.props.legacyMenuItemId; }
   get createdAt(): Date { return this.props.createdAt; }
   get stationId(): string | null { return this.props.stationId; }

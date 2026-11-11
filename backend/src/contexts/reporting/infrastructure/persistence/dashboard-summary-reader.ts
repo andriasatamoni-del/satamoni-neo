@@ -75,10 +75,8 @@ export class DashboardSummaryReader implements DashboardSummaryReaderPort {
         })
         .from(orderItems)
         .innerJoin(menuItems, eq(menuItems.id, orderItems.menu_item_id))
-        .where(inArray(orderItems.order_id, activeOrderIds));
+        .where(and(inArray(orderItems.order_id, activeOrderIds), eq(menuItems.kind, "item")));
       for (const row of itemRows) {
-        // INNER JOIN على menu_items بيستبعد سطور العروض (menu_item_id فاضي) من الأساس - الـ! هنا أمان
-        // نوعي بس، مش افتراض جديد
         const menuItemId = row.menu_item_id!;
         const entry = itemMap.get(menuItemId) ?? { name: row.name, quantity: 0, revenue: 0 };
         entry.quantity += row.quantity;

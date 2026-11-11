@@ -9,10 +9,6 @@ import { printJobs } from "../../../src/contexts/printing/infrastructure/persist
 import { menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { DEFAULT_PAGE_LIMIT } from "../../../src/shared/http/list-query.dto";
 
-// NEO-6: the shared list contract. `paginate=1` returns { items, total, limit, offset } with the default limit applied; without it
-// the endpoints keep their bare-array responses. Filters run in SQL (Cairo business-day bounds for dates), totals match what the
-// caller may see, list loading is a fixed number of queries, and the old row caps (audit 500, shifts 200, print jobs 300) can be
-// paged past.
 describe("NEO-6 - server-side pagination and filtering", () => {
   let w: World;
   const orderIds: string[] = [];
@@ -82,7 +78,6 @@ describe("NEO-6 - server-side pagination and filtering", () => {
     });
 
     test("date filters use the Cairo business day: 23:30 Cairo stays on that day, 00:30 Cairo is the next day", async () => {
-      // 2030-06-14 is summer time (UTC+3): 20:30Z = 23:30 Cairo on the 14th, 21:30Z = 00:30 Cairo on the 15th
       await w.db.update(orders).set({ created_at: new Date("2030-06-14T20:30:00Z") }).where(eq(orders.id, orderIds[2]));
       await w.db.update(orders).set({ created_at: new Date("2030-06-14T21:30:00Z") }).where(eq(orders.id, orderIds[3]));
 
@@ -94,7 +89,7 @@ describe("NEO-6 - server-side pagination and filtering", () => {
       expect((await get(`/orders?paginate=1&branchId=${w.branchA}&from=14-06-2030`)).status).toBe(400);
     });
 
-    test("loading a page costs the same number of queries for 1 order or 5 (no N+1 on items and modifiers)", async () => {
+    test("loading a page costs the same number of queries for 1 order or 5 (no N+1 on items and addons)", async () => {
       const spy = jest.spyOn(Client.prototype, "query");
       try {
         const queriesFor = async (limit: number) => {
@@ -102,10 +97,10 @@ describe("NEO-6 - server-side pagination and filtering", () => {
           const res = await get(`/orders?paginate=1&branchId=${w.branchA}&limit=${limit}`);
           expect(res.status).toBe(200);
           expect(res.body.items).toHaveLength(limit);
-          expect(spy.mock.calls.length).toBeGreaterThan(0); // the spy really sees the app's queries
+          expect(spy.mock.calls.length).toBeGreaterThan(0);
           return spy.mock.calls.length;
         };
-        await queriesFor(1); // warm-up
+        await queriesFor(1);
         expect(await queriesFor(5)).toBe(await queriesFor(1));
       } finally {
         spy.mockRestore();
@@ -118,7 +113,6 @@ describe("NEO-6 - server-side pagination and filtering", () => {
       expect(res.body.total).toBe(5);
       expect(res.body.items.every((o: { branchId: string }) => o.branchId === w.branchA)).toBe(true);
       expect((await get(`/orders?paginate=1&branchId=${w.branchB}`, w.tokens.managerA)).status).toBe(403);
-      // admin sees both branches
       expect((await get("/orders?paginate=1&limit=1")).body.total).toBeGreaterThanOrEqual(6);
     });
   });
@@ -180,7 +174,6 @@ describe("NEO-6 - server-side pagination and filtering", () => {
       const tail = await get(`/shifts?branchId=${w.branchA}&status=CLOSED&paginate=1&limit=200&offset=200`);
       expect(tail.body.total).toBe(205);
       expect(tail.body.items).toHaveLength(5);
-      // the business-day filter applies to opened_at
       expect((await get(`/shifts?branchId=${w.branchA}&status=CLOSED&paginate=1&from=2002-01-01&to=2002-01-01`)).body.total).toBe(205);
     });
 

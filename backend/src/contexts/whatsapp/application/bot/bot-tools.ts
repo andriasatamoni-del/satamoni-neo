@@ -6,7 +6,7 @@ import {
   type WhatsappPendingOrderRepositoryPort,
 } from "../../domain/ports/whatsapp-pending-order-repository.port";
 import { OUTBOUND_MESSENGER, type OutboundMessengerPort } from "../../domain/ports/outbound-messenger.port";
-import { WhatsappPendingOrder, type PendingOrderLineInput } from "../../domain/whatsapp-pending-order.aggregate";
+import { WhatsappPendingOrder, type PendingOrderLineAddon, type PendingOrderLineInput } from "../../domain/whatsapp-pending-order.aggregate";
 import type { WhatsappConversation } from "../../domain/whatsapp-conversation.aggregate";
 import { RegisterComplaintFromConversationHandler } from "../commands/register-complaint-from-conversation.handler";
 
@@ -60,7 +60,7 @@ export const BOT_TOOL_DEFINITIONS: AiToolDefinition[] = [
               itemName: { type: "string" },
               variantLabel: { type: "string", description: "الحجم - ممكن تسيبه فاضي لو الصنف له حجم واحد" },
               quantity: { type: "integer", minimum: 1 },
-              modifierNames: { type: "array", items: { type: "string" } },
+              addonNames: { type: "array", items: { type: "string" }, description: "إضافات على الصنف ده (كرر الاسم لو عايزها أكتر من مرة)" },
             },
             required: ["itemName", "quantity"],
           },
@@ -99,9 +99,6 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-// الأدوات اللي البوت بيستخدمها - نفس services/whatsapp-bot/tools.js في الريبو القديم. كل أداة بترجع نص
-// عشان الموديل يصيغ منه رد طبيعي. مفيش أداة بتسجّل أوردر حقيقي أو بتلمس مخزون/محاسبة - أقصى حاجة مسودة
-// بتروح لطاقم المراجعة (confirm بتاعهم هو اللي بيسجّل الأوردر فعلًا).
 @Injectable()
 export class WhatsappBotTools {
   private readonly logger = new Logger(WhatsappBotTools.name);
@@ -132,13 +129,15 @@ export class WhatsappBotTools {
     const byCategory = new Map<string, string[]>();
     for (const item of items) {
       const variants = item.variants.map((v) => `${v.label}: ${money(v.price)}`).join("، ");
-      let line = `- ${item.name}${item.isBest ? " ⭐" : ""}: ${variants}`;
-      if (item.modifiers.length > 0) {
-        line += `\n  إضافات: ${item.modifiers.map((m) => `${m.name} (${m.priceDelta >= 0 ? "+" : ""}${money(m.priceDelta)})`).join("، ")}`;
-      }
+      const line = `- ${item.name}${item.isBest ? " ⭐" : ""}: ${variants}`;
       byCategory.set(item.category, [...(byCategory.get(item.category) ?? []), line]);
     }
-    return [...byCategory].map(([cat, lines]) => `## ${cat}\n${lines.join("\n")}`).join("\n\n");
+    const sections = [...byCategory].map(([cat, lines]) => `## ${cat}\n${lines.join("\n")}`);
+    const addons = await this.knowledge.activeAddons();
+    if (addons.length > 0) {
+      sections.push(`## إضافات (تتضاف على أي صنف)\n${addons.map((a) => `- ${a.name}: +${money(a.price)}`).join("\n")}`);
+    }
+    return sections.join("\n\n");
   }
 
   private async getOffers(): Promise<string> {
@@ -188,22 +187,25 @@ export class WhatsappBotTools {
     }
     if (!variant) return `الصنف "${item.name}" أحجامه: ${item.variants.map((v) => v.label).join("، ")} - أنهي حجم؟`;
 
-    const modifierNames = Array.isArray(raw.modifierNames) ? raw.modifierNames.filter((m): m is string => typeof m === "string") : [];
-    const modifiers = [];
-    for (const modifierName of modifierNames) {
-      const modifier = await this.knowledge.findActiveModifier(item.itemId, variant.id, modifierName);
-      if (!modifier) return `مفيش إضافة اسمها "${modifierName}" للصنف "${item.name}".`;
-      modifiers.push(modifier);
+    const addonNames = Array.isArray(raw.addonNames) ? raw.addonNames.filter((m): m is string => typeof m === "string") : [];
+    const addons: PendingOrderLineAddon[] = [];
+    for (const addonName of addonNames) {
+      const addon = await this.knowledge.findActiveAddon(addonName);
+      if (!addon) return `مفيش إضافة اسمها "${addonName}" في المنيو.`;
+      const existing = addons.find((a) => a.variantId === addon.variantId);
+      if (existing) existing.quantity += 1;
+      else addons.push({ variantId: addon.variantId, name: addon.name, quantity: 1, unitPrice: addon.price });
     }
 
     const quantity = Math.max(1, Math.floor(Number(raw.quantity) || 1));
-    const displayName = `${item.name} (${variant.label})${modifiers.length ? ` + ${modifiers.map((m) => m.name).join("، ")}` : ""}`;
+    const addonsLabel = addons.map((a) => (a.quantity > 1 ? `${a.quantity}× ${a.name}` : a.name)).join("، ");
+    const displayName = `${item.name} (${variant.label})${addons.length ? ` + ${addonsLabel}` : ""}`;
     return {
       variantId: variant.id,
       itemName: displayName,
       quantity,
-      unitPrice: variant.price + modifiers.reduce((sum, m) => sum + m.priceDelta, 0),
-      modifierIds: modifiers.map((m) => m.id),
+      unitPrice: variant.price + addons.reduce((sum, a) => sum + a.quantity * a.unitPrice, 0),
+      addons,
     };
   }
 
@@ -237,7 +239,6 @@ export class WhatsappBotTools {
         customerName: conversation.customerName,
       });
     }
-    // فرع واحد بس = مفيش داعي نسأل العميل
     if (!branchId && !draft.branchId && branches.length === 1) branchId = branches[0].id;
 
     const orderType = args.orderType === "takeaway" || args.orderType === "delivery" ? args.orderType : undefined;
@@ -286,7 +287,6 @@ export class WhatsappBotTools {
     return `اتسجلت الشكوى (رقم ${complaint.id.slice(0, 8)}) - حد من الفريق هيتابع معاك.`;
   }
 
-  // تنبيه اختياري لرقم واتساب المسؤول - فشله ميأثرش على رد العميل
   private async notifyStaff(text: string): Promise<void> {
     const to = process.env.WHATSAPP_STAFF_NOTIFY_NUMBER;
     if (!to) return;

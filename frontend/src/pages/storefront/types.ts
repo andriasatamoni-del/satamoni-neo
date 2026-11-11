@@ -15,10 +15,11 @@ export interface StorefrontVariant {
   price: number;
 }
 
-export interface StorefrontModifier {
-  id: string;
+export interface StorefrontAddon {
+  variantId: string;
   name: string;
-  prices: Record<string, number>;
+  imageUrl: string | null;
+  price: number;
 }
 
 export interface StorefrontItem {
@@ -28,7 +29,6 @@ export interface StorefrontItem {
   imageUrl: string | null;
   isBest: boolean;
   variants: StorefrontVariant[];
-  modifiers: StorefrontModifier[];
 }
 
 export interface StorefrontCategory {
@@ -43,7 +43,6 @@ export interface StorefrontCombo {
   price: number;
   imageUrl: string | null;
   description: string | null;
-  // عرض حصري للموقع
   onlineOnly: boolean;
   items: { itemName: string; variantLabel: string; quantity: number }[];
 }
@@ -56,7 +55,6 @@ export interface LoyaltyReward {
   pointsCost: number;
   kind: "discount" | "free_item" | "free_combo";
   targetName: string | null;
-  // قيمة الهدية/الخصم بالجنيه
   value: number | null;
   affordable?: boolean;
 }
@@ -67,6 +65,7 @@ export interface StorefrontMenu {
   paymentMethods: { key: string; label: string }[];
   branches: StorefrontBranch[];
   categories: StorefrontCategory[];
+  addons: StorefrontAddon[];
   combos: StorefrontCombo[];
 }
 
@@ -88,7 +87,13 @@ export interface TrackedOrder {
   kitchenAcceptedAt: string | null;
   kitchenReadyAt: string | null;
   branch: { name: string; phone: string | null } | null;
-  lines: { name: string; variantLabel: string | null; quantity: number; lineTotal: number; modifiers: string[] }[];
+  lines: {
+    name: string;
+    variantLabel: string | null;
+    quantity: number;
+    lineTotal: number;
+    addons: { name: string; quantity: number; lineTotal: number }[];
+  }[];
   rated: boolean;
 }
 

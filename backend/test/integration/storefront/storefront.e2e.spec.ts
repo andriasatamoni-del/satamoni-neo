@@ -8,12 +8,12 @@ import { DATABASE } from "../../../src/shared/database/database.module";
 import { CUSTOMER_TOKEN_SERVICE } from "../../../src/contexts/customers/domain/ports/customer-token.service.port";
 import { eq, inArray } from "drizzle-orm";
 import { branches } from "../../../src/contexts/branches/infrastructure/persistence/branches.tables";
-import { comboItems, combos, menuCategories, menuItemModifierVariantPrices, menuItemModifiers, menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
+import { comboItems, combos, menuCategories, menuItemVariants, menuItems, recipeIngredients, recipeVersions, recipes } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { customers } from "../../../src/contexts/customers/infrastructure/persistence/customers.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { loyaltyRewards } from "../../../src/contexts/loyalty/infrastructure/persistence/loyalty.tables";
-import { orderItemModifiers, orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { paymentMethods, payments } from "../../../src/contexts/payment-control/infrastructure/persistence/payment-control.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
@@ -31,7 +31,8 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   let itemId: string;
   let smallId: string;
   let largeId: string;
-  let modifierId: string;
+  let addonId: string;
+  let addonVariantId: string;
   let comboId: string;
   let exclusiveComboId: string;
   let cashMethodId: string;
@@ -60,7 +61,7 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
       addressId,
       notes: "من غير بصل",
       items: [
-        { variantId: largeId, quantity: 2, modifierIds: [modifierId] },
+        { variantId: largeId, quantity: 2, addons: [{ variantId: addonVariantId, quantity: 1 }] },
         { comboId, quantity: 1 },
       ],
       ...overrides,
@@ -115,10 +116,13 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const item = MenuItem.register({ name: "بيتزا-موقع-جست", categoryId, description: "بالجبنة", isBest: true, imageUrl: "/media/images/pizza" });
     smallId = item.addVariant({ label: "صغير", price: 60, talabatPrice: 60 }).id;
     largeId = item.addVariant({ label: "كبير", price: 100, talabatPrice: 100 }).id;
-    modifierId = item.addModifier({ name: "جبنة زيادة", priceDelta: 10 }).id;
-    item.setModifierVariantPrice(modifierId, largeId, 15);
     await itemRepo.save(item);
     itemId = item.id;
+
+    const addon = MenuItem.register({ kind: "addon", name: "جبنة زيادة-موقع-جست" });
+    addonVariantId = addon.addVariant({ label: "عادي", price: 15, talabatPrice: 20 }).id;
+    await itemRepo.save(addon);
+    addonId = addon.id;
 
     const hidden = MenuItem.register({ name: "صنف-موقوف-موقع-جست", categoryId });
     hidden.addVariant({ label: "عادي", price: 40, talabatPrice: 40 });
@@ -182,7 +186,6 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     for (const b of [branchId, dineInBranchId]) {
       await database.delete(payments).where(eq(payments.branch_id, b));
       await database.delete(printJobs).where(eq(printJobs.branch_id, b));
-      await database.delete(orderItemModifiers).where(inArray(orderItemModifiers.order_item_id, database.select({ id: orderItems.id }).from(orderItems).innerJoin(orders, eq(orders.id, orderItems.order_id)).where(eq(orders.branch_id, b))));
       await database.delete(orderItems).where(inArray(orderItems.order_id, database.select({ id: orders.id }).from(orders).where(eq(orders.branch_id, b))));
       await database.delete(stockMovements).where(eq(stockMovements.branch_id, b));
       await database.delete(branchStockBalances).where(eq(branchStockBalances.branch_id, b));
@@ -197,8 +200,8 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     await database.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, database.select({ id: recipes.id }).from(recipes).where(eq(recipes.variant_id, scarceVariantId))));
     await database.delete(recipes).where(eq(recipes.variant_id, scarceVariantId));
     await database.delete(inventoryItems).where(eq(inventoryItems.id, ingredientId));
-    await database.delete(menuItemModifierVariantPrices).where(eq(menuItemModifierVariantPrices.modifier_id, modifierId));
-    await database.delete(menuItemModifiers).where(eq(menuItemModifiers.item_id, itemId));
+    await database.delete(menuItemVariants).where(eq(menuItemVariants.item_id, addonId));
+    await database.delete(menuItems).where(eq(menuItems.id, addonId));
     await database.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, database.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.category_id, categoryId))));
     await database.delete(menuItems).where(eq(menuItems.category_id, categoryId));
     await database.delete(menuCategories).where(eq(menuCategories.id, categoryId));
@@ -215,7 +218,9 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     expect(category.items.map((i: { name: string }) => i.name)).not.toContain("صنف-موقوف-موقع-جست");
     const pizza = category.items.find((i: { id: string }) => i.id === itemId);
     expect(pizza).toMatchObject({ description: "بالجبنة", isBest: true, imageUrl: "/media/images/pizza" });
-    expect(pizza.modifiers[0].prices).toEqual({ [smallId]: 10, [largeId]: 15 });
+    expect(pizza.modifiers).toBeUndefined();
+    expect(res.body.addons).toEqual(expect.arrayContaining([{ variantId: addonVariantId, name: "جبنة زيادة-موقع-جست", imageUrl: null, price: 15 }]));
+    expect(res.body.categories.flatMap((c: { items: { id: string }[] }) => c.items.map((i) => i.id))).not.toContain(addonId);
 
     const ours = res.body.combos.filter((c: { id: string }) => [comboId, exclusiveComboId].includes(c.id));
     expect(ours[0]).toMatchObject({ id: exclusiveComboId, onlineOnly: true, description: "للموقع بس", imageUrl: "/media/images/exclusive" });
@@ -253,6 +258,12 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     });
     const board = await request(server()).get(`/orders/kitchen-board?branchId=${branchId}`).set(staff());
     expect(board.body.map((o: { id: string }) => o.id)).toContain(orderId);
+
+    const tracked = await request(server()).get(`/storefront/orders/${orderId}?token=${trackingToken}`);
+    expect(tracked.body.lines).toHaveLength(2);
+    const largeLine = tracked.body.lines.find((l: { variantLabel: string | null }) => l.variantLabel === "كبير");
+    expect(largeLine).toMatchObject({ quantity: 2, lineTotal: 200 });
+    expect(largeLine.addons).toEqual([{ name: "جبنة زيادة-موقع-جست", quantity: 2, lineTotal: 30 }]);
   });
 
   test("التوصيل لازم عنوان من دفتر العميل - من غير عنوان أو بعنوان مش بتاعه = 400", async () => {

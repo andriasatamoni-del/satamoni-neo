@@ -11,7 +11,7 @@ import { CrmPage } from "./pages/CrmPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { BranchesPage } from "./pages/BranchesPage";
 import { InventoryPage } from "./pages/InventoryPage";
-import { CatalogPage } from "./pages/CatalogPage";
+import { CatalogPage } from "./pages/catalog/CatalogPage";
 import { ProductionPage } from "./pages/ProductionPage";
 import { ProcurementPage } from "./pages/ProcurementPage";
 import { OrdersPage } from "./pages/OrdersPage";

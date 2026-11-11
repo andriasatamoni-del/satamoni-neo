@@ -101,7 +101,7 @@ describe("stripAdditionalProperties (Gemini بيرفضها)", () => {
 });
 
 describe("WhatsappPendingOrder - مسودة البوت", () => {
-  const line = { variantId: "v1", itemName: "بيتزا (كبير)", quantity: 2, unitPrice: 90, modifierIds: ["m1"] };
+  const line = { variantId: "v1", itemName: "بيتزا (كبير)", quantity: 2, unitPrice: 90, addons: [{ variantId: "a1", name: "جبنة", quantity: 1, unitPrice: 20 }] };
 
   it("المسودة بتتحدّث تدريجيًا وبتحسب الإجمالي، والإرسال بيطلب كل البيانات", () => {
     const draft = WhatsappPendingOrder.startDraft({ conversationId: "c1", customerPhone: "2010" });
@@ -116,7 +116,7 @@ describe("WhatsappPendingOrder - مسودة البوت", () => {
     expect(draft.missingForSubmission()).toEqual([]);
     draft.submit();
     expect(draft.status).toBe("PENDING");
-    expect(draft.lines[0].modifierIds).toEqual(["m1"]);
+    expect(draft.lines[0].addons).toEqual([{ variantId: "a1", name: "جبنة", quantity: 1, unitPrice: 20 }]);
   });
 
   it("مينفعش تعدّل أو تبعت مسودة اتبعتت خلاص", () => {

@@ -8,7 +8,7 @@ export interface MenuItemRef {
   categoryKey: string;
   popularity: number;
   variants: { id: string; label: string }[];
-  modifiers: { id: string; name: string }[];
+  addonVariantIds: string[];
 }
 
 export interface CustomerRef {

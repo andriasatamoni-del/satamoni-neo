@@ -47,7 +47,7 @@ export function OrdersPage() {
     const variants = sellableVariants(item, priceMenu);
     if (variants.length === 0) return;
     if (needsOptionPicker(item, priceMenu)) setPickerItem(item);
-    else cart.addItem(item, variants[0], []);
+    else cart.addItem(item, variants[0]);
   }
 
   function handlePriceMenuChange(next: PriceMenu) {
@@ -118,8 +118,8 @@ export function OrdersPage() {
           item={pickerItem}
           priceMenu={priceMenu}
           onClose={() => setPickerItem(null)}
-          onAdd={(variant, modifierIds) => {
-            cart.addItem(pickerItem, variant, modifierIds);
+          onAdd={(variant) => {
+            cart.addItem(pickerItem, variant);
             setPickerItem(null);
           }}
         />

@@ -1,9 +1,9 @@
-import type { MenuItem } from "../menu-item.aggregate";
+import type { MenuItem, MenuItemKind } from "../menu-item.aggregate";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 
-// NEO-6: filters of the menu items list. `categoryId: "none"` = items without a category; `from`/`to` (Cairo dates) apply to created_at.
 export interface MenuItemListFilter {
   q?: string;
+  kind?: MenuItemKind;
   categoryId?: string;
   status?: "active" | "inactive";
   isBest?: boolean;
@@ -18,7 +18,7 @@ export interface MenuItemRepositoryPort {
   findById(id: string): Promise<MenuItem | null>;
   findByVariantId(variantId: string): Promise<MenuItem | null>;
   findByLegacyMenuItemId(legacyId: number): Promise<MenuItem | null>;
-  list(): Promise<MenuItem[]>;
+  list(kind?: MenuItemKind): Promise<MenuItem[]>;
   search(filter: MenuItemListFilter, page?: PageRequest): Promise<{ items: MenuItem[]; total: number }>;
 }
 
