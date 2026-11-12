@@ -8,8 +8,11 @@ import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Field, Input, Select } from "../../shared/ui/Field";
 import { FormDialog } from "../../shared/ui/FormDialog";
 import { ImageUploadButton } from "../../shared/ui/ImageUploadButton";
+import { CheckIcon, ClockIcon, PencilIcon, PlusIcon } from "../../shared/ui/icons";
 import { ListFilters } from "../../shared/ui/ListFilters";
 import { Pagination } from "../../shared/ui/Pagination";
+import { TabularImportExport } from "../../shared/ui/TabularImportExport";
+import { PERMISSION } from "../../shared/auth/permissions";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../../shared/ui/Table";
 import { useListState } from "../../shared/ui/useListState";
 import type { PriceMenu } from "../orders/posTypes";
@@ -30,6 +33,10 @@ interface SizeRow {
   price: string;
   talabatPrice: string;
 }
+
+const PRICE_MENU_LABELS: Record<PriceMenu, string> = { regular: "المنيو العادي", talabat: "طلبات" };
+
+const ROW_ACTION = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", addonPrice: "", addonTalabatPrice: "" };
 
@@ -95,12 +102,40 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>الأصناف والإضافات ({pageQuery.data?.total ?? 0})</CardTitle>
-            <div className="flex flex-wrap gap-1.5">
-              {canManage && <Button size="sm" onClick={() => setIsAdding(true)}>+ إضافة صنف</Button>}
-              <Button size="sm" variant={priceMenu === "regular" ? "primary" : "secondary"} onClick={() => setPriceMenu("regular")}>أسعار المنيو العادي</Button>
-              <Button size="sm" variant={priceMenu === "talabat" ? "primary" : "secondary"} onClick={() => setPriceMenu("talabat")}>أسعار طلبات</Button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle>الأصناف والإضافات ({pageQuery.data?.total ?? 0})</CardTitle>
+              <div role="radiogroup" aria-label="الأسعار المعروضة" className="inline-flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+                {(Object.keys(PRICE_MENU_LABELS) as PriceMenu[]).map((menu) => (
+                  <button
+                    key={menu}
+                    type="button"
+                    role="radio"
+                    aria-checked={priceMenu === menu}
+                    onClick={() => setPriceMenu(menu)}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                      priceMenu === menu ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    أسعار {PRICE_MENU_LABELS[menu]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <TabularImportExport
+                path="/catalog/items"
+                title="المنيو"
+                permissions={{ export: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE], import: [PERMISSION.CATALOG_ITEMS_MANAGE] }}
+                exportQuery={list.filters}
+                refreshQueryKey={["catalog", "items"]}
+              />
+              {canManage && (
+                <Button size="sm" onClick={() => setIsAdding(true)}>
+                  <PlusIcon className="h-4 w-4" />
+                  إضافة صنف
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -210,21 +245,27 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
                                         onChange={(e) => setVariantPrices({ ...variantPrices, [draftKey]: e.target.value })}
                                         className="w-20 py-0.5 text-xs"
                                       />
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => enteredPrice !== null && updateVariant.mutate({ itemId: i.id, variantId: v.id, price: enteredPrice })}
-                                        disabled={updateVariant.isPending || enteredPrice === null || enteredPrice === savedPrice}
-                                      >
-                                        حفظ
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
+                                      {enteredPrice !== null && enteredPrice !== savedPrice && (
+                                        <button
+                                          type="button"
+                                          title="حفظ السعر"
+                                          aria-label={`حفظ سعر ${i.name} ${v.label}`}
+                                          onClick={() => updateVariant.mutate({ itemId: i.id, variantId: v.id, price: enteredPrice })}
+                                          disabled={updateVariant.isPending}
+                                          className="rounded-md bg-emerald-600 p-1 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                        >
+                                          <CheckIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        title="سجل الأسعار"
+                                        aria-label={`سجل أسعار ${i.name} ${v.label}`}
                                         onClick={() => setHistoryTarget({ itemId: i.id, variantId: v.id, label: i.kind === "addon" ? i.name : `${i.name} - ${v.label}` })}
+                                        className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                                       >
-                                        السجل
-                                      </Button>
+                                        <ClockIcon className="h-3.5 w-3.5" />
+                                      </button>
                                     </>
                                   ) : (
                                     <span className="text-xs font-semibold text-slate-800">{savedPrice}</span>
@@ -238,19 +279,25 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
                       <TD>{i.isActive ? <Badge tone="success">نشط</Badge> : <Badge tone="neutral">معطّل</Badge>}</TD>
                       <TD>
                         {canManage && (
-                          <div className="flex gap-1.5">
-                            <Button size="sm" variant="ghost" onClick={() => startEdit(i)}>تعديل</Button>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <button type="button" onClick={() => startEdit(i)} className={`${ROW_ACTION} text-slate-600 hover:bg-slate-100`}>
+                              <PencilIcon className="h-3.5 w-3.5" />
+                              تعديل
+                            </button>
                             {i.kind === "item" && (
-                              <Button size="sm" variant="ghost" onClick={() => setAddingSizeTo(i)}>+ حجم</Button>
+                              <button type="button" onClick={() => setAddingSizeTo(i)} className={`${ROW_ACTION} text-brand-700 hover:bg-brand-50`}>
+                                <PlusIcon className="h-3.5 w-3.5" />
+                                حجم
+                              </button>
                             )}
-                            <Button
-                              size="sm"
-                              variant={i.isActive ? "secondary" : "primary"}
+                            <button
+                              type="button"
                               onClick={() => updateItem.mutate({ id: i.id, isActive: !i.isActive })}
                               disabled={updateItem.isPending}
+                              className={`${ROW_ACTION} ${i.isActive ? "text-red-600 hover:bg-red-50" : "text-emerald-700 hover:bg-emerald-50"}`}
                             >
                               {i.isActive ? "تعطيل" : "تفعيل"}
-                            </Button>
+                            </button>
                           </div>
                         )}
                       </TD>
@@ -418,20 +465,27 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
                   aria-label={`سعر طلبات الحجم ${index + 1}`}
                   onChange={(e) => updateSize(row.key, { talabatPrice: e.target.value })}
                 />
-                <Button
+                <button
                   type="button"
-                  size="sm"
-                  variant="ghost"
+                  title="حذف الحجم"
                   aria-label={`حذف الحجم ${index + 1}`}
                   disabled={sizes.length === 1}
                   onClick={() => setSizes(sizes.filter((other) => other.key !== row.key))}
+                  className="rounded-md px-2 py-1 text-lg leading-none text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:invisible"
                 >
                   ×
-                </Button>
+                </button>
               </div>
             );
           })}
-          <Button type="button" size="sm" variant="secondary" onClick={() => setSizes([...sizes, newSizeRow()])}>+ حجم تاني</Button>
+          <button
+            type="button"
+            onClick={() => setSizes([...sizes, newSizeRow()])}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-1.5 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+            حجم تاني
+          </button>
         </fieldset>
       )}
     </FormDialog>
