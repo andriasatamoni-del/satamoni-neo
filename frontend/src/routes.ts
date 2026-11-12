@@ -33,6 +33,7 @@ export interface StaffRoute {
   path: string;
   perm: readonly Permission[] | null;
   nav: NavEntry;
+  hiddenFromNav?: boolean;
 }
 
 const P = PERMISSION;
@@ -41,7 +42,7 @@ export const STAFF_ROUTES = [
   { path: "/", perm: null, nav: { label: "الرئيسية", icon: HomeIcon, end: true } },
   { path: "/me", perm: [P.HR_SELF_VIEW, P.HR_SELF_LEAVE_MANAGE], nav: { label: "بياناتي", icon: UserCircleIcon } },
   { path: "/orders", perm: [P.ORDERS_VIEW, P.ORDERS_CREATE], nav: { label: "الطلبات (POS)", icon: CartIcon } },
-  { path: "/kds", perm: [P.KITCHEN_VIEW], nav: { label: "شاشة المطبخ", icon: FireIcon } },
+  { path: "/kds", hiddenFromNav: true, perm: [P.KITCHEN_VIEW], nav: { label: "شاشة المطبخ", icon: FireIcon } },
   {
     path: "/crm",
     perm: [P.CRM_FOLLOWUPS_VIEW, P.CRM_COMPLAINTS_VIEW],
@@ -66,6 +67,7 @@ export const STAFF_ROUTES = [
   },
   {
     path: "/procurement",
+    hiddenFromNav: true,
     perm: [
       P.PROCUREMENT_GOODS_RECEIPTS_VIEW,
       P.PROCUREMENT_GOODS_RECEIPTS_MANAGE,
@@ -77,6 +79,7 @@ export const STAFF_ROUTES = [
   },
   {
     path: "/delivery",
+    hiddenFromNav: true,
     perm: [
       P.DELIVERY_ASSIGNMENTS_VIEW,
       P.DELIVERY_ASSIGNMENTS_MANAGE,
@@ -99,11 +102,13 @@ export const STAFF_ROUTES = [
   },
   {
     path: "/expenses",
+    hiddenFromNav: true,
     perm: [P.EXPENSES_VIEW, P.EXPENSES_CREATE_OWN_DAILY],
     nav: { label: "المصروفات", icon: ReceiptIcon },
   },
   {
     path: "/purchases",
+    hiddenFromNav: true,
     perm: [P.PURCHASES_VIEW, P.PURCHASES_VIEW_OWN_DAILY],
     nav: { label: "المشتريات النقدية", icon: CartIcon },
   },
@@ -114,21 +119,25 @@ export const STAFF_ROUTES = [
   },
   {
     path: "/operational-reports",
+    hiddenFromNav: true,
     perm: [P.REPORTS_VIEW, P.REPORTS_BRANCH_HEALTH, P.PURCHASING_VIEW],
     nav: { label: "تقارير المبيعات والتشغيل", icon: ListSearchIcon },
   },
   {
     path: "/treasuries",
+    hiddenFromNav: true,
     perm: [P.TREASURIES_VIEW, P.BANKS_VIEW],
     nav: { label: "الخزائن والبنوك", icon: VaultIcon },
   },
   {
     path: "/payment-control",
+    hiddenFromNav: true,
     perm: [P.PAYMENT_CONTROL_VIEW],
     nav: { label: "التحكم في المدفوعات والمطابقة", icon: CardIcon },
   },
   {
     path: "/hr-payroll",
+    hiddenFromNav: true,
     perm: [
       P.HR_EMPLOYEES_VIEW,
       P.HR_EMPLOYEES_MANAGE,
@@ -158,7 +167,7 @@ export const STAFF_ROUTES = [
   },
   { path: "/roles", perm: [P.IDENTITY_ROLES_MANAGE], nav: { label: "الأدوار والصلاحيات", icon: LockIcon } },
   { path: "/audit-log", perm: [P.AUDIT_VIEW], nav: { label: "سجل التدقيق", icon: ListSearchIcon } },
-  { path: "/loyalty", perm: [P.LOYALTY_VIEW, P.LOYALTY_MANAGE], nav: { label: "نقاط الولاء", icon: CoinsIcon } },
+  { path: "/loyalty", hiddenFromNav: true, perm: [P.LOYALTY_VIEW, P.LOYALTY_MANAGE], nav: { label: "نقاط الولاء", icon: CoinsIcon } },
   {
     path: "/pos-settings",
     perm: [P.POS_SETTINGS_VIEW, P.POS_SETTINGS_MANAGE],
@@ -173,7 +182,7 @@ export function canOpenRoute(user: { permissions: readonly Permission[] } | null
 }
 
 export function navItemsFor(user: { permissions: readonly Permission[] } | null | undefined): NavItem[] {
-  return STAFF_ROUTES.filter((r) => canOpenRoute(user, r)).map((r) => ({ to: r.path, ...r.nav }));
+  return STAFF_ROUTES.filter((r) => !("hiddenFromNav" in r && r.hiddenFromNav) && canOpenRoute(user, r)).map((r) => ({ to: r.path, ...r.nav }));
 }
 
 export function canOpenPath(user: { permissions: readonly Permission[] } | null | undefined, path: string): boolean {

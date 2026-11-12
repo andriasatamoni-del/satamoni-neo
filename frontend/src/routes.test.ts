@@ -19,8 +19,8 @@ describe("STAFF_ROUTES", () => {
 });
 
 describe("sidebar per seeded role", () => {
-  it("admin sees every page", () => {
-    expect(navPaths("admin")).toEqual(STAFF_ROUTES.map((r) => r.path));
+  it("admin sees every page that is not hidden from the sidebar", () => {
+    expect(navPaths("admin")).toEqual(STAFF_ROUTES.filter((r) => !("hiddenFromNav" in r && r.hiddenFromNav)).map((r) => r.path));
   });
 
   it("cashier does not see accounting, users, audit log, treasuries or HR", () => {
@@ -29,7 +29,7 @@ describe("sidebar per seeded role", () => {
       expect(paths).not.toContain(hidden);
     }
     expect(paths).toEqual(
-      expect.arrayContaining(["/", "/me", "/orders", "/kds", "/catalog", "/expenses", "/purchases", "/printing"])
+      expect.arrayContaining(["/", "/me", "/orders", "/catalog", "/printing"])
     );
   });
 
@@ -37,8 +37,8 @@ describe("sidebar per seeded role", () => {
     expect(navPaths("employee")).toEqual(["/", "/me"]);
   });
 
-  it("driver sees delivery and system settings but no POS", () => {
-    expect(navPaths("driver")).toEqual(["/", "/me", "/delivery", "/pos-settings"]);
+  it("driver sees system settings but no POS", () => {
+    expect(navPaths("driver")).toEqual(["/", "/me", "/pos-settings"]);
   });
 
   it("callcenter sees CRM, customers and the menu", () => {
@@ -59,6 +59,14 @@ describe("route access", () => {
   it("canOpenPath follows the route config and ignores query strings", () => {
     expect(canOpenPath(seededUser("cashier"), "/orders?tab=x")).toBe(true);
     expect(canOpenPath(seededUser("cashier"), "/accounting")).toBe(false);
+  });
+
+  it("pages hidden from the sidebar stay reachable by URL", () => {
+    const admin = seededUser("admin");
+    for (const path of ["/kds", "/loyalty", "/hr-payroll"]) {
+      expect(navPaths("admin")).not.toContain(path);
+      expect(canOpenPath(admin, path)).toBe(true);
+    }
   });
 
   it("canOpenPath leaves unknown paths visible (the router shows NotFound)", () => {
