@@ -30,10 +30,25 @@ import { ListRecipesHandler } from "./application/queries/list-recipes.handler";
 import { ListCombosHandler } from "./application/queries/list-combos.handler";
 import { MenuPriceHistoryService } from "./application/services/menu-price-history.service";
 import { CatalogController } from "./api/catalog.controller";
+import { ExportMenuItemsQueryDto } from "./api/dto/export-menu-items-query.dto";
+import { MenuItemsTabular } from "./application/tabular/menu-items.tabular";
+import { TabularController } from "../../shared/tabular/tabular.controller";
+import { PERMISSION } from "../identity-access/domain/permission";
 
 @Module({
   imports: [IdentityAccessModule],
-  controllers: [CatalogController],
+  controllers: [
+    CatalogController,
+    TabularController({
+      path: "catalog/items",
+      adapter: MenuItemsTabular,
+      exportQuery: ExportMenuItemsQueryDto,
+      permissions: {
+        export: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE],
+        import: [PERMISSION.CATALOG_ITEMS_MANAGE],
+      },
+    }),
+  ],
   providers: [
     { provide: MENU_CATEGORY_REPOSITORY, useClass: MenuCategoryRepository },
     { provide: CATALOG_LAYOUT_REPOSITORY, useClass: CatalogLayoutRepository },
@@ -62,6 +77,7 @@ import { CatalogController } from "./api/catalog.controller";
     ListRecipesHandler,
     ListCombosHandler,
     MenuPriceHistoryService,
+    MenuItemsTabular,
   ],
   exports: [MENU_CATEGORY_REPOSITORY, MENU_ITEM_REPOSITORY, RECIPE_REPOSITORY, COMBO_REPOSITORY],
 })
