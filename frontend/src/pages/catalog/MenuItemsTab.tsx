@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
 import { usePaginatedQuery } from "../../shared/api/usePaginatedQuery";
@@ -6,6 +6,7 @@ import { Badge } from "../../shared/ui/Badge";
 import { Button } from "../../shared/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Field, Input, Select } from "../../shared/ui/Field";
+import { FormDialog } from "../../shared/ui/FormDialog";
 import { ImageUploadButton } from "../../shared/ui/ImageUploadButton";
 import { ListFilters } from "../../shared/ui/ListFilters";
 import { Pagination } from "../../shared/ui/Pagination";
@@ -23,7 +24,26 @@ import {
 } from "./catalogTypes";
 import { PriceHistoryDialog } from "./PriceHistoryDialog";
 
-const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", variantLabel: "", price: "", talabatPrice: "" };
+interface SizeRow {
+  key: number;
+  label: string;
+  price: string;
+  talabatPrice: string;
+}
+
+const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", addonPrice: "", addonTalabatPrice: "" };
+
+let nextSizeRowKey = 0;
+const newSizeRow = (): SizeRow => ({ key: nextSizeRowKey++, label: "", price: "", talabatPrice: "" });
+
+function duplicateLabel(labels: string[]): string | null {
+  const seen = new Set<string>();
+  for (const label of labels) {
+    if (seen.has(label)) return label;
+    seen.add(label);
+  }
+  return null;
+}
 
 interface ItemPatch {
   id: string;
@@ -46,6 +66,8 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>({});
   const [historyTarget, setHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [addingSizeTo, setAddingSizeTo] = useState<MenuItem | null>(null);
   const [editingForm, setEditingForm] = useState({ name: "", categoryId: "", description: "" });
 
   const updateItem = useMutation({
@@ -71,13 +93,12 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
 
   return (
     <div className="space-y-6">
-      {canManage && <AddMenuItemCard categories={categories} onCreated={invalidateItems} />}
-
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>الأصناف والإضافات ({pageQuery.data?.total ?? 0})</CardTitle>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              {canManage && <Button size="sm" onClick={() => setIsAdding(true)}>+ إضافة صنف</Button>}
               <Button size="sm" variant={priceMenu === "regular" ? "primary" : "secondary"} onClick={() => setPriceMenu("regular")}>أسعار المنيو العادي</Button>
               <Button size="sm" variant={priceMenu === "talabat" ? "primary" : "secondary"} onClick={() => setPriceMenu("talabat")}>أسعار طلبات</Button>
             </div>
@@ -219,6 +240,9 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
                         {canManage && (
                           <div className="flex gap-1.5">
                             <Button size="sm" variant="ghost" onClick={() => startEdit(i)}>تعديل</Button>
+                            {i.kind === "item" && (
+                              <Button size="sm" variant="ghost" onClick={() => setAddingSizeTo(i)}>+ حجم</Button>
+                            )}
                             <Button
                               size="sm"
                               variant={i.isActive ? "secondary" : "primary"}
@@ -242,100 +266,218 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
       </Card>
 
       {historyTarget && <PriceHistoryDialog target={historyTarget} onClose={() => setHistoryTarget(null)} />}
+      {addingSizeTo && (
+        <AddVariantDialog
+          item={addingSizeTo}
+          onClose={() => setAddingSizeTo(null)}
+          onAdded={() => {
+            setAddingSizeTo(null);
+            invalidateItems();
+          }}
+        />
+      )}
+      {isAdding && (
+        <AddMenuItemDialog
+          categories={categories}
+          onClose={() => setIsAdding(false)}
+          onCreated={() => {
+            setIsAdding(false);
+            invalidateItems();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function AddMenuItemCard({ categories, onCreated }: { categories: MenuCategory[]; onCreated: () => void }) {
+function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: MenuCategory[]; onCreated: () => void; onClose: () => void }) {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [sizes, setSizes] = useState<SizeRow[]>(() => [newSizeRow()]);
   const [error, setError] = useState<string | null>(null);
   const isAddon = form.kind === "addon";
 
+  const filledSizes = sizes.filter((row) => row.label.trim() !== "");
+
   const createItem = useMutation({
     mutationFn: () => {
-      const label = isAddon ? ADDON_VARIANT_LABEL : form.variantLabel.trim();
+      const variants = isAddon
+        ? [{ label: ADDON_VARIANT_LABEL, price: Number(form.addonPrice), talabatPrice: Number(form.addonTalabatPrice) }]
+        : filledSizes.map((row) => ({ label: row.label.trim(), price: Number(row.price), talabatPrice: Number(row.talabatPrice) }));
       return apiRequest("/catalog/items", {
         method: "POST",
         body: {
           kind: form.kind,
           name: form.name,
           categoryId: isAddon ? undefined : form.categoryId || undefined,
-          variants: label ? [{ label, price: Number(form.price), talabatPrice: Number(form.talabatPrice) }] : undefined,
+          variants: variants.length > 0 ? variants : undefined,
         },
       });
     },
-    onSuccess: () => {
-      setForm({ ...EMPTY_FORM, kind: form.kind });
-      setError(null);
-      onCreated();
-    },
+    onSuccess: onCreated,
     onError: (err) => setError(errorText(err)),
   });
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  function submit() {
+    if (!isAddon) {
+      const duplicate = duplicateLabel(filledSizes.map((row) => row.label.trim()));
+      if (duplicate) {
+        setError(`الحجم "${duplicate}" متكرر`);
+        return;
+      }
+    }
+    setError(null);
     createItem.mutate();
   }
 
-  const pricesRequired = isAddon || form.variantLabel.trim() !== "";
+  function updateSize(key: number, patch: Partial<SizeRow>) {
+    setSizes(sizes.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>إضافة صنف</CardTitle>
-      </CardHeader>
-      <CardBody>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold text-slate-700">النوع</legend>
-            <div role="radiogroup" className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
-              {(Object.keys(MENU_ITEM_KIND_LABELS) as MenuItemKind[]).map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  role="radio"
-                  aria-checked={form.kind === kind}
-                  onClick={() => setForm({ ...form, kind })}
-                  className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${
-                    form.kind === kind ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {MENU_ITEM_KIND_LABELS[kind]}
-                </button>
-              ))}
-            </div>
-            {isAddon && (
-              <p className="mt-2 text-xs text-slate-500">الإضافة بتتضاف على أي صنف في الطلب، ليها سعر واحد ومالهاش قسم. النوع مش بيتغيّر بعد الحفظ.</p>
-            )}
-          </fieldset>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={isAddon ? "اسم الإضافة" : "اسم الصنف"}>
-              <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </Field>
-            {!isAddon && (
-              <Field label="القسم">
-                <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-                  <option value="">بدون قسم</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </Select>
-              </Field>
-            )}
-            {!isAddon && (
-              <Field label="اسم الحجم (اختياري)">
-                <Input value={form.variantLabel} onChange={(e) => setForm({ ...form, variantLabel: e.target.value })} />
-              </Field>
-            )}
+    <FormDialog
+      title="إضافة صنف"
+      submitLabel="حفظ"
+      isSubmitting={createItem.isPending}
+      error={error}
+      onSubmit={submit}
+      onClose={onClose}
+    >
+      <fieldset>
+        <legend className="mb-2 text-sm font-semibold text-slate-700">النوع</legend>
+        <div role="radiogroup" className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
+          {(Object.keys(MENU_ITEM_KIND_LABELS) as MenuItemKind[]).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="radio"
+              aria-checked={form.kind === kind}
+              onClick={() => setForm({ ...form, kind })}
+              className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${
+                form.kind === kind ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {MENU_ITEM_KIND_LABELS[kind]}
+            </button>
+          ))}
+        </div>
+        {isAddon && (
+          <p className="mt-2 text-xs text-slate-500">الإضافة بتتضاف على أي صنف في الطلب، ليها سعر واحد ومالهاش قسم. النوع مش بيتغيّر بعد الحفظ.</p>
+        )}
+      </fieldset>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label={isAddon ? "اسم الإضافة" : "اسم الصنف"}>
+          <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+        {isAddon ? (
+          <>
             <Field label="السعر">
-              <Input type="number" min="0" required={pricesRequired} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+              <Input type="number" min="0" required value={form.addonPrice} onChange={(e) => setForm({ ...form, addonPrice: e.target.value })} />
             </Field>
             <Field label="سعر طلبات">
-              <Input type="number" min="0" required={pricesRequired} value={form.talabatPrice} onChange={(e) => setForm({ ...form, talabatPrice: e.target.value })} />
+              <Input type="number" min="0" required value={form.addonTalabatPrice} onChange={(e) => setForm({ ...form, addonTalabatPrice: e.target.value })} />
             </Field>
-          </div>
-          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-          <Button type="submit" disabled={createItem.isPending}>حفظ</Button>
-        </form>
-      </CardBody>
-    </Card>
+          </>
+        ) : (
+          <Field label="القسم">
+            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+              <option value="">بدون قسم</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+        )}
+      </div>
+      {!isAddon && (
+        <fieldset className="space-y-2">
+          <legend className="mb-1 text-sm font-semibold text-slate-700">الأحجام والأسعار</legend>
+          <p className="text-xs text-slate-500">الصف اللي من غير اسم حجم مش بيتحفظ. تقدر تضيف أحجام تانية بعدين من زرار "+ حجم".</p>
+          {sizes.map((row, index) => {
+            const isFilled = row.label.trim() !== "";
+            return (
+              <div key={row.key} className="flex items-center gap-2">
+                <Input
+                  value={row.label}
+                  placeholder="اسم الحجم (مثلاً: صغير)"
+                  aria-label={`اسم الحجم ${index + 1}`}
+                  onChange={(e) => updateSize(row.key, { label: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  required={isFilled}
+                  value={row.price}
+                  placeholder="السعر"
+                  aria-label={`سعر الحجم ${index + 1}`}
+                  onChange={(e) => updateSize(row.key, { price: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  required={isFilled}
+                  value={row.talabatPrice}
+                  placeholder="سعر طلبات"
+                  aria-label={`سعر طلبات الحجم ${index + 1}`}
+                  onChange={(e) => updateSize(row.key, { talabatPrice: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`حذف الحجم ${index + 1}`}
+                  disabled={sizes.length === 1}
+                  onClick={() => setSizes(sizes.filter((other) => other.key !== row.key))}
+                >
+                  ×
+                </Button>
+              </div>
+            );
+          })}
+          <Button type="button" size="sm" variant="secondary" onClick={() => setSizes([...sizes, newSizeRow()])}>+ حجم تاني</Button>
+        </fieldset>
+      )}
+    </FormDialog>
+  );
+}
+
+function AddVariantDialog({ item, onAdded, onClose }: { item: MenuItem; onAdded: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ label: "", price: "", talabatPrice: "" });
+  const [error, setError] = useState<string | null>(null);
+
+  const addVariant = useMutation({
+    mutationFn: () =>
+      apiRequest(`/catalog/items/${item.id}/variants`, {
+        method: "POST",
+        body: { label: form.label.trim(), price: Number(form.price), talabatPrice: Number(form.talabatPrice) },
+      }),
+    onSuccess: onAdded,
+    onError: (err) => setError(errorText(err)),
+  });
+
+  function submit() {
+    const label = form.label.trim();
+    if (item.variants.some((v) => v.label === label)) {
+      setError(`الحجم "${label}" موجود بالفعل في ${item.name}`);
+      return;
+    }
+    setError(null);
+    addVariant.mutate();
+  }
+
+  return (
+    <FormDialog title={`حجم جديد لـ${item.name}`} submitLabel="إضافة" isSubmitting={addVariant.isPending} error={error} onSubmit={submit} onClose={onClose}>
+      {item.variants.length > 0 && (
+        <p className="text-xs text-slate-500">الأحجام الحالية: {item.variants.map((v) => v.label).join("، ")}</p>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Field label="اسم الحجم">
+          <Input required value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+        </Field>
+        <Field label="السعر">
+          <Input type="number" min="0" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+        </Field>
+        <Field label="سعر طلبات">
+          <Input type="number" min="0" required value={form.talabatPrice} onChange={(e) => setForm({ ...form, talabatPrice: e.target.value })} />
+        </Field>
+      </div>
+    </FormDialog>
   );
 }
