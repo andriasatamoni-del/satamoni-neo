@@ -86,6 +86,12 @@ export class AddonNotFoundForOrderError extends DomainError {
   }
 }
 
+export class WithoutIngredientNotInRecipeError extends DomainError {
+  constructor() {
+    super("المكوّن اللي اخترته \"بدون\" مش موجود في وصفة الصنف ده");
+  }
+}
+
 export class AddonOrderedAloneError extends DomainError {
   constructor() {
     super("الإضافة لازم تتضاف على صنف، مينفعش تتباع لوحدها");

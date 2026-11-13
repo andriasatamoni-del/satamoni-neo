@@ -1,11 +1,12 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Order, type OrderAddonInput, type OrderLineInput, type OrderSource } from "../../domain/order.aggregate";
+import { Order, type OrderAddonInput, type OrderLineInput, type OrderSource, type WithoutIngredient } from "../../domain/order.aggregate";
 import { ORDER_REPOSITORY, type OrderRepositoryPort } from "../../domain/ports/order-repository.port";
 import {
   VariantNotFoundForOrderError,
   InsufficientStockForOrderError,
   AddonNotFoundForOrderError,
   AddonOrderedAloneError,
+  WithoutIngredientNotInRecipeError,
   ComboNotFoundForOrderError,
   CustomerNotFoundForOrderError,
   DeliveryAddressRequiredError,
@@ -44,6 +45,7 @@ export interface RegisterOrderCommand {
     comboId?: string;
     quantity: number;
     addons?: { variantId: string; quantity: number }[];
+    withoutIngredientIds?: string[];
   }[];
   discount?: number;
   createdBy?: string | null;
@@ -86,7 +88,7 @@ export class RegisterOrderHandler {
         if (command.source === "talabat") throw new TalabatPriceMissingForOrderError();
         const combo = await this.combos.findById(item.comboId);
         if (!combo || !combo.isActive || (combo.onlineOnly && command.source !== "website")) throw new ComboNotFoundForOrderError();
-        if ((item.addons?.length ?? 0) > 0) throw new InvalidOrderItemError();
+        if ((item.addons?.length ?? 0) > 0 || (item.withoutIngredientIds?.length ?? 0) > 0) throw new InvalidOrderItemError();
 
         resolvedItems.push({ comboId: combo.id, quantity: item.quantity, unitPrice: combo.price });
         comboLineComponents.set(combo.id, combo.components);
@@ -118,10 +120,11 @@ export class RegisterOrderHandler {
         quantity: item.quantity,
         unitPrice: this.priceFor(variant, command.source),
         addons,
+        withoutIngredients: await this.withoutIngredientsOf(item.variantId, item.withoutIngredientIds ?? []),
       });
     }
 
-    const variantConsumptions: { variantId: string; quantity: number }[] = [];
+    const variantConsumptions: { variantId: string; quantity: number; excludedIngredientIds?: string[] }[] = [];
     for (const item of resolvedItems) {
       if (item.comboId) {
         for (const component of comboLineComponents.get(item.comboId) ?? []) {
@@ -129,7 +132,13 @@ export class RegisterOrderHandler {
         }
         continue;
       }
-      if (item.variantId) variantConsumptions.push({ variantId: item.variantId, quantity: item.quantity });
+      if (item.variantId) {
+        variantConsumptions.push({
+          variantId: item.variantId,
+          quantity: item.quantity,
+          excludedIngredientIds: (item.withoutIngredients ?? []).map((ingredient) => ingredient.inventoryItemId),
+        });
+      }
       for (const addon of item.addons ?? []) variantConsumptions.push({ variantId: addon.variantId, quantity: addon.quantity });
     }
 
@@ -139,6 +148,7 @@ export class RegisterOrderHandler {
       const activeVersion = recipe?.activeVersion;
       if (!activeVersion) continue;
       for (const ingredient of activeVersion.ingredients) {
+        if (consumption.excludedIngredientIds?.includes(ingredient.ingredientItemId)) continue;
         const current = requiredByIngredient.get(ingredient.ingredientItemId) ?? 0;
         requiredByIngredient.set(ingredient.ingredientItemId, current + ingredient.quantity * consumption.quantity);
       }
@@ -197,6 +207,20 @@ export class RegisterOrderHandler {
     );
 
     return order;
+  }
+
+  private async withoutIngredientsOf(variantId: string, inventoryItemIds: string[]): Promise<WithoutIngredient[]> {
+    const uniqueIds = [...new Set(inventoryItemIds)];
+    if (uniqueIds.length === 0) return [];
+    const recipe = await this.recipes.findByVariantId(variantId);
+    const recipeIngredientIds = new Set((recipe?.activeVersion?.ingredients ?? []).map((ingredient) => ingredient.ingredientItemId));
+    const result: WithoutIngredient[] = [];
+    for (const inventoryItemId of uniqueIds) {
+      if (!recipeIngredientIds.has(inventoryItemId)) throw new WithoutIngredientNotInRecipeError();
+      const inventoryItem = await this.inventoryItems.findById(inventoryItemId);
+      result.push({ inventoryItemId, name: inventoryItem?.name ?? "مكوّن" });
+    }
+    return result;
   }
 
   private priceFor(variant: { price: number; talabatPrice: number }, source: OrderSource | undefined): number {

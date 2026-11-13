@@ -28,6 +28,9 @@ import { ListMenuItemsHandler } from "./application/queries/list-menu-items.hand
 import { GetRecipeByVariantHandler } from "./application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "./application/queries/list-recipes.handler";
 import { ListCombosHandler } from "./application/queries/list-combos.handler";
+import { ListRemovableIngredientsHandler } from "./application/queries/list-removable-ingredients.handler";
+import { REMOVABLE_INGREDIENTS_READER } from "./domain/ports/removable-ingredients-reader.port";
+import { RemovableIngredientsReader } from "./infrastructure/persistence/removable-ingredients.reader";
 import { MenuPriceHistoryService } from "./application/services/menu-price-history.service";
 import { CatalogController } from "./api/catalog.controller";
 import { ExportMenuItemsQueryDto } from "./api/dto/export-menu-items-query.dto";
@@ -55,6 +58,8 @@ import { PERMISSION } from "../identity-access/domain/permission";
     { provide: MENU_ITEM_REPOSITORY, useClass: MenuItemRepository },
     { provide: RECIPE_REPOSITORY, useClass: RecipeRepository },
     { provide: COMBO_REPOSITORY, useClass: ComboRepository },
+    { provide: REMOVABLE_INGREDIENTS_READER, useClass: RemovableIngredientsReader },
+    ListRemovableIngredientsHandler,
     RegisterMenuCategoryHandler,
     RegisterMenuItemHandler,
     AddVariantHandler,

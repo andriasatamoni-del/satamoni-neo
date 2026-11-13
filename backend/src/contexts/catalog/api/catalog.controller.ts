@@ -20,6 +20,7 @@ import { ListMenuItemsHandler } from "../application/queries/list-menu-items.han
 import { GetRecipeByVariantHandler } from "../application/queries/get-recipe-by-variant.handler";
 import { ListRecipesHandler } from "../application/queries/list-recipes.handler";
 import { ListCombosHandler } from "../application/queries/list-combos.handler";
+import { ListRemovableIngredientsHandler } from "../application/queries/list-removable-ingredients.handler";
 import { MenuPriceHistoryService } from "../application/services/menu-price-history.service";
 import { RegisterMenuCategoryDto } from "./dto/register-menu-category.dto";
 import { RegisterMenuItemDto } from "./dto/register-menu-item.dto";
@@ -51,6 +52,7 @@ import { PERMISSION } from "../../identity-access/domain/permission";
 @UseFilters(CatalogDomainErrorFilter)
 export class CatalogController {
   constructor(
+    private readonly listRemovableIngredients: ListRemovableIngredientsHandler,
     private readonly registerCategory: RegisterMenuCategoryHandler,
     private readonly registerItem: RegisterMenuItemHandler,
     private readonly addVariant: AddVariantHandler,
@@ -196,6 +198,12 @@ export class CatalogController {
   @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
   async activateVersion(@Param("id") id: string, @Param("versionId") versionId: string) {
     return toPublicRecipe(await this.activateRecipeVersion.execute({ recipeId: id, versionId }));
+  }
+
+  @Get("removable-ingredients")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_ITEMS_MANAGE)
+  removableIngredients() {
+    return this.listRemovableIngredients.execute();
   }
 
   @Get("variants/:variantId/recipe")

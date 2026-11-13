@@ -59,6 +59,7 @@ describe("cartLineTotal", () => {
     const line: CartLine = {
       key: "l1", variantId: "v1", comboId: null, itemName: "فطير", variantLabel: "صغير", unitPrice: 50, quantity: 2,
       addons: [{ variantId: "av1", name: "جبنة", quantity: 2, unitPrice: 15 }, { variantId: "av2", name: "عسل", quantity: 1, unitPrice: 10 }],
+      without: [],
     };
     expect(cartLineTotal(line)).toBe((50 + 30 + 10) * 2);
   });

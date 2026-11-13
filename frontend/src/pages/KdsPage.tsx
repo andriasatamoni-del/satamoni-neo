@@ -16,7 +16,7 @@ interface Branch { id: string; name: string; }
 interface MenuItemVariant { id: string; label: string; price: number; }
 interface MenuItem { id: string; name: string; variants: MenuItemVariant[]; }
 interface OrderLineAddon { menuItemId: string | null; quantity: number; }
-interface OrderLine { menuItemId: string | null; variantId: string | null; comboId?: string | null; quantity: number; addons?: OrderLineAddon[]; }
+interface OrderLine { menuItemId: string | null; variantId: string | null; comboId?: string | null; quantity: number; addons?: OrderLineAddon[]; withoutIngredients?: { inventoryItemId: string; name: string }[]; }
 interface Combo { id: string; name: string; }
 interface KdsOrder {
   id: string;
@@ -163,6 +163,11 @@ export function KdsPage() {
                           {order.items.map((line, i) => (
                             <li key={i}>
                               {itemLabel(line)}
+                              {line.withoutIngredients && line.withoutIngredients.length > 0 && (
+                                <p className="ms-3 border-s-2 border-red-200 ps-2 text-xs font-bold text-red-600">
+                                  بدون {line.withoutIngredients.map((ingredient) => ingredient.name).join("، ")}
+                                </p>
+                              )}
                               {line.addons && line.addons.length > 0 && (
                                 <ul className="ms-3 border-s-2 border-brand-200 ps-2 text-xs font-semibold text-brand-700">
                                   {line.addons.map((addon, j) => <li key={j}>{addonLabel(addon)}</li>)}

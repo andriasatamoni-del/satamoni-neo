@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { cartLineTotal, type SellableAddon, type SellableVariant } from "./menuPricing";
-import type { CartLine, Combo, MenuItem } from "./posTypes";
+import type { CartLine, CartLineAddon, Combo, MenuItem, RemovableIngredient } from "./posTypes";
 
 function sumQuantities(lines: CartLine[]): number {
   return lines.reduce((sum, l) => sum + l.quantity, 0);
@@ -16,19 +16,20 @@ export function useCart() {
     return `line-${nextLineNumber.current}`;
   }
 
-  function addItem(item: MenuItem, variant: SellableVariant) {
-    const mergeInto = lines.find((l) => l.variantId === variant.id && l.addons.length === 0);
+  function addItem(item: MenuItem, variant: SellableVariant, addons: CartLineAddon[] = [], without: RemovableIngredient[] = []) {
+    const plain = addons.length === 0 && without.length === 0;
+    const mergeInto = plain ? lines.find((l) => l.variantId === variant.id && l.addons.length === 0 && l.without.length === 0) : undefined;
     if (mergeInto) {
       setLines((current) => current.map((l) => (l.key === mergeInto.key ? { ...l, quantity: l.quantity + 1 } : l)));
-      setSelectedKey(mergeInto.key);
+      setSelectedKey(null);
       return;
     }
     const key = newKey();
     setLines((current) => [
       ...current,
-      { key, variantId: variant.id, comboId: null, itemName: item.name, variantLabel: variant.label, unitPrice: variant.salePrice, quantity: 1, addons: [] },
+      { key, variantId: variant.id, comboId: null, itemName: item.name, variantLabel: variant.label, unitPrice: variant.salePrice, quantity: 1, addons, without },
     ]);
-    setSelectedKey(key);
+    setSelectedKey(null);
   }
 
   function addCombo(combo: Combo) {
@@ -36,7 +37,7 @@ export function useCart() {
     setLines((current) =>
       current.some((l) => l.key === key)
         ? current.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l))
-        : [...current, { key, variantId: null, comboId: combo.id, itemName: combo.name, variantLabel: "", unitPrice: combo.price, quantity: 1, addons: [] }]
+        : [...current, { key, variantId: null, comboId: combo.id, itemName: combo.name, variantLabel: "", unitPrice: combo.price, quantity: 1, addons: [], without: [] }]
     );
     setSelectedKey(null);
   }
@@ -50,6 +51,16 @@ export function useCart() {
           ? l.addons.map((a) => (a.variantId === addon.variantId ? { ...a, quantity: a.quantity + 1 } : a))
           : [...l.addons, { variantId: addon.variantId, name: addon.name, quantity: 1, unitPrice: addon.salePrice }];
         return { ...l, addons };
+      })
+    );
+  }
+
+  function toggleWithout(lineKey: string, ingredient: RemovableIngredient) {
+    setLines((current) =>
+      current.map((l) => {
+        if (l.key !== lineKey || l.comboId) return l;
+        const removed = l.without.some((w) => w.inventoryItemId === ingredient.inventoryItemId);
+        return { ...l, without: removed ? l.without.filter((w) => w.inventoryItemId !== ingredient.inventoryItemId) : [...l.without, ingredient] };
       })
     );
   }
@@ -89,6 +100,7 @@ export function useCart() {
     addItem,
     addCombo,
     addAddon,
+    toggleWithout,
     changeAddonQuantity,
     changeQuantity,
     removeLine,

@@ -37,6 +37,7 @@ export interface OrderLine {
   unitPrice: number;
   lineTotal: number;
   addons: OrderLineAddon[];
+  withoutIngredients?: RemovableIngredient[];
 }
 export interface Order {
   id: string;
@@ -57,6 +58,8 @@ export interface Order {
   addressDetails?: string | null;
 }
 
+export interface RemovableIngredient { inventoryItemId: string; name: string; }
+export interface VariantRemovableIngredients { variantId: string; ingredients: RemovableIngredient[]; }
 export interface CartLineAddon { variantId: string; name: string; quantity: number; unitPrice: number; }
 export interface CartLine {
   key: string;
@@ -67,4 +70,5 @@ export interface CartLine {
   unitPrice: number;
   quantity: number;
   addons: CartLineAddon[];
+  without: RemovableIngredient[];
 }

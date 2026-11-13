@@ -291,4 +291,33 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
     expect(cancel.status).toBe(200);
     expect(await cheeseBalance()).toBe(before);
   });
+
+  test("بدون مكوّن: الصنف مبيسحبش المكوّن ده من المخزون، والسطر شايل اسمه، ومكوّن مش في الوصفة مترفض", async () => {
+    const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
+    const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
+    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: smallVariantId });
+    const version = recipe.createDraftVersion({});
+    recipe.addIngredient(version.id, { ingredientItemId: cheeseInventoryId, quantity: 0.2 });
+    recipe.activateVersion(version.id);
+    await new RecipeRepository(db).save(recipe);
+
+    const removable = await request(app.getHttpServer()).get("/catalog/removable-ingredients").set(auth());
+    expect(removable.status).toBe(200);
+    expect(removable.body).toEqual(
+      expect.arrayContaining([{ variantId: smallVariantId, ingredients: [{ inventoryItemId: cheeseInventoryId, name: "جبنة-إضافات-جست" }] }])
+    );
+
+    const before = await cheeseBalance();
+    const withCheese = await placeOrder({ items: [{ variantId: smallVariantId, quantity: 2 }] });
+    expect(withCheese.status).toBe(201);
+    expect(await cheeseBalance()).toBeCloseTo(before - 0.4);
+
+    const withoutCheese = await placeOrder({ items: [{ variantId: smallVariantId, quantity: 2, withoutIngredientIds: [cheeseInventoryId] }] });
+    expect(withoutCheese.status).toBe(201);
+    expect(withoutCheese.body.items[0].withoutIngredients).toEqual([{ inventoryItemId: cheeseInventoryId, name: "جبنة-إضافات-جست" }]);
+    expect(await cheeseBalance()).toBeCloseTo(before - 0.4);
+
+    const notInRecipe = await placeOrder({ items: [{ variantId: largeVariantId, quantity: 1, withoutIngredientIds: [cheeseInventoryId] }] });
+    expect(notInRecipe.status).toBe(400);
+  });
 });
