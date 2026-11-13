@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { ComboMissingItemsError, ComboNameRequiredError, InvalidComboItemError } from "./errors";
+import { ComboMissingItemsError, ComboNameRequiredError, DuplicateComboItemError, InvalidComboItemError } from "./errors";
 
 export interface ComboItem {
   id: string;
+  variantId: string;
+  quantity: number;
+  parentItemId: string | null;
+}
+
+export interface ComboItemInput {
+  variantId: string;
+  quantity?: number;
+  addons?: { variantId: string; quantity?: number }[];
+}
+
+export interface ComboComponent {
   variantId: string;
   quantity: number;
 }
@@ -21,11 +33,23 @@ export interface ComboProps {
   createdAt: Date;
 }
 
-function buildItems(items: { variantId: string; quantity?: number }[]): ComboItem[] {
+function buildItem(input: { variantId: string; quantity?: number }, parentItemId: string | null): ComboItem {
+  if (!input.variantId || (input.quantity !== undefined && input.quantity <= 0)) throw new InvalidComboItemError();
+  return { id: randomUUID(), variantId: input.variantId, quantity: input.quantity ?? 1, parentItemId };
+}
+
+function assertNoRepeats(variantIds: string[]): void {
+  if (new Set(variantIds).size !== variantIds.length) throw new DuplicateComboItemError();
+}
+
+function buildItems(items: ComboItemInput[]): ComboItem[] {
   if (items.length === 0) throw new ComboMissingItemsError();
-  return items.map((it) => {
-    if (!it.variantId || (it.quantity !== undefined && it.quantity <= 0)) throw new InvalidComboItemError();
-    return { id: randomUUID(), variantId: it.variantId, quantity: it.quantity ?? 1 };
+  assertNoRepeats(items.map((it) => it.variantId));
+  return items.flatMap((it) => {
+    const parent = buildItem(it, null);
+    const addons = it.addons ?? [];
+    assertNoRepeats(addons.map((addon) => addon.variantId));
+    return [parent, ...addons.map((addon) => buildItem(addon, parent.id))];
   });
 }
 
@@ -42,7 +66,7 @@ export class Combo {
   static register(input: {
     name: string;
     price: number;
-    items: { variantId: string; quantity?: number }[];
+    items: ComboItemInput[];
     imageUrl?: string | null;
     description?: string | null;
     onlineOnly?: boolean;
@@ -88,7 +112,7 @@ export class Combo {
     if (input.onlineOnly !== undefined) this.props.onlineOnly = input.onlineOnly;
   }
 
-  replaceItems(items: { variantId: string; quantity?: number }[]): void {
+  replaceItems(items: ComboItemInput[]): void {
     this.props.items = buildItems(items);
   }
 
@@ -99,6 +123,15 @@ export class Combo {
   get description(): string | null { return this.props.description; }
   get onlineOnly(): boolean { return this.props.onlineOnly; }
   get items(): readonly ComboItem[] { return this.props.items; }
+  get mainItems(): readonly ComboItem[] { return this.props.items.filter((item) => item.parentItemId === null); }
+  addonsOf(itemId: string): readonly ComboItem[] { return this.props.items.filter((item) => item.parentItemId === itemId); }
+
+  get components(): ComboComponent[] {
+    return this.mainItems.flatMap((item) => [
+      { variantId: item.variantId, quantity: item.quantity },
+      ...this.addonsOf(item.id).map((addon) => ({ variantId: addon.variantId, quantity: addon.quantity * item.quantity })),
+    ]);
+  }
   get legacyComboId(): number | null { return this.props.legacyComboId; }
   get createdAt(): Date { return this.props.createdAt; }
 }

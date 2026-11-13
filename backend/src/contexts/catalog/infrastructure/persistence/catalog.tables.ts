@@ -121,6 +121,7 @@ export const comboItems = pgTable("combo_items", {
   combo_id: uuid().notNull(),
   variant_id: uuid().notNull(),
   quantity: integer().default(1).notNull(),
+  parent_combo_item_id: uuid(),
 }, (table) => [
   foreignKey({
       columns: [table.combo_id],
@@ -132,7 +133,13 @@ export const comboItems = pgTable("combo_items", {
       foreignColumns: [menuItemVariants.id],
       name: "combo_items_variant_id_fkey"
     }),
-  unique("uq_combo_items_combo_variant").on(table.combo_id, table.variant_id),
+  foreignKey({
+      columns: [table.parent_combo_item_id],
+      foreignColumns: [table.id],
+      name: "combo_items_parent_combo_item_id_fkey"
+    }).onDelete("cascade"),
+  uniqueIndex("uq_combo_items_combo_variant").on(table.combo_id, table.variant_id).where(sql`parent_combo_item_id IS NULL`),
+  uniqueIndex("uq_combo_items_parent_variant").on(table.parent_combo_item_id, table.variant_id).where(sql`parent_combo_item_id IS NOT NULL`),
   check("combo_items_quantity_check", sql`quantity > 0`),
 ]);
 

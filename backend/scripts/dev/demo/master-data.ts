@@ -387,7 +387,11 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
       description: combo.description,
       price: combo.price,
       onlineOnly: combo.onlineOnly ?? false,
-      items: combo.items.map(([itemKey, label, quantity]) => ({ variantId: ctx.variants[`${itemKey}:${label}`], quantity })),
+      items: combo.items.map(([itemKey, label, quantity, addons]) => ({
+        variantId: ctx.variants[`${itemKey}:${label}`],
+        quantity,
+        addons: (addons ?? []).map((addonKey) => ({ variantId: addonVariantIds[addonKey], quantity: 1 })),
+      })),
     });
     ctx.combos[combo.name] = registered.id;
   }

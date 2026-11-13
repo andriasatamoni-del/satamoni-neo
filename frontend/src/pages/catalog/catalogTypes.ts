@@ -27,7 +27,10 @@ export interface MenuItem {
   variants: MenuItemVariant[];
 }
 
-export interface ComboItem { variantId: string; quantity: number; }
+export interface ComboAddon { variantId: string; quantity: number; }
+export interface ComboItem { variantId: string; quantity: number; addons?: ComboAddon[]; }
+
+export const ROW_ACTION = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 export interface Combo {
   id: string;

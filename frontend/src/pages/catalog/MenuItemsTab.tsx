@@ -20,6 +20,7 @@ import {
   ADDON_VARIANT_LABEL,
   errorText,
   MENU_ITEM_KIND_LABELS,
+  ROW_ACTION,
   type MenuCategory,
   type MenuItem,
   type MenuItemKind,
@@ -35,8 +36,6 @@ interface SizeRow {
 }
 
 const PRICE_MENU_LABELS: Record<PriceMenu, string> = { regular: "المنيو العادي", talabat: "طلبات" };
-
-const ROW_ACTION = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", addonPrice: "", addonTalabatPrice: "" };
 

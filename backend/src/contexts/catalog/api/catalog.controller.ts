@@ -274,7 +274,11 @@ function toPublicCombo(combo: Combo) {
     imageUrl: combo.imageUrl,
     description: combo.description,
     onlineOnly: combo.onlineOnly,
-    items: combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+    items: combo.mainItems.map((i) => ({
+      variantId: i.variantId,
+      quantity: i.quantity,
+      addons: combo.addonsOf(i.id).map((addon) => ({ variantId: addon.variantId, quantity: addon.quantity })),
+    })),
   };
 }
 

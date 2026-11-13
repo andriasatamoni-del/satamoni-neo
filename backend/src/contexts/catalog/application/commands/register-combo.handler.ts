@@ -1,13 +1,14 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Combo } from "../../domain/combo.aggregate";
+import { Combo, type ComboItemInput } from "../../domain/combo.aggregate";
 import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../domain/ports/combo-repository.port";
-import { DuplicateComboNameError, InvalidComboItemError, AddonNotAllowedInComboError } from "../../domain/errors";
+import { DuplicateComboNameError } from "../../domain/errors";
+import { assertValidComboItems } from "./combo-items.validation";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 
 export interface RegisterComboCommand {
   name: string;
   price: number;
-  items: { variantId: string; quantity?: number }[];
+  items: ComboItemInput[];
   imageUrl?: string;
   description?: string;
   onlineOnly?: boolean;
@@ -22,11 +23,7 @@ export class RegisterComboHandler {
 
   async execute(command: RegisterComboCommand): Promise<Combo> {
     if (await this.combos.existsByName(command.name.trim())) throw new DuplicateComboNameError();
-    for (const it of command.items) {
-      const menuItem = await this.menuItems.findByVariantId(it.variantId);
-      if (!menuItem) throw new InvalidComboItemError();
-      if (menuItem.isAddon) throw new AddonNotAllowedInComboError();
-    }
+    await assertValidComboItems(this.menuItems, command.items);
 
     const combo = Combo.register(command);
     await this.combos.save(combo);
