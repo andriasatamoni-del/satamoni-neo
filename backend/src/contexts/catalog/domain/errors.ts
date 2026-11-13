@@ -70,7 +70,19 @@ export class AddonSingleVariantError extends DomainError {
 
 export class AddonNotAllowedInComboError extends DomainError {
   constructor() {
-    super("الإضافات مينفعش تدخل في عرض - اختار أصناف عادية بس");
+    super("الإضافة مينفعش تبقى صنف لوحدها في العرض - حطها تحت الصنف اللي بتتضاف عليه");
+  }
+}
+
+export class ComboAddonMustBeAddonError extends DomainError {
+  constructor() {
+    super("اللي بيتحط تحت صنف في العرض لازم يكون إضافة");
+  }
+}
+
+export class DuplicateComboItemError extends DomainError {
+  constructor() {
+    super("فيه صنف أو إضافة متكررة في العرض - زوّد الكمية بدل التكرار");
   }
 }
 

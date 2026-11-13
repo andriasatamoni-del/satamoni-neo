@@ -1,5 +1,5 @@
 import { Combo } from "../../../src/contexts/catalog/domain/combo.aggregate";
-import { ComboMissingItemsError, ComboNameRequiredError, InvalidComboItemError } from "../../../src/contexts/catalog/domain/errors";
+import { ComboMissingItemsError, ComboNameRequiredError, DuplicateComboItemError, InvalidComboItemError } from "../../../src/contexts/catalog/domain/errors";
 
 function register(overrides: Partial<Parameters<typeof Combo.register>[0]> = {}) {
   return Combo.register({
@@ -65,5 +65,28 @@ describe("Combo aggregate", () => {
     expect(combo.items).toHaveLength(2);
     expect(combo.items.map((i) => i.variantId)).toEqual(["variant-2", "variant-3"]);
     expect(() => combo.replaceItems([])).toThrow(ComboMissingItemsError);
+  });
+
+  it("keeps addons under their item and multiplies their quantity by the item quantity in components", () => {
+    const combo = register({
+      items: [
+        { variantId: "burger", quantity: 2, addons: [{ variantId: "cheese", quantity: 1 }] },
+        { variantId: "fries", quantity: 1, addons: [{ variantId: "cheese" }] },
+      ],
+    });
+    expect(combo.mainItems.map((i) => i.variantId)).toEqual(["burger", "fries"]);
+    expect(combo.addonsOf(combo.mainItems[0].id).map((a) => a.variantId)).toEqual(["cheese"]);
+    expect(combo.components).toEqual([
+      { variantId: "burger", quantity: 2 },
+      { variantId: "cheese", quantity: 2 },
+      { variantId: "fries", quantity: 1 },
+      { variantId: "cheese", quantity: 1 },
+    ]);
+  });
+
+  it("rejects a repeated item or a repeated addon under the same item", () => {
+    expect(() => register({ items: [{ variantId: "burger" }, { variantId: "burger" }] })).toThrow(DuplicateComboItemError);
+    expect(() => register({ items: [{ variantId: "burger", addons: [{ variantId: "cheese" }, { variantId: "cheese" }] }] })).toThrow(DuplicateComboItemError);
+    expect(() => register({ items: [{ variantId: "burger", addons: [{ variantId: "cheese", quantity: 0 }] }] })).toThrow(InvalidComboItemError);
   });
 });

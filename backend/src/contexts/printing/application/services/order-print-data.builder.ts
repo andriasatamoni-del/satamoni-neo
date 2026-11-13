@@ -42,7 +42,7 @@ export class OrderPrintDataBuilder {
     for (const line of order.topLevelItems) {
       if (line.comboId) {
         const combo = await this.combos.findById(line.comboId);
-        const components = combo?.items ?? [];
+        const components = combo?.mainItems ?? [];
         for (const [index, component] of components.entries()) {
           const menuItem = await this.menuItems.findByVariantId(component.variantId);
           const variant = menuItem?.variants.find((v) => v.id === component.variantId);
@@ -59,6 +59,17 @@ export class OrderPrintDataBuilder {
             lineTotal: index === 0 ? line.lineTotal : 0,
             stationId,
           });
+          for (const addon of combo?.addonsOf(component.id) ?? []) {
+            const addonItem = await this.menuItems.findByVariantId(addon.variantId);
+            items.push({
+              name: `+ ${addonItem?.name ?? "إضافة"}`,
+              variantLabel: null,
+              quantity: addon.quantity * component.quantity * line.quantity,
+              unitPrice: 0,
+              lineTotal: 0,
+              stationId,
+            });
+          }
         }
         continue;
       }

@@ -1,12 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { Combo } from "../../domain/combo.aggregate";
+import { Combo, type ComboItemInput } from "../../domain/combo.aggregate";
 import { COMBO_REPOSITORY, type ComboRepositoryPort } from "../../domain/ports/combo-repository.port";
-import { ComboNotFoundError, InvalidComboItemError, AddonNotAllowedInComboError } from "../../domain/errors";
+import { ComboNotFoundError } from "../../domain/errors";
+import { assertValidComboItems } from "./combo-items.validation";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 
 export interface ReplaceComboItemsCommand {
   comboId: string;
-  items: { variantId: string; quantity?: number }[];
+  items: ComboItemInput[];
 }
 
 @Injectable()
@@ -19,11 +20,7 @@ export class ReplaceComboItemsHandler {
   async execute(command: ReplaceComboItemsCommand): Promise<Combo> {
     const combo = await this.combos.findById(command.comboId);
     if (!combo) throw new ComboNotFoundError();
-    for (const it of command.items) {
-      const menuItem = await this.menuItems.findByVariantId(it.variantId);
-      if (!menuItem) throw new InvalidComboItemError();
-      if (menuItem.isAddon) throw new AddonNotAllowedInComboError();
-    }
+    await assertValidComboItems(this.menuItems, command.items);
 
     combo.replaceItems(command.items);
     await this.combos.save(combo);

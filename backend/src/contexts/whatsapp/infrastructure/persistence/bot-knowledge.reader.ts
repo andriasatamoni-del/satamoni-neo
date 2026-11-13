@@ -9,6 +9,7 @@ import {
   menuItems,
   menuItemVariants,
 } from "../../../catalog/infrastructure/persistence/catalog.tables";
+import { withAddonsFolded } from "../../../catalog/infrastructure/persistence/combo-rows";
 import { orders } from "../../../orders/infrastructure/persistence/orders.tables";
 import type {
   BotAddon,
@@ -86,6 +87,8 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
         item_name: menuItems.name,
         label: menuItemVariants.label,
         quantity: comboItems.quantity,
+        combo_item_id: comboItems.id,
+        parent_combo_item_id: comboItems.parent_combo_item_id,
       })
       .from(combos)
       .innerJoin(comboItems, eq(comboItems.combo_id, combos.id))
@@ -94,7 +97,7 @@ export class BotKnowledgeReader implements BotKnowledgeReaderPort {
       .where(and(eq(combos.is_active, true), eq(combos.online_only, false)))
       .orderBy(asc(combos.name));
     const byCombo = new Map<string, BotCombo>();
-    for (const r of rows) {
+    for (const r of withAddonsFolded(rows)) {
       const combo = byCombo.get(r.id) ?? { name: r.name, price: Number(r.price), items: [] };
       combo.items.push({ itemName: r.item_name, variantLabel: r.label, quantity: Number(r.quantity) });
       byCombo.set(r.id, combo);

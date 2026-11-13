@@ -89,7 +89,7 @@ export class RegisterOrderHandler {
         if ((item.addons?.length ?? 0) > 0) throw new InvalidOrderItemError();
 
         resolvedItems.push({ comboId: combo.id, quantity: item.quantity, unitPrice: combo.price });
-        comboLineComponents.set(combo.id, combo.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })));
+        comboLineComponents.set(combo.id, combo.components);
         continue;
       }
 

@@ -136,7 +136,7 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
     await db.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, recipeIds));
     await db.delete(recipes).where(inArray(recipes.variant_id, variantIds));
     await db.delete(comboItems).where(inArray(comboItems.variant_id, variantIds));
-    await db.delete(combos).where(eq(combos.name, "عرض-إضافات-جست"));
+    await db.delete(combos).where(inArray(combos.name, ["عرض-إضافات-جست", "عرض-إضافة-تحت-صنف-جست"]));
     await db.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, menuItemIds));
     await db.delete(menuItems).where(inArray(menuItems.id, menuItemIds));
     await db.delete(menuCategories).where(eq(menuCategories.name, "قسم-إضافات-جست"));
@@ -255,5 +255,40 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
     expect(combo.status).toBe(201);
     const res = await placeOrder({ items: [{ comboId: combo.body.id, quantity: 1, addons: [{ variantId: cheeseVariantId, quantity: 1 }] }] });
     expect(res.status).toBe(400);
+  });
+
+  test("إضافة تحت صنف في العرض بتظهر تحته، وبتسحب من المخزون بكمية الصنف والعرض، وصنف عادي مينفعش يتحط كإضافة", async () => {
+    const itemAsAddon = await request(app.getHttpServer())
+      .post("/catalog/combos")
+      .set(auth())
+      .send({ name: "عرض-إضافة-تحت-صنف-جست", price: 150, items: [{ variantId: smallVariantId, quantity: 2, addons: [{ variantId: largeVariantId, quantity: 1 }] }] });
+    expect(itemAsAddon.status).toBe(400);
+
+    const combo = await request(app.getHttpServer())
+      .post("/catalog/combos")
+      .set(auth())
+      .send({
+        name: "عرض-إضافة-تحت-صنف-جست",
+        price: 150,
+        items: [
+          { variantId: smallVariantId, quantity: 2, addons: [{ variantId: cheeseVariantId, quantity: 1 }] },
+          { variantId: largeVariantId, quantity: 1, addons: [{ variantId: cheeseVariantId, quantity: 1 }] },
+        ],
+      });
+    expect(combo.status).toBe(201);
+    expect(combo.body.items).toEqual([
+      { variantId: smallVariantId, quantity: 2, addons: [{ variantId: cheeseVariantId, quantity: 1 }] },
+      { variantId: largeVariantId, quantity: 1, addons: [{ variantId: cheeseVariantId, quantity: 1 }] },
+    ]);
+
+    const before = await cheeseBalance();
+    const res = await placeOrder({ items: [{ comboId: combo.body.id, quantity: 2 }] });
+    expect(res.status).toBe(201);
+    expect(res.body.total).toBe(300);
+    expect(await cheeseBalance()).toBe(before - 0.5 * (2 + 1) * 2);
+
+    const cancel = await request(app.getHttpServer()).patch(`/orders/${res.body.id}/cancel`).set(auth());
+    expect(cancel.status).toBe(200);
+    expect(await cheeseBalance()).toBe(before);
   });
 });

@@ -424,11 +424,13 @@ export const MENU: CategorySpec[] = [
   },
 ];
 
+type ComboItemSpec = [itemKey: string, label: string, quantity: number, addons?: AddonKey[]];
+
 export const COMBOS = [
-  { name: "عرض العيلة", description: "2 بيتزا مارجريتا كبير + بيتزا سجق كبير + 4 بيبسي", price: 899, items: [["margherita", "كبير", 2], ["sausage", "كبير", 1], ["pepsi", "كانز", 4]] as [string, string, number][] },
-  { name: "وجبة تشيز برجر", description: "تشيز برجر سينجل + بيبسي", price: 189, items: [["cheeseBurger", "سينجل", 1], ["pepsi", "كانز", 1]] as [string, string, number][] },
-  { name: "عرض الأصحاب", description: "بيتزا سوبر سوبريم وسط + فطير ميكس جبن صغير + 2 بيبسي", price: 469, items: [["supreme", "وسط", 1], ["feteerMix", "صغير", 1], ["pepsi", "كانز", 2]] as [string, string, number][] },
-  { name: "عرض الأونلاين", description: "متاح على الموقع فقط: بيتزا فراخ باربكيو وسط + فطير نوتيلا صغير", price: 399, onlineOnly: true, items: [["bbqChicken", "وسط", 1], ["feteerNutella", "صغير", 1]] as [string, string, number][] },
+  { name: "عرض العيلة", description: "2 بيتزا مارجريتا كبير بحرف محشي جبنة + بيتزا سجق كبير + 4 بيبسي", price: 959, items: [["margherita", "كبير", 2, ["stuffedCrust"]], ["sausage", "كبير", 1], ["pepsi", "كانز", 4]] as ComboItemSpec[] },
+  { name: "وجبة تشيز برجر", description: "تشيز برجر سينجل بشريحة شيدر زيادة + بيبسي", price: 205, items: [["cheeseBurger", "سينجل", 1, ["cheddarSlice"]], ["pepsi", "كانز", 1]] as ComboItemSpec[] },
+  { name: "عرض الأصحاب", description: "بيتزا سوبر سوبريم وسط + فطير ميكس جبن صغير + 2 بيبسي", price: 469, items: [["supreme", "وسط", 1], ["feteerMix", "صغير", 1], ["pepsi", "كانز", 2]] as ComboItemSpec[] },
+  { name: "عرض الأونلاين", description: "متاح على الموقع فقط: بيتزا فراخ باربكيو وسط + فطير نوتيلا صغير", price: 399, onlineOnly: true, items: [["bbqChicken", "وسط", 1], ["feteerNutella", "صغير", 1]] as ComboItemSpec[] },
 ];
 
 export const PAYMENT_METHODS = [

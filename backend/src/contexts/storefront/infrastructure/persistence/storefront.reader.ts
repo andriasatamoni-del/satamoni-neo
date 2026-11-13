@@ -9,6 +9,7 @@ import {
   menuItems,
   menuItemVariants,
 } from "../../../catalog/infrastructure/persistence/catalog.tables";
+import { withAddonsFolded } from "../../../catalog/infrastructure/persistence/combo-rows";
 import { orderItems, orderRatings, orders } from "../../../orders/infrastructure/persistence/orders.tables";
 import { paymentMethods } from "../../../payment-control/infrastructure/persistence/payment-control.tables";
 import type {
@@ -122,6 +123,8 @@ export class StorefrontReader implements StorefrontReaderPort {
         item_name: menuItems.name,
         label: menuItemVariants.label,
         quantity: comboItems.quantity,
+        combo_item_id: comboItems.id,
+        parent_combo_item_id: comboItems.parent_combo_item_id,
       })
       .from(combos)
       .innerJoin(comboItems, eq(comboItems.combo_id, combos.id))
@@ -130,7 +133,7 @@ export class StorefrontReader implements StorefrontReaderPort {
       .where(eq(combos.is_active, true))
       .orderBy(desc(combos.online_only), asc(combos.name));
     const byCombo = new Map<string, StorefrontCombo>();
-    for (const r of rows) {
+    for (const r of withAddonsFolded(rows)) {
       const combo = byCombo.get(r.id) ?? {
         id: r.id,
         name: r.name,

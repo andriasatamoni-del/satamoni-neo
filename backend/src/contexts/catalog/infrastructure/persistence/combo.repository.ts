@@ -40,7 +40,13 @@ export class ComboRepository implements ComboRepositoryPort {
 
       await tx.delete(comboItems).where(eq(comboItems.combo_id, combo.id));
       for (const item of combo.items) {
-        await tx.insert(comboItems).values({ id: item.id, combo_id: combo.id, variant_id: item.variantId, quantity: item.quantity });
+        await tx.insert(comboItems).values({
+          id: item.id,
+          combo_id: combo.id,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          parent_combo_item_id: item.parentItemId,
+        });
       }
     });
   }
@@ -84,7 +90,7 @@ export class ComboRepository implements ComboRepositoryPort {
       imageUrl: row.image_url,
       description: row.description,
       onlineOnly: row.online_only,
-      items: itemRows.map((i) => ({ id: i.id, variantId: i.variant_id, quantity: i.quantity })),
+      items: itemRows.map((i) => ({ id: i.id, variantId: i.variant_id, quantity: i.quantity, parentItemId: i.parent_combo_item_id })),
       legacyComboId: row.legacy_combo_id,
       createdAt: row.created_at,
     });
