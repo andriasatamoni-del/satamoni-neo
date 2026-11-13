@@ -107,29 +107,46 @@ describe("POS addons", () => {
     apiMock.responses["/catalog/items?kind=addon"] = [cheeseAddon];
   });
 
-  it("opens the addons for the item just added and adds them to that line", async () => {
-    await renderPos();
-    fireEvent.click(await tile("فطير جبنة"));
-
-    expect(await screen.findByText("إضافات على")).toBeInTheDocument();
-    fireEvent.click(await tile("جبنة زيادة"));
-    fireEvent.click(await tile("جبنة زيادة"));
-
-    expect(screen.getByText("+ جبنة زيادة")).toBeInTheDocument();
-    expect(screen.getAllByText(formatPrice(80)).length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole("button", { name: "تم" }));
-    expect(await tile("بيبسي")).toBeInTheDocument();
-    expect(screen.queryByText("إضافات على")).not.toBeInTheDocument();
+  beforeEach(() => {
+    apiMock.responses["/catalog/removable-ingredients"] = [{ variantId: "i1-v", ingredients: [{ inventoryItemId: "inv-pepper", name: "فلفل" }] }];
   });
 
-  it("keeps a line with addons apart from a new tap on the same item", async () => {
+  it("shows the addons and the without options in the item popup and adds them to the new line", async () => {
     await renderPos();
     fireEvent.click(await tile("فطير جبنة"));
-    fireEvent.click(await tile("جبنة زيادة"));
-    fireEvent.click(screen.getByRole("button", { name: "تم" }));
+
+    expect(await screen.findByText("الإضافات")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^جبنة زيادة/ }));
+    fireEvent.click(screen.getByRole("button", { name: "زوّد جبنة زيادة" }));
+    fireEvent.click(screen.getByRole("button", { name: "فلفل" }));
+    expect(screen.getByRole("button", { name: "بدون فلفل" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByText(formatPrice(80)).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة للسلة" }));
+
+    expect(screen.queryByText("الإضافات")).not.toBeInTheDocument();
+    expect(screen.getByText("+ جبنة زيادة")).toBeInTheDocument();
+    expect(screen.getByText("بدون فلفل")).toBeInTheDocument();
+    expect(await tile("بيبسي")).toBeInTheDocument();
+  });
+
+  it("keeps a line with options apart from a plain add of the same item", async () => {
+    await renderPos();
+    fireEvent.click(await tile("فطير جبنة"));
+    fireEvent.click(screen.getByRole("button", { name: /^جبنة زيادة/ }));
+    fireEvent.click(screen.getByRole("button", { name: "إضافة للسلة" }));
 
     fireEvent.click(await tile("فطير جبنة"));
+    fireEvent.click(screen.getByRole("button", { name: "إضافة للسلة" }));
     expect(screen.getByText("السلة (2)")).toBeInTheDocument();
+    expect(screen.getAllByText("فطير جبنة").length).toBeGreaterThan(2);
+  });
+
+  it("adds an item with no sizes, addons or without options straight to the cart", async () => {
+    apiMock.responses["/catalog/items?kind=addon"] = [];
+    await renderPos();
+    fireEvent.click(await tile("بيبسي"));
+    expect(screen.queryByRole("button", { name: "إضافة للسلة" })).not.toBeInTheDocument();
+    expect(screen.getByText("السلة (1)")).toBeInTheDocument();
   });
 });

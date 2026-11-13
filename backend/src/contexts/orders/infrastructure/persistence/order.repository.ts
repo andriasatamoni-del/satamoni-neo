@@ -65,6 +65,7 @@ export class OrderRepository implements OrderRepositoryPort {
             unit_price: item.unitPrice,
             line_total: item.lineTotal,
             parent_order_item_id: item.parentLineId,
+            without_ingredients: item.withoutIngredients,
           })
           .onConflictDoNothing({ target: orderItems.id });
 
@@ -158,6 +159,7 @@ export class OrderRepository implements OrderRepositoryPort {
         unitPrice: Number(i.unit_price),
         lineTotal: Number(i.line_total),
         parentLineId: i.parent_order_item_id,
+        withoutIngredients: i.without_ingredients ?? [],
       })),
       subtotal: Number(row.subtotal),
       discount: Number(row.discount),

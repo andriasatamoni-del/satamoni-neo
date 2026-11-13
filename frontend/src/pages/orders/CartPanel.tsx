@@ -127,7 +127,7 @@ function CartLineRow({
         >
           <p className="font-semibold text-slate-800">{line.itemName}</p>
           {line.variantLabel && <p className="text-xs text-slate-400">{line.variantLabel}</p>}
-          {canTakeAddons && !selected && <p className="text-xs text-brand-600">+ إضافات</p>}
+          {canTakeAddons && !selected && <p className="text-xs text-brand-600">+ إضافات / بدون</p>}
         </button>
         <div className="flex items-center gap-1">
           <QuantityButton onClick={() => onChangeQuantity(-1)}>−</QuantityButton>
@@ -137,6 +137,11 @@ function CartLineRow({
         <span className="w-14 text-end font-bold text-slate-900">{formatPrice(cartLineTotal(line))}</span>
         <button type="button" onClick={onRemove} className="text-red-500 hover:text-red-700">×</button>
       </div>
+      {line.without.length > 0 && (
+        <p className="mt-1 border-s-2 border-red-200 ps-3 text-xs font-semibold text-red-600">
+          بدون {line.without.map((w) => w.name).join("، ")}
+        </p>
+      )}
       {line.addons.length > 0 && (
         <ul className="mt-1 space-y-1 border-s-2 border-brand-200 ps-3">
           {line.addons.map((addon) => (

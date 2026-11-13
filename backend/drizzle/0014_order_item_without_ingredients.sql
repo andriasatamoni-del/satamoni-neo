@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN "without_ingredients" jsonb DEFAULT '[]'::jsonb NOT NULL;

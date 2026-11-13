@@ -12,7 +12,7 @@ import { CartPanel } from "./orders/CartPanel";
 import { ItemPickerDialog } from "./orders/ItemPickerDialog";
 import { OrdersListCard, useOrdersListState } from "./orders/OrdersListCard";
 import { PriceMenuSwitchDialog } from "./orders/PriceMenuSwitchDialog";
-import { needsOptionPicker, sellableVariants } from "./orders/menuPricing";
+import { needsOptionPicker, sellableAddons, sellableVariants } from "./orders/menuPricing";
 import { useOrderDraft } from "./orders/orderDraft";
 import { useCart } from "./orders/useCart";
 import { useCreateOrder } from "./orders/useCreateOrder";
@@ -46,7 +46,11 @@ export function OrdersPage() {
   function handleItemClick(item: MenuItem) {
     const variants = sellableVariants(item, priceMenu);
     if (variants.length === 0) return;
-    if (needsOptionPicker(item, priceMenu)) setPickerItem(item);
+    const hasOptions =
+      needsOptionPicker(item, priceMenu) ||
+      sellableAddons(catalog.addons, priceMenu).length > 0 ||
+      variants.some((variant) => catalog.removableIngredientsOf(variant.id).length > 0);
+    if (hasOptions) setPickerItem(item);
     else cart.addItem(item, variants[0]);
   }
 
@@ -117,9 +121,11 @@ export function OrdersPage() {
           key={pickerItem.id}
           item={pickerItem}
           priceMenu={priceMenu}
+          addons={sellableAddons(catalog.addons, priceMenu)}
+          removableIngredientsOf={catalog.removableIngredientsOf}
           onClose={() => setPickerItem(null)}
-          onAdd={(variant) => {
-            cart.addItem(pickerItem, variant);
+          onAdd={(variant, addons, without) => {
+            cart.addItem(pickerItem, variant, addons, without);
             setPickerItem(null);
           }}
         />

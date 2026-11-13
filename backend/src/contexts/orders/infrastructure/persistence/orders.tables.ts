@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, unique, check, uuid, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, unique, check, uuid, integer, numeric, foreignKey, uniqueIndex, index, primaryKey, jsonb } from "drizzle-orm/pg-core";
+import type { WithoutIngredient } from "../../domain/order.aggregate";
 import { sql } from "drizzle-orm";
 import { branches } from "../../../branches/infrastructure/persistence/branches.tables";
 import { combos, menuItemVariants, menuItems } from "../../../catalog/infrastructure/persistence/catalog.tables";
@@ -40,6 +41,7 @@ export const orderItems = pgTable("order_items", {
   line_total: numeric().notNull().$type<number>(),
   combo_id: uuid(),
   parent_order_item_id: uuid(),
+  without_ingredients: jsonb().$type<WithoutIngredient[]>().default([]).notNull(),
 }, (table) => [
   unique("order_items_order_id_id_unique").on(table.order_id, table.id),
   index("idx_order_items_parent").using("btree", table.parent_order_item_id.asc().nullsLast()),

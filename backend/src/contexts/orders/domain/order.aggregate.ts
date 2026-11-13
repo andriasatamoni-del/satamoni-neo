@@ -31,6 +31,11 @@ export interface OrderAddonInput {
   unitPrice: number;
 }
 
+export interface WithoutIngredient {
+  inventoryItemId: string;
+  name: string;
+}
+
 export interface OrderLineInput {
   menuItemId?: string | null;
   variantId?: string | null;
@@ -38,6 +43,7 @@ export interface OrderLineInput {
   quantity: number;
   unitPrice: number;
   addons?: OrderAddonInput[];
+  withoutIngredients?: WithoutIngredient[];
 }
 
 export interface OrderItemLine {
@@ -49,6 +55,7 @@ export interface OrderItemLine {
   unitPrice: number;
   lineTotal: number;
   parentLineId: string | null;
+  withoutIngredients: WithoutIngredient[];
 }
 
 export interface OrderProps {
@@ -107,7 +114,8 @@ export class Order {
       const isCombo = !!i.comboId;
       if (isCombo ? i.menuItemId || i.variantId : !i.menuItemId || !i.variantId) throw new InvalidOrderItemError();
       const addons = i.addons ?? [];
-      if (isCombo && addons.length > 0) throw new InvalidOrderItemError();
+      const withoutIngredients = i.withoutIngredients ?? [];
+      if (isCombo && (addons.length > 0 || withoutIngredients.length > 0)) throw new InvalidOrderItemError();
       const parent: OrderItemLine = {
         id: randomUUID(),
         menuItemId: isCombo ? null : i.menuItemId!,
@@ -117,6 +125,7 @@ export class Order {
         unitPrice: i.unitPrice,
         lineTotal: i.quantity * i.unitPrice,
         parentLineId: null,
+        withoutIngredients,
       };
       const children: OrderItemLine[] = addons.map((a) => {
         if (a.quantity <= 0) throw new InvalidOrderItemError();
@@ -129,6 +138,7 @@ export class Order {
           unitPrice: a.unitPrice,
           lineTotal: a.quantity * a.unitPrice,
           parentLineId: parent.id,
+          withoutIngredients: [],
         };
       });
       return [parent, ...children];

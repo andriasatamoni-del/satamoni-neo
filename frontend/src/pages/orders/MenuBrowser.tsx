@@ -6,7 +6,7 @@ import { itemPriceLabel, sellableAddons, sellableVariants, type SellableAddon } 
 import { MenuTile, MenuTileGrid } from "./MenuTile";
 import { PillButton } from "./PillButton";
 import { formatPrice, MENU_GROUP_LABELS } from "./posLabels";
-import type { CartLine, Combo, MenuItem, PriceMenu } from "./posTypes";
+import type { CartLine, Combo, MenuItem, PriceMenu, RemovableIngredient } from "./posTypes";
 import type { Cart } from "./useCart";
 import { MENU_GROUP_FILTERS, useMenuBrowser } from "./useMenuBrowser";
 import type { PosCatalog } from "./usePosCatalog";
@@ -31,13 +31,16 @@ export function MenuBrowser({
   const addons = sellableAddons(catalog.addons, priceMenu);
   const selectedLine = cart.selectedLine;
 
-  if (selectedLine && addons.length > 0) {
+  const removable = selectedLine?.variantId ? catalog.removableIngredientsOf(selectedLine.variantId) : [];
+  if (selectedLine && (addons.length > 0 || removable.length > 0)) {
     return (
       <AddonsGrid
         line={selectedLine}
         addons={addons}
+        removable={removable}
         quantityOf={cart.addonQuantity}
         onAddonClick={(addon) => cart.addAddon(selectedLine.key, addon)}
+        onToggleWithout={(ingredient) => cart.toggleWithout(selectedLine.key, ingredient)}
         onDone={() => cart.selectLine(null)}
       />
     );
@@ -129,14 +132,18 @@ export function MenuBrowser({
 function AddonsGrid({
   line,
   addons,
+  removable,
   quantityOf,
   onAddonClick,
+  onToggleWithout,
   onDone,
 }: {
   line: CartLine;
   addons: SellableAddon[];
+  removable: RemovableIngredient[];
   quantityOf: (variantId: string) => number;
   onAddonClick: (addon: SellableAddon) => void;
+  onToggleWithout: (ingredient: RemovableIngredient) => void;
   onDone: () => void;
 }) {
   return (
@@ -144,7 +151,7 @@ function AddonsGrid({
       <CardBody>
         <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
           <div className="flex-1">
-            <p className="text-xs font-semibold text-slate-500">إضافات على</p>
+            <p className="text-xs font-semibold text-slate-500">إضافات وتعديلات على</p>
             <p className="text-base font-bold text-slate-900">
               {line.itemName}
               {line.variantLabel && <span className="ms-1 text-sm font-medium text-slate-500">({line.variantLabel})</span>}
@@ -163,6 +170,29 @@ function AddonsGrid({
             />
           ))}
         </MenuTileGrid>
+        {removable.length > 0 && (
+          <div className="mt-4 border-t border-slate-200 pt-3">
+            <p className="mb-2 text-xs font-semibold text-slate-500">بدون</p>
+            <div className="flex flex-wrap gap-1.5">
+              {removable.map((ingredient) => {
+                const removed = line.without.some((w) => w.inventoryItemId === ingredient.inventoryItemId);
+                return (
+                  <button
+                    key={ingredient.inventoryItemId}
+                    type="button"
+                    aria-pressed={removed}
+                    onClick={() => onToggleWithout(ingredient)}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                      removed ? "border-red-300 bg-red-50 text-red-700 line-through" : "border-slate-200 text-slate-600 hover:border-red-300"
+                    }`}
+                  >
+                    {removed ? `بدون ${ingredient.name}` : ingredient.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </CardBody>
     </Card>
   );

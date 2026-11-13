@@ -102,6 +102,7 @@ function toPublicOrder(order: Order) {
       quantity: i.quantity,
       unitPrice: i.unitPrice,
       lineTotal: i.lineTotal,
+      withoutIngredients: i.withoutIngredients,
       addons: order.addonsOf(i.id).map((a) => ({
         id: a.id,
         menuItemId: a.menuItemId,

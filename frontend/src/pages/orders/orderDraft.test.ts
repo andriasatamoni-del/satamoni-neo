@@ -35,6 +35,18 @@ describe("buildOrderPayload source", () => {
   });
 });
 
+describe("buildOrderPayload lines", () => {
+  it("sends the without ingredients of a line and leaves them out when there are none", () => {
+    const base = { comboId: null, itemName: "فطير", variantLabel: "صغير", unitPrice: 50, quantity: 1, addons: [] };
+    const payload = buildOrderPayload("b1", draft({}), [
+      { ...base, key: "l1", variantId: "v1", without: [{ inventoryItemId: "inv-pepper", name: "فلفل" }] },
+      { ...base, key: "l2", variantId: "v2", without: [] },
+    ]);
+    expect(payload.items[0]).toMatchObject({ variantId: "v1", withoutIngredientIds: ["inv-pepper"] });
+    expect(payload.items[1]).toMatchObject({ variantId: "v2", withoutIngredientIds: undefined });
+  });
+});
+
 describe("buildOrderPayload customer fields", () => {
   it("sends only the customer id, chosen phone and address id for a selected customer", () => {
     const payload = buildOrderPayload("b1", draft({ orderType: "delivery", customer: CUSTOMER, customerPhone: "01011112222", customerAddressId: "a1", customerName: "stale" }), []);

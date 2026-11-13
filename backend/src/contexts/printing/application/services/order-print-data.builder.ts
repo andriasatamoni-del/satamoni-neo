@@ -82,7 +82,7 @@ export class OrderPrintDataBuilder {
         stationId = category?.stationId ?? null;
       }
       items.push({
-        name: menuItem?.name ?? "صنف",
+        name: `${menuItem?.name ?? "صنف"}${line.withoutIngredients.length > 0 ? ` (بدون ${line.withoutIngredients.map((ingredient) => ingredient.name).join("، ")})` : ""}`,
         variantLabel: variant?.label ?? null,
         quantity: line.quantity,
         unitPrice: line.unitPrice,

@@ -99,6 +99,13 @@
       "when": 1794527753231,
       "tag": "0013_combo_item_addons",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794529202710,
+      "tag": "0014_order_item_without_ingredients",
+      "breakpoints": true
     }
   ]
 }
