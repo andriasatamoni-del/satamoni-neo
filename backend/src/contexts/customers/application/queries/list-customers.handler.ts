@@ -22,7 +22,7 @@ const SORT_COLUMNS = {
 export class ListCustomersHandler {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async execute(filter: CustomerListFilter, page: PageRequest) {
+  async execute(filter: CustomerListFilter, page?: PageRequest) {
     const where = and(
       filter.blocked !== undefined ? eq(customers.is_blocked, filter.blocked) : undefined,
       searchCondition(filter.q, customers.name, customers.phone, customers.phone2, customers.email)

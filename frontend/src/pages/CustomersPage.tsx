@@ -9,6 +9,8 @@ import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Badge } from "../shared/ui/Badge";
 import { Button } from "../shared/ui/Button";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
+import { TabularImportExport } from "../shared/ui/TabularImportExport";
+import { PERMISSION } from "../shared/auth/permissions";
 
 interface CustomerAddress {
   id: string;
@@ -134,8 +136,15 @@ export function CustomersPage() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>العملاء ({customersQuery.data?.total ?? 0})</CardTitle>
+              <TabularImportExport
+                path="/customers"
+                title="العملاء"
+                permissions={{ export: [PERMISSION.CUSTOMERS_VIEW], import: [PERMISSION.CUSTOMERS_MANAGE] }}
+                exportQuery={list.filters}
+                refreshQueryKey={["customers"]}
+              />
             </CardHeader>
             <CardBody className="p-0">
               <Table>

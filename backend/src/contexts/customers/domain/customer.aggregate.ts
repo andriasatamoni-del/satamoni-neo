@@ -304,6 +304,11 @@ export class Customer {
     return address;
   }
 
+  hasAddressAt(input: Pick<StructuredAddressInput, "area" | "street" | "building" | "floor" | "apartment">): boolean {
+    const comparable = (value: string | null | undefined) => String(value ?? "").trim();
+    return this.props.addresses.some((address) => ADDRESS_FIELDS.every((f) => comparable(address[f.key]) === comparable(input[f.key])));
+  }
+
   removeAddress(addressId: string): void {
     const index = this.props.addresses.findIndex((a) => a.id === addressId);
     if (index === -1) throw new CustomerAddressNotFoundError();
