@@ -51,7 +51,7 @@ describe("RecipeRepository", () => {
   });
 
   test("save بيسجّل وصفة بنسخة ومكوّناتها مع بعض، وfindById بيرجّعهم بنفس البيانات", async () => {
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 0.3, unit: "كيلو" });
     await repo.save(recipe);
@@ -62,14 +62,20 @@ describe("RecipeRepository", () => {
     expect(found?.versions[0].ingredients[0].quantity).toBe(0.3);
   });
 
-  test("findByVariantId بيلاقي وصفة الحجم صح", async () => {
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+  test("findByVariantId follows the size's recipe link, and a renamed recipe keeps its name", async () => {
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     await repo.save(recipe);
+    expect(await repo.findByVariantId(variantId)).toBeNull();
+    await db.update(menuItemVariants).set({ recipe_id: recipe.id }).where(eq(menuItemVariants.id, variantId));
     expect((await repo.findByVariantId(variantId))?.id).toBe(recipe.id);
+    recipe.rename("وصفة-جديدة-جست");
+    await repo.save(recipe);
+    expect((await repo.findById(recipe.id))?.name).toBe("وصفة-جديدة-جست");
+    await db.update(menuItemVariants).set({ recipe_id: null }).where(eq(menuItemVariants.id, variantId));
   });
 
   test("تفعيل نسخة وحفظها بيحدّث حالتها في القاعدة صح، والقديمة بتتأرشف", async () => {
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const v1 = recipe.createDraftVersion({});
     recipe.addIngredient(v1.id, { ingredientItemId, quantity: 1 });
     recipe.activateVersion(v1.id);

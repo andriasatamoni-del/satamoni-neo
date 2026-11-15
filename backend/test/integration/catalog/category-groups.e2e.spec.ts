@@ -8,6 +8,7 @@ import type { Database } from "../../../src/shared/database/database.token";
 import { eq, inArray } from "drizzle-orm";
 import { catalogLayout, menuCategories, menuItemVariants, menuItems } from "../../../src/contexts/catalog/infrastructure/persistence/catalog.tables";
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
+import { markReadyForSale } from "../helpers/menu";
 
 describe("Catalog - category groups: order + archive (e2e)", () => {
   let app: INestApplication;
@@ -109,6 +110,7 @@ describe("Catalog - category groups: order + archive (e2e)", () => {
     const created = await request(server()).post("/catalog/items").set(auth()).send({ name: "صنف-قسم-مؤرشف-جست", categoryId: ids.b, variants: [{ label: "عادي", price: 50, talabatPrice: 50 }] });
     expect(created.status).toBe(201);
     itemId = created.body.id;
+    await markReadyForSale(app.get<Database>(DATABASE), [itemId]);
     await request(server()).patch(`/catalog/categories/${ids.b}`).set(auth()).send({ isActive: true });
 
     const before = await request(server()).get("/storefront/menu");

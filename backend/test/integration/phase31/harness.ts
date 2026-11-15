@@ -13,6 +13,7 @@ import { deleteAuditLogsForTest } from "../helpers/audit";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { payrollAdjustments, payrollRuns } from "../../../src/contexts/hr-payroll/infrastructure/persistence/hr-payroll.tables";
 import { branchStockBalances } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
+import { linkVariantRecipe } from "../helpers/menu";
 
 
 export interface World {
@@ -127,11 +128,12 @@ export async function bootstrap(tag: string, options: { accounts?: boolean; stoc
   const variant = item.addVariant({ label: "عادي", price: VARIANT_PRICE, talabatPrice: VARIANT_PRICE });
   await menuRepo.save(item);
   const recipeRepo = new RecipeRepository(db);
-  const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
+  const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
   const version = recipe.createDraftVersion({});
   recipe.addIngredient(version.id, { ingredientItemId: ingredient.id, quantity: RECIPE_QTY });
   recipe.activateVersion(version.id);
   await recipeRepo.save(recipe);
+  await linkVariantRecipe(db, variant.id, recipe.id);
 
   const method = async (name: string, body: Record<string, unknown>) =>
     (await request(app.getHttpServer()).post("/payment-control/payment-methods").set("Authorization", `Bearer ${tokens.admin}`).send({ name: `${name}-${tag}`, ...body })).body

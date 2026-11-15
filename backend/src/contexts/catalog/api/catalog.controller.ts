@@ -9,6 +9,11 @@ import { UpdateVariantHandler } from "../application/commands/update-variant.han
 import { RegisterRecipeHandler } from "../application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "../application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "../application/commands/activate-recipe-version.handler";
+import { AssignVariantRecipeHandler } from "../application/commands/assign-variant-recipe.handler";
+import { UpdateRecipeHandler } from "../application/commands/update-recipe.handler";
+import { RenameRecipeDto } from "./dto/update-recipe.dto";
+import { AssignVariantRecipeDto } from "./dto/assign-variant-recipe.dto";
+import { ListMenuRecipesHandler } from "../application/queries/list-menu-recipes.handler";
 import { RegisterComboHandler } from "../application/commands/register-combo.handler";
 import { UpdateComboHandler } from "../application/commands/update-combo.handler";
 import { ReplaceComboItemsHandler } from "../application/commands/replace-combo-items.handler";
@@ -34,7 +39,7 @@ import { CreateRecipeVersionDto } from "./dto/create-recipe-version.dto";
 import { RegisterComboDto } from "./dto/register-combo.dto";
 import { UpdateComboDto } from "./dto/update-combo.dto";
 import { ReplaceComboItemsDto } from "./dto/replace-combo-items.dto";
-import { ListMenuCategoriesQueryDto, ListMenuItemsQueryDto } from "./dto/list-catalog-query.dto";
+import { ListMenuCategoriesQueryDto, ListMenuItemsQueryDto, ListMenuRecipeItemsQueryDto } from "./dto/list-catalog-query.dto";
 import { listResponse, splitListQuery, ListQueryDto, pageRequestOf } from "../../../shared/http/list-query.dto";
 import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
@@ -62,6 +67,9 @@ export class CatalogController {
     private readonly registerRecipe: RegisterRecipeHandler,
     private readonly createRecipeVersion: CreateRecipeVersionHandler,
     private readonly activateRecipeVersion: ActivateRecipeVersionHandler,
+    private readonly assignVariantRecipe: AssignVariantRecipeHandler,
+    private readonly updateRecipe: UpdateRecipeHandler,
+    private readonly listMenuRecipes: ListMenuRecipesHandler,
     private readonly listCategories: ListMenuCategoriesHandler,
     private readonly archiveCategory: ArchiveMenuCategoryHandler,
     private readonly restoreCategory: RestoreMenuCategoryHandler,
@@ -81,6 +89,50 @@ export class CatalogController {
   @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
   async recipes(@Query("recipeType") recipeType?: string) {
     return (await this.listRecipes.execute({ recipeType })).map(toPublicRecipe);
+  }
+
+  @Get("menu-recipes/recipes")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
+  async menuRecipeLibrary(@Query() query: ListQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { rows, total } = await this.listMenuRecipes.recipes({ q: filter.q }, page);
+    return listResponse(rows, total, page);
+  }
+
+  @Get("menu-recipes/items")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
+  async menuRecipeItems(@Query() query: ListMenuRecipeItemsQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { rows, total } = await this.listMenuRecipes.items({ q: filter.q, missing: filter.missing, itemId: filter.itemId }, page);
+    return listResponse(rows, total, page);
+  }
+
+  @Get("menu-recipes/options")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE)
+  menuRecipeOptions() {
+    return this.listMenuRecipes.options();
+  }
+
+  @Put("variants/:variantId/recipe")
+  @RequirePermission(PERMISSION.CATALOG_ITEMS_MANAGE, PERMISSION.CATALOG_RECIPES_MANAGE)
+  async putVariantRecipe(@Param("variantId") variantId: string, @Body() dto: AssignVariantRecipeDto) {
+    return toPublicItem(await this.assignVariantRecipe.execute({ variantId, recipeId: dto.recipeId ?? null }));
+  }
+
+  @Patch("recipes/:id")
+  @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
+  async renameRecipe(@Param("id") id: string, @Body() dto: RenameRecipeDto) {
+    return toPublicRecipe(await this.updateRecipe.execute({ recipeId: id, name: dto.name }));
+  }
+
+  @Put("recipes/:id/ingredients")
+  @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
+  async replaceRecipeIngredients(
+    @Param("id") id: string,
+    @Body() dto: CreateRecipeVersionDto,
+    @Req() req: Request & { user: AuthenticatedUser }
+  ) {
+    return toPublicRecipe(await this.updateRecipe.execute({ recipeId: id, ingredients: dto.ingredients, createdBy: req.user.id }));
   }
 
   @Get("categories")
@@ -133,8 +185,8 @@ export class CatalogController {
   async items(@Query() query: ListMenuItemsQueryDto) {
     const { page, filter } = splitListQuery(query);
     const { kind = "item", ...rest } = filter;
-    const { items, total } = await this.listItems.execute({ ...rest, kind: kind === "all" ? undefined : kind }, page);
-    return listResponse(items.map(toPublicItem), total, page);
+    const { items, total, variantsWithRecipe } = await this.listItems.execute({ ...rest, kind: kind === "all" ? undefined : kind }, page);
+    return listResponse(items.map((item) => toPublicItem(item, variantsWithRecipe)), total, page);
   }
 
   @Post("items")
@@ -175,8 +227,8 @@ export class CatalogController {
 
   @Post("recipes")
   @RequirePermission(PERMISSION.CATALOG_RECIPES_MANAGE)
-  async createRecipe(@Body() dto: RegisterRecipeDto) {
-    return toPublicRecipe(await this.registerRecipe.execute(dto));
+  async createRecipe(@Body() dto: RegisterRecipeDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    return toPublicRecipe(await this.registerRecipe.execute({ ...dto, createdBy: req.user.id }));
   }
 
   @Post("recipes/:id/versions")
@@ -259,7 +311,8 @@ function toPublicCategory(category: MenuCategory) {
   };
 }
 
-function toPublicItem(item: MenuItem) {
+function toPublicItem(item: MenuItem, variantsWithRecipe?: ReadonlySet<string>) {
+  const hasRecipe = variantsWithRecipe ? item.variants.length > 0 && item.variants.every((v) => variantsWithRecipe.has(v.id)) : undefined;
   return {
     id: item.id,
     kind: item.kind,
@@ -269,7 +322,16 @@ function toPublicItem(item: MenuItem) {
     imageUrl: item.imageUrl,
     isBest: item.isBest,
     isActive: item.isActive,
-    variants: item.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, talabatPrice: v.talabatPrice })),
+    awaitingRecipe: item.awaitingRecipe,
+    hasRecipe,
+    variants: item.variants.map((v) => ({
+      id: v.id,
+      label: v.label,
+      price: v.price,
+      talabatPrice: v.talabatPrice,
+      recipeId: v.recipeId,
+      hasRecipe: variantsWithRecipe ? variantsWithRecipe.has(v.id) : undefined,
+    })),
   };
 }
 
@@ -294,7 +356,7 @@ function toPublicRecipe(recipe: Recipe) {
   return {
     id: recipe.id,
     recipeType: recipe.recipeType,
-    variantId: recipe.variantId,
+    name: recipe.name,
     inventoryItemId: recipe.inventoryItemId,
     versions: recipe.versions.map((v) => ({
       id: v.id,

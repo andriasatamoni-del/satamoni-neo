@@ -19,6 +19,7 @@ import { printJobs } from "../../../src/contexts/printing/infrastructure/persist
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import type { Database } from "../../../src/shared/database/database.token";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
   let app: INestApplication;
@@ -135,11 +136,12 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     const ingredient = InventoryItem.register({ name: "مكوّن-ناقص-موقع-جست", unit: "كيلو", negativeStockPolicy: "STRICT" });
     await new InventoryItemRepository(app.get<Database>(DATABASE)).save(ingredient);
     ingredientId = ingredient.id;
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: scarceVariantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: ingredientId, quantity: 1 });
     recipe.activateVersion(version.id);
     await new RecipeRepository(app.get<Database>(DATABASE)).save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), scarceVariantId, recipe.id);
 
     const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({ name: "عرض-موقع-جست", price: 150, items: [{ variantId: smallId, quantity: 2 }] });
@@ -197,8 +199,9 @@ describe("Storefront - موقع الطلب أونلاين (e2e)", () => {
     await database.delete(comboItems).where(inArray(comboItems.combo_id, [comboId, exclusiveComboId]));
     await database.delete(combos).where(inArray(combos.id, [comboId, exclusiveComboId]));
     await database.delete(recipeIngredients).where(eq(recipeIngredients.ingredient_item_id, ingredientId));
-    await database.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, database.select({ id: recipes.id }).from(recipes).where(eq(recipes.variant_id, scarceVariantId))));
-    await database.delete(recipes).where(eq(recipes.variant_id, scarceVariantId));
+    const scarceRecipeIds = (await database.select({ id: menuItemVariants.recipe_id }).from(menuItemVariants).where(eq(menuItemVariants.id, scarceVariantId))).flatMap((r) => (r.id ? [r.id] : []));
+    await database.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, scarceRecipeIds));
+    await database.delete(recipes).where(inArray(recipes.id, scarceRecipeIds));
     await database.delete(inventoryItems).where(eq(inventoryItems.id, ingredientId));
     await database.delete(menuItemVariants).where(eq(menuItemVariants.item_id, addonId));
     await database.delete(menuItems).where(eq(menuItems.id, addonId));

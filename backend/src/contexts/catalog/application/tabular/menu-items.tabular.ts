@@ -130,7 +130,7 @@ export class MenuItemsTabular implements TabularAdapter<typeof MENU_ITEM_SHEET, 
     const patch = {
       categoryId: kind === "item" && categoryId !== undefined && categoryId !== item.categoryId ? categoryId : undefined,
       description: description !== undefined && description !== item.description ? description : undefined,
-      isActive: row.isActive !== undefined && row.isActive !== null && row.isActive !== item.isActive ? row.isActive : undefined,
+      isActive: isActiveChange(item, row.isActive),
     };
     if (patch.categoryId === undefined && patch.description === undefined && patch.isActive === undefined) return false;
     await this.updateItem.execute({ itemId: item.id, ...patch });
@@ -164,4 +164,10 @@ function sizeOf(row: MenuItemSheetRow, kind: MenuItemKind): SizeInput | null {
   if (kind === "addon" && !hasPrice && !hasTalabatPrice) return null;
   if (!hasPrice || !hasTalabatPrice) throw new MenuImportRowError(`السعر وسعر طلبات مطلوبين للحجم "${label}"`);
   return { label, price: row.price as number, talabatPrice: row.talabatPrice as number };
+}
+
+function isActiveChange(item: MenuItem, wanted: boolean | null | undefined): boolean | undefined {
+  if (wanted === undefined || wanted === null) return undefined;
+  if (wanted) return item.isActive || item.awaitingRecipe ? undefined : true;
+  return item.isActive ? false : undefined;
 }

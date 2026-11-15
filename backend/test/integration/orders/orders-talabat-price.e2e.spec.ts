@@ -11,6 +11,7 @@ import { comboItems, combos, menuItemVariants, menuItems, menuPriceHistory } fro
 import { users } from "../../../src/contexts/identity-access/infrastructure/persistence/identity-access.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { markReadyForSale } from "../helpers/menu";
 
 const TAG = "سعر-طلبات-جست";
 const ADMIN_EMAIL = "admin-talabat-price@jest.test";
@@ -67,6 +68,7 @@ describe("Talabat menu prices (e2e)", () => {
     });
     addonId = addon.body.id;
     addonVariantId = addon.body.variants[0].id;
+    await markReadyForSale(db, [itemId, addonId]);
 
     const combo = await asAdmin(api().post("/catalog/combos")).send({ name: `عرض-${TAG}`, price: 40, items: [{ variantId: pricedVariantId, quantity: 1 }] });
     comboId = combo.body.id;

@@ -1,4 +1,4 @@
-import { IsNumber, IsString, Min } from "class-validator";
+import { IsNumber, IsOptional, IsString, IsUUID, Min } from "class-validator";
 
 export class AddVariantDto {
   @IsString()
@@ -8,4 +8,6 @@ export class AddVariantDto {
   price!: number;
 
   @IsNumber() @Min(0) talabatPrice!: number;
+
+  @IsOptional() @IsUUID() recipeId?: string;
 }

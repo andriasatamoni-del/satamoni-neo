@@ -4,6 +4,7 @@ import {
   AddonSingleVariantError,
   DuplicateVariantLabelError,
   MenuItemNameRequiredError,
+  MenuItemRecipeMissingError,
   VariantNotFoundError,
 } from "./errors";
 
@@ -16,6 +17,7 @@ export interface MenuItemVariant {
   price: number;
   talabatPrice: number;
   legacyVariantId: number | null;
+  recipeId: string | null;
 }
 
 export interface MenuItemProps {
@@ -26,6 +28,7 @@ export interface MenuItemProps {
   imageUrl: string | null;
   isBest: boolean;
   isActive: boolean;
+  awaitingRecipe: boolean;
   variants: MenuItemVariant[];
   legacyMenuItemId: number | null;
   createdAt: Date;
@@ -61,6 +64,7 @@ export class MenuItem {
       imageUrl: input.imageUrl ?? null,
       isBest: kind === "item" && !!input.isBest,
       isActive: true,
+      awaitingRecipe: false,
       variants: [],
       legacyMenuItemId: input.legacyMenuItemId ?? null,
       createdAt: new Date(),
@@ -72,7 +76,7 @@ export class MenuItem {
     return new MenuItem(id, props);
   }
 
-  addVariant(input: { label: string; price: number; talabatPrice: number; legacyVariantId?: number | null }): MenuItemVariant {
+  addVariant(input: { label: string; price: number; talabatPrice: number; legacyVariantId?: number | null; recipeId?: string | null }): MenuItemVariant {
     if (this.isAddon && this.props.variants.length > 0) throw new AddonSingleVariantError();
     const label = input.label.trim();
     if (this.props.variants.some((v) => v.label === label)) throw new DuplicateVariantLabelError(label);
@@ -82,6 +86,7 @@ export class MenuItem {
       price: input.price,
       talabatPrice: input.talabatPrice,
       legacyVariantId: input.legacyVariantId ?? null,
+      recipeId: input.recipeId ?? null,
     };
     this.props.variants.push(variant);
     return variant;
@@ -92,6 +97,12 @@ export class MenuItem {
     if (!variant) throw new VariantNotFoundError();
     if (price !== undefined) variant.price = price;
     if (talabatPrice !== undefined) variant.talabatPrice = talabatPrice;
+  }
+
+  assignRecipe(variantId: string, recipeId: string | null): void {
+    const variant = this.props.variants.find((v) => v.id === variantId);
+    if (!variant) throw new VariantNotFoundError();
+    variant.recipeId = recipeId;
   }
 
   rename(name: string): void {
@@ -113,8 +124,28 @@ export class MenuItem {
     if (input.isBest !== undefined) this.props.isBest = this.isItem && input.isBest;
   }
 
-  activate(): void { this.props.isActive = true; }
-  deactivate(): void { this.props.isActive = false; }
+  activate(hasRecipe: boolean): void {
+    if (!hasRecipe) throw new MenuItemRecipeMissingError();
+    this.props.isActive = true;
+    this.props.awaitingRecipe = false;
+  }
+
+  deactivate(): void {
+    this.props.isActive = false;
+    this.props.awaitingRecipe = false;
+  }
+
+  markAwaitingRecipe(): void {
+    this.props.isActive = false;
+    this.props.awaitingRecipe = true;
+  }
+
+  activateWithRecipe(): boolean {
+    if (!this.props.awaitingRecipe) return false;
+    this.props.isActive = true;
+    this.props.awaitingRecipe = false;
+    return true;
+  }
 
   setStationId(stationId: string | null): void {
     if (this.isAddon && stationId !== null) throw new AddonPlacementNotAllowedError();
@@ -130,6 +161,7 @@ export class MenuItem {
   get imageUrl(): string | null { return this.props.imageUrl; }
   get isBest(): boolean { return this.props.isBest; }
   get isActive(): boolean { return this.props.isActive; }
+  get awaitingRecipe(): boolean { return this.props.awaitingRecipe; }
   get variants(): readonly MenuItemVariant[] { return this.props.variants; }
   get legacyMenuItemId(): number | null { return this.props.legacyMenuItemId; }
   get createdAt(): Date { return this.props.createdAt; }

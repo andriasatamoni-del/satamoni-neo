@@ -94,7 +94,19 @@ export class UnknownRecipeTypeError extends DomainError {
 
 export class RecipeAssociationRequiredError extends DomainError {
   constructor() {
-    super("لازم تحدد الحجم أو الصنف المصنّع المرتبط بالوصفة (واحد بس)");
+    super("وصفة التصنيع لازم تبقى مربوطة بصنف مخزن مصنّع، ووصفة المنيو مالهاش صنف مخزن");
+  }
+}
+
+export class RecipeNameRequiredError extends DomainError {
+  constructor() {
+    super("اسم الوصفة مطلوب");
+  }
+}
+
+export class MenuRecipeRequiredError extends DomainError {
+  constructor() {
+    super("الوصفة دي مش وصفة صنف منيو");
   }
 }
 
@@ -119,6 +131,12 @@ export class RecipeVersionNotEditableError extends DomainError {
 export class EmptyRecipeIngredientsError extends DomainError {
   constructor() {
     super("لازم الوصفة يكون فيها مكوّن واحد على الأقل قبل ما تتفعّل");
+  }
+}
+
+export class MenuItemRecipeMissingError extends DomainError {
+  constructor() {
+    super("الصنف ده ملوش وصفة لكل أحجامه - ضيف الوصفة الأول وبعدين فعّله");
   }
 }
 

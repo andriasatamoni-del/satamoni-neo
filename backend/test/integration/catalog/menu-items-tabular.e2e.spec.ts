@@ -101,16 +101,16 @@ describe("Menu items import/export - /catalog/items (e2e)", () => {
     }));
   }
 
-  it("creates an item with several sizes and an addon from one file", async () => {
+  it("creates an item with several sizes and an addon from one file, inactive until they have recipes", async () => {
     const res = await upload(
       `${HEADER}\nكفتة${SUFFIX},صنف,${CATEGORY},صغير,50,60,\nكفتة${SUFFIX},صنف,${CATEGORY},كبير,90,100,\nجبنة${SUFFIX},إضافة,,,10,12,\n`
     );
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ committed: true, totalRows: 3, created: 3, updated: 0, unchanged: 0, issueCount: 0 });
     expect(await storedSizes()).toEqual([
-      { name: `جبنة${SUFFIX}`, kind: "addon", label: "عادي", price: 10, talabatPrice: 12, isActive: true },
-      { name: `كفتة${SUFFIX}`, kind: "item", label: "صغير", price: 50, talabatPrice: 60, isActive: true },
-      { name: `كفتة${SUFFIX}`, kind: "item", label: "كبير", price: 90, talabatPrice: 100, isActive: true },
+      { name: `جبنة${SUFFIX}`, kind: "addon", label: "عادي", price: 10, talabatPrice: 12, isActive: false },
+      { name: `كفتة${SUFFIX}`, kind: "item", label: "صغير", price: 50, talabatPrice: 60, isActive: false },
+      { name: `كفتة${SUFFIX}`, kind: "item", label: "كبير", price: 90, talabatPrice: 100, isActive: false },
     ]);
   });
 

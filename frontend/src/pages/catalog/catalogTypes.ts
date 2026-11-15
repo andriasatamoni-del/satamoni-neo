@@ -13,7 +13,7 @@ export type MenuItemKind = "item" | "addon";
 
 export const MENU_ITEM_KIND_LABELS: Record<MenuItemKind, string> = { item: "صنف عادي", addon: "إضافة" };
 
-export interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number; }
+export interface MenuItemVariant { id: string; label: string; price: number; talabatPrice: number; recipeId?: string | null; hasRecipe?: boolean; }
 
 export interface MenuItem {
   id: string;
@@ -24,6 +24,8 @@ export interface MenuItem {
   imageUrl: string | null;
   isBest: boolean;
   isActive: boolean;
+  awaitingRecipe?: boolean;
+  hasRecipe?: boolean;
   variants: MenuItemVariant[];
 }
 

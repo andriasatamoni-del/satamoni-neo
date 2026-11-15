@@ -17,6 +17,12 @@ import { UpdateVariantHandler } from "./application/commands/update-variant.hand
 import { RegisterRecipeHandler } from "./application/commands/register-recipe.handler";
 import { CreateRecipeVersionHandler } from "./application/commands/create-recipe-version.handler";
 import { ActivateRecipeVersionHandler } from "./application/commands/activate-recipe-version.handler";
+import { AssignVariantRecipeHandler } from "./application/commands/assign-variant-recipe.handler";
+import { UpdateRecipeHandler } from "./application/commands/update-recipe.handler";
+import { ListMenuRecipesHandler } from "./application/queries/list-menu-recipes.handler";
+import { MenuItemRecipeStatus } from "./application/services/menu-item-recipe-status.service";
+import { MENU_RECIPES_READER } from "./domain/ports/menu-recipes-reader.port";
+import { MenuRecipesReader } from "./infrastructure/persistence/menu-recipes.reader";
 import { RegisterComboHandler } from "./application/commands/register-combo.handler";
 import { UpdateComboHandler } from "./application/commands/update-combo.handler";
 import { ReplaceComboItemsHandler } from "./application/commands/replace-combo-items.handler";
@@ -59,6 +65,11 @@ import { PERMISSION } from "../identity-access/domain/permission";
     { provide: RECIPE_REPOSITORY, useClass: RecipeRepository },
     { provide: COMBO_REPOSITORY, useClass: ComboRepository },
     { provide: REMOVABLE_INGREDIENTS_READER, useClass: RemovableIngredientsReader },
+    { provide: MENU_RECIPES_READER, useClass: MenuRecipesReader },
+    MenuItemRecipeStatus,
+    AssignVariantRecipeHandler,
+    UpdateRecipeHandler,
+    ListMenuRecipesHandler,
     ListRemovableIngredientsHandler,
     RegisterMenuCategoryHandler,
     RegisterMenuItemHandler,

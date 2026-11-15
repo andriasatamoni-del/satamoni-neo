@@ -1,16 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
+import { inListChunks } from "../../../../shared/database/pagination";
+import { inventoryItems } from "../../../inventory/infrastructure/persistence/inventory.tables";
 import { Recipe, type RecipeType, type RecipeVersionStatus } from "../../domain/recipe.aggregate";
 import type { RecipeRepositoryPort } from "../../domain/ports/recipe-repository.port";
-import { recipeIngredients, recipes, recipeVersions } from "./catalog.tables";
+import { menuItemVariants, recipeIngredients, recipes, recipeVersions } from "./catalog.tables";
 
 @Injectable()
 export class RecipeRepository implements RecipeRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  // بيسجّل الوصفة + كل نسخها + مكوّنات كل نسخة في معاملة واحدة - نفس فلسفة MenuItemRepository
-  // (versions/ingredients entities تابعة، مش aggregates منفصلة)
   async save(recipe: Recipe): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx
@@ -18,11 +18,11 @@ export class RecipeRepository implements RecipeRepositoryPort {
         .values({
           id: recipe.id,
           recipe_type: recipe.recipeType,
-          variant_id: recipe.variantId,
+          name: recipe.name,
           inventory_item_id: recipe.inventoryItemId,
           legacy_recipe_id: recipe.legacyRecipeId,
         })
-        .onConflictDoNothing({ target: recipes.id });
+        .onConflictDoUpdate({ target: recipes.id, set: { name: recipe.name } });
 
       for (const version of recipe.versions) {
         await tx
@@ -64,8 +64,13 @@ export class RecipeRepository implements RecipeRepositoryPort {
   }
 
   async findByVariantId(variantId: string): Promise<Recipe | null> {
-    const [row] = await this.db.select().from(recipes).where(eq(recipes.variant_id, variantId)).limit(1);
-    return row ? this.toDomain(row) : null;
+    const [row] = await this.db
+      .select({ recipe: recipes })
+      .from(menuItemVariants)
+      .innerJoin(recipes, eq(recipes.id, menuItemVariants.recipe_id))
+      .where(eq(menuItemVariants.id, variantId))
+      .limit(1);
+    return row ? this.toDomain(row.recipe) : null;
   }
 
   async findByInventoryItemId(inventoryItemId: string): Promise<Recipe | null> {
@@ -86,6 +91,25 @@ export class RecipeRepository implements RecipeRepositoryPort {
     const result: Recipe[] = [];
     for (const row of rows) result.push(await this.toDomain(row));
     return result;
+  }
+
+  async stockItemName(inventoryItemId: string): Promise<string | null> {
+    const [row] = await this.db.select({ name: inventoryItems.name }).from(inventoryItems).where(eq(inventoryItems.id, inventoryItemId)).limit(1);
+    return row?.name ?? null;
+  }
+
+  async readyMenuRecipeIds(recipeIds: readonly string[]): Promise<Set<string>> {
+    const ready = new Set<string>();
+    for (const ids of inListChunks([...new Set(recipeIds)])) {
+      const rows = await this.db
+        .selectDistinct({ recipeId: recipes.id })
+        .from(recipes)
+        .innerJoin(recipeVersions, and(eq(recipeVersions.recipe_id, recipes.id), eq(recipeVersions.status, "ACTIVE")))
+        .innerJoin(recipeIngredients, eq(recipeIngredients.recipe_version_id, recipeVersions.id))
+        .where(and(inArray(recipes.id, ids), eq(recipes.recipe_type, "sellable_variant")));
+      for (const row of rows) ready.add(row.recipeId);
+    }
+    return ready;
   }
 
   private async toDomain(row: typeof recipes.$inferSelect): Promise<Recipe> {
@@ -117,7 +141,7 @@ export class RecipeRepository implements RecipeRepositoryPort {
 
     return Recipe.reconstitute(row.id, {
       recipeType: row.recipe_type as RecipeType,
-      variantId: row.variant_id,
+      name: row.name,
       inventoryItemId: row.inventory_item_id,
       versions,
       legacyRecipeId: row.legacy_recipe_id,

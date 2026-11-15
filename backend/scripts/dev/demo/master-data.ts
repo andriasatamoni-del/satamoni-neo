@@ -328,13 +328,13 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
   const order: string[] = [];
   const addonVariantIds: Record<string, string> = {};
   for (const addon of ADDONS) {
+    const recipeId = await registerActiveRecipe(ctx, { recipeType: "sellable_variant", name: addon.name }, addon.recipe);
     const registered = await handler(ctx, RegisterMenuItemHandler).execute({
       kind: "addon",
       name: addon.name,
-      variants: [{ label: "عادي", price: addon.price, talabatPrice: Math.round(addon.price * DEMO_TALABAT_MARKUP) }],
+      variants: [{ label: "عادي", price: addon.price, talabatPrice: Math.round(addon.price * DEMO_TALABAT_MARKUP), recipeId }],
     });
     addonVariantIds[addon.key] = registered.variants[0].id;
-    await registerActiveRecipe(ctx, { recipeType: "sellable_variant", variantId: registered.variants[0].id }, addon.recipe);
     count(ctx, "menuItems");
   }
   for (const [categoryIndex, category] of MENU.entries()) {
@@ -354,13 +354,17 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
         uploadedBy: ctx.users.opsAdmin,
       });
       count(ctx, "images");
+      const recipeIds: string[] = [];
+      for (const variantSpec of spec.variants) {
+        recipeIds.push(await registerActiveRecipe(ctx, { recipeType: "sellable_variant", name: `${spec.name} - ${variantSpec.label}` }, variantSpec.recipe));
+      }
       const item = await handler(ctx, RegisterMenuItemHandler).execute({
         categoryId: registeredCategory.id,
         name: spec.name,
         description: spec.description,
         imageUrl: image.url,
         isBest: spec.isBest ?? false,
-        variants: spec.variants.map((v) => ({ label: v.label, price: v.price, talabatPrice: Math.round(v.price * DEMO_TALABAT_MARKUP) })),
+        variants: spec.variants.map((v, index) => ({ label: v.label, price: v.price, talabatPrice: Math.round(v.price * DEMO_TALABAT_MARKUP), recipeId: recipeIds[index] })),
       });
       const ref = {
         id: item.id,
@@ -373,11 +377,6 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
 
       ctx.menuItems[spec.key] = ref;
       count(ctx, "menuItems");
-
-      for (const variantSpec of spec.variants) {
-        const variantId = ctx.variants[`${spec.key}:${variantSpec.label}`];
-        await registerActiveRecipe(ctx, { recipeType: "sellable_variant", variantId }, variantSpec.recipe);
-      }
     }
   }
 
@@ -400,7 +399,7 @@ async function seedCatalog(ctx: SeedContext, stations: Record<string, string>) {
 
 async function registerActiveRecipe(
   ctx: SeedContext,
-  association: { recipeType: "sellable_variant" | "manufactured_item"; variantId?: string; inventoryItemId?: string },
+  association: { recipeType: "sellable_variant" | "manufactured_item"; name: string; inventoryItemId?: string },
   ingredients: Record<string, number>
 ) {
   const recipe = await handler(ctx, RegisterRecipeHandler).execute(association);
@@ -426,7 +425,7 @@ async function seedManufacturedRecipes(ctx: SeedContext) {
   for (const [key, lines] of Object.entries(MANUFACTURED_RECIPES)) {
     manufacturedRecipeIds[key] = await registerActiveRecipe(
       ctx,
-      { recipeType: "manufactured_item", inventoryItemId: ctx.inventory[key] },
+      { recipeType: "manufactured_item", name: INVENTORY.find((i) => i.key === key)?.name ?? key, inventoryItemId: ctx.inventory[key] },
       Object.fromEntries(lines.map((l) => [l.ingredient, l.quantity]))
     );
   }

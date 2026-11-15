@@ -1,0 +1,1 @@
+ALTER TABLE "menu_items" ADD COLUMN "awaiting_recipe" boolean DEFAULT false NOT NULL;

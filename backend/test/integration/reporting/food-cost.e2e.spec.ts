@@ -13,6 +13,7 @@ import { branchStockBalances, inventoryItems, stockMovements } from "../../../sr
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -88,11 +89,12 @@ describe("Reporting - GET /reports/food-cost (e2e ضد تطبيق حقيقي ك�
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), variantId, recipe.id);
 
     await request(app.getHttpServer())
       .post("/orders")

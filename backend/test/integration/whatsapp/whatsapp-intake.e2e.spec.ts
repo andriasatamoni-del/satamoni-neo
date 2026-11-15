@@ -17,6 +17,7 @@ import { treasuries } from "../../../src/contexts/treasury/infrastructure/persis
 import { whatsappConversations, whatsappMessages, whatsappPendingOrderLines, whatsappPendingOrders } from "../../../src/contexts/whatsapp/infrastructure/persistence/whatsapp.tables";
 import { truncate } from "../helpers/db";
 import type { Database } from "../../../src/shared/database/database.token";
+import { markReadyForSale } from "../helpers/menu";
 
 describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -53,6 +54,7 @@ describe("WhatsApp - بوابة استقبال (reviewable-intake) (e2e ضد ت�
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "بيتزا-واتساب-جست", variants: [{ label: "وسط", price: 50, talabatPrice: 50 }] });
     variantId = itemRes.body.variants[0].id;
+    await markReadyForSale(app.get<Database>(DATABASE), [itemRes.body.id]);
   });
 
   afterAll(async () => {

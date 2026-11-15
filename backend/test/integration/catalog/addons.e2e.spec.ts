@@ -21,6 +21,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { linkVariantRecipe, markReadyForSale } from "../helpers/menu";
 
 const EMAIL = "admin-addons@jest.test";
 
@@ -117,12 +118,14 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
     olivesAddonId = olivesAddon.body.id;
     olivesVariantId = olivesAddon.body.variants[0].id;
     menuItemIds.push(olivesAddonId);
+    await markReadyForSale(db, menuItemIds);
 
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: cheeseVariantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: cheeseInventoryId, quantity: 0.5 });
     recipe.activateVersion(version.id);
     await new RecipeRepository(db).save(recipe);
+    await linkVariantRecipe(db, cheeseVariantId, recipe.id);
   });
 
   afterAll(async () => {
@@ -130,11 +133,11 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
     await db.delete(printJobs).where(inArray(printJobs.order_id, branchOrders));
     await db.delete(orders).where(eq(orders.branch_id, branchId));
     const variantIds = db.select({ id: menuItemVariants.id }).from(menuItemVariants).where(inArray(menuItemVariants.item_id, menuItemIds));
-    const recipeIds = db.select({ id: recipes.id }).from(recipes).where(inArray(recipes.variant_id, variantIds));
+    const recipeIds = (await db.select({ id: menuItemVariants.recipe_id }).from(menuItemVariants).where(inArray(menuItemVariants.item_id, menuItemIds))).flatMap((r) => (r.id ? [r.id] : []));
     const versionIds = db.select({ id: recipeVersions.id }).from(recipeVersions).where(inArray(recipeVersions.recipe_id, recipeIds));
     await db.delete(recipeIngredients).where(inArray(recipeIngredients.recipe_version_id, versionIds));
     await db.delete(recipeVersions).where(inArray(recipeVersions.recipe_id, recipeIds));
-    await db.delete(recipes).where(inArray(recipes.variant_id, variantIds));
+    await db.delete(recipes).where(inArray(recipes.id, recipeIds));
     await db.delete(comboItems).where(inArray(comboItems.variant_id, variantIds));
     await db.delete(combos).where(inArray(combos.name, ["عرض-إضافات-جست", "عرض-إضافة-تحت-صنف-جست"]));
     await db.delete(menuItemVariants).where(inArray(menuItemVariants.item_id, menuItemIds));
@@ -295,11 +298,12 @@ describe("Addons - الإضافات كأصناف في menu_items وسطور فر
   test("بدون مكوّن: الصنف مبيسحبش المكوّن ده من المخزون، والسطر شايل اسمه، ومكوّن مش في الوصفة مترفض", async () => {
     const { RecipeRepository } = await import("../../../src/contexts/catalog/infrastructure/persistence/recipe.repository");
     const { Recipe } = await import("../../../src/contexts/catalog/domain/recipe.aggregate");
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: smallVariantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: cheeseInventoryId, quantity: 0.2 });
     recipe.activateVersion(version.id);
     await new RecipeRepository(db).save(recipe);
+    await linkVariantRecipe(db, smallVariantId, recipe.id);
 
     const removable = await request(app.getHttpServer()).get("/catalog/removable-ingredients").set(auth());
     expect(removable.status).toBe(200);
