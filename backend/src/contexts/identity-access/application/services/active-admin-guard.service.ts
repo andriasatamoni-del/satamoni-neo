@@ -2,19 +2,21 @@ import { Inject, Injectable } from "@nestjs/common";
 import { TransactionService } from "../../../../shared/database/transaction-context";
 import type { User } from "../../domain/user.aggregate";
 import { LastAdminError } from "../../domain/errors";
-import { hasAnyRole, ROLE } from "../../domain/role";
+import type { Role } from "../../domain/role";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
+import { ROLE_REPOSITORY, type RoleRepositoryPort } from "../../domain/ports/role-repository.port";
 
 const ACTIVE_ADMINS_LOCK = "identity:active-admins";
 
-function isActiveAdmin(user: User): boolean {
-  return user.isActive && hasAnyRole(user.roles, ROLE.ADMIN);
+function isActiveFullAccessUser(user: User, fullAccessRoles: readonly Role[]): boolean {
+  return user.isActive && user.roles.some((role) => fullAccessRoles.includes(role));
 }
 
 @Injectable()
 export class ActiveAdminGuard {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+    @Inject(ROLE_REPOSITORY) private readonly roles: RoleRepositoryPort,
     private readonly tx: TransactionService
   ) {}
 
@@ -24,9 +26,14 @@ export class ActiveAdminGuard {
       const user = await this.users.findById(userId);
       if (!user) return null;
 
-      const wasActiveAdmin = isActiveAdmin(user);
+      const fullAccessRoles = await this.roles.fullAccessKeys();
+      const wasActiveAdmin = isActiveFullAccessUser(user, fullAccessRoles);
       change(user);
-      if (wasActiveAdmin && !isActiveAdmin(user) && (await this.users.countActiveAdmins()) <= 1) {
+      if (
+        wasActiveAdmin &&
+        !isActiveFullAccessUser(user, fullAccessRoles) &&
+        (await this.users.countActiveUsersWithRoles(fullAccessRoles)) <= 1
+      ) {
         throw new LastAdminError();
       }
 

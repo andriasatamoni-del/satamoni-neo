@@ -12,7 +12,7 @@ import { RequirePermission } from "./guards/require-permission.decorator";
 import { DomainErrorFilter } from "./filters/domain-error.filter";
 import { toPublicUser } from "./auth.controller";
 import type { AuthenticatedUser } from "./types";
-import { hasAnyRole, ROLE } from "../domain/role";
+import { branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { PERMISSION } from "../domain/permission";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import { listResponse, splitListQuery } from "../../../shared/http/list-query.dto";
@@ -29,7 +29,7 @@ export class UsersController {
   ) {}
 
   @Get("permissions-catalog")
-  @RequirePermission(PERMISSION.IDENTITY_USERS_MANAGE, PERMISSION.IDENTITY_ROLES_MANAGE)
+  @RequirePermission(PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE, PERMISSION.IDENTITY_ROLES_MANAGE)
   permissionsCatalog() {
     return this.getPermissionsCatalog.execute();
   }
@@ -38,9 +38,7 @@ export class UsersController {
   @RequirePermission(PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE)
   async list(@Req() req: Request & { user: AuthenticatedUser }, @Query() query: ListUsersQueryDto) {
     const { page, filter } = splitListQuery(query);
-    // نفس نطاق GET /api/users في الريبو القديم: أدمن يشوف كل حاجة (أو فرع محدد لو حدده)، أي حد
-    // تاني بيتقفل على فرعه هو بس تلقائيًا
-    const scopedBranchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? filter.branchId ?? null : req.user.branchId;
+    const scopedBranchId = branchScopeOf(req.user).kind === "all" ? filter.branchId ?? null : req.user.branchId;
     const { users, total } = await this.listUsers.execute({ ...filter, branchId: scopedBranchId ?? undefined }, page);
     return listResponse(users.map(toPublicUser), total, page);
   }

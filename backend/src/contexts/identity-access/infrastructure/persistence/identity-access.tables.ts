@@ -1,12 +1,9 @@
-// Drizzle table definitions for the identity-access tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, text, jsonb, timestamp, unique, check, uuid, boolean, integer, primaryKey, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { ROLES } from "../../domain/role";
+import { ROLE_SCOPES } from "../../domain/role";
 
-// Built from ROLES so the list lives in one place; renders to the same SQL as the baseline constraint.
-const rolesSql = (column: string) => sql.raw(`${column} = ANY (ARRAY[${ROLES.map((r) => `'${r}'::text`).join(", ")}])`);
+const listCheckSql = (column: string, values: readonly string[]) =>
+  sql.raw(`${column} = ANY (ARRAY[${values.map((v) => `'${v}'::text`).join(", ")}])`);
 
 export const users = pgTable("users", {
   id: uuid().defaultRandom().primaryKey().notNull(),
@@ -14,7 +11,7 @@ export const users = pgTable("users", {
   name: text().notNull(),
   email: text().notNull(),
   password_hash: text().notNull(),
-  role: text({ enum: ROLES }),
+  role: text(),
   permission_grants: jsonb().default([]).notNull().$type<string[]>(),
   permission_revokes: jsonb().default([]).notNull().$type<string[]>(),
   pin_hash: text(),
@@ -24,7 +21,18 @@ export const users = pgTable("users", {
   updated_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   unique("users_email_key").on(table.email),
-  check("users_role_check", rolesSql("role")),
+]);
+
+export const roles = pgTable("roles", {
+  key: text().primaryKey().notNull(),
+  label: text().notNull(),
+  scope: text({ enum: ROLE_SCOPES }).notNull(),
+  full_access: boolean().default(false).notNull(),
+  sort_order: integer().notNull(),
+  created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  unique("roles_label_key").on(table.label),
+  check("roles_scope_check", listCheckSql("scope", ROLE_SCOPES)),
 ]);
 
 export const permissions = pgTable("permissions", {
@@ -36,7 +44,7 @@ export const permissions = pgTable("permissions", {
 });
 
 export const rolePermissions = pgTable("role_permissions", {
-  role: text({ enum: ROLES }).notNull(),
+  role: text().notNull(),
   permission_key: text().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.role, table.permission_key], name: "role_permissions_pkey" }),
@@ -45,12 +53,16 @@ export const rolePermissions = pgTable("role_permissions", {
       foreignColumns: [permissions.key],
       name: "role_permissions_permission_key_fkey"
     }).onDelete("cascade"),
-  check("role_permissions_role_check", rolesSql("role")),
+  foreignKey({
+      columns: [table.role],
+      foreignColumns: [roles.key],
+      name: "role_permissions_role_fkey"
+    }).onDelete("cascade"),
 ]);
 
 export const userRoles = pgTable("user_roles", {
   user_id: uuid().notNull(),
-  role: text({ enum: ROLES }).notNull(),
+  role: text().notNull(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.user_id, table.role], name: "user_roles_pkey" }),
@@ -59,5 +71,9 @@ export const userRoles = pgTable("user_roles", {
       foreignColumns: [users.id],
       name: "user_roles_user_id_fkey"
     }).onDelete("cascade"),
-  check("user_roles_role_check", rolesSql("role")),
+  foreignKey({
+      columns: [table.role],
+      foreignColumns: [roles.key],
+      name: "user_roles_role_fkey"
+    }).onDelete("restrict"),
 ]);

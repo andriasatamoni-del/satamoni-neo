@@ -3,13 +3,13 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { LoginHandler } from "../application/commands/login.handler";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../domain/ports/user-repository.port";
-import { ROLE_PERMISSION_REPOSITORY, type RolePermissionRepositoryPort } from "../domain/ports/role-permission-repository.port";
+import { ROLE_PERMISSION_REPOSITORY, type RoleAccess, type RolePermissionRepositoryPort } from "../domain/ports/role-permission-repository.port";
+import { branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { User } from "../domain/user.aggregate";
 import { LoginDto } from "./dto/login.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { DomainErrorFilter } from "./filters/domain-error.filter";
 import type { AuthenticatedUser } from "./types";
-import type { Permission } from "../domain/permission";
 
 @Controller("auth")
 @UseFilters(DomainErrorFilter)
@@ -20,14 +20,11 @@ export class AuthController {
     @Inject(ROLE_PERMISSION_REPOSITORY) private readonly rolePermissions: RolePermissionRepositoryPort
   ) {}
 
-  // حد أضيق بكتير من الافتراضي العام (راجع app.module.ts) - 5 محاولات كل دقيقة لكل IP، عشان تخمين
-  // كلمة السر بالتجربة والخطأ (brute-force) يتقفل بسرعة من غير ما يأثر على استخدام عادي. قابل للتعديل
-  // عبر THROTTLE_LOGIN_LIMIT - بيئة الاختبار (test/integration/setup.ts) بترفعه عشان اختبارات الـe2e
   @Throttle({ default: { limit: Number(process.env.THROTTLE_LOGIN_LIMIT) || 5, ttl: 60_000 } })
   @Post("login")
   async login(@Body() dto: LoginDto) {
     const { token, user } = await this.loginHandler.execute(dto);
-    return { token, user: toCurrentUser(user, await this.rolePermissions.permissionsForRoles(user.roles)) };
+    return { token, user: toCurrentUser(user, await this.rolePermissions.accessForRoles(user.roles)) };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -35,7 +32,7 @@ export class AuthController {
   async me(@Req() req: Request & { user: AuthenticatedUser }) {
     const user = await this.users.findById(req.user.id);
     if (!user) throw new UnauthorizedException("الحساب ده مش موجود");
-    return toCurrentUser(user, req.user.permissions);
+    return toCurrentUser(user, { permissions: new Set(req.user.permissions), scopes: [...req.user.roleScopes], labels: { ...req.user.roleLabels }, fullAccess: req.user.fullAccess });
   }
 }
 
@@ -50,6 +47,12 @@ export function toPublicUser(user: User) {
   };
 }
 
-function toCurrentUser(user: User, permissions: ReadonlySet<Permission>) {
-  return { ...toPublicUser(user), permissions: [...permissions].sort() };
+function toCurrentUser(user: User, access: RoleAccess) {
+  return {
+    ...toPublicUser(user),
+    permissions: [...access.permissions].sort(),
+    roleLabels: access.labels,
+    fullAccess: access.fullAccess,
+    companyWide: branchScopeOf({ roleScopes: access.scopes, branchId: user.branchId }).kind === "all",
+  };
 }

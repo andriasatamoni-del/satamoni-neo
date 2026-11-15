@@ -48,7 +48,6 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
 import { BranchScopeGuard, BranchScoped, BranchResource, CompanyWideOnly, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { HrPayrollDomainErrorFilter } from "./filters/domain-error.filter";
 import type { Employee } from "../domain/employee.aggregate";
@@ -109,7 +108,6 @@ export class HrPayrollController {
       const { employees, total } = await this.listEmployees.execute(filter, page);
       return listResponse(employees.map((e) => toPublicEmployee(e)), total, page);
     }
-    // branch-bound: only the employees restricted to the caller's own branch, WITHOUT any salary data
     const { employees, total } = await this.listEmployees.execute({ ...filter, restrictedBranchId: scope.branchId }, page);
     return listResponse(employees.map((e) => toPublicEmployee(e, true)), total, page);
   }
@@ -120,7 +118,6 @@ export class HrPayrollController {
   async createEmployee(@Body() dto: RegisterEmployeeDto, @Req() req: Request & { user: AuthenticatedUser }) {
     this.assertBranchBoundEmployeeRules(req.user, dto);
     const scope = branchScopeOf(req.user);
-    // a branch-bound user can only create employees of its own branch
     if (scope.kind === "branch") dto.restrictedBranchId = scope.branchId;
     return toPublicEmployee(await this.registerEmployee.execute(dto), scope.kind !== "all");
   }
@@ -134,7 +131,7 @@ export class HrPayrollController {
     return toPublicEmployee(
       await this.updateEmployee.execute({
         employeeId: id,
-        actorIsAdmin: hasAnyRole(req.user.roles, ROLE.ADMIN),
+        actorIsAdmin: req.user.fullAccess,
         ...dto,
         changedBy: req.user.id,
       })
@@ -158,8 +155,6 @@ export class HrPayrollController {
     return { ...toPublicEmployee(employee, branchScopeOf(req.user).kind !== "all"), terminationCascade: terminationCascade ?? undefined };
   }
 
-  // سجل التغييرات الجوهرية لموظف واحد (فرع/قسم/وظيفة/حالة) - نفس GET /api/hr/employees/:id/history
-  // بالريبو القديم بالظبط
   @BranchScoped()
   @BranchResource("employees", { column: "restricted_branch_id" })
   @Get("employees/:id/history")
@@ -168,8 +163,6 @@ export class HrPayrollController {
     return this.employeeHistory.listByEmployee(id);
   }
 
-  // الهيكل التنظيمي - أقسام ومسميات وظيفية حقيقية (نفس فلسفة HRF-6 بالريبو القديم بالحرف) بدل ما تكون
-  // نص حر على employees.department/job_title
   @Get("departments")
   @RequirePermission(PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE)
   async departments(@Query() query: ListDepartmentsQueryDto) {
@@ -248,8 +241,6 @@ export class HrPayrollController {
     return { deleted: true };
   }
 
-  // بوابة الخدمة الذاتية - أي دور (حتى غير "employee") ممكن يشوف بياناته لو حسابه مربوط بملف موظف
-  // (employees.user_id) - نفس فلسفة "زر بياناتي" الموجود في كل شاشة في الريبو القديم
   @Get("self/profile")
   @RequirePermission(PERMISSION.HR_SELF_VIEW)
   async ownProfile(@Req() req: Request & { user: AuthenticatedUser }) {
@@ -315,7 +306,6 @@ export class HrPayrollController {
     );
   }
 
-  // مراجعة طلبات الإجازة (جانب الإدارة) - hr.leave.review
   @BranchScoped()
   @Get("leave-requests")
   @RequirePermission(PERMISSION.HR_LEAVE_REVIEW)
@@ -323,7 +313,6 @@ export class HrPayrollController {
     const { page, filter } = splitListQuery(query);
     const scope = branchScopeOf(req.user);
     if (scope.kind === "none") return listResponse([], 0, page);
-    // branch-bound: only requests of employees restricted to the caller's own branch
     const { requests, total } = await this.listLeaveRequests.execute(
       { status: filter.status, employeeId: filter.employeeId, from: filter.from, to: filter.to, restrictedBranchId: scope.kind === "branch" ? scope.branchId : undefined },
       page
@@ -346,7 +335,6 @@ export class HrPayrollController {
     );
   }
 
-  // سلف/جزاءات/مكافآت فردية - راجع تعليق payroll-adjustment.aggregate.ts
   @CompanyWideOnly()
   @Get("adjustments")
   @RequirePermission(PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE)
@@ -381,7 +369,6 @@ export class HrPayrollController {
     );
   }
 
-  // branch-bound HR users manage only employees of their own branch and can never see/change pay data or move staff between branches
   private assertBranchBoundEmployeeRules(user: AuthenticatedUser, dto: { restrictedBranchId?: string; baseSalary?: number; hourlyRate?: number; wageType?: string }): void {
     const scope = branchScopeOf(user);
     if (scope.kind === "all") return;

@@ -1,4 +1,4 @@
-import type { Role } from "../role";
+import type { Role, RoleScope } from "../role";
 import type { Permission } from "../permission";
 
 export interface PermissionDefinition {
@@ -12,12 +12,18 @@ export interface PermissionGroup {
   permissions: PermissionDefinition[];
 }
 
+export interface RoleAccess {
+  permissions: Set<Permission>;
+  scopes: RoleScope[];
+  labels: Record<Role, string>;
+  fullAccess: boolean;
+}
+
 export interface RolePermissionRepositoryPort {
-  permissionsForRoles(roles: readonly Role[]): Promise<Set<Permission>>;
+  accessForRoles(roles: readonly Role[]): Promise<RoleAccess>;
   catalog(): Promise<PermissionGroup[]>;
   allRolePermissions(): Promise<Record<Role, string[]>>;
   unknownKeys(keys: readonly string[]): Promise<string[]>;
-  replaceRolePermissions(role: Role, keys: readonly string[]): Promise<void>;
 }
 
 export const ROLE_PERMISSION_REPOSITORY = Symbol("ROLE_PERMISSION_REPOSITORY");

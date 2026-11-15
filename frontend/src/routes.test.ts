@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { STAFF_ROUTES, canOpenPath, canOpenRoute, navItemsFor } from "./routes";
-import { seededUser } from "./test/seedRoles";
-import { ROLES, type Role } from "./shared/auth/roles";
+import { SEEDED_ROLES, seededUser } from "./test/seedRoles";
 
-const navPaths = (role: Role) => navItemsFor(seededUser(role)).map((i) => i.to);
+const navPaths = (role: string) => navItemsFor(seededUser(role)).map((i) => i.to);
 
 describe("STAFF_ROUTES", () => {
   it("has unique paths", () => {
@@ -46,7 +45,7 @@ describe("sidebar per seeded role", () => {
   });
 
   it("every role sees home and their profile", () => {
-    for (const role of ROLES) expect(navPaths(role).slice(0, 2), role).toEqual(["/", "/me"]);
+    for (const { key: role } of SEEDED_ROLES) expect(navPaths(role).slice(0, 2), role).toEqual(["/", "/me"]);
   });
 });
 

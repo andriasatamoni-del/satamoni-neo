@@ -28,11 +28,15 @@ export class JwtAuthGuard implements CanActivate {
     const user = await this.users.findById(payload.sub);
     if (!user || !user.isActive) throw new UnauthorizedException("الحساب ده مش شغال");
 
+    const access = await this.rolePermissions.accessForRoles(user.roles);
     req.user = {
       id: user.id,
       roles: user.roles,
       branchId: user.branchId,
-      permissions: await this.rolePermissions.permissionsForRoles(user.roles),
+      permissions: access.permissions,
+      roleScopes: access.scopes,
+      roleLabels: access.labels,
+      fullAccess: access.fullAccess,
     };
     return true;
   }

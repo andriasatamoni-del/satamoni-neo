@@ -1,7 +1,6 @@
 import { User } from "../../../src/contexts/identity-access/domain/user.aggregate";
 import {
   InvalidEmailError,
-  InvalidRoleError,
   RolesRequiredError,
   WeakPasswordError,
 } from "../../../src/contexts/identity-access/domain/errors";
@@ -29,17 +28,16 @@ describe("User aggregate", () => {
       ).toThrow(InvalidEmailError);
     });
 
-    it("بيرفض دور مش معروف", () => {
-      expect(() =>
-        User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", roles: ["superadmin"] })
-      ).toThrow(InvalidRoleError);
+    it("بيقبل دور مخصص ويحطه بعد الأدوار الأساسية", () => {
+      const user = User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", roles: ["role_abc12345", "cashier"] });
+      expect(user.roles).toEqual(["cashier", "role_abc12345"]);
     });
 
     it("بيرفض مستخدم من غير ولا دور", () => {
       expect(() => User.register({ name: "أحمد", email: "a@b.com", passwordHash: "h", roles: [] })).toThrow(RolesRequiredError);
     });
 
-    it("بيقبل أكتر من دور، من غير تكرار وبترتيب ثابت (ترتيب ROLES)", () => {
+    it("بيقبل أكتر من دور، من غير تكرار وبترتيب ثابت (أبجدي بالمفتاح)", () => {
       const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier", "branch_manager", "cashier"] });
       expect(user.roles).toEqual(["branch_manager", "cashier"]);
     });
@@ -66,9 +64,9 @@ describe("User aggregate", () => {
   });
 
   describe("changeRoles", () => {
-    it("بيرفض دور مش معروف ومايغيّرش الأدوار الحالية", () => {
+    it("بيتجاهل الأدوار الفاضية وبيرفض لو مفضلش دور", () => {
       const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
-      expect(() => user.changeRoles(["branch_manager", "ghost"])).toThrow(InvalidRoleError);
+      expect(() => user.changeRoles(["  "])).toThrow(RolesRequiredError);
       expect(user.roles).toEqual(["cashier"]);
     });
 
@@ -81,7 +79,7 @@ describe("User aggregate", () => {
     it("بيستبدل الأدوار كلها لو صحيحة", () => {
       const user = User.register({ name: "أ", email: "a@b.com", passwordHash: "h", roles: ["cashier"] });
       user.changeRoles(["accountant", "branch_manager"]);
-      expect(user.roles).toEqual(["branch_manager", "accountant"]);
+      expect(user.roles).toEqual(["accountant", "branch_manager"]);
     });
   });
 });

@@ -9,7 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
-import { can, hasRole } from "../shared/auth/roles";
+import { can, isCompanyWide } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { Pagination } from "../shared/ui/Pagination";
@@ -40,8 +40,7 @@ export function TreasuriesPage() {
   const queryClient = useQueryClient();
   const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
   const { branches, canListBranches } = useBranchOptions<Branch>();
-  // نطاق الفرع من الأدوار by design (الأدمن/المحاسب على مستوى الشركة)؛ ولستة الفروع نفسها محتاجة branches.view
-  const canFilterByBranch = hasRole(user, "admin", "accountant") && canListBranches;
+  const canFilterByBranch = isCompanyWide(user) && canListBranches;
   const canManageTreasuries = can(user, PERMISSION.TREASURIES_MANAGE);
   const canTransfer = can(user, PERMISSION.TREASURIES_TRANSFER);
   const canManageBanks = can(user, PERMISSION.BANKS_MANAGE);
@@ -60,7 +59,6 @@ export function TreasuriesPage() {
 
   const branchName = (id: string | null) => (id ? branches.find((b) => b.id === id)?.name ?? id : "مشتركة");
 
-  // --- إنشاء خزينة رئيسية لفرع ناقصها (فروع اتستوردت من الريبو القديم قبل ما الإنشاء التلقائي يتفعّل) ---
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const provisionMainTreasury = useMutation({
     mutationFn: () => {
@@ -74,7 +72,6 @@ export function TreasuriesPage() {
     onError: (err) => setProvisionError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  // --- تحويل بين خزينتين ---
   const [transferForm, setTransferForm] = useState({ fromTreasuryId: "", toTreasuryId: "", amount: "", notes: "" });
   const [transferError, setTransferError] = useState<string | null>(null);
   const transfer = useMutation({
@@ -92,7 +89,6 @@ export function TreasuriesPage() {
     onError: (err) => setTransferError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
   });
 
-  // --- البنوك ---
   const [bankForm, setBankForm] = useState({ name: "" });
   const [bankError, setBankError] = useState<string | null>(null);
   const createBank = useMutation({
@@ -110,7 +106,6 @@ export function TreasuriesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["banks"] }),
   });
 
-  // --- الحسابات البنكية ---
   const [accountForm, setAccountForm] = useState({ bankId: "", name: "", accountNumber: "", iban: "", bankBranchName: "", branchId: "" });
   const [accountError, setAccountError] = useState<string | null>(null);
   const createAccount = useMutation({

@@ -19,36 +19,17 @@ import { DATABASE, type Database } from "../database/database.token";
 import { pgErrorCode, tableByName } from "../database/transaction-context";
 import { AuditLogService } from "../audit/audit-log.service";
 import type { AuthenticatedUser } from "../../contexts/identity-access/api/types";
-import { hasAnyRole, ROLE, type Role } from "../../contexts/identity-access/domain/role";
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Phase 3.1 (BL-11): server-side branch isolation.
-//
-// POLICY (documented, enforced here and tested by test/integration/security/branch-isolation.e2e.spec.ts):
-//   * Branch scope is derived ONLY from the authenticated user's server-side identity (roles + users.branch_id, loaded from the
-//     database on every request by JwtAuthGuard). It is NEVER derived from a client-supplied branchId and NEVER from permissions,
-//     so granting a custom permission (e.g. accounting.view) can not widen a user's branch scope.
-//   * COMPANY-WIDE roles: `admin` and `accountant` see/act on every branch.
-//   * `callcenter` is company-wide only when it has no branch assigned; with a branch it is branch-bound.
-//   * Every other role (branch_manager, cashier, driver, employee, ...) is BRANCH-BOUND to users.branch_id. A branch-bound user with
-//     no branch assigned has NO access to branch-owned data (fail closed).
-//   * A branch-bound user supplying a different branchId (query / path / body) gets 403 (and a DENIED audit row); addressing a
-//     single resource (by id) that belongs to another branch gets 404 - the record's existence is not revealed.
-//   * Collection endpoints are filtered to the user's branch.
-// ---------------------------------------------------------------------------------------------------------------------
+import { ROLE_SCOPE } from "../../contexts/identity-access/domain/role";
 
 export const BRANCH_SCOPED_KEY = "branch_scoped";
 export const BRANCH_RESOURCE_KEY = "branch_resource";
 export const BRANCH_LIST_FILTER_KEY = "branch_list_filter";
 export const COMPANY_WIDE_ONLY_KEY = "company_wide_only";
 
-export const COMPANY_WIDE_ROLES: readonly Role[] = [ROLE.ADMIN, ROLE.ACCOUNTANT];
-
 export type BranchScope = { kind: "all" } | { kind: "branch"; branchId: string } | { kind: "none" };
 
-export function branchScopeOf(user: Pick<AuthenticatedUser, "roles" | "branchId">): BranchScope {
-  if (hasAnyRole(user.roles, ...COMPANY_WIDE_ROLES)) return { kind: "all" };
-  if (hasAnyRole(user.roles, ROLE.CALLCENTER) && !user.branchId) return { kind: "all" };
+export function branchScopeOf(user: Pick<AuthenticatedUser, "roleScopes" | "branchId">): BranchScope {
+  if (user.roleScopes.includes(ROLE_SCOPE.COMPANY)) return { kind: "all" };
   if (user.branchId) return { kind: "branch", branchId: user.branchId };
   return { kind: "none" };
 }
@@ -59,25 +40,16 @@ export function canAccessBranch(scope: BranchScope, branchId: string | null | un
   return !!branchId && branchId === scope.branchId;
 }
 
-/** Company-level data (payroll, supplier balances ...): only company-wide users; branch-bound users get 403 + a DENIED audit row. */
 export const CompanyWideOnly = () => SetMetadata(COMPANY_WIDE_ONLY_KEY, true);
 
-/** Marks a controller (or handler) as serving branch-owned data: the BranchScopeGuard enforces the policy above. */
 export const BranchScoped = () => SetMetadata(BRANCH_SCOPED_KEY, true);
 
-/** The handler addresses ONE resource by id (`:id` by default) stored in `table` with a branch column. */
 export interface BranchResourceOptions {
-  /** name of the request field holding the resource id (default `id`) */
   param?: string;
-  /** where that field lives (default the URL path) */
   from?: "params" | "body" | "query";
-  /** branch column of `table` (default `branch_id`) */
   column?: string;
-  /** id column of `table` matched against the request value (default `id`) */
   idColumn?: string;
-  /** additional branch columns of the SAME row that also grant access (e.g. a transfer is visible to both its branches) */
   alsoColumns?: string[];
-  /** the table has no branch column: resolve the branch through a parent row (`table.column` -> `parent.id`, parent has `parentBranchColumn`) */
   through?: { column: string; table: string; branchColumn?: string };
 }
 const resourceDef = (table: string, opts: BranchResourceOptions = {}) => ({
@@ -90,16 +62,13 @@ const resourceDef = (table: string, opts: BranchResourceOptions = {}) => ({
   alsoColumns: opts.alsoColumns ?? [],
 });
 export const BranchResource = (table: string, opts: BranchResourceOptions = {}) => SetMetadata(BRANCH_RESOURCE_KEY, [resourceDef(table, opts)]);
-/** Several resources addressed by one request (e.g. an order AND a driver): every one must belong to the caller's branch. */
 export const BranchResources = (...defs: Array<[string, BranchResourceOptions?]>) =>
   SetMetadata(BRANCH_RESOURCE_KEY, defs.map(([t, o]) => resourceDef(t, o)));
 
-/** The handler returns an array of objects carrying a branch id: branch-bound users only receive their own branch's rows. */
 export const BranchFilteredList = (field = "branchId") => SetMetadata(BRANCH_LIST_FILTER_KEY, field);
 
 type ScopedRequest = Request & { user?: AuthenticatedUser; branchScope?: BranchScope };
 
-// BranchResource names a table and columns by their SQL names; only names defined in the schema resolve, anything else throws
 function tableOf(name: string): PgTable {
   const table = tableByName(name);
   if (!table) throw new Error(`invalid BranchResource table: ${name}`);
@@ -134,14 +103,12 @@ export class BranchScopeGuard implements CanActivate {
     if (companyWideOnly) return this.deny(req, "company_wide_only");
     if (scope.kind === "none") return this.deny(req, "no_branch_assigned");
 
-    // client-supplied branch identifiers can only ever be equal to the user's own branch
     const supplied = [req.query?.branchId, req.params?.branchId, (req.body as Record<string, unknown> | undefined)?.branchId];
     for (const value of supplied) {
       if (value !== undefined && value !== null && value !== "" && value !== scope.branchId) {
         return this.deny(req, "foreign_branch_id", String(value));
       }
     }
-    // collection endpoints without an explicit filter are forced onto the user's branch
     if (req.query && req.query.branchId === undefined) (req.query as Record<string, unknown>).branchId = scope.branchId;
 
     const resources =
@@ -186,7 +153,6 @@ export class BranchScopeGuard implements CanActivate {
           branchOfResource = row.branch;
           alsoBranches = (resource.alsoColumns ?? []).map((_, i) => row[`also${i}`]);
         } catch (err) {
-          // a malformed id (22P02) is answered 400/404 by the handler/DB layer - nothing to leak; ANY other failure fails closed
           if (pgErrorCode(err) !== "22P02") throw err;
           found = false;
         }
@@ -240,8 +206,6 @@ export class BranchListFilterInterceptor implements NestInterceptor {
         if (!scope || scope.kind === "all") return data;
         const keep = (item: unknown) => scope.kind === "branch" && (item as Record<string, unknown>)?.[field] === scope.branchId;
         if (Array.isArray(data)) return data.filter(keep);
-        // NEO-6: a paginated envelope must not slip past the filter. Paginated routes already scope the query in SQL,
-        // so this is a safety net; if it ever drops a row, `total` is corrected so the response stays consistent.
         if (isPageEnvelope(data)) {
           const items = data.items.filter(keep);
           return { ...data, items, total: Math.max(data.total - (data.items.length - items.length), 0) };
@@ -256,33 +220,22 @@ function isPageEnvelope(data: unknown): data is { items: unknown[]; total: numbe
   return typeof data === "object" && data !== null && Array.isArray((data as { items?: unknown }).items) && typeof (data as { total?: unknown }).total === "number";
 }
 
-/**
- * The caller's branch scope. Set by BranchScopeGuard on @BranchScoped() routes; derived from the user otherwise, and
- * `none` (fail closed) without a user.
- */
 export const CurrentBranchScope = createParamDecorator((_data: unknown, context: ExecutionContext): BranchScope => {
   const req = context.switchToHttp().getRequest<ScopedRequest>();
   if (req.branchScope) return req.branchScope;
   return req.user ? branchScopeOf(req.user) : { kind: "none" };
 });
 
-/**
- * NEO-6: the branch a list query is filtered on, so paging and totals are computed in SQL rather than trimmed afterwards.
- * A company-wide caller may narrow to `requested` (undefined = every branch); a branch-bound caller is always pinned to
- * its own branch (the guard has already rejected a foreign `requested` with 403); a caller with no branch is refused.
- */
 export function scopedBranchId(scope: BranchScope, requested?: string | null): string | undefined {
   if (scope.kind === "all") return requested || undefined;
   if (scope.kind === "branch") return scope.branchId;
   throw new ForbiddenException("معندكش صلاحية على بيانات الفرع ده");
 }
 
-/** Throws 403 unless the user may act on `branchId` (used for branch ids found INSIDE a loaded resource or nested body fields). */
 export function assertBranchAccess(user: AuthenticatedUser, branchId: string | null | undefined): void {
   if (!canAccessBranch(branchScopeOf(user), branchId)) throw new ForbiddenException("معندكش صلاحية على بيانات الفرع ده");
 }
 
-/** Company-level data (general ledger across branches, payroll, supplier master data ...): branch-bound users are denied. */
 export function requireCompanyWide(user: AuthenticatedUser): void {
   if (branchScopeOf(user).kind !== "all") throw new ForbiddenException("المعلومة دي على مستوى الشركة كلها ومش متاحة لمستخدم مربوط بفرع");
 }

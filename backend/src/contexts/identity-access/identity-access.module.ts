@@ -4,8 +4,10 @@ import { USER_REPOSITORY } from "./domain/ports/user-repository.port";
 import { PASSWORD_HASHER } from "./domain/ports/password-hasher.port";
 import { TOKEN_SERVICE } from "./domain/ports/token.service.port";
 import { ROLE_PERMISSION_REPOSITORY } from "./domain/ports/role-permission-repository.port";
+import { ROLE_REPOSITORY } from "./domain/ports/role-repository.port";
 import { UserRepository } from "./infrastructure/persistence/user.repository";
 import { RolePermissionRepository } from "./infrastructure/persistence/role-permission.repository";
+import { RoleRepository } from "./infrastructure/persistence/role.repository";
 import { BcryptPasswordHasher } from "./infrastructure/security/bcrypt-password-hasher";
 import { JwtTokenService } from "./infrastructure/security/jwt-token.service";
 import { RegisterUserHandler } from "./application/commands/register-user.handler";
@@ -13,6 +15,10 @@ import { LoginHandler } from "./application/commands/login.handler";
 import { ActiveAdminGuard } from "./application/services/active-admin-guard.service";
 import { UpdateUserHandler } from "./application/commands/update-user.handler";
 import { UpdateRolePermissionsHandler } from "./application/commands/update-role-permissions.handler";
+import { CreateRoleHandler } from "./application/commands/create-role.handler";
+import { UpdateRoleHandler } from "./application/commands/update-role.handler";
+import { DeleteRoleHandler } from "./application/commands/delete-role.handler";
+import { ListRolesHandler } from "./application/queries/list-roles.handler";
 import { ListUsersHandler } from "./application/queries/list-users.handler";
 import { GetPermissionsCatalogHandler } from "./application/queries/get-permissions-catalog.handler";
 import { AuthController } from "./api/auth.controller";
@@ -32,6 +38,7 @@ import { PermissionsGuard } from "./api/guards/permissions.guard";
   providers: [
     { provide: USER_REPOSITORY, useClass: UserRepository },
     { provide: ROLE_PERMISSION_REPOSITORY, useClass: RolePermissionRepository },
+    { provide: ROLE_REPOSITORY, useClass: RoleRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SERVICE, useClass: JwtTokenService },
     RegisterUserHandler,
@@ -39,6 +46,10 @@ import { PermissionsGuard } from "./api/guards/permissions.guard";
     UpdateUserHandler,
     ActiveAdminGuard,
     UpdateRolePermissionsHandler,
+    CreateRoleHandler,
+    UpdateRoleHandler,
+    DeleteRoleHandler,
+    ListRolesHandler,
     ListUsersHandler,
     GetPermissionsCatalogHandler,
     JwtAuthGuard,

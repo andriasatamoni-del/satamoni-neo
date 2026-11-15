@@ -1,18 +1,16 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { can, isCompanyWide, type Role } from "../auth/roles";
+import { can, isCompanyWide } from "../auth/roles";
 import type { Permission } from "../auth/permissions";
 
 export interface TabItem {
   key: string;
   label: string;
-  // أي صلاحية واحدة كفاية عشان التاب يظهر. من غيرها التاب ظاهر لأي حد يقدر يفتح الصفحة.
   perm?: Permission | readonly Permission[];
-  // الـendpoint عليه @CompanyWideOnly(): اليوزر المربوط بفرع بياخد 403 حتى لو معاه الصلاحية
   companyWideOnly?: boolean;
 }
 
-type TabUser = { permissions: readonly Permission[]; roles: readonly Role[]; branchId?: string | null };
+type TabUser = { permissions: readonly Permission[]; companyWide?: boolean };
 
 export function isTabAllowed(user: TabUser | null | undefined, tab: TabItem): boolean {
   if (tab.companyWideOnly && !isCompanyWide(user)) return false;
@@ -20,10 +18,6 @@ export function isTabAllowed(user: TabUser | null | undefined, tab: TabItem): bo
   return can(user, ...(typeof tab.perm === "string" ? [tab.perm] : tab.perm));
 }
 
-// التابات المسموحة بس + التاب النشط. لو التاب المختار مش مسموح (أو اتشال من الدور) بنرجع لأول تاب مسموح
-// في نفس الريندر - عشان محتوى التاب الممنوع وكويريز بتاعته ما يتعرضوش ولا لحظة.
-// selected = null يعني المستخدم لسه ما اختارش، فالتاب الافتراضي بيتحسب كل ريندر (مش بيتثبّت على أول
-// ريندر قبل ما الصلاحيات توصل).
 export function usePermittedTabs<T extends TabItem>(allTabs: readonly T[], initial?: string) {
   const { user } = useAuth();
   const tabs = allTabs.filter((t) => isTabAllowed(user, t));

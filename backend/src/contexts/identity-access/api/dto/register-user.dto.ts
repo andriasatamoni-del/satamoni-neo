@@ -1,5 +1,5 @@
-import { ArrayNotEmpty, IsArray, IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
-import { ROLES, type Role } from "../../domain/role";
+import { ArrayNotEmpty, IsArray, IsEmail, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+import type { Role } from "../../domain/role";
 
 export class RegisterUserDto {
   @IsString()
@@ -15,7 +15,7 @@ export class RegisterUserDto {
 
   @IsArray()
   @ArrayNotEmpty({ message: "لازم تختار دور واحد على الأقل" })
-  @IsIn(ROLES, { each: true, message: "الدور ده مش معروف" })
+  @IsString({ each: true, message: "الدور ده مش معروف" })
   roles!: Role[];
 
   @IsOptional()
