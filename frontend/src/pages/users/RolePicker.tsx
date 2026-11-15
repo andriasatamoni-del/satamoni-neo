@@ -1,5 +1,5 @@
-import { ROLES, ROLE_LABELS, type Role } from "../../shared/auth/roles";
-import { effectivePermissionCount, rolePermissionCountLabel, type PermissionsCatalog } from "./permissionsCatalog";
+import { ROLE_SCOPE_LABELS, type Role } from "../../shared/auth/roles";
+import { effectivePermissionCount, roleOptionsOf, rolePermissionCountLabel, type PermissionsCatalog } from "./permissionsCatalog";
 
 function toggled<T>(list: readonly T[], item: T): T[] {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
@@ -18,17 +18,18 @@ export function RolePicker({
 }) {
   return (
     <div className="space-y-2">
-      {ROLES.map((r) => (
-        <label key={r} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+      {roleOptionsOf(catalog).map((r) => (
+        <label key={r.key} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
           <span className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={value.includes(r)}
-              disabled={lockedRoles.includes(r)}
-              onChange={() => onChange(toggled(value, r))}
+              checked={value.includes(r.key)}
+              disabled={lockedRoles.includes(r.key)}
+              onChange={() => onChange(toggled(value, r.key))}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
-            {ROLE_LABELS[r]}
+            {r.label}
+            <span className="text-xs text-slate-400">({ROLE_SCOPE_LABELS[r.scope]})</span>
           </span>
           {catalog && <span className="text-xs text-slate-500">{rolePermissionCountLabel(r, catalog)}</span>}
         </label>

@@ -25,15 +25,9 @@ export class RolesRequiredError extends DomainError {
   }
 }
 
-export class AdminRolePermissionsLockedError extends DomainError {
-  constructor() {
-    super("صلاحيات الأدمن ثابتة (كل الصلاحيات) ومينفعش تتعدّل");
-  }
-}
-
 export class LastAdminError extends ConflictDomainError {
   constructor() {
-    super("لازم يفضل أدمن واحد نشط على الأقل في النظام، مينفعش تشيل دور الأدمن من آخر أدمن أو توقفه");
+    super("لازم يفضل مستخدم نشط واحد على الأقل بدور كامل الصلاحيات، مينفعش تشيل الدور ده من آخر واحد أو توقفه");
   }
 }
 
@@ -58,5 +52,42 @@ export class InvalidCredentialsError extends DomainError {
 export class UnknownPermissionError extends DomainError {
   constructor(keys: string[]) {
     super(`صلاحيات غير معروفة: ${keys.join("، ")}`);
+  }
+}
+
+export class RoleNotFoundError extends DomainError {
+  readonly httpStatus = 404;
+  constructor() {
+    super("الدور ده مش موجود");
+  }
+}
+
+export class RoleLabelRequiredError extends DomainError {
+  constructor() {
+    super("لازم تكتب اسم الدور");
+  }
+}
+
+export class DuplicateRoleLabelError extends ConflictDomainError {
+  constructor(label: string) {
+    super(`في دور بنفس الاسم ده بالفعل: ${label}`);
+  }
+}
+
+export class FullAccessRoleLockedError extends DomainError {
+  constructor() {
+    super("الدور ده عنده كل الصلاحيات: مينفعش يتمسح أو تتعدّل صلاحياته أو نطاقه");
+  }
+}
+
+export class RoleInUseError extends ConflictDomainError {
+  constructor(userCount: number) {
+    super(`مينفعش تمسح الدور ده لأنه متعيّن لـ${userCount} مستخدم، شيله منهم الأول`);
+  }
+}
+
+export class RolesManageIsFullAccessOnlyError extends DomainError {
+  constructor() {
+    super("إدارة الأدوار والصلاحيات لدور كامل الصلاحيات بس، مينفعش تتدي لدور تاني");
   }
 }

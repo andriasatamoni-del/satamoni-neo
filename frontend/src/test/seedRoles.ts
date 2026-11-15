@@ -1,8 +1,5 @@
-// Default role → permissions as seeded by the backend migration, so tests check the UI against the real seed
-// instead of a hand-copied list. admin always has every permission (backend rule).
-// Every migration is read, since each new permission ships its own role_permissions insert.
 import { PERMISSION, type Permission } from "../shared/auth/permissions";
-import { ROLES, type Role } from "../shared/auth/roles";
+import type { RoleOption } from "../shared/auth/roles";
 import type { CurrentUser } from "../shared/auth/AuthContext";
 
 const MIGRATIONS = import.meta.glob<string>("../../../backend/drizzle/*.sql", { query: "?raw", import: "default", eager: true });
@@ -10,30 +7,45 @@ const seedSql = Object.keys(MIGRATIONS).sort().map((file) => MIGRATIONS[file]).j
 
 const ALL_PERMISSIONS = Object.values(PERMISSION) as Permission[];
 
-function parseSeed(): Record<Role, Permission[]> {
-  const result = Object.fromEntries(ROLES.map((r) => [r, [] as Permission[]])) as Record<Role, Permission[]>;
+function parseSeededRoles(): RoleOption[] {
+  const rows = seedSql.matchAll(/\('(\w+)', '([^']+)', '(company|branch)', (true|false), \d+\)/g);
+  return [...rows].map(([, key, label, scope, fullAccess]) => ({ key, label, scope: scope as RoleOption["scope"], fullAccess: fullAccess === "true" }));
+}
+
+export const SEEDED_ROLES = parseSeededRoles();
+
+function seededRole(key: string): RoleOption {
+  const role = SEEDED_ROLES.find((r) => r.key === key);
+  if (!role) throw new Error(`role "${key}" is not seeded by any migration`);
+  return role;
+}
+
+function parsePermissions(): Record<string, Permission[]> {
+  const result: Record<string, Permission[]> = Object.fromEntries(SEEDED_ROLES.map((r) => [r.key, [] as Permission[]]));
   for (const [, role, key] of seedSql.matchAll(/\('(\w+)', '([\w.]+)'\)/g)) {
-    if ((ROLES as string[]).includes(role) && (ALL_PERMISSIONS as string[]).includes(key)) {
-      result[role as Role].push(key as Permission);
-    }
+    if (result[role] && (ALL_PERMISSIONS as string[]).includes(key)) result[role].push(key as Permission);
   }
-  result.admin = ALL_PERMISSIONS;
+  for (const role of SEEDED_ROLES) if (role.fullAccess) result[role.key] = ALL_PERMISSIONS;
   return result;
 }
 
-export const SEEDED_ROLE_PERMISSIONS = parseSeed();
+export const SEEDED_ROLE_PERMISSIONS = parsePermissions();
 
-// A user like the ones `pnpm seed:dev` creates: one role, its default permissions, a branch unless company-wide.
-export function seededUser(role: Role, overrides: Partial<CurrentUser> = {}): CurrentUser {
-  const companyWide = role === "admin" || role === "accountant" || role === "callcenter";
+export function seededUser(roleKey: string, overrides: Partial<CurrentUser> = {}): CurrentUser {
+  const role = seededRole(roleKey);
+  const branchless = role.scope !== "branch";
+  const branchId = overrides.branchId !== undefined ? overrides.branchId : branchless ? null : "branch-1";
   return {
-    id: `user-${role}`,
-    name: `Test ${role}`,
-    email: `${role}@satamoni.dev`,
-    roles: [role],
-    branchId: companyWide ? null : "branch-1",
+    id: `user-${role.key}`,
+    name: `Test ${role.key}`,
+    email: `${role.key}@satamoni.dev`,
+    roles: [role.key],
+    branchId,
     isActive: true,
-    permissions: SEEDED_ROLE_PERMISSIONS[role],
+    permissions: SEEDED_ROLE_PERMISSIONS[role.key],
+    roleLabels: { [role.key]: role.label },
+    companyWide: role.scope === "company",
+    fullAccess: role.fullAccess,
     ...overrides,
   };
 }

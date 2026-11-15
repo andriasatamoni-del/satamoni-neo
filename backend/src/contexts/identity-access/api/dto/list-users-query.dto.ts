@@ -1,10 +1,11 @@
-import { IsIn, IsOptional } from "class-validator";
+import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 import { BranchListQueryDto } from "../../../../shared/http/list-query.dto";
-import { ROLES, type Role } from "../../domain/role";
+import type { Role } from "../../domain/role";
 
 export class ListUsersQueryDto extends BranchListQueryDto {
   @IsOptional()
-  @IsIn(ROLES)
+  @IsString()
+  @MaxLength(64)
   role?: Role;
 
   @IsOptional()

@@ -9,8 +9,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
-import { BranchScopeGuard, BranchScoped, BranchResources } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, BranchResources, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { TreasuryDomainErrorFilter } from "./filters/domain-error.filter";
 import type { JournalEntry } from "../../accounting/domain/journal-entry.aggregate";
 import type { Treasury } from "../domain/treasury.aggregate";
@@ -32,8 +31,7 @@ export class TreasuriesController {
   @RequirePermission(PERMISSION.TREASURIES_VIEW)
   async list(@Query("branchId") branchId: string | undefined, @Query() query: ListQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
     const page = pageRequestOf(query);
-    // نفس نطاق الريبو القديم بالظبط: مدير الفرع والمحاسب لفرعهم بس، أدمن لأي فرع أو كل الفروع
-    const isBranchScoped = !hasAnyRole(req.user.roles, ROLE.ADMIN) && hasAnyRole(req.user.roles, ROLE.BRANCH_MANAGER, ROLE.ACCOUNTANT);
+    const isBranchScoped = branchScopeOf(req.user).kind !== "all";
     const effectiveBranchId = isBranchScoped ? req.user.branchId : (branchId ?? null);
     if (isBranchScoped && !effectiveBranchId) {
       throw new BadRequestException("لازم تحدد الفرع");
@@ -70,8 +68,6 @@ function toPublicTreasury(treasury: Treasury) {
   return { id: treasury.id, name: treasury.name, kind: treasury.kind, branchId: treasury.branchId, accountId: treasury.accountId };
 }
 
-// نفس شكل toPublicEntry في AccountingController بالظبط - مش مصدّرة من هناك، فمعمولة هنا محليًا (كل
-// controller بيعرّف الـmapper بتاعه، نفس اتفاقية المشروع في كل الـcontrollers التانية)
 function toPublicEntry(entry: JournalEntry) {
   return {
     id: entry.id,

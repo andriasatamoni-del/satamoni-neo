@@ -17,7 +17,7 @@ export interface UserRepositoryPort {
   findByEmail(email: string): Promise<User | null>;
   findByLegacyUserId(legacyUserId: number): Promise<User | null>;
   existsByEmail(email: string): Promise<boolean>;
-  countActiveAdmins(): Promise<number>;
+  countActiveUsersWithRoles(roles: readonly Role[]): Promise<number>;
   list(filter?: { branchId?: string | null }): Promise<User[]>;
   search(filter: UserListFilter, page?: PageRequest): Promise<{ users: User[]; total: number }>;
 }

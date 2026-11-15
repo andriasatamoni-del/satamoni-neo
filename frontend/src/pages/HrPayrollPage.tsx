@@ -13,7 +13,7 @@ import { Pagination } from "../shared/ui/Pagination";
 import { useListState } from "../shared/ui/useListState";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
-import { can, hasRole, isCompanyWide } from "../shared/auth/roles";
+import { can, hasFullAccess, isCompanyWide } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
 
@@ -50,7 +50,6 @@ const FIELD_NAME_LABELS: Record<string, string> = {
   department_id: "القسم", position_id: "المسمى الوظيفي", restricted_branch_id: "الفرع المقيّد", status: "الحالة",
 };
 const RUN_STATUS_LABELS: Record<string, string> = { DRAFT: "مسودة", APPROVED: "معتمدة", CANCELLED: "ملغاة" };
-// قايمة فلتر السنة في قوائم الرواتب: السنة الحالية والخمس سنين اللي قبلها
 const RECENT_YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
 const LEAVE_STATUS_LABELS: Record<string, string> = { PENDING: "قيد المراجعة", APPROVED: "معتمد", REJECTED: "مرفوض", CANCELLED: "ملغى" };
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = { advance: "سلفة", penalty: "جزاء", bonus: "مكافأة" };
@@ -62,7 +61,6 @@ const TABS = [
     label: "الموظفين والرواتب",
     perm: [PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE],
   },
-  // الأقسام والمسميات بتتقري بـhr.employees.view/manage؛ الإضافة والتعديل محتاجين hr.organization.manage
   { key: "organization", label: "الهيكل التنظيمي", perm: [PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE] },
   { key: "leave", label: "طلبات الإجازة", perm: PERMISSION.HR_LEAVE_REVIEW },
   { key: "adjustments", label: "سلف وجزاءات ومكافآت", perm: [PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE], companyWideOnly: true },
@@ -75,14 +73,12 @@ export function HrPayrollPage() {
   const canSeeEmployees = can(user, PERMISSION.HR_EMPLOYEES_VIEW, PERMISSION.HR_EMPLOYEES_MANAGE);
   const canManageEmployees = can(user, PERMISSION.HR_EMPLOYEES_MANAGE);
   const canManageOrganization = can(user, PERMISSION.HR_ORGANIZATION_MANAGE);
-  // قوائم الرواتب والسلف/الجزاءات عليها @CompanyWideOnly() في الباك، فمدير الفرع مش بيشوفها حتى لو معاه hr.payroll.view
   const companyWide = isCompanyWide(user);
   const canSeePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_VIEW, PERMISSION.HR_PAYROLL_MANAGE);
   const canManagePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_MANAGE);
   const canApprovePayroll = companyWide && can(user, PERMISSION.HR_PAYROLL_APPROVE);
   const canManageAdjustments = companyWide && can(user, PERMISSION.HR_PAYROLL_ADJUSTMENTS_MANAGE);
 
-  // الموظفين والأقسام والمسميات بيتستخدموا في أكتر من تاب (أسامي وفورمات)، فبيتحمّلوا مع الصفحة
   const employeesQuery = useQuery({
     queryKey: ["hr", "employees"],
     queryFn: () => apiRequest<Employee[]>("/hr/employees"),
@@ -98,7 +94,6 @@ export function HrPayrollPage() {
     queryFn: () => apiRequest<Position[]>("/hr/positions"),
     enabled: canSeeEmployees,
   });
-  // NEO-6: جداول الموظفين والرواتب والإجازات صفحات من السيرفر؛ قائمة الموظفين الكاملة فوق لسه للقوايم المنسدلة
   const employeesList = useListState(["q", "status"] as const, { prefix: "emp." });
   const employeesPageQuery = usePaginatedQuery<Employee>(["hr", "employees"], "/hr/employees", employeesList.params, {
     enabled: canSeeEmployees && tab === "employees",
@@ -262,7 +257,6 @@ export function HrPayrollPage() {
   });
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  // الفرع المقيّد في فورم تعديل الموظف
   const { branches } = useBranchOptions<Branch>(canManageEmployees && !!selectedEmployeeId);
   const [editForm, setEditForm] = useState({ departmentId: "", positionId: "", restrictedBranchId: "", reason: "" });
   const [editError, setEditError] = useState<string | null>(null);
@@ -476,7 +470,7 @@ export function HrPayrollPage() {
                   <Select
                     value={editForm.restrictedBranchId}
                     onChange={(e) => setEditForm({ ...editForm, restrictedBranchId: e.target.value })}
-                    disabled={!hasRole(user, "admin")}
+                    disabled={!hasFullAccess(user)}
                   >
                     <option value="">كل الفروع</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

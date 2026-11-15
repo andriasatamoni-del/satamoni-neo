@@ -16,8 +16,7 @@ import { JwtAuthGuard } from "../../identity-access/api/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../identity-access/api/guards/permissions.guard";
 import { RequirePermission } from "../../identity-access/api/guards/require-permission.decorator";
 import type { AuthenticatedUser } from "../../identity-access/api/types";
-import { hasAnyRole, ROLE } from "../../identity-access/domain/role";
-import { BranchScopeGuard, BranchScoped, BranchResource } from "../../../shared/authorization/branch-scope";
+import { BranchScopeGuard, BranchScoped, BranchResource, branchScopeOf } from "../../../shared/authorization/branch-scope";
 import { ShiftsDomainErrorFilter } from "./filters/domain-error.filter";
 import type { CashierShift } from "../domain/cashier-shift.aggregate";
 import { PERMISSION } from "../../identity-access/domain/permission";
@@ -44,7 +43,7 @@ export class ShiftsController {
   @Post("open")
   @RequirePermission(PERMISSION.SHIFTS_OPEN_OWN)
   async open(@Body() dto: OpenShiftDto, @Req() req: Req_) {
-    const branchId = hasAnyRole(req.user.roles, ROLE.ADMIN) ? dto.branchId || req.user.branchId : req.user.branchId;
+    const branchId = branchScopeOf(req.user).kind === "all" ? dto.branchId || req.user.branchId : req.user.branchId;
     return toPublicShift(
       await this.openShift.execute({ branchId, userId: req.user.id, openingCash: dto.openingCash, openingNotes: dto.openingNotes })
     );
@@ -92,7 +91,6 @@ export class ShiftsController {
     const { page, filter } = splitListQuery(query);
     const effectiveBranchId = filter.branchId || req.user.branchId;
     if (!effectiveBranchId) return listResponse([], 0, page);
-    // unpaged: the latest 200 shifts, as before NEO-6
     const { shifts, total } = await this.listShifts.execute({ ...filter, branchId: effectiveBranchId }, cappedPage(query, page, 200, 200));
     return listResponse(shifts.map(toPublicShift), total, page);
   }

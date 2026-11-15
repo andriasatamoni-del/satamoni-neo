@@ -9,7 +9,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../shared/ui/Card";
 import { Field, Input, Select } from "../shared/ui/Field";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
-import { hasRole } from "../shared/auth/roles";
+import { isCompanyWide } from "../shared/auth/roles";
 
 interface DailyRow { businessDate: string; branchId: string; branchName: string; ordersCount: number; revenue: number; }
 
@@ -166,7 +166,6 @@ const BASE_TABS = [
   { key: "expenses-report", label: "تقرير المصروفات" },
   { key: "purchases-report", label: "تقرير المشتريات النقدية" },
 ];
-// مقارنة شاملة بين كل الفروع - GET /reports/inventory-comparison محتاج reports.branch_health
 const BRANCH_HEALTH_TAB = { key: "inventory-comparison", label: "مقارنة المخزون بين الفروع", perm: PERMISSION.REPORTS_BRANCH_HEALTH, companyWideOnly: true };
 const PROCUREMENT_TABS = [
   { key: "purchase-orders", label: "أوامر الشراء" },
@@ -176,8 +175,6 @@ const PROCUREMENT_TABS = [
   { key: "supplier-performance", label: "أداء المورد", companyWideOnly: true },
   { key: "outstanding-purchase-orders", label: "أوامر شراء مستنية" },
 ];
-// تقارير المبيعات/التشغيل محتاجة reports.view، وتقارير المشتريات purchasing.view.
-// companyWideOnly = الـendpoint عليه @CompanyWideOnly() في الباك (مقفول على اليوزر المربوط بفرع)
 const TABS = [
   ...BASE_TABS.map((t) => ({ ...t, perm: PERMISSION.REPORTS_VIEW })),
   BRANCH_HEALTH_TAB,
@@ -550,7 +547,6 @@ function CatalogTab() {
   );
 }
 
-// اختيار الفرع في التقارير: من غير branches.view القايمة فرع المستخدم بس (أو فاضية لو ملوش فرع)
 function useBranches() {
   const { branches } = useBranchOptions<Branch>();
   return { data: branches };
@@ -638,7 +634,7 @@ function InventoryValuationTab() {
 
 function StockCardTab() {
   const { user } = useAuth();
-  const isBranchLocked = hasRole(user, "branch_manager") && !hasRole(user, "admin", "accountant");
+  const isBranchLocked = !isCompanyWide(user);
   const [branchId, setBranchId] = useState(isBranchLocked ? (user?.branchId ?? "") : "");
   const [inventoryItemId, setInventoryItemId] = useState("");
   const { from, setFrom, to, setTo } = useDateRange();

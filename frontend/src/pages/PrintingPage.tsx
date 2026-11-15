@@ -9,7 +9,7 @@ import { Field, Input, Select } from "../shared/ui/Field";
 import { Badge } from "../shared/ui/Badge";
 import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table";
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
-import { can, hasRole } from "../shared/auth/roles";
+import { can, isCompanyWide } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
 import { Pagination } from "../shared/ui/Pagination";
@@ -55,7 +55,7 @@ export function PrintingPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
-  const canPickBranch = hasRole(user, "admin");
+  const canPickBranch = isCompanyWide(user);
   const canSeePrinters = can(user, PERMISSION.PRINTERS_VIEW, PERMISSION.PRINTERS_MANAGE);
   const canManagePrinters = can(user, PERMISSION.PRINTERS_MANAGE);
   const canManageRouting = can(user, PERMISSION.PRINT_ROUTING_MANAGE);
@@ -64,7 +64,6 @@ export function PrintingPage() {
   const effectiveBranchId = branchId || user?.branchId || "";
 
   const { branches } = useBranchOptions<Branch>(canPickBranch);
-  // الطابعات بتتعرض في تاب الطابعات وفي اختيار طابعة المحطة؛ المحطات في تاب المحطات والتوجيه بس
   const printersQuery = useQuery({
     queryKey: ["printing", "printers", effectiveBranchId],
     queryFn: () => apiRequest<Printer[]>(`/printing/printers?branchId=${effectiveBranchId}`),
@@ -86,7 +85,6 @@ export function PrintingPage() {
   const printJobsList = useListState([] as const, { prefix: "jobs." });
   const printJobsPageQuery = usePaginatedQuery<PrintJob>(["printing", "print-jobs"], "/printing/print-jobs", { ...printJobsList.params, branchId: effectiveBranchId, status: queueStatus }, { enabled: Boolean(effectiveBranchId) && tab === "queue", refetchInterval: tab === "queue" ? 5000 : false });
 
-  // --- إضافة طابعة ---
   const [printerForm, setPrinterForm] = useState({ name: "", printerType: "CASHIER", connectionType: "USB", osPrinterName: "", ipAddress: "" });
   const [printerError, setPrinterError] = useState<string | null>(null);
   const registerPrinter = useMutation({
@@ -119,7 +117,6 @@ export function PrintingPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printing", "print-jobs"] }),
   });
 
-  // --- إضافة محطة تحضير ---
   const [stationForm, setStationForm] = useState({ name: "", printerId: "" });
   const [stationError, setStationError] = useState<string | null>(null);
   const registerStation = useMutation({

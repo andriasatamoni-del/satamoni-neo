@@ -27,11 +27,11 @@ describe("can", () => {
 });
 
 describe("isCompanyWide", () => {
-  it("mirrors the backend branch scope: admin/accountant always, callcenter only without a branch", () => {
+  it("follows the seeded role scope: company roles are company-wide even with a branch, branch roles never", () => {
     expect(isCompanyWide(seededUser("admin"))).toBe(true);
     expect(isCompanyWide(seededUser("accountant"))).toBe(true);
     expect(isCompanyWide(seededUser("callcenter"))).toBe(true);
-    expect(isCompanyWide({ ...seededUser("callcenter"), branchId: "branch-1" })).toBe(false);
+    expect(isCompanyWide(seededUser("callcenter", { branchId: "branch-1" }))).toBe(true);
     expect(isCompanyWide(seededUser("branch_manager"))).toBe(false);
     expect(isCompanyWide(seededUser("cashier"))).toBe(false);
     expect(isCompanyWide(null)).toBe(false);

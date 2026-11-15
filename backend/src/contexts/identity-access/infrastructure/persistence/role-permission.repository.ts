@@ -1,22 +1,34 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { asc, eq, inArray } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
-import { ROLES, type Role } from "../../domain/role";
-import { isPermission, type Permission } from "../../domain/permission";
-import type { PermissionGroup, RolePermissionRepositoryPort } from "../../domain/ports/role-permission-repository.port";
-import { permissions, rolePermissions } from "./identity-access.tables";
+import type { Role } from "../../domain/role";
+import { isPermission } from "../../domain/permission";
+import type { PermissionGroup, RoleAccess, RolePermissionRepositoryPort } from "../../domain/ports/role-permission-repository.port";
+import { permissions, rolePermissions, roles } from "./identity-access.tables";
 
 @Injectable()
 export class RolePermissionRepository implements RolePermissionRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async permissionsForRoles(roles: readonly Role[]): Promise<Set<Permission>> {
-    if (roles.length === 0) return new Set();
-    const rows = await this.db
-      .selectDistinct({ key: rolePermissions.permission_key })
-      .from(rolePermissions)
-      .where(inArray(rolePermissions.role, [...roles]));
-    return new Set(rows.map((r) => r.key).filter(isPermission));
+  async accessForRoles(userRoles: readonly Role[]): Promise<RoleAccess> {
+    if (userRoles.length === 0) return { permissions: new Set(), scopes: [], labels: {}, fullAccess: false };
+    const roleRows = await this.db
+      .select({ key: roles.key, label: roles.label, scope: roles.scope, fullAccess: roles.full_access })
+      .from(roles)
+      .where(inArray(roles.key, [...userRoles]));
+    const fullAccess = roleRows.some((r) => r.fullAccess);
+    const permissionRows = fullAccess
+      ? await this.db.select({ key: permissions.key }).from(permissions)
+      : await this.db
+          .selectDistinct({ key: rolePermissions.permission_key })
+          .from(rolePermissions)
+          .where(inArray(rolePermissions.role, [...userRoles]));
+    return {
+      permissions: new Set(permissionRows.map((r) => r.key).filter(isPermission)),
+      scopes: roleRows.map((r) => r.scope),
+      labels: Object.fromEntries(roleRows.map((r) => [r.key, r.label])),
+      fullAccess,
+    };
   }
 
   async catalog(): Promise<PermissionGroup[]> {
@@ -34,13 +46,16 @@ export class RolePermissionRepository implements RolePermissionRepositoryPort {
   }
 
   async allRolePermissions(): Promise<Record<Role, string[]>> {
-    const rows = await this.db
-      .select({ role: rolePermissions.role, key: rolePermissions.permission_key })
-      .from(rolePermissions)
-      .innerJoin(permissions, eq(permissions.key, rolePermissions.permission_key))
-      .orderBy(asc(permissions.sort_order));
-    const result = Object.fromEntries(ROLES.map((r) => [r, [] as string[]])) as Record<Role, string[]>;
-    for (const row of rows) result[row.role].push(row.key);
+    const [roleRows, rows] = await Promise.all([
+      this.db.select({ key: roles.key }).from(roles).orderBy(asc(roles.sort_order)),
+      this.db
+        .select({ role: rolePermissions.role, key: rolePermissions.permission_key })
+        .from(rolePermissions)
+        .innerJoin(permissions, eq(permissions.key, rolePermissions.permission_key))
+        .orderBy(asc(permissions.sort_order)),
+    ]);
+    const result: Record<Role, string[]> = Object.fromEntries(roleRows.map((r) => [r.key, [] as string[]]));
+    for (const row of rows) result[row.role]?.push(row.key);
     return result;
   }
 
@@ -49,13 +64,5 @@ export class RolePermissionRepository implements RolePermissionRepositoryPort {
     const rows = await this.db.select({ key: permissions.key }).from(permissions).where(inArray(permissions.key, [...keys]));
     const known = new Set(rows.map((r) => r.key));
     return keys.filter((k) => !known.has(k));
-  }
-
-  async replaceRolePermissions(role: Role, keys: readonly string[]): Promise<void> {
-    const unique = [...new Set(keys)];
-    await this.db.transaction(async (tx) => {
-      await tx.delete(rolePermissions).where(eq(rolePermissions.role, role));
-      if (unique.length > 0) await tx.insert(rolePermissions).values(unique.map((key) => ({ role, permission_key: key })));
-    });
   }
 }

@@ -15,9 +15,6 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
-    // مفيش seed script لسه (NEO-5 هيضيفه) - بنعمل أول أدمن مباشرة عن طريق POST /users، وبما إنه مفيش
-    // يوزر أصلًا في القاعدة الفاضية دي، الطلب مش محتاج توكن (احتياج تسجيل دخول مسبق هيتضاف لاحقًا لو
-    // احتجناه - دلوقتي كل endpoint محتاج توكن إلا / login نفسه، فبنعمل الأدمن الأول مباشرة في القاعدة)
   });
 
   afterAll(async () => {
@@ -31,9 +28,6 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
     expect(res.status).toBe(401);
   });
 
-  // بما إن إنشاء أول أدمن محتاج توكن أصلًا (مفيش استثناء "أول مستخدم"، مطابق تمامًا لسلوك الريبو القديم:
-  // POST /api/users محتاج أدمن موجود بالفعل) - النموذج البدائي لأول تشغيلة بيتعمل بالـseed script (NEO-5)
-  // أو مباشرة على القاعدة. هنا بنحاكي وجود أدمن بالفعل بإدخاله مباشرة عن طريق الـrepository.
   describe("بعد ما يبقى فيه أدمن في القاعدة", () => {
     let cashierId: string;
 
@@ -222,7 +216,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
         expect((await catalog()).rolePermissions.admin).toContain("identity.roles.manage");
       });
 
-      test("صلاحية مش معروفة أو دور مش معروف -> 400، ومفيش تغيير", async () => {
+      test("صلاحية مش معروفة -> 400 ودور مش موجود -> 404، ومفيش تغيير", async () => {
         const before: string[] = (await catalog()).rolePermissions.cashier;
         const unknownKey = await request(app.getHttpServer())
           .put("/roles/cashier/permissions")
@@ -233,7 +227,7 @@ describe("Identity & Access - /auth و /users (e2e ضد تطبيق حقيقي ك
           .put("/roles/ghost/permissions")
           .set("Authorization", `Bearer ${adminToken}`)
           .send({ permissions: [] });
-        expect(unknownRole.status).toBe(400);
+        expect(unknownRole.status).toBe(404);
         expect((await catalog()).rolePermissions.cashier).toEqual(before);
       });
 

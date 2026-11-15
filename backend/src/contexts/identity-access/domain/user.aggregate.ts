@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { InvalidEmailError, InvalidRoleError, RolesRequiredError, WeakPasswordError } from "./errors";
-import { isValidRole, ROLES, type Role } from "./role";
+import { InvalidEmailError, RolesRequiredError, WeakPasswordError } from "./errors";
+import { uniqueRoles, type Role } from "./role";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -17,10 +17,6 @@ export interface UserProps {
   createdAt: Date;
   updatedAt: Date;
 }
-
-// User aggregate - نفس مفهوم users في الريبو القديم، بس هنا كل قاعدة عمل (إيميل صحيح، باسورد كفاية،
-// دور معروف) بقت قاعدة دومين صريحة ومختبرة لوحدها (test/unit) بدل ما تكون متوزّعة بين validation
-// في الراوت وCHECK constraint في القاعدة بس.
 export class User {
   private constructor(
     public readonly id: string,
@@ -52,9 +48,6 @@ export class User {
       updatedAt: now,
     });
   }
-
-  // بيرجّع نسخة من صف قاعدة بيانات موجود بالفعل - من غير إعادة تشغيل قواعد التسجيل (الإيميل والدور
-  // اتأكد منهم أصلًا وقت الإنشاء الأول)
   static reconstitute(id: string, props: UserProps): User {
     return new User(id, props);
   }
@@ -64,9 +57,9 @@ export class User {
   }
 
   private static validateRoles(roles: readonly string[]): Role[] {
-    if (roles.length === 0) throw new RolesRequiredError();
-    for (const role of roles) if (!isValidRole(role)) throw new InvalidRoleError(role);
-    return ROLES.filter((r) => roles.includes(r));
+    const cleaned = roles.map((role) => role.trim()).filter((role) => role.length > 0);
+    if (cleaned.length === 0) throw new RolesRequiredError();
+    return uniqueRoles(cleaned);
   }
 
   changeRoles(roles: readonly string[]): void {

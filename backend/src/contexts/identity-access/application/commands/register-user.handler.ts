@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../../domain/user.aggregate";
-import { DuplicateEmailError } from "../../domain/errors";
+import { DuplicateEmailError, InvalidRoleError } from "../../domain/errors";
+import { ROLE_REPOSITORY, type RoleRepositoryPort } from "../../domain/ports/role-repository.port";
 import { USER_REPOSITORY, type UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
 import { UserRegisteredEvent } from "../../domain/events/user-registered.event";
@@ -20,6 +21,7 @@ export class RegisterUserHandler {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
     @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
+    @Inject(ROLE_REPOSITORY) private readonly roles: RoleRepositoryPort,
     private readonly eventBus: EventBusService
   ) {}
 
@@ -27,6 +29,8 @@ export class RegisterUserHandler {
     if (await this.users.existsByEmail(command.email)) {
       throw new DuplicateEmailError(command.email);
     }
+    const [unknownRole] = await this.roles.missingKeys(command.roles);
+    if (unknownRole) throw new InvalidRoleError(unknownRole);
     User.validatePasswordPolicy(command.password);
     const passwordHash = await this.hasher.hash(command.password);
 

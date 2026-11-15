@@ -11,6 +11,9 @@ export interface CurrentUser {
   branchId: string | null;
   isActive: boolean;
   permissions: Permission[];
+  roleLabels: Record<Role, string>;
+  companyWide: boolean;
+  fullAccess: boolean;
 }
 
 interface LoginResponse {
@@ -66,7 +69,6 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-// اختصار لـcan(user, ...) بالمستخدم الحالي: const allowed = useCan(); allowed(PERMISSION.X, PERMISSION.Y)
 export function useCan(): (...permissions: Permission[]) => boolean {
   const { user } = useAuth();
   return useCallback((...permissions: Permission[]) => can(user, ...permissions), [user]);

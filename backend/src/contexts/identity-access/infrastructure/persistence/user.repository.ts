@@ -1,11 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, countDistinct, eq, inArray, isNull } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { User } from "../../domain/user.aggregate";
 import type { UserListFilter, UserRepositoryPort } from "../../domain/ports/user-repository.port";
 import type { PageRequest } from "../../../../shared/http/list-query.dto";
 import { orderByOf, paginate, searchCondition, totalOf } from "../../../../shared/database/pagination";
-import { ROLE, ROLES, type Role } from "../../domain/role";
+import { uniqueRoles, type Role } from "../../domain/role";
 import { userRoles, users } from "./identity-access.tables";
 
 @Injectable()
@@ -55,12 +55,13 @@ export class UserRepository implements UserRepositoryPort {
     return !!row;
   }
 
-  async countActiveAdmins(): Promise<number> {
+  async countActiveUsersWithRoles(roles: readonly Role[]): Promise<number> {
+    if (roles.length === 0) return 0;
     const [row] = await this.db
-      .select({ total: count() })
+      .select({ total: countDistinct(users.id) })
       .from(users)
       .innerJoin(userRoles, eq(userRoles.user_id, users.id))
-      .where(and(eq(userRoles.role, ROLE.ADMIN), eq(users.is_active, true)));
+      .where(and(inArray(userRoles.role, [...roles]), eq(users.is_active, true)));
     return Number(row?.total ?? 0);
   }
 
@@ -118,7 +119,7 @@ export class UserRepository implements UserRepositoryPort {
         name: row.name,
         email: row.email,
         passwordHash: row.password_hash,
-        roles: ROLES.filter((r) => roles.includes(r)),
+        roles: uniqueRoles(roles),
         branchId: row.branch_id,
         pinHash: row.pin_hash,
         isActive: row.is_active,

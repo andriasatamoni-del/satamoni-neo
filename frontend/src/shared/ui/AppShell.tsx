@@ -34,14 +34,12 @@ function NavContent({ items, onNavigate }: { items: readonly NavItem[]; onNaviga
   );
 }
 
-// navItems: الروابط اللي المستخدم يقدر يفتحها بس (App.tsx بيفلترها من STAFF_ROUTES بنفس صلاحيات الراوت).
 export function AppShell({ navItems, children }: { navItems: readonly NavItem[]; children: ReactNode }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sidebar - desktop */}
       <aside className="fixed inset-y-0 right-0 hidden w-64 flex-col bg-slate-900 lg:flex">
         <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-lg font-black text-white">
@@ -52,7 +50,6 @@ export function AppShell({ navItems, children }: { navItems: readonly NavItem[];
         <NavContent items={navItems} />
       </aside>
 
-      {/* Sidebar - mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
@@ -68,7 +65,6 @@ export function AppShell({ navItems, children }: { navItems: readonly NavItem[];
         </div>
       )}
 
-      {/* Main column */}
       <div className="lg:mr-64">
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm lg:px-8">
           <button onClick={() => setMobileOpen(true)} className="text-slate-600 lg:hidden">
@@ -80,7 +76,7 @@ export function AppShell({ navItems, children }: { navItems: readonly NavItem[];
           <div className="flex items-center gap-3">
             <div className="text-end leading-tight">
               <p className="text-sm font-semibold text-slate-800">{user?.name}</p>
-              <p className="text-xs text-slate-400">{user ? roleLabels(user.roles) : ""}</p>
+              <p className="text-xs text-slate-400">{user ? roleLabels(user.roles, user.roleLabels) : ""}</p>
             </div>
             <button
               onClick={logout}

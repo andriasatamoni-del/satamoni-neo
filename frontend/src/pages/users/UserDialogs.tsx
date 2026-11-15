@@ -4,12 +4,21 @@ import { apiRequest } from "../../shared/api/client";
 import { errorMessage } from "../../shared/api/errorMessage";
 import { FormDialog } from "../../shared/ui/FormDialog";
 import { Field, Input, Select } from "../../shared/ui/Field";
-import { ROLE, type Role } from "../../shared/auth/roles";
+import type { Role } from "../../shared/auth/roles";
 import { RolePicker } from "./RolePicker";
-import type { PermissionsCatalog } from "./permissionsCatalog";
+import { fullAccessRoles, needsBranch, type PermissionsCatalog } from "./permissionsCatalog";
 import { USERS_QUERY_KEY, type AppUser, type Branch } from "./types";
 
 const NO_ROLE_ERROR = "لازم تختار دور واحد على الأقل";
+
+function BranchRequiredHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+      الدور ده محتاج فرع: من غير فرع المستخدم مش هيقدر يشوف أي بيانات خاصة بالفروع
+    </p>
+  );
+}
 
 function useSaveUser(request: () => Promise<unknown>, onDone: () => void) {
   const queryClient = useQueryClient();
@@ -40,7 +49,7 @@ export function CreateUserDialog({
   catalog: PermissionsCatalog | undefined;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState({ name: "", email: "", password: "", branchId: "", roles: [ROLE.CASHIER] as Role[] });
+  const [form, setForm] = useState({ name: "", email: "", password: "", branchId: "", roles: [] as Role[] });
   const [validationError, setValidationError] = useState<string | null>(null);
   const create = useSaveUser(
     () => apiRequest("/users", { method: "POST", body: { ...form, branchId: form.branchId || undefined } }),
@@ -79,6 +88,7 @@ export function CreateUserDialog({
       <Field label="الأدوار">
         <RolePicker value={form.roles} onChange={(roles) => setForm({ ...form, roles })} catalog={catalog} />
       </Field>
+      <BranchRequiredHint show={!form.branchId && needsBranch(form.roles, catalog)} />
     </FormDialog>
   );
 }
@@ -144,7 +154,7 @@ export function AssignRolesDialog({
   catalog: PermissionsCatalog | undefined;
   onClose: () => void;
 }) {
-  const lockedRoles = isCurrentUser && user.roles.includes(ROLE.ADMIN) ? [ROLE.ADMIN] : [];
+  const lockedRoles = isCurrentUser ? user.roles.filter((r) => fullAccessRoles(catalog).includes(r)) : [];
   const [roles, setRoles] = useState<Role[]>([...user.roles]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const save = useSaveUser(() => apiRequest(`/users/${user.id}`, { method: "PATCH", body: { roles } }), onClose);
@@ -165,7 +175,8 @@ export function AssignRolesDialog({
       onClose={onClose}
     >
       <RolePicker value={roles} onChange={setRoles} catalog={catalog} lockedRoles={lockedRoles} />
-      {lockedRoles.length > 0 && <p className="text-xs text-slate-500">مينفعش تشيل دور الأدمن من حسابك انت</p>}
+      <BranchRequiredHint show={!user.branchId && needsBranch(roles, catalog)} />
+      {lockedRoles.length > 0 && <p className="text-xs text-slate-500">مينفعش تشيل دور كامل الصلاحيات من حسابك انت</p>}
     </FormDialog>
   );
 }

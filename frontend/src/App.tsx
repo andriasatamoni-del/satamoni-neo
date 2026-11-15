@@ -21,7 +21,6 @@ import { AccountingPage } from "./pages/AccountingPage";
 import { PaymentControlPage } from "./pages/PaymentControlPage";
 import { HrPayrollPage } from "./pages/HrPayrollPage";
 import { UsersPage } from "./pages/UsersPage";
-import { RolesPage } from "./pages/RolesPage";
 import { TreasuriesPage } from "./pages/TreasuriesPage";
 import { MyProfilePage } from "./pages/MyProfilePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
@@ -65,7 +64,6 @@ const STAFF_PAGES: Record<StaffPath, ComponentType> = {
   "/hr-payroll": HrPayrollPage,
   "/printing": PrintingPage,
   "/users": UsersPage,
-  "/roles": RolesPage,
   "/audit-log": AuditLogPage,
   "/loyalty": LoyaltyPage,
   "/pos-settings": PosSettingsPage,
@@ -95,6 +93,7 @@ export function App() {
       <Route path="/order" element={<StorefrontPage />} />
       <Route path="/order/track/:orderId" element={<TrackOrderPage />} />
       <Route path="/order/orders" element={<MyOrdersPage />} />
+      <Route path="/roles" element={<Navigate to="/users?tab=roles" replace />} />
       {STAFF_ROUTES.map(({ path, perm }) => {
         const Page = STAFF_PAGES[path];
         return (

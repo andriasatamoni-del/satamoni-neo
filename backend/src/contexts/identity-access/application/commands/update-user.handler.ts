@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../../domain/user.aggregate";
-import { UserNotFoundError } from "../../domain/errors";
+import { InvalidRoleError, UserNotFoundError } from "../../domain/errors";
+import { ROLE_REPOSITORY, type RoleRepositoryPort } from "../../domain/ports/role-repository.port";
 import { PASSWORD_HASHER, type PasswordHasherPort } from "../../domain/ports/password-hasher.port";
 import { auditDetail } from "../../../../shared/audit/audit-context";
 import { ActiveAdminGuard } from "../services/active-admin-guard.service";
@@ -21,10 +22,15 @@ function auditSnapshot(user: User) {
 export class UpdateUserHandler {
   constructor(
     @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
+    @Inject(ROLE_REPOSITORY) private readonly roles: RoleRepositoryPort,
     private readonly activeAdminGuard: ActiveAdminGuard
   ) {}
 
   async execute(command: UpdateUserCommand): Promise<User> {
+    if (command.roles !== undefined) {
+      const [unknownRole] = await this.roles.missingKeys(command.roles);
+      if (unknownRole) throw new InvalidRoleError(unknownRole);
+    }
     let passwordHash: string | undefined;
     if (command.password !== undefined) {
       User.validatePasswordPolicy(command.password);

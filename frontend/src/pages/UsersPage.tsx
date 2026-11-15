@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
 import { errorMessage } from "../shared/api/errorMessage";
@@ -12,21 +13,43 @@ import { ListFilters, type SelectFilterDef } from "../shared/ui/ListFilters";
 import { Pagination } from "../shared/ui/Pagination";
 import { useListState } from "../shared/ui/useListState";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
-import { can, ROLES, ROLE_LABELS } from "../shared/auth/roles";
+import { can, roleLabel } from "../shared/auth/roles";
 import { PERMISSION } from "../shared/auth/permissions";
 import { useBranchOptions } from "../shared/auth/useBranchOptions";
-import { usePermissionsCatalog } from "./users/permissionsCatalog";
+import { roleLabelMap, roleOptionsOf, usePermissionsCatalog } from "./users/permissionsCatalog";
+import { RolesTab } from "./users/RolesTab";
+import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { AssignRolesDialog, CreateUserDialog, EditUserDialog } from "./users/UserDialogs";
 import { USERS_QUERY_KEY, type AppUser, type Branch } from "./users/types";
 
 type UserDialog = { kind: "create" } | { kind: "edit"; user: AppUser } | { kind: "roles"; user: AppUser };
 
-const LIST_FILTERS: SelectFilterDef<"role" | "status">[] = [
-  { name: "role", label: "الدور", options: ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] })) },
-  { name: "status", label: "الحالة", options: [{ value: "active", label: "نشط" }, { value: "inactive", label: "موقوف" }] },
-];
+const STATUS_FILTER: SelectFilterDef<"role" | "status"> = {
+  name: "status",
+  label: "الحالة",
+  options: [{ value: "active", label: "نشط" }, { value: "inactive", label: "موقوف" }],
+};
+
+const TABS = [
+  { key: "users", label: "المستخدمين", perm: [PERMISSION.IDENTITY_USERS_VIEW, PERMISSION.IDENTITY_USERS_MANAGE] },
+  { key: "roles", label: "الأدوار", perm: [PERMISSION.IDENTITY_ROLES_MANAGE] },
+] as const;
 
 export function UsersPage() {
+  const [searchParams] = useSearchParams();
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS, searchParams.get("tab") ?? undefined);
+
+  return (
+    <div>
+      <PageHeader title="المستخدمين والأدوار" description="إدارة حسابات الدخول، والأدوار وصلاحيات كل دور" />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      {tab === "users" && <UsersTab />}
+      {tab === "roles" && <RolesTab />}
+    </div>
+  );
+}
+
+function UsersTab() {
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const canManageUsers = can(currentUser, PERMISSION.IDENTITY_USERS_MANAGE);
@@ -35,7 +58,12 @@ export function UsersPage() {
   const usersList = useListState(["q", "role", "status"] as const, { prefix: "users." });
   const usersQuery = usePaginatedQuery<AppUser>(USERS_QUERY_KEY, "/users", usersList.params, { enabled: canSeeUsers });
   const { branches } = useBranchOptions<Branch>(canSeeUsers);
-  const catalog = usePermissionsCatalog(canManageUsers).data;
+  const catalog = usePermissionsCatalog(canSeeUsers).data;
+  const labels = roleLabelMap(catalog);
+  const listFilters: SelectFilterDef<"role" | "status">[] = [
+    { name: "role", label: "الدور", options: roleOptionsOf(catalog).map((r) => ({ value: r.key, label: r.label })) },
+    STATUS_FILTER,
+  ];
   const [dialog, setDialog] = useState<UserDialog | null>(null);
   const closeDialog = () => setDialog(null);
 
@@ -50,19 +78,16 @@ export function UsersPage() {
 
   return (
     <div>
-      <PageHeader
-        title="المستخدمين"
-        description="إدارة حسابات الدخول وأدوار كل مستخدم"
-        actions={canManageUsers ? <Button onClick={() => setDialog({ kind: "create" })}>+ مستخدم جديد</Button> : undefined}
-      />
-
       <Card>
-        <CardHeader><CardTitle>المستخدمين ({total})</CardTitle></CardHeader>
+        <CardHeader className="flex items-center justify-between">
+          <CardTitle>المستخدمين ({total})</CardTitle>
+          {canManageUsers && <Button size="sm" onClick={() => setDialog({ kind: "create" })}>+ مستخدم جديد</Button>}
+        </CardHeader>
         <CardBody className="p-0">
           {toggleActive.error && (
             <p className="mx-4 mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{errorMessage(toggleActive.error)}</p>
           )}
-          <ListFilters state={usersList} search={{ placeholder: "الاسم أو الإيميل" }} selects={LIST_FILTERS} />
+          <ListFilters state={usersList} search={{ placeholder: "الاسم أو الإيميل" }} selects={listFilters} />
           <Table>
             <THead>
               <TR>
@@ -81,7 +106,7 @@ export function UsersPage() {
                   <TD>{u.email}</TD>
                   <TD>
                     <div className="flex flex-wrap gap-1">
-                      {u.roles.map((r) => <Badge key={r} tone="neutral">{ROLE_LABELS[r] ?? r}</Badge>)}
+                      {u.roles.map((r) => <Badge key={r} tone="neutral">{roleLabel(r, labels)}</Badge>)}
                     </div>
                   </TD>
                   <TD>{branchName(u.branchId)}</TD>

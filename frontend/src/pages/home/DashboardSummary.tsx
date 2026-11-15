@@ -5,7 +5,7 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
 import { Select } from "../../shared/ui/Field";
 import { Badge, type Tone } from "../../shared/ui/Badge";
-import { can, hasRole } from "../../shared/auth/roles";
+import { can, isCompanyWide } from "../../shared/auth/roles";
 import { PERMISSION } from "../../shared/auth/permissions";
 
 interface Branch { id: string; name: string; }
@@ -52,7 +52,7 @@ export function DashboardSummary() {
   const from = toDateStr(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000));
 
   const canSeeDashboard = can(user, PERMISSION.REPORTS_VIEW);
-  const showBranchFilter = hasRole(user, "admin", "accountant") && can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
+  const showBranchFilter = isCompanyWide(user) && can(user, PERMISSION.BRANCHES_VIEW, PERMISSION.BRANCHES_MANAGE);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiRequest<Branch[]>("/branches"),
