@@ -62,6 +62,12 @@ export class VariantNotFoundForOrderError extends DomainError {
   }
 }
 
+export class MenuItemInactiveForOrderError extends DomainError {
+  constructor(itemName: string) {
+    super(`الصنف ده موقوف حاليًا ومينفعش يتباع: ${itemName}`);
+  }
+}
+
 export class InvalidOrderItemError extends DomainError {
   constructor() {
     super("كل سطر في الطلب لازم يكون إما صنف (حجم) أو عرض، مش الاتنين ومش من غيرهم");

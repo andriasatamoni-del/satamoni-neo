@@ -7,6 +7,7 @@ import {
   AddonNotFoundForOrderError,
   AddonOrderedAloneError,
   WithoutIngredientNotInRecipeError,
+  MenuItemInactiveForOrderError,
   ComboNotFoundForOrderError,
   CustomerNotFoundForOrderError,
   DeliveryAddressRequiredError,
@@ -100,6 +101,7 @@ export class RegisterOrderHandler {
       const variant = menuItem?.variants.find((v) => v.id === item.variantId);
       if (!menuItem || !variant) throw new VariantNotFoundForOrderError();
       if (menuItem.isAddon) throw new AddonOrderedAloneError();
+      if (!menuItem.isActive) throw new MenuItemInactiveForOrderError(menuItem.name);
 
       const addons: OrderAddonInput[] = [];
       for (const addon of item.addons ?? []) {
