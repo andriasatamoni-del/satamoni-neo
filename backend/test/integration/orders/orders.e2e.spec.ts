@@ -20,6 +20,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
   let ingredientItemId: string;
   let variantWithRecipeId: string;
   let variantWithoutRecipeId: string;
+  let menuItemId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -87,6 +88,7 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
     const variantWithRecipe = item.addVariant({ label: "وسط", price: 100, talabatPrice: 100 });
     const variantWithoutRecipe = item.addVariant({ label: "كبير", price: 150, talabatPrice: 150 });
     await menuItemRepo.save(item);
+    menuItemId = item.id;
     variantWithRecipeId = variantWithRecipe.id;
     variantWithoutRecipeId = variantWithoutRecipe.id;
 
@@ -245,5 +247,34 @@ describe("Orders - /orders (e2e ضد تطبيق حقيقي كامل، بيغطي
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ branchId, orderType: "takeaway", items: [{ variantId: "00000000-0000-0000-0000-000000000000", quantity: 1 }] });
     expect(res.status).toBe(400);
+  });
+
+  test("POST /orders بصنف موقوف -> 400 ومفيش طلب اتسجّل", async () => {
+    const ordersBefore = await request(app.getHttpServer())
+      .get(`/orders?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    const deactivated = await request(app.getHttpServer())
+      .patch(`/catalog/items/${menuItemId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: false });
+    expect(deactivated.status).toBe(200);
+
+    const res = await request(app.getHttpServer())
+      .post("/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ branchId, orderType: "takeaway", items: [{ variantId: variantWithoutRecipeId, quantity: 1 }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("موقوف");
+
+    const ordersAfter = await request(app.getHttpServer())
+      .get(`/orders?branchId=${branchId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(ordersAfter.body).toHaveLength(ordersBefore.body.length);
+
+    await request(app.getHttpServer())
+      .patch(`/catalog/items/${menuItemId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: true });
   });
 });
