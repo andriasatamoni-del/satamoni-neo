@@ -15,6 +15,7 @@ import { branchStockBalances, inventoryItems, stockMovements } from "../../../sr
 import { supplierInvoiceLines, supplierInvoices, suppliers } from "../../../src/contexts/procurement/infrastructure/persistence/procurement.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -94,11 +95,12 @@ describe("Reporting - GET /reports/action-center (e2e ضد تطبيق حقيقي
     const variant = menuItem.addVariant({ label: "عادي", price: 10, talabatPrice: 10 });
     await menuItemRepo.save(menuItem);
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId: missingCostItemId, quantity: 1 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), variant.id, recipe.id);
 
     const categoryRes = await request(app.getHttpServer())
       .post("/expenses/categories")

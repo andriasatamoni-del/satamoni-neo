@@ -15,6 +15,7 @@ import { paymentMethods, payments } from "../../../src/contexts/payment-control/
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -81,11 +82,12 @@ describe("Reporting - تقارير المبيعات والتشغيل (e2e ضد �
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), variantId, recipe.id);
 
     const methodRes = await request(app.getHttpServer())
       .post("/payment-control/payment-methods")

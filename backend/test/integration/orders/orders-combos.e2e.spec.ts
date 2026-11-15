@@ -12,6 +12,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { branchStockBalances, inventoryItems, stockMovements } from "../../../src/contexts/inventory/infrastructure/persistence/inventory.tables";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
 import { printJobs } from "../../../src/contexts/printing/infrastructure/persistence/printing.tables";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -87,11 +88,12 @@ describe("Orders + Combos - طلب فيه عرض (e2e ضد تطبيق حقيقي
     drinkVariantId = drinkVariant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: pizzaVariantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), pizzaVariantId, recipe.id);
 
     const comboRepo = new ComboRepository(app.get<Database>(DATABASE));
     const combo = Combo.register({

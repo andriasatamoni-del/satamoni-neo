@@ -22,6 +22,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
         image_url: item.imageUrl,
         is_best: item.isBest,
         is_active: item.isActive,
+        awaiting_recipe: item.awaitingRecipe,
         legacy_menu_item_id: item.legacyMenuItemId,
         created_at: item.createdAt,
         station_id: item.stationId,
@@ -38,6 +39,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             image_url: itemRow.image_url,
             is_best: itemRow.is_best,
             is_active: itemRow.is_active,
+            awaiting_recipe: itemRow.awaiting_recipe,
             station_id: itemRow.station_id,
           },
         });
@@ -52,10 +54,11 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
             price: variant.price,
             talabat_price: variant.talabatPrice,
             legacy_variant_id: variant.legacyVariantId,
+            recipe_id: variant.recipeId,
           })
           .onConflictDoUpdate({
             target: menuItemVariants.id,
-            set: { label: variant.label, price: variant.price, talabat_price: variant.talabatPrice },
+            set: { label: variant.label, price: variant.price, talabat_price: variant.talabatPrice, recipe_id: variant.recipeId },
           });
       }
     });
@@ -73,6 +76,11 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
       .where(eq(menuItemVariants.id, variantId))
       .limit(1);
     return variantRow ? this.findById(variantRow.item_id) : null;
+  }
+
+  async findByRecipeId(recipeId: string): Promise<MenuItem[]> {
+    const itemIds = this.db.selectDistinct({ id: menuItemVariants.item_id }).from(menuItemVariants).where(eq(menuItemVariants.recipe_id, recipeId));
+    return this.withChildren(await this.db.select().from(menuItems).where(inArray(menuItems.id, itemIds)));
   }
 
   async findByLegacyMenuItemId(legacyId: number): Promise<MenuItem | null> {
@@ -124,6 +132,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
       imageUrl: row.image_url,
       isBest: row.is_best,
       isActive: row.is_active,
+      awaitingRecipe: row.awaiting_recipe,
       legacyMenuItemId: row.legacy_menu_item_id,
       createdAt: row.created_at,
       stationId: row.station_id,
@@ -133,6 +142,7 @@ export class MenuItemRepository implements MenuItemRepositoryPort {
         price: Number(v.price),
         talabatPrice: Number(v.talabat_price),
         legacyVariantId: v.legacy_variant_id,
+        recipeId: v.recipe_id,
       })),
     });
   }

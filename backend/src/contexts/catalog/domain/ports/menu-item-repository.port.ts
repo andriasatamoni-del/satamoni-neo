@@ -17,6 +17,7 @@ export interface MenuItemRepositoryPort {
   save(item: MenuItem): Promise<void>;
   findById(id: string): Promise<MenuItem | null>;
   findByVariantId(variantId: string): Promise<MenuItem | null>;
+  findByRecipeId(recipeId: string): Promise<MenuItem[]>;
   findByLegacyMenuItemId(legacyId: number): Promise<MenuItem | null>;
   list(kind?: MenuItemKind): Promise<MenuItem[]>;
   search(filter: MenuItemListFilter, page?: PageRequest): Promise<{ items: MenuItem[]; total: number }>;

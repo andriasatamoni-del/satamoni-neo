@@ -15,6 +15,7 @@ import { printJobs } from "../../../src/contexts/printing/infrastructure/persist
 import { cashDrawerEntries, cashierShifts } from "../../../src/contexts/shifts/infrastructure/persistence/shifts.tables";
 import { treasuries } from "../../../src/contexts/treasury/infrastructure/persistence/treasury.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
+import { linkVariantRecipe } from "../helpers/menu";
 
 describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي كامل)", () => {
   let app: INestApplication;
@@ -96,11 +97,12 @@ describe("Reporting - GET /reports/branch-health (e2e ضد تطبيق حقيقي
     variantId = variant.id;
 
     const recipeRepo = new RecipeRepository(app.get<Database>(DATABASE));
-    const recipe = Recipe.register({ recipeType: "sellable_variant", variantId });
+    const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
     const version = recipe.createDraftVersion({});
     recipe.addIngredient(version.id, { ingredientItemId, quantity: 2 });
     recipe.activateVersion(version.id);
     await recipeRepo.save(recipe);
+    await linkVariantRecipe(app.get<Database>(DATABASE), variantId, recipe.id);
 
     await request(app.getHttpServer())
       .post("/orders")

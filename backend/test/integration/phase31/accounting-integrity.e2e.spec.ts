@@ -24,6 +24,7 @@ import { orders } from "../../../src/contexts/orders/infrastructure/persistence/
 import { and, count as dbCount, desc, eq, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
 import { accounts, journalEntries, journalEntryLines } from "../../../src/contexts/accounting/infrastructure/persistence/accounting.tables";
 import { businessDateString } from "../../../src/shared/time/business-date";
+import { linkVariantRecipe } from "../helpers/menu";
 
 
 async function netFor(w: World, code: string, sources: Array<[string, string]>): Promise<number> {
@@ -153,12 +154,13 @@ describe("Phase 3.1 - accounting integrity (COGS, payment adjustments, payroll)"
       const item = MenuItem.register({ name: "صنف-مركب-acct" });
       const variant = item.addVariant({ label: "عادي", price: 90, talabatPrice: 90 });
       await new MenuItemRepository(w.db).save(item);
-      const recipe = Recipe.register({ recipeType: "sellable_variant", variantId: variant.id });
+      const recipe = Recipe.register({ recipeType: "sellable_variant", name: "وصفة-جست" });
       const version = recipe.createDraftVersion({});
       recipe.addIngredient(version.id, { ingredientItemId: w.ingredientId, quantity: 1 });
       recipe.addIngredient(version.id, { ingredientItemId: second.id, quantity: 4 });
       recipe.activateVersion(version.id);
       await new RecipeRepository(w.db).save(recipe);
+      await linkVariantRecipe(w.db, variant.id, recipe.id);
 
       const res = await request(w.http())
         .post("/orders")

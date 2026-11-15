@@ -4,6 +4,7 @@ import {
   AddonSingleVariantError,
   DuplicateVariantLabelError,
   MenuItemNameRequiredError,
+  MenuItemRecipeMissingError,
   VariantNotFoundError,
 } from "../../../src/contexts/catalog/domain/errors";
 
@@ -57,8 +58,43 @@ describe("MenuItem aggregate", () => {
     const item = MenuItem.register({ name: "بيتزا" });
     item.deactivate();
     expect(item.isActive).toBe(false);
-    item.activate();
+    item.activate(true);
     expect(item.isActive).toBe(true);
+  });
+
+  describe("recipe requirement", () => {
+    it("refuses to activate an item without a recipe", () => {
+      const item = MenuItem.register({ name: "بيتزا" });
+      item.deactivate();
+      expect(() => item.activate(false)).toThrow(MenuItemRecipeMissingError);
+      expect(item.isActive).toBe(false);
+    });
+
+    it("markAwaitingRecipe deactivates the item until its recipe is added", () => {
+      const item = MenuItem.register({ name: "بيتزا" });
+      item.markAwaitingRecipe();
+      expect(item.isActive).toBe(false);
+      expect(item.awaitingRecipe).toBe(true);
+      expect(item.activateWithRecipe()).toBe(true);
+      expect(item.isActive).toBe(true);
+      expect(item.awaitingRecipe).toBe(false);
+    });
+
+    it("activateWithRecipe leaves a manually deactivated item off", () => {
+      const item = MenuItem.register({ name: "بيتزا" });
+      item.markAwaitingRecipe();
+      item.deactivate();
+      expect(item.activateWithRecipe()).toBe(false);
+      expect(item.isActive).toBe(false);
+    });
+
+    it("manual activation clears the awaiting flag", () => {
+      const item = MenuItem.register({ name: "بيتزا" });
+      item.markAwaitingRecipe();
+      item.activate(true);
+      expect(item.isActive).toBe(true);
+      expect(item.awaitingRecipe).toBe(false);
+    });
   });
 
   describe("kind", () => {

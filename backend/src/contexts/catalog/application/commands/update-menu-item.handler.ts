@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { MenuItem } from "../../domain/menu-item.aggregate";
 import { MENU_ITEM_REPOSITORY, type MenuItemRepositoryPort } from "../../domain/ports/menu-item-repository.port";
 import { MenuItemNotFoundError } from "../../domain/errors";
+import { MenuItemRecipeStatus } from "../services/menu-item-recipe-status.service";
 
 export interface UpdateMenuItemCommand {
   itemId: string;
@@ -15,7 +16,10 @@ export interface UpdateMenuItemCommand {
 
 @Injectable()
 export class UpdateMenuItemHandler {
-  constructor(@Inject(MENU_ITEM_REPOSITORY) private readonly items: MenuItemRepositoryPort) {}
+  constructor(
+    @Inject(MENU_ITEM_REPOSITORY) private readonly items: MenuItemRepositoryPort,
+    private readonly recipeStatus: MenuItemRecipeStatus
+  ) {}
 
   async execute(command: UpdateMenuItemCommand): Promise<MenuItem> {
     const item = await this.items.findById(command.itemId);
@@ -28,8 +32,8 @@ export class UpdateMenuItemHandler {
       imageUrl: command.imageUrl,
       isBest: command.isBest,
     });
-    if (command.isActive === true) item.activate();
-    if (command.isActive === false) item.deactivate();
+    if (command.isActive === true && !item.isActive) item.activate(await this.recipeStatus.hasRecipe(item));
+    if (command.isActive === false && (item.isActive || item.awaitingRecipe)) item.deactivate();
 
     await this.items.save(item);
     return item;

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   EmptyRecipeIngredientsError,
   RecipeAssociationRequiredError,
+  RecipeNameRequiredError,
   RecipeVersionNotEditableError,
   RecipeVersionNotFoundError,
   UnknownRecipeTypeError,
@@ -10,9 +11,6 @@ import {
 export const RECIPE_TYPES = ["sellable_variant", "manufactured_item"] as const;
 export type RecipeType = (typeof RECIPE_TYPES)[number];
 
-// نسخة مبسّطة من دورة الاعتماد الستّة-حالات في الريبو القديم (DRAFT/PENDING_APPROVAL/APPROVED/ACTIVE/
-// ARCHIVED/REJECTED) - مؤجّل تفعيل workflow الاعتماد الكامل لسلايس تاني (راجع تعليق migration
-// 005_create_catalog_tables). القاعدة الأهم اللي متحفوظة من الأول: نسخة ACTIVE واحدة بس لكل وصفة.
 export const RECIPE_VERSION_STATUSES = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
 export type RecipeVersionStatus = (typeof RECIPE_VERSION_STATUSES)[number];
 
@@ -36,18 +34,12 @@ export interface RecipeVersion {
 
 export interface RecipeProps {
   recipeType: RecipeType;
-  variantId: string | null;
+  name: string;
   inventoryItemId: string | null;
   versions: RecipeVersion[];
   legacyRecipeId: number | null;
 }
 
-// Recipe (versioned) - نفس مفهوم recipes+recipe_versions+recipe_ingredients في الريبو القديم، بس
-// versions/ingredients هنا entities تابعة لنفس aggregate (زي MenuItem.variants بالظبط)، مش جداول
-// منفصلة بتتعدّل مباشرة. القاعدة الجوهرية المحفوظة: نسخة ACTIVE واحدة بس لكل وصفة في نفس اللحظة -
-// activateVersion بيأرشف أي نسخة ACTIVE قديمة تلقائيًا قبل ما يفعّل الجديدة (نفس تأثير الـunique index
-// الجزئي في الريبو القديم، بس كقاعدة دومين صريحة هنا). نسخة ACTIVE/ARCHIVED غير قابلة للتعديل - أي
-// تغيير محتاج نسخة DRAFT جديدة (createNewVersion).
 export class Recipe {
   private constructor(
     public readonly id: string,
@@ -56,21 +48,17 @@ export class Recipe {
 
   static register(input: {
     recipeType: string;
-    variantId?: string | null;
+    name: string;
     inventoryItemId?: string | null;
     legacyRecipeId?: number | null;
   }): Recipe {
     if (!RECIPE_TYPES.includes(input.recipeType as RecipeType)) throw new UnknownRecipeTypeError(input.recipeType);
-    const isVariantRecipe = input.recipeType === "sellable_variant";
-    const hasVariant = !!input.variantId;
-    const hasItem = !!input.inventoryItemId;
-    if ((isVariantRecipe && (!hasVariant || hasItem)) || (!isVariantRecipe && (!hasItem || hasVariant))) {
-      throw new RecipeAssociationRequiredError();
-    }
+    const isManufactured = input.recipeType === "manufactured_item";
+    if (isManufactured !== !!input.inventoryItemId) throw new RecipeAssociationRequiredError();
 
     return new Recipe(randomUUID(), {
       recipeType: input.recipeType as RecipeType,
-      variantId: input.variantId ?? null,
+      name: Recipe.cleanName(input.name),
       inventoryItemId: input.inventoryItemId ?? null,
       versions: [],
       legacyRecipeId: input.legacyRecipeId ?? null,
@@ -110,7 +98,6 @@ export class Recipe {
     });
   }
 
-  // بيفعّل نسخة DRAFT: بيأرشف أي نسخة ACTIVE سابقة تلقائيًا (نسخة واحدة بس ACTIVE في نفس اللحظة)
   activateVersion(versionId: string): void {
     const version = this.getVersionOrThrow(versionId);
     if (version.status !== "DRAFT") throw new RecipeVersionNotEditableError();
@@ -126,6 +113,23 @@ export class Recipe {
     version.activatedAt = now;
   }
 
+  rename(name: string): void {
+    this.props.name = Recipe.cleanName(name);
+  }
+
+  replaceIngredients(input: { ingredients: readonly { ingredientItemId: string; quantity: number; unit?: string | null }[]; createdBy?: string | null }): RecipeVersion {
+    const version = this.createDraftVersion({ createdBy: input.createdBy });
+    for (const ingredient of input.ingredients) this.addIngredient(version.id, ingredient);
+    this.activateVersion(version.id);
+    return version;
+  }
+
+  private static cleanName(name: string): string {
+    const cleaned = name.trim();
+    if (!cleaned) throw new RecipeNameRequiredError();
+    return cleaned;
+  }
+
   get activeVersion(): RecipeVersion | null {
     return this.props.versions.find((v) => v.status === "ACTIVE") ?? null;
   }
@@ -137,7 +141,7 @@ export class Recipe {
   }
 
   get recipeType(): RecipeType { return this.props.recipeType; }
-  get variantId(): string | null { return this.props.variantId; }
+  get name(): string { return this.props.name; }
   get inventoryItemId(): string | null { return this.props.inventoryItemId; }
   get versions(): readonly RecipeVersion[] { return this.props.versions; }
   get legacyRecipeId(): number | null { return this.props.legacyRecipeId; }

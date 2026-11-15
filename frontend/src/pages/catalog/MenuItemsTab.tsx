@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { useCan } from "../../shared/auth/AuthContext";
 import { apiRequest } from "../../shared/api/client";
 import { usePaginatedQuery } from "../../shared/api/usePaginatedQuery";
 import { Badge } from "../../shared/ui/Badge";
@@ -33,14 +35,40 @@ interface SizeRow {
   label: string;
   price: string;
   talabatPrice: string;
+  recipeId: string;
 }
 
 const PRICE_MENU_LABELS: Record<PriceMenu, string> = { regular: "المنيو العادي", talabat: "طلبات" };
 
-const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", addonPrice: "", addonTalabatPrice: "" };
+const EMPTY_FORM = { kind: "item" as MenuItemKind, name: "", categoryId: "", addonPrice: "", addonTalabatPrice: "", addonRecipeId: "" };
 
 let nextSizeRowKey = 0;
-const newSizeRow = (): SizeRow => ({ key: nextSizeRowKey++, label: "", price: "", talabatPrice: "" });
+const newSizeRow = (): SizeRow => ({ key: nextSizeRowKey++, label: "", price: "", talabatPrice: "", recipeId: "" });
+
+interface RecipeOption { id: string; name: string; ready: boolean; }
+
+function useMenuRecipeOptions() {
+  const allowed = useCan();
+  const query = useQuery({
+    queryKey: ["catalog", "menu-recipes", "options"],
+    queryFn: () => apiRequest<RecipeOption[]>("/catalog/menu-recipes/options"),
+    enabled: allowed(PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE),
+  });
+  return query.data ?? [];
+}
+
+function RecipeSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: RecipeOption[]; label: string }) {
+  return (
+    <Select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— من غير وصفة —</option>
+      {options.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}{r.ready ? "" : " (من غير مكوّنات)"}
+        </option>
+      ))}
+    </Select>
+  );
+}
 
 function duplicateLabel(labels: string[]): string | null {
   const seen = new Set<string>();
@@ -49,6 +77,15 @@ function duplicateLabel(labels: string[]): string | null {
     seen.add(label);
   }
   return null;
+}
+
+function recipeLink(itemId: string): string {
+  return `/production?tab=recipe-links&item=${itemId}`;
+}
+
+function MissingRecipeTag({ itemId, canOpenRecipes }: { itemId: string; canOpenRecipes: boolean }) {
+  const tag = <Badge tone="warning">مفيش وصفة</Badge>;
+  return canOpenRecipes ? <Link to={recipeLink(itemId)} title="إضافة وصفة">{tag}</Link> : tag;
 }
 
 interface ItemPatch {
@@ -62,7 +99,10 @@ interface ItemPatch {
 
 export function MenuItemsTab({ canManage, categories }: { canManage: boolean; categories: MenuCategory[] }) {
   const queryClient = useQueryClient();
-  const invalidateItems = () => queryClient.invalidateQueries({ queryKey: ["catalog", "items"] });
+  const allowed = useCan();
+  const canOpenRecipes = allowed(PERMISSION.PRODUCTION_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE);
+  const invalidateItems = () => queryClient.invalidateQueries({ queryKey: ["catalog"] });
+  const [createdItem, setCreatedItem] = useState<{ id: string; name: string } | null>(null);
 
   const list = useListState(["q", "kind", "categoryId", "status"] as const, { prefix: "items." });
   const pageQuery = usePaginatedQuery<MenuItem>(["catalog", "items"], "/catalog/items", { ...list.params, kind: list.params.kind || "all" });
@@ -99,6 +139,19 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
 
   return (
     <div className="space-y-6">
+      {createdItem && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>"{createdItem.name}" اتضاف موقوف لحد ما كل أحجامه تتربط بوصفة.</span>
+          <div className="flex items-center gap-2">
+            {canOpenRecipes && (
+              <Link to={recipeLink(createdItem.id)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
+                ربط الوصفات
+              </Link>
+            )}
+            <button type="button" onClick={() => setCreatedItem(null)} className="text-amber-700 hover:text-amber-900" aria-label="إخفاء">×</button>
+          </div>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -216,6 +269,7 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
                         <span className="flex flex-wrap items-center gap-1.5">
                           {i.name}
                           {i.kind === "addon" && <Badge tone="info">إضافة</Badge>}
+                          {i.hasRecipe === false && <MissingRecipeTag itemId={i.id} canOpenRecipes={canOpenRecipes} />}
                         </span>
                         {i.description && <p className="text-xs font-normal text-slate-400">{i.description}</p>}
                       </TD>
@@ -292,7 +346,8 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
                             <button
                               type="button"
                               onClick={() => updateItem.mutate({ id: i.id, isActive: !i.isActive })}
-                              disabled={updateItem.isPending}
+                              disabled={updateItem.isPending || (!i.isActive && i.hasRecipe === false)}
+                              title={!i.isActive && i.hasRecipe === false ? "ضيف وصفة لكل أحجام الصنف الأول" : undefined}
                               className={`${ROW_ACTION} ${i.isActive ? "text-red-600 hover:bg-red-50" : "text-emerald-700 hover:bg-emerald-50"}`}
                             >
                               {i.isActive ? "تعطيل" : "تفعيل"}
@@ -326,8 +381,9 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
         <AddMenuItemDialog
           categories={categories}
           onClose={() => setIsAdding(false)}
-          onCreated={() => {
+          onCreated={(item) => {
             setIsAdding(false);
+            setCreatedItem(item.isActive ? null : item);
             invalidateItems();
           }}
         />
@@ -336,9 +392,10 @@ export function MenuItemsTab({ canManage, categories }: { canManage: boolean; ca
   );
 }
 
-function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: MenuCategory[]; onCreated: () => void; onClose: () => void }) {
+function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: MenuCategory[]; onCreated: (item: { id: string; name: string; isActive: boolean }) => void; onClose: () => void }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [sizes, setSizes] = useState<SizeRow[]>(() => [newSizeRow()]);
+  const recipeOptions = useMenuRecipeOptions();
   const [error, setError] = useState<string | null>(null);
   const isAddon = form.kind === "addon";
 
@@ -347,9 +404,9 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
   const createItem = useMutation({
     mutationFn: () => {
       const variants = isAddon
-        ? [{ label: ADDON_VARIANT_LABEL, price: Number(form.addonPrice), talabatPrice: Number(form.addonTalabatPrice) }]
-        : filledSizes.map((row) => ({ label: row.label.trim(), price: Number(row.price), talabatPrice: Number(row.talabatPrice) }));
-      return apiRequest("/catalog/items", {
+        ? [{ label: ADDON_VARIANT_LABEL, price: Number(form.addonPrice), talabatPrice: Number(form.addonTalabatPrice), recipeId: form.addonRecipeId || undefined }]
+        : filledSizes.map((row) => ({ label: row.label.trim(), price: Number(row.price), talabatPrice: Number(row.talabatPrice), recipeId: row.recipeId || undefined }));
+      return apiRequest<MenuItem>("/catalog/items", {
         method: "POST",
         body: {
           kind: form.kind,
@@ -359,7 +416,7 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
         },
       });
     },
-    onSuccess: onCreated,
+    onSuccess: (item) => onCreated({ id: item.id, name: item.name, isActive: item.isActive }),
     onError: (err) => setError(errorText(err)),
   });
 
@@ -388,6 +445,7 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
       onSubmit={submit}
       onClose={onClose}
     >
+      <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">اختار وصفة لكل حجم. لو حجم من غير وصفة، الصنف هيتعمل موقوف لحد ما تربطه بوصفة، وبعدها هيتفعّل لوحده.</p>
       <fieldset>
         <legend className="mb-2 text-sm font-semibold text-slate-700">النوع</legend>
         <div role="radiogroup" className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
@@ -421,6 +479,9 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
             </Field>
             <Field label="سعر طلبات">
               <Input type="number" min="0" required value={form.addonTalabatPrice} onChange={(e) => setForm({ ...form, addonTalabatPrice: e.target.value })} />
+            </Field>
+            <Field label="الوصفة">
+              <RecipeSelect label="وصفة الإضافة" value={form.addonRecipeId} options={recipeOptions} onChange={(addonRecipeId) => setForm({ ...form, addonRecipeId })} />
             </Field>
           </>
         ) : (
@@ -464,6 +525,7 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
                   aria-label={`سعر طلبات الحجم ${index + 1}`}
                   onChange={(e) => updateSize(row.key, { talabatPrice: e.target.value })}
                 />
+                <RecipeSelect label={`وصفة الحجم ${index + 1}`} value={row.recipeId} options={recipeOptions} onChange={(recipeId) => updateSize(row.key, { recipeId })} />
                 <button
                   type="button"
                   title="حذف الحجم"
@@ -492,14 +554,15 @@ function AddMenuItemDialog({ categories, onCreated, onClose }: { categories: Men
 }
 
 function AddVariantDialog({ item, onAdded, onClose }: { item: MenuItem; onAdded: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({ label: "", price: "", talabatPrice: "" });
+  const [form, setForm] = useState({ label: "", price: "", talabatPrice: "", recipeId: "" });
+  const recipeOptions = useMenuRecipeOptions();
   const [error, setError] = useState<string | null>(null);
 
   const addVariant = useMutation({
     mutationFn: () =>
       apiRequest(`/catalog/items/${item.id}/variants`, {
         method: "POST",
-        body: { label: form.label.trim(), price: Number(form.price), talabatPrice: Number(form.talabatPrice) },
+        body: { label: form.label.trim(), price: Number(form.price), talabatPrice: Number(form.talabatPrice), recipeId: form.recipeId || undefined },
       }),
     onSuccess: onAdded,
     onError: (err) => setError(errorText(err)),
@@ -520,6 +583,9 @@ function AddVariantDialog({ item, onAdded, onClose }: { item: MenuItem; onAdded:
       {item.variants.length > 0 && (
         <p className="text-xs text-slate-500">الأحجام الحالية: {item.variants.map((v) => v.label).join("، ")}</p>
       )}
+      {item.isActive && !form.recipeId && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">من غير وصفة الصنف هيتوقف لحد ما تربط الحجم الجديد بوصفة، وبعدها هيرجع يتفعّل لوحده.</p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label="اسم الحجم">
           <Input required value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
@@ -531,6 +597,9 @@ function AddVariantDialog({ item, onAdded, onClose }: { item: MenuItem; onAdded:
           <Input type="number" min="0" required value={form.talabatPrice} onChange={(e) => setForm({ ...form, talabatPrice: e.target.value })} />
         </Field>
       </div>
+      <Field label="الوصفة">
+        <RecipeSelect label="وصفة الحجم الجديد" value={form.recipeId} options={recipeOptions} onChange={(recipeId) => setForm({ ...form, recipeId })} />
+      </Field>
     </FormDialog>
   );
 }

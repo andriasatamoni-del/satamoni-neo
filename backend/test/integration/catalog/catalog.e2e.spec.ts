@@ -97,12 +97,13 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
     expect(res.body.variants).toHaveLength(2);
   });
 
-  test("POST /catalog/recipes - بيعمل وصفة للحجم", async () => {
+  test("POST /catalog/recipes - creates a named menu recipe", async () => {
     const res = await request(app.getHttpServer())
       .post("/catalog/recipes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ recipeType: "sellable_variant", variantId });
+      .send({ recipeType: "sellable_variant", name: "وصفة مارجريتا-e2e-جست" });
     expect(res.status).toBe(201);
+    expect(res.body.name).toBe("وصفة مارجريتا-e2e-جست");
     recipeId = res.body.id;
   });
 
@@ -126,6 +127,11 @@ describe("Catalog - /catalog (e2e ضد تطبيق حقيقي كامل)", () => {
   });
 
   test("GET /catalog/variants/:variantId/recipe - بيرجّع الوصفة بنسختها النشطة", async () => {
+    const assigned = await request(app.getHttpServer())
+      .put(`/catalog/variants/${variantId}/recipe`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ recipeId });
+    expect(assigned.status).toBe(200);
     const res = await request(app.getHttpServer())
       .get(`/catalog/variants/${variantId}/recipe`)
       .set("Authorization", `Bearer ${adminToken}`);

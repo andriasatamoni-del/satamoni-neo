@@ -13,19 +13,26 @@ export const menuItemVariants = pgTable("menu_item_variants", {
   price: numeric().notNull().$type<number>(),
   talabat_price: numeric().notNull().$type<number>(),
   legacy_variant_id: integer(),
+  recipe_id: uuid(),
 }, (table) => [
   foreignKey({
       columns: [table.item_id],
       foreignColumns: [menuItems.id],
       name: "menu_item_variants_item_id_fkey"
     }).onDelete("cascade"),
+  foreignKey({
+      columns: [table.recipe_id],
+      foreignColumns: [recipes.id],
+      name: "menu_item_variants_recipe_id_fkey"
+    }).onDelete("set null"),
+  index("menu_item_variants_recipe_id_idx").using("btree", table.recipe_id.asc().nullsLast()),
   unique("menu_item_variants_item_label_unique").on(table.item_id, table.label),
 ]);
 
 export const recipes = pgTable("recipes", {
   id: uuid().defaultRandom().primaryKey().notNull(),
   recipe_type: text().notNull(),
-  variant_id: uuid(),
+  name: text().notNull(),
   inventory_item_id: uuid(),
   legacy_recipe_id: integer(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -35,14 +42,9 @@ export const recipes = pgTable("recipes", {
       foreignColumns: [inventoryItems.id],
       name: "recipes_inventory_item_id_fkey"
     }).onDelete("cascade"),
-  foreignKey({
-      columns: [table.variant_id],
-      foreignColumns: [menuItemVariants.id],
-      name: "recipes_variant_id_fkey"
-    }).onDelete("cascade"),
-  unique("recipes_variant_id_key").on(table.variant_id),
   unique("recipes_inventory_item_id_key").on(table.inventory_item_id),
   check("recipes_recipe_type_check", sql`recipe_type = ANY (ARRAY['sellable_variant'::text, 'manufactured_item'::text])`),
+  check("recipes_association_check", sql`(recipe_type = 'manufactured_item') = (inventory_item_id IS NOT NULL)`),
 ]);
 
 export const recipeVersions = pgTable("recipe_versions", {
@@ -97,6 +99,7 @@ export const menuItems = pgTable("menu_items", {
   image_url: text(),
   is_best: boolean().default(false).notNull(),
   is_active: boolean().default(true).notNull(),
+  awaiting_recipe: boolean().default(false).notNull(),
   legacy_menu_item_id: integer(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
   station_id: uuid(),

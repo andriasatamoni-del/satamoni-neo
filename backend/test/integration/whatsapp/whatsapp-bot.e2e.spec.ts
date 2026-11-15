@@ -20,6 +20,7 @@ import { users } from "../../../src/contexts/identity-access/infrastructure/pers
 import { posSettings } from "../../../src/contexts/settings/infrastructure/persistence/settings.tables";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { orderItems, orders } from "../../../src/contexts/orders/infrastructure/persistence/orders.tables";
+import { markReadyForSale } from "../helpers/menu";
 
 class ScriptedAi implements AiChatClientPort {
   configured = true;
@@ -160,6 +161,7 @@ describe("WhatsApp - بوت الرد الآلي (e2e)", () => {
       .set(auth())
       .send({ kind: "addon", name: "جبنة زيادة-بوت-جست", variants: [{ label: "عادي", price: 10, talabatPrice: 14 }] });
     addonId = addon.body.id;
+    await markReadyForSale(app.get<Database>(DATABASE), [itemId, addonId]);
   });
 
   afterAll(async () => {

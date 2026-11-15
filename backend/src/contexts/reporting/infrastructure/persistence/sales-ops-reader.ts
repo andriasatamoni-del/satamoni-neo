@@ -348,11 +348,12 @@ export class SalesOpsReader implements SalesOpsReaderPort {
       .orderBy(asc(menuItems.name));
 
     const recipeRows = await this.db
-      .select({ variant_id: recipes.variant_id, version_id: recipeVersions.id })
-      .from(recipes)
+      .select({ variant_id: menuItemVariants.id, version_id: recipeVersions.id })
+      .from(menuItemVariants)
+      .innerJoin(recipes, eq(recipes.id, menuItemVariants.recipe_id))
       .innerJoin(recipeVersions, eq(recipeVersions.recipe_id, recipes.id))
       .where(and(eq(recipes.recipe_type, "sellable_variant"), eq(recipeVersions.status, "ACTIVE")));
-    const activeVersionByVariant = new Map(recipeRows.filter((r) => r.variant_id !== null).map((r) => [r.variant_id as string, r.version_id]));
+    const activeVersionByVariant = new Map(recipeRows.map((r) => [r.variant_id, r.version_id]));
 
     const versionIds = [...activeVersionByVariant.values()];
     const ingredientRows =
@@ -401,13 +402,14 @@ export class SalesOpsReader implements SalesOpsReaderPort {
     if (variantIds.length === 0) return new Map();
 
     const recipeRows = await this.db
-      .select({ variant_id: recipes.variant_id, version_id: recipeVersions.id })
-      .from(recipes)
+      .select({ variant_id: menuItemVariants.id, version_id: recipeVersions.id })
+      .from(menuItemVariants)
+      .innerJoin(recipes, eq(recipes.id, menuItemVariants.recipe_id))
       .innerJoin(recipeVersions, eq(recipeVersions.recipe_id, recipes.id))
       .where(
-        and(eq(recipes.recipe_type, "sellable_variant"), eq(recipeVersions.status, "ACTIVE"), inArray(recipes.variant_id, variantIds))
+        and(eq(recipes.recipe_type, "sellable_variant"), eq(recipeVersions.status, "ACTIVE"), inArray(menuItemVariants.id, variantIds))
       );
-    const versionByVariant = new Map(recipeRows.map((r) => [r.variant_id as string, r.version_id]));
+    const versionByVariant = new Map(recipeRows.map((r) => [r.variant_id, r.version_id]));
     const versionIds = [...versionByVariant.values()];
     if (versionIds.length === 0) return new Map();
 

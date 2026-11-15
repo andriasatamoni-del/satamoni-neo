@@ -10,6 +10,8 @@ export class VariantInputDto {
   price!: number;
 
   @IsNumber() @Min(0) talabatPrice!: number;
+
+  @IsOptional() @IsUUID() recipeId?: string;
 }
 
 export class RegisterMenuItemDto {

@@ -113,6 +113,27 @@
       "when": 1794767694345,
       "tag": "0015_dynamic_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794772436762,
+      "tag": "0016_menu_item_awaiting_recipe",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794775645384,
+      "tag": "0017_recipe_name_and_variant_recipe",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794775659930,
+      "tag": "0018_drop_recipe_variant_id",
+      "breakpoints": true
     }
   ]
 }

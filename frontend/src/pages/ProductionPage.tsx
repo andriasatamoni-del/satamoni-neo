@@ -1,5 +1,6 @@
 import { Fragment, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { apiRequest, ApiError } from "../shared/api/client";
 import { useCan } from "../shared/auth/AuthContext";
 import { PERMISSION } from "../shared/auth/permissions";
@@ -13,6 +14,8 @@ import { EmptyState, TBody, TD, TH, THead, TR, Table } from "../shared/ui/Table"
 import { Tabs, usePermittedTabs } from "../shared/ui/Tabs";
 import { Pagination } from "../shared/ui/Pagination";
 import { usePaginatedQuery } from "../shared/api/usePaginatedQuery";
+import { MenuRecipesTab } from "./production/MenuRecipesTab";
+import { RecipeLinksTab } from "./production/RecipeLinksTab";
 import { useListState } from "../shared/ui/useListState";
 
 interface InventoryItem { id: string; name: string; unit: string; itemType: "raw" | "manufactured"; }
@@ -50,8 +53,8 @@ interface RawMaterialRequirementResponse { hasRecipe: boolean; raw: RawMaterialR
 
 const TABS = [
   { key: "orders", label: "أوامر التحويل", perm: PERMISSION.PRODUCTION_VIEW },
-  // GET /catalog/recipes محتاج catalog.items.view أو catalog.recipes.manage
-  { key: "recipes", label: "الوصفات", perm: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE] },
+  { key: "recipes", label: "مكتبة الوصفات", perm: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE] },
+  { key: "recipe-links", label: "ربط المنيو بالوصفات", perm: [PERMISSION.CATALOG_ITEMS_VIEW, PERMISSION.CATALOG_RECIPES_MANAGE] },
   { key: "planning", label: "تخطيط التصنيع", perm: PERMISSION.PRODUCTION_VIEW },
 ];
 
@@ -66,7 +69,8 @@ function fmt(n: number): string {
 export function ProductionPage() {
   const queryClient = useQueryClient();
   const allowed = useCan();
-  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { tabs, active: tab, setActive: setTab } = usePermittedTabs(TABS, searchParams.get("tab") ?? undefined);
   const canSeeProduction = allowed(PERMISSION.PRODUCTION_VIEW);
   const canCreateOrder = allowed(PERMISSION.PRODUCTION_CREATE);
   const canApproveOrder = allowed(PERMISSION.PRODUCTION_APPROVE);
@@ -79,16 +83,14 @@ export function ProductionPage() {
     queryFn: () => apiRequest<InventoryItem[]>("/inventory/items"),
     enabled: allowed(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE),
   });
-  const { branches } = useBranchOptions<Branch>(tab !== "recipes");
+  const { branches } = useBranchOptions<Branch>(tab === "orders" || tab === "planning");
   const recipesQuery = useQuery({
     queryKey: ["catalog", "recipes", "manufactured_item"],
     queryFn: () => apiRequest<Recipe[]>("/catalog/recipes?recipeType=manufactured_item"),
-    enabled: tab === "recipes",
+    enabled: tab === "orders",
   });
 
   const items = itemsQuery.data ?? [];
-  const manufacturedItems = items.filter((i) => i.itemType === "manufactured");
-  const rawItems = items.filter((i) => i.itemType === "raw");
   const recipes = recipesQuery.data ?? [];
   const ordersList = useListState([] as const, { prefix: "orders." });
   const ordersPageQuery = usePaginatedQuery<ConversionOrder>(["production", "orders"], "/production", ordersList.params, { enabled: canSeeProduction && tab === "orders" });
@@ -97,51 +99,6 @@ export function ProductionPage() {
     return items.find((i) => i.id === id)?.name ?? id;
   }
 
-  // ---------- وصفات ----------
-  const [newRecipeOutputId, setNewRecipeOutputId] = useState("");
-  const [recipeError, setRecipeError] = useState<string | null>(null);
-  const createRecipe = useMutation({
-    mutationFn: () => apiRequest<Recipe>("/catalog/recipes", { method: "POST", body: { recipeType: "manufactured_item", inventoryItemId: newRecipeOutputId } }),
-    onSuccess: () => {
-      setNewRecipeOutputId("");
-      setRecipeError(null);
-      queryClient.invalidateQueries({ queryKey: ["catalog", "recipes", "manufactured_item"] });
-    },
-    onError: (err) => setRecipeError(err instanceof ApiError ? err.message : "حصل خطأ غير متوقع"),
-  });
-
-  const [versionLines, setVersionLines] = useState<Record<string, { ingredientItemId: string; quantity: string }[]>>({});
-  const [versionError, setVersionError] = useState<Record<string, string>>({});
-
-  function linesFor(recipeId: string) {
-    return versionLines[recipeId] ?? [{ ingredientItemId: "", quantity: "" }];
-  }
-  function updateLine(recipeId: string, index: number, patch: Partial<{ ingredientItemId: string; quantity: string }>) {
-    setVersionLines((prev) => {
-      const lines = [...linesFor(recipeId)];
-      lines[index] = { ...lines[index], ...patch };
-      return { ...prev, [recipeId]: lines };
-    });
-  }
-
-  const createAndActivateVersion = useMutation({
-    mutationFn: async (recipeId: string) => {
-      const ingredients = linesFor(recipeId)
-        .filter((l) => l.ingredientItemId && l.quantity)
-        .map((l) => ({ ingredientItemId: l.ingredientItemId, quantity: Number(l.quantity) }));
-      const created = await apiRequest<Recipe>(`/catalog/recipes/${recipeId}/versions`, { method: "POST", body: { ingredients } });
-      const draft = created.versions.find((v) => v.status === "DRAFT");
-      return apiRequest<Recipe>(`/catalog/recipes/${recipeId}/versions/${draft!.id}/activate`, { method: "POST" });
-    },
-    onSuccess: (_res, recipeId) => {
-      setVersionLines((prev) => ({ ...prev, [recipeId]: [{ ingredientItemId: "", quantity: "" }] }));
-      setVersionError((prev) => ({ ...prev, [recipeId]: "" }));
-      queryClient.invalidateQueries({ queryKey: ["catalog", "recipes", "manufactured_item"] });
-    },
-    onError: (err, recipeId) => setVersionError((prev) => ({ ...prev, [recipeId]: err instanceof ApiError ? err.message : "حصل خطأ غير متوقع" })),
-  });
-
-  // ---------- أوامر التحويل ----------
   const [orderForm, setOrderForm] = useState({ branchId: "", recipeId: "", plannedOutputQuantity: "" });
   const [orderError, setOrderError] = useState<string | null>(null);
   const createOrder = useMutation({
@@ -199,7 +156,6 @@ export function ProductionPage() {
     onError: (err, id) => setCompleteError((prev) => ({ ...prev, [id]: err instanceof ApiError ? err.message : "حصل خطأ غير متوقع" })),
   });
 
-  // ---------- تخطيط التصنيع ----------
   const [planCkBranchId, setPlanCkBranchId] = useState("");
   const [planFromDate, setPlanFromDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [planToDate, setPlanToDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -224,10 +180,6 @@ export function ProductionPage() {
     enabled: !!planCkBranchId && !!rawMaterialOpenItemId && !!rawMaterialRow?.requiredProduction,
   });
 
-  function handleRecipeSubmit(e: FormEvent) {
-    e.preventDefault();
-    createRecipe.mutate();
-  }
   function handleOrderSubmit(e: FormEvent) {
     e.preventDefault();
     createOrder.mutate();
@@ -237,85 +189,27 @@ export function ProductionPage() {
 
   return (
     <div>
-      <PageHeader title="التصنيع والتعبئة" description="وصفات التحويل وأوامر التصنيع/التعبئة" />
+      <PageHeader title="التصنيع والتعبئة" description="وصفات أصناف المنيو وأوامر التصنيع/التعبئة" />
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === "recipes" && (
-        <div className="space-y-6">
-          {canManageRecipes && (
-            <Card>
-              <CardHeader><CardTitle>وصفة تحويل جديدة</CardTitle></CardHeader>
-              <CardBody>
-                <form onSubmit={handleRecipeSubmit} className="flex flex-wrap items-end gap-3">
-                  <Field label="الصنف الناتج (لازم يكون نوعه مصنّع)">
-                    <Select required value={newRecipeOutputId} onChange={(e) => setNewRecipeOutputId(e.target.value)}>
-                      <option value="">اختر صنف مصنّع</option>
-                      {manufacturedItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                    </Select>
-                  </Field>
-                  <Button type="submit" disabled={createRecipe.isPending}>إنشاء وصفة</Button>
-                </form>
-                {manufacturedItems.length === 0 && (
-                  <p className="mt-3 text-sm text-slate-400">مفيش أصناف "مصنّعة" لسه - أضف صنف جديد من تبويب المخزون واختار نوعه "مصنّع".</p>
-                )}
-                {recipeError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{recipeError}</p>}
-              </CardBody>
-            </Card>
-          )}
+      {tab === "recipes" && <MenuRecipesTab ingredients={items} canManageRecipes={canManageRecipes} />}
 
-          {recipes.map((recipe) => {
-            const activeVersion = recipe.versions.find((v) => v.status === "ACTIVE");
-            return (
-              <Card key={recipe.id}>
-                <CardHeader><CardTitle>{itemName(recipe.inventoryItemId ?? "")}</CardTitle></CardHeader>
-                <CardBody>
-                  {activeVersion ? (
-                    <div className="mb-4">
-                      <Badge tone="brand">نسخة نشطة #{activeVersion.versionNumber}</Badge>
-                      <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                        {activeVersion.ingredients.map((ing, i) => (
-                          <li key={i}>{itemName(ing.ingredientItemId)} - {fmt(ing.quantity)} لكل وحدة ناتج</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <p className="mb-4 text-sm text-slate-400">مفيش نسخة نشطة لسه - أضف مكوّنات وفعّل نسخة عشان تقدر تستخدمها في أمر تحويل.</p>
-                  )}
-
-                  {canManageRecipes && (
-                  <>
-                  <p className="mb-2 text-xs font-semibold text-slate-500">نسخة جديدة (هتتفعّل فورًا)</p>
-                  <div className="space-y-2">
-                    {linesFor(recipe.id).map((line, i) => (
-                      <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <Select value={line.ingredientItemId} onChange={(e) => updateLine(recipe.id, i, { ingredientItemId: e.target.value })}>
-                          <option value="">اختر مكوّن خام</option>
-                          {rawItems.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
-                        </Select>
-                        <Input type="number" step="any" placeholder="الكمية لكل وحدة ناتج" value={line.quantity} onChange={(e) => updateLine(recipe.id, i, { quantity: e.target.value })} />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <Button type="button" variant="secondary" size="sm" onClick={() => setVersionLines((prev) => ({ ...prev, [recipe.id]: [...linesFor(recipe.id), { ingredientItemId: "", quantity: "" }] }))}>
-                      + مكوّن
-                    </Button>
-                    <Button type="button" size="sm" disabled={createAndActivateVersion.isPending} onClick={() => createAndActivateVersion.mutate(recipe.id)}>
-                      حفظ وتفعيل
-                    </Button>
-                  </div>
-                  {versionError[recipe.id] && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{versionError[recipe.id]}</p>}
-                  </>
-                  )}
-                </CardBody>
-              </Card>
-            );
-          })}
-          {recipes.length === 0 && (
-            <Card><CardBody><EmptyState>مفيش وصفات تحويل لسه</EmptyState></CardBody></Card>
-          )}
-        </div>
+      {tab === "recipe-links" && (
+        <RecipeLinksTab
+          canAssign={allowed(PERMISSION.CATALOG_ITEMS_MANAGE, PERMISSION.CATALOG_RECIPES_MANAGE)}
+          highlightItemId={searchParams.get("item")}
+          onClearHighlight={() =>
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("item");
+                return next;
+              },
+              { replace: true }
+            )
+          }
+        />
       )}
 
       {tab === "orders" && (
@@ -367,7 +261,6 @@ export function ProductionPage() {
                         <TD><StatusBadge status={STATUS_LABELS[order.status] ?? order.status} /></TD>
                         <TD>
                           <div className="flex flex-wrap gap-1.5">
-                            {/* بدء التنفيذ = POST /production/:id/start ومحتاج production.create */}
                             {order.status === "DRAFT" && canApproveOrder && (
                               <Button size="sm" onClick={() => approveOrder.mutate(order.id)} disabled={approveOrder.isPending}>اعتماد</Button>
                             )}

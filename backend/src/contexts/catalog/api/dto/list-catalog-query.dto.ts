@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID } from "class-validator";
 import { ListQueryDto, QueryBoolean } from "../../../../shared/http/list-query.dto";
 import { MENU_GROUPS } from "../../domain/menu-category.aggregate";
 
@@ -37,4 +37,15 @@ export class ListMenuCategoriesQueryDto extends ListQueryDto {
   @IsOptional()
   @IsIn(["active", "inactive"])
   status?: "active" | "inactive";
+}
+
+export class ListMenuRecipeItemsQueryDto extends ListQueryDto {
+  @IsOptional()
+  @QueryBoolean()
+  @IsBoolean()
+  missing?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
 }

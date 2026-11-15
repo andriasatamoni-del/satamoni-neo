@@ -7,6 +7,8 @@ export interface RecipeRepositoryPort {
   findByInventoryItemId(inventoryItemId: string): Promise<Recipe | null>;
   findByLegacyRecipeId(legacyId: number): Promise<Recipe | null>;
   list(filter?: { recipeType?: string }): Promise<Recipe[]>;
+  readyMenuRecipeIds(recipeIds: readonly string[]): Promise<Set<string>>;
+  stockItemName(inventoryItemId: string): Promise<string | null>;
 }
 
 export const RECIPE_REPOSITORY = Symbol("RECIPE_REPOSITORY");
