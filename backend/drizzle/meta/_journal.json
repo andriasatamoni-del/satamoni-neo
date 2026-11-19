@@ -148,6 +148,13 @@
       "when": 1795037348144,
       "tag": "0020_inventory_transfers_register_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795125351564,
+      "tag": "0021_callcenter_phone_orders",
+      "breakpoints": true
     }
   ]
 }

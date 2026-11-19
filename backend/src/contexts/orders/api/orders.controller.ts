@@ -120,6 +120,7 @@ function toPublicOrder(order: Order) {
     kitchenAcceptedAt: order.kitchenAcceptedAt,
     kitchenReadyAt: order.kitchenReadyAt,
     createdAt: order.createdAt,
+    createdBy: order.createdBy,
     paymentMethodId: order.paymentMethodId,
     source: order.source,
     customerNotes: order.customerNotes,

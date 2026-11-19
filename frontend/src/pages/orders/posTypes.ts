@@ -54,6 +54,8 @@ export interface Order {
   kitchenStatus: string;
   paymentMethodId: string | null;
   source?: string;
+  createdBy?: string | null;
+  createdAt?: string;
   customerNotes?: string | null;
   addressDetails?: string | null;
 }
