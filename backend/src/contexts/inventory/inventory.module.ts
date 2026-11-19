@@ -39,6 +39,13 @@ import { ListTransferRequestsHandler } from "./application/queries/list-transfer
 import { ListInventoryBatchesHandler } from "./application/queries/list-inventory-batches.handler";
 import { GetRequisitionSuggestionHandler } from "./application/queries/get-requisition-suggestion.handler";
 import { REQUISITION_SUGGESTION_READER } from "./domain/ports/requisition-suggestion-reader.port";
+import { INVENTORY_ITEM_USAGE_READER } from "./domain/ports/inventory-item-usage-reader.port";
+import { BRANCH_STOCK_READER } from "./domain/ports/branch-stock-reader.port";
+import { InventoryItemUsageReader } from "./infrastructure/persistence/inventory-item-usage.reader";
+import { BranchStockReader } from "./infrastructure/persistence/branch-stock.reader";
+import { ArchiveInventoryItemHandler } from "./application/commands/archive-inventory-item.handler";
+import { RegisterBranchTransferHandler } from "./application/commands/register-branch-transfer.handler";
+import { ListBranchStockHandler } from "./application/queries/list-branch-stock.handler";
 import { RequisitionSuggestionReader } from "./infrastructure/persistence/requisition-suggestion.reader";
 import { InventoryController } from "./api/inventory.controller";
 
@@ -64,6 +71,11 @@ import { InventoryController } from "./api/inventory.controller";
     { provide: TRANSFER_REQUEST_REPOSITORY, useClass: TransferRequestRepository },
     { provide: INVENTORY_BATCH_REPOSITORY, useClass: InventoryBatchRepository },
     { provide: REQUISITION_SUGGESTION_READER, useClass: RequisitionSuggestionReader },
+    { provide: INVENTORY_ITEM_USAGE_READER, useClass: InventoryItemUsageReader },
+    { provide: BRANCH_STOCK_READER, useClass: BranchStockReader },
+    ArchiveInventoryItemHandler,
+    RegisterBranchTransferHandler,
+    ListBranchStockHandler,
     GetRequisitionSuggestionHandler,
     RegisterInventoryItemHandler,
     UpdateInventoryItemHandler,
