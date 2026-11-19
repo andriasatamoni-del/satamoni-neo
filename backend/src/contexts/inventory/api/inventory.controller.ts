@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RegisterInventoryItemHandler } from "../application/commands/register-inventory-item.handler";
 import { RecordStockMovementHandler } from "../application/commands/record-stock-movement.handler";
@@ -22,6 +22,11 @@ import { ListInventoryBatchesHandler } from "../application/queries/list-invento
 import { WriteOffInventoryBatchHandler } from "../application/commands/write-off-inventory-batch.handler";
 import { GetRequisitionSuggestionHandler } from "../application/queries/get-requisition-suggestion.handler";
 import { GetRequisitionSuggestionDto } from "./dto/get-requisition-suggestion.dto";
+import { ArchiveInventoryItemHandler } from "../application/commands/archive-inventory-item.handler";
+import { RegisterBranchTransferHandler } from "../application/commands/register-branch-transfer.handler";
+import { ListBranchStockHandler } from "../application/queries/list-branch-stock.handler";
+import { RegisterBranchTransferDto } from "./dto/register-branch-transfer.dto";
+import { ListBranchStockQueryDto } from "./dto/list-branch-stock-query.dto";
 import { RegisterInventoryItemDto } from "./dto/register-inventory-item.dto";
 import { RecordStockMovementDto } from "./dto/record-stock-movement.dto";
 import { RegisterStocktakeDto } from "./dto/register-stocktake.dto";
@@ -75,7 +80,10 @@ export class InventoryController {
     private readonly listTransferRequests: ListTransferRequestsHandler,
     private readonly listInventoryBatches: ListInventoryBatchesHandler,
     private readonly writeOffInventoryBatch: WriteOffInventoryBatchHandler,
-    private readonly getRequisitionSuggestion: GetRequisitionSuggestionHandler
+    private readonly getRequisitionSuggestion: GetRequisitionSuggestionHandler,
+    private readonly archiveItem: ArchiveInventoryItemHandler,
+    private readonly registerBranchTransfer: RegisterBranchTransferHandler,
+    private readonly listBranchStock: ListBranchStockHandler
   ) {}
 
   @Get("items")
@@ -91,6 +99,37 @@ export class InventoryController {
   async create(@Body() dto: RegisterInventoryItemDto) {
     const item = await this.registerItem.execute(dto);
     return toPublicItem(item);
+  }
+
+  @Delete("items/:id")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_MANAGE)
+  async archive(@Param("id", ParseUUIDPipe) id: string) {
+    return toPublicItem(await this.archiveItem.execute(id));
+  }
+
+  @BranchScoped()
+  @Get("branch-stock")
+  @RequirePermission(PERMISSION.INVENTORY_ITEMS_VIEW, PERMISSION.INVENTORY_ITEMS_MANAGE)
+  async branchStock(@Query() query: ListBranchStockQueryDto) {
+    const { page, filter } = splitListQuery(query);
+    const { rows, total } = await this.listBranchStock.execute(filter, page);
+    return listResponse(rows, total, page);
+  }
+
+  @BranchScoped()
+  @Post("transfers")
+  @RequirePermission(PERMISSION.INVENTORY_TRANSFERS_REGISTER)
+  async registerTransfer(@Body() dto: RegisterBranchTransferDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    assertBranchAccess(req.user, dto.fromBranchId);
+    return toPublicTransferRequest(
+      await this.registerBranchTransfer.execute({
+        fromBranchId: dto.fromBranchId,
+        toBranchId: dto.toBranchId,
+        notes: dto.notes,
+        lines: dto.lines,
+        performedBy: req.user.id,
+      })
+    );
   }
 
   @BranchScoped()

@@ -1,6 +1,3 @@
-// Drizzle table definitions for the inventory tables.
-// Column keys keep the database's snake_case names, so query rows have the same shape the API has always returned.
-// Triggers and functions are not modelled here; they live in the SQL migrations under backend/drizzle/.
 import { pgTable, pgSequence, text, timestamp, unique, check, uuid, integer, numeric, foreignKey, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { localDate } from "../../../../shared/database/columns";
@@ -18,8 +15,9 @@ export const inventoryItems = pgTable("inventory_items", {
   negative_stock_policy: text().default('STRICT').notNull(),
   legacy_inventory_item_id: integer(),
   created_at: timestamp({ withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  archived_at: timestamp({ withTimezone: true, mode: "date" }),
 }, (table) => [
-  unique("inventory_items_name_key").on(table.name),
+  uniqueIndex("inventory_items_active_name_key").using("btree", table.name.asc().nullsLast()).where(sql`(archived_at IS NULL)`),
   check("inventory_items_item_type_check", sql`item_type = ANY (ARRAY['raw'::text, 'manufactured'::text])`),
   check("inventory_items_negative_stock_policy_check", sql`negative_stock_policy = ANY (ARRAY['STRICT'::text, 'ALLOW_WITH_APPROVAL'::text])`),
 ]);

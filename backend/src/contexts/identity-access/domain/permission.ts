@@ -23,6 +23,7 @@ export const PERMISSION = {
   INVENTORY_ITEMS_MANAGE: "inventory.items.manage",
   INVENTORY_MOVEMENTS_RECORD: "inventory.movements.record",
   INVENTORY_BATCHES_MANAGE: "inventory.batches.manage",
+  INVENTORY_TRANSFERS_REGISTER: "inventory.transfers.register",
   CATALOG_ITEMS_VIEW: "catalog.items.view",
   CATALOG_ITEMS_MANAGE: "catalog.items.manage",
   CATALOG_RECIPES_MANAGE: "catalog.recipes.manage",

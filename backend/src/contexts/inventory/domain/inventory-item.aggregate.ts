@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { InvalidUnitError, UnknownItemTypeError, UnknownNegativeStockPolicyError } from "./errors";
+import { InventoryItemArchivedError, InvalidUnitError, UnknownItemTypeError, UnknownNegativeStockPolicyError } from "./errors";
 
 export const ITEM_TYPES = ["raw", "manufactured"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
@@ -15,11 +15,9 @@ export interface InventoryItemProps {
   negativeStockPolicy: NegativeStockPolicy;
   legacyInventoryItemId: number | null;
   createdAt: Date;
+  archivedAt: Date | null;
 }
 
-// InventoryItem - نفس مفهوم inventory_items في الريبو القديم بالظبط، بما في ذلك سياسة الرصيد السالب
-// (negative_stock_policy) اللي هي القاعدة الأهم في المخزون كله. مش متضاف allow_negative_stock (عمود
-// قديم "مش مستخدم في الكود الجديد" حسب تعليق الريبو القديم نفسه - تنضيف حقيقي، مش حذف خطأ).
 export class InventoryItem {
   private constructor(
     public readonly id: string,
@@ -54,6 +52,7 @@ export class InventoryItem {
       negativeStockPolicy: negativeStockPolicy as NegativeStockPolicy,
       legacyInventoryItemId: input.legacyInventoryItemId ?? null,
       createdAt: new Date(),
+      archivedAt: null,
     });
   }
 
@@ -68,6 +67,11 @@ export class InventoryItem {
     this.props.negativeStockPolicy = policy as NegativeStockPolicy;
   }
 
+  archive(): void {
+    if (this.props.archivedAt) throw new InventoryItemArchivedError(this.props.name);
+    this.props.archivedAt = new Date();
+  }
+
   updateUnitCost(unitCost: number | null): void {
     this.props.unitCost = unitCost;
   }
@@ -79,4 +83,5 @@ export class InventoryItem {
   get negativeStockPolicy(): NegativeStockPolicy { return this.props.negativeStockPolicy; }
   get legacyInventoryItemId(): number | null { return this.props.legacyInventoryItemId; }
   get createdAt(): Date { return this.props.createdAt; }
+  get archivedAt(): Date | null { return this.props.archivedAt; }
 }

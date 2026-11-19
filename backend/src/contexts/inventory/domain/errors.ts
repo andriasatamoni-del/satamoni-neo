@@ -157,3 +157,15 @@ export class InventoryItemIdentityChangeError extends DomainError {
     super(`مينفعش تغيّر ${field} لصنف موجود (${name}) - اعمل صنف جديد باسم مختلف`);
   }
 }
+
+export class InventoryItemArchivedError extends ConflictDomainError {
+  constructor(name: string) {
+    super(`الصنف ده (${name}) اتشال بالفعل`);
+  }
+}
+
+export class InventoryItemLinkedToProductsError extends ConflictDomainError {
+  constructor(name: string, products: string[]) {
+    super(`مينفعش تشيل الصنف "${name}" لأنه مربوط بمنتجات: ${products.join("، ")} - شيله من وصفاتها الأول`);
+  }
+}

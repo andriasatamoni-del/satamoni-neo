@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { DATABASE, type Database } from "../../../../shared/database/database.token";
 import { InventoryItem, type ItemType, type NegativeStockPolicy } from "../../domain/inventory-item.aggregate";
 import type { InventoryItemListFilter, InventoryItemRepositoryPort } from "../../domain/ports/inventory-item-repository.port";
@@ -24,6 +24,7 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
           unit_cost: row.unit_cost,
           item_type: row.item_type,
           negative_stock_policy: row.negative_stock_policy,
+          archived_at: row.archived_at,
         },
       });
   }
@@ -34,7 +35,7 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
   }
 
   async findByName(name: string): Promise<InventoryItem | null> {
-    const [row] = await this.db.select().from(inventoryItems).where(eq(inventoryItems.name, name.trim())).limit(1);
+    const [row] = await this.db.select().from(inventoryItems).where(and(eq(inventoryItems.name, name.trim()), isNull(inventoryItems.archived_at))).limit(1);
     return row ? this.toDomain(row) : null;
   }
 
@@ -42,7 +43,7 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
     const [row] = await this.db
       .select({ id: inventoryItems.id })
       .from(inventoryItems)
-      .where(eq(inventoryItems.name, name.trim()))
+      .where(and(eq(inventoryItems.name, name.trim()), isNull(inventoryItems.archived_at)))
       .limit(1);
     return !!row;
   }
@@ -57,12 +58,12 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
   }
 
   async list(): Promise<InventoryItem[]> {
-    const rows = await this.db.select().from(inventoryItems).orderBy(asc(inventoryItems.name));
+    const rows = await this.db.select().from(inventoryItems).where(isNull(inventoryItems.archived_at)).orderBy(asc(inventoryItems.name));
     return rows.map((r) => this.toDomain(r));
   }
 
   async search(filter: InventoryItemListFilter, page?: PageRequest): Promise<{ items: InventoryItem[]; total: number }> {
-    const where = and(filter.itemType ? eq(inventoryItems.item_type, filter.itemType) : undefined, searchCondition(filter.q, inventoryItems.name));
+    const where = and(isNull(inventoryItems.archived_at), filter.itemType ? eq(inventoryItems.item_type, filter.itemType) : undefined, searchCondition(filter.q, inventoryItems.name));
     const query = this.db
       .select()
       .from(inventoryItems)
@@ -91,6 +92,7 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
       negative_stock_policy: item.negativeStockPolicy,
       legacy_inventory_item_id: item.legacyInventoryItemId,
       created_at: item.createdAt,
+      archived_at: item.archivedAt,
     };
   }
 
@@ -103,6 +105,7 @@ export class InventoryItemRepository implements InventoryItemRepositoryPort {
       negativeStockPolicy: row.negative_stock_policy as NegativeStockPolicy,
       legacyInventoryItemId: row.legacy_inventory_item_id,
       createdAt: row.created_at,
+      archivedAt: row.archived_at,
     });
   }
 }
