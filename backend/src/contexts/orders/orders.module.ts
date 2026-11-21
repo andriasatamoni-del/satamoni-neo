@@ -21,11 +21,18 @@ import { EventBusService } from "../../shared/events/event-bus.service";
 import type { PaymentAdjustmentApprovedEvent } from "../payment-control/domain/events/payment-adjustment-approved.event";
 import { OrdersController } from "./api/orders.controller";
 import { OrderRatingsController } from "./api/order-ratings.controller";
+import { OrdersLiveController } from "./api/orders-live.controller";
+import { OrderLiveFeed } from "./application/services/order-live-feed.service";
+import type { OrderRegisteredEvent } from "./domain/events/order-registered.event";
+import type { OrderStatusChangedEvent } from "./domain/events/order-status-changed.event";
+import type { KitchenStatusAdvancedEvent } from "./domain/events/kitchen-status-advanced.event";
+import type { OrderCancelledEvent } from "./domain/events/order-cancelled.event";
 
 @Module({
   imports: [IdentityAccessModule, CatalogModule, InventoryModule, BranchesModule, CustomersModule],
-  controllers: [OrdersController, OrderRatingsController],
+  controllers: [OrdersController, OrderRatingsController, OrdersLiveController],
   providers: [
+    OrderLiveFeed,
     { provide: ORDER_REPOSITORY, useClass: OrderRepository },
     { provide: ORDER_RATING_REPOSITORY, useClass: OrderRatingRepository },
     RegisterOrderHandler,
@@ -43,10 +50,15 @@ import { OrderRatingsController } from "./api/order-ratings.controller";
 export class OrdersModule implements OnModuleInit {
   constructor(
     private readonly eventBus: EventBusService,
-    private readonly syncOrderPaymentMethod: SyncOrderPaymentMethodHandler
+    private readonly syncOrderPaymentMethod: SyncOrderPaymentMethodHandler,
+    private readonly liveFeed: OrderLiveFeed
   ) {}
 
   onModuleInit(): void {
     this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (e) => this.syncOrderPaymentMethod.handle(e), { critical: true });
+    this.eventBus.subscribe<OrderRegisteredEvent>("OrderRegistered", (e) => this.liveFeed.publish({ change: "registered", orderId: e.orderId, branchId: e.branchId }));
+    this.eventBus.subscribe<OrderStatusChangedEvent>("OrderStatusChanged", (e) => this.liveFeed.publish({ change: "status", orderId: e.orderId, branchId: e.branchId }));
+    this.eventBus.subscribe<KitchenStatusAdvancedEvent>("KitchenStatusAdvanced", (e) => this.liveFeed.publish({ change: "kitchen", orderId: e.orderId, branchId: e.branchId }));
+    this.eventBus.subscribe<OrderCancelledEvent>("OrderCancelled", (e) => this.liveFeed.publish({ change: "cancelled", orderId: e.orderId, branchId: e.branchId }));
   }
 }
