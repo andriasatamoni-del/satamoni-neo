@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../shared/api/client";
+import { LIVE_FALLBACK_POLL_MS, useOrderLiveUpdates } from "../shared/api/orderLiveUpdates";
 import { useAuth } from "../shared/auth/AuthContext";
 import { PERMISSION } from "../shared/auth/permissions";
 import { can } from "../shared/auth/roles";
@@ -78,11 +79,12 @@ export function KdsPage() {
     queryFn: () => apiRequest<Combo[]>("/catalog/combos"),
     enabled: canSeeCatalog,
   });
+  const live = useOrderLiveUpdates(branchId || undefined, !!branchId);
   const boardQuery = useQuery({
     queryKey: ["kds-board", branchId],
     queryFn: () => apiRequest<KdsOrder[]>(`/orders/kitchen-board?branchId=${branchId}`),
     enabled: !!branchId,
-    refetchInterval: 8000,
+    refetchInterval: live.connected ? LIVE_FALLBACK_POLL_MS : 8000,
   });
 
   const advance = useMutation({

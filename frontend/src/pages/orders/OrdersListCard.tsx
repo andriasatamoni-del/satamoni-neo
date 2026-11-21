@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/AuthContext";
 import { usePaginatedQuery } from "../../shared/api/usePaginatedQuery";
+import { LIVE_FALLBACK_POLL_MS, useOrderLiveUpdates } from "../../shared/api/orderLiveUpdates";
 import { Badge, StatusBadge } from "../../shared/ui/Badge";
 import { Button } from "../../shared/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
@@ -13,7 +14,7 @@ import { useListState } from "../../shared/ui/useListState";
 import { formatPrice, labelOf, ORDER_TYPES, orderTypeLabel, SOURCE_LABELS, STATUS_LABELS } from "./posLabels";
 import type { Order, OrderLine } from "./posTypes";
 
-const ORDERS_REFRESH_MS = 10_000;
+const OFFLINE_REFRESH_MS = 10_000;
 const CLOCK_SKEW_MARGIN_MS = 5 * 60_000;
 
 const toOptions = (labels: Record<string, string>) => Object.entries(labels).map(([value, label]) => ({ value, label }));
@@ -42,7 +43,8 @@ export function OrdersListCard({
   describeOrderLine: (line: OrderLine) => string;
 }) {
   const queryClient = useQueryClient();
-  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...listState.params, branchId }, { refetchInterval: ORDERS_REFRESH_MS });
+  const live = useOrderLiveUpdates(branchId);
+  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...listState.params, branchId }, { refetchInterval: live.connected ? LIVE_FALLBACK_POLL_MS : OFFLINE_REFRESH_MS });
   const orders = ordersQuery.data?.items ?? [];
   const total = ordersQuery.data?.total ?? 0;
   const newOrders = useIncomingOrders(ordersQuery.data ? orders : undefined);
@@ -54,8 +56,9 @@ export function OrdersListCard({
 
   return (
     <Card className="mt-6">
-      <CardHeader>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
         <CardTitle>الطلبات ({total})</CardTitle>
+        <Badge tone={live.connected ? "success" : "neutral"}>{live.connected ? "مباشر" : "بيتحدّث كل 10 ثواني"}</Badge>
       </CardHeader>
       <CardBody className="p-0">
         {newOrders.count > 0 && (
