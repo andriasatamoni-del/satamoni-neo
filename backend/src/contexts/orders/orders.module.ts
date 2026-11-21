@@ -60,5 +60,8 @@ export class OrdersModule implements OnModuleInit {
     this.eventBus.subscribe<OrderStatusChangedEvent>("OrderStatusChanged", (e) => this.liveFeed.publish({ change: "status", orderId: e.orderId, branchId: e.branchId }));
     this.eventBus.subscribe<KitchenStatusAdvancedEvent>("KitchenStatusAdvanced", (e) => this.liveFeed.publish({ change: "kitchen", orderId: e.orderId, branchId: e.branchId }));
     this.eventBus.subscribe<OrderCancelledEvent>("OrderCancelled", (e) => this.liveFeed.publish({ change: "cancelled", orderId: e.orderId, branchId: e.branchId }));
+    this.eventBus.subscribe<PaymentAdjustmentApprovedEvent>("PaymentAdjustmentApproved", (e) => {
+      if (e.newPaymentMethodId !== e.previousPaymentMethodId) this.liveFeed.publish({ change: "payment", orderId: e.orderId, branchId: e.branchId });
+    });
   }
 }

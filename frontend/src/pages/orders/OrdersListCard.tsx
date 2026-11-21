@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/AuthContext";
 import { usePaginatedQuery } from "../../shared/api/usePaginatedQuery";
-import { LIVE_FALLBACK_POLL_MS, useOrderLiveUpdates } from "../../shared/api/orderLiveUpdates";
+import { useOrderLiveUpdates } from "../../shared/api/orderLiveUpdates";
 import { Badge, StatusBadge } from "../../shared/ui/Badge";
 import { Button } from "../../shared/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../shared/ui/Card";
@@ -44,7 +44,7 @@ export function OrdersListCard({
 }) {
   const queryClient = useQueryClient();
   const live = useOrderLiveUpdates(branchId);
-  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...listState.params, branchId }, { refetchInterval: live.connected ? LIVE_FALLBACK_POLL_MS : OFFLINE_REFRESH_MS });
+  const ordersQuery = usePaginatedQuery<Order>(["orders"], "/orders", { ...listState.params, branchId }, { refetchInterval: live.connected ? false : OFFLINE_REFRESH_MS });
   const orders = ordersQuery.data?.items ?? [];
   const total = ordersQuery.data?.total ?? 0;
   const newOrders = useIncomingOrders(ordersQuery.data ? orders : undefined);

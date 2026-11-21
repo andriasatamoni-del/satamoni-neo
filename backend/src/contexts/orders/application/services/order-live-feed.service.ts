@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { Observable, Subject, filter } from "rxjs";
 
-export const ORDER_LIVE_CHANGES = ["registered", "status", "kitchen", "cancelled"] as const;
+export const ORDER_LIVE_CHANGES = ["registered", "status", "kitchen", "cancelled", "payment"] as const;
 export type OrderLiveChange = (typeof ORDER_LIVE_CHANGES)[number];
 
 export interface OrderLiveEvent {
