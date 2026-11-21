@@ -6,6 +6,7 @@ import { UserRepository } from "../../src/contexts/identity-access/infrastructur
 import { BranchRepository } from "../../src/contexts/branches/infrastructure/persistence/branch.repository";
 import { User } from "../../src/contexts/identity-access/domain/user.aggregate";
 import { Branch } from "../../src/contexts/branches/domain/branch.aggregate";
+import { DEMO_MARKER_BRANCH } from "./demo/demo-data";
 
 export const DEV_BRANCH_NAME = "فرع التجربة";
 
@@ -17,6 +18,7 @@ export const DEV_ACCOUNTS = [
   { email: "cashier@satamoni.dev", secret: "cashier123", role: "cashier", name: "كاشير (تجربة)", branchBound: true },
   { email: "driver@satamoni.dev", secret: "driver123", role: "driver", name: "طيار (تجربة)", branchBound: true },
   { email: "employee@satamoni.dev", secret: "employee123", role: "employee", name: "موظف (تجربة)", branchBound: true },
+  { email: "kitchen@satamoni.dev", secret: "kitchen123", role: "kitchen", name: "مطبخ (تجربة)", branchBound: true },
 ] as const;
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -36,24 +38,25 @@ export function assertLocalDevDatabase(url: string | undefined, env: NodeJS.Proc
   if (env.PGSSL === "true") throw new Error("PGSSL=true points at a managed database - refusing to seed dev accounts");
 }
 
-async function ensureBranch(db: Database): Promise<string> {
+async function ensureBranch(db: Database): Promise<{ id: string; name: string }> {
   const repo = new BranchRepository(db);
-  const existing = (await repo.list()).find((b) => b.name === DEV_BRANCH_NAME);
-  if (existing) return existing.id;
+  const all = await repo.list();
+  const existing = all.find((b) => b.name === DEMO_MARKER_BRANCH) ?? all.find((b) => b.name === DEV_BRANCH_NAME);
+  if (existing) return { id: existing.id, name: existing.name };
   const branch = Branch.register({ name: DEV_BRANCH_NAME });
   await repo.save(branch);
-  return branch.id;
+  return { id: branch.id, name: branch.name };
 }
 
-export async function seedDev(db: Database): Promise<{ created: number; reset: number }> {
-  const branchId = await ensureBranch(db);
+export async function seedDev(db: Database): Promise<{ created: number; reset: number; branchName: string }> {
+  const branch = await ensureBranch(db);
   const repo = new UserRepository(db);
   let created = 0;
   let reset = 0;
 
   for (const account of DEV_ACCOUNTS) {
     const hash = await bcrypt.hash(account.secret, 10);
-    const accountBranch = account.branchBound ? branchId : null;
+    const accountBranch = account.branchBound ? branch.id : null;
     const existing = await repo.findByEmail(account.email);
     if (existing) {
       existing.changeRoles([account.role]);
@@ -67,7 +70,7 @@ export async function seedDev(db: Database): Promise<{ created: number; reset: n
       created++;
     }
   }
-  return { created, reset };
+  return { created, reset, branchName: branch.name };
 }
 
 async function main() {
@@ -76,7 +79,7 @@ async function main() {
   const db = createScriptDb(url!);
   try {
     const result = await seedDev(db);
-    console.log(`✅ Dev seed done: ${result.created} created, ${result.reset} reset. Branch: ${DEV_BRANCH_NAME}`);
+    console.log(`✅ Dev seed done: ${result.created} created, ${result.reset} reset. Branch: ${result.branchName}`);
     for (const a of DEV_ACCOUNTS) console.log(`   ${a.role.padEnd(15)} ${a.email.padEnd(26)} ${a.secret}`);
   } finally {
     await closeScriptDb(db);

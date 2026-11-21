@@ -42,7 +42,7 @@ export const STAFF_ROUTES = [
   { path: "/", perm: null, nav: { label: "الرئيسية", icon: HomeIcon, end: true } },
   { path: "/me", perm: [P.HR_SELF_VIEW, P.HR_SELF_LEAVE_MANAGE], nav: { label: "بياناتي", icon: UserCircleIcon } },
   { path: "/orders", perm: [P.ORDERS_VIEW, P.ORDERS_CREATE], nav: { label: "الطلبات (POS)", icon: CartIcon } },
-  { path: "/kds", hiddenFromNav: true, perm: [P.KITCHEN_VIEW], nav: { label: "شاشة المطبخ", icon: FireIcon } },
+  { path: "/kds", perm: [P.KITCHEN_VIEW], nav: { label: "شاشة المطبخ", icon: FireIcon } },
   {
     path: "/crm",
     perm: [P.CRM_FOLLOWUPS_VIEW, P.CRM_COMPLAINTS_VIEW],

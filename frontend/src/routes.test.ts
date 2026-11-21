@@ -36,6 +36,16 @@ describe("sidebar per seeded role", () => {
     expect(navPaths("employee")).toEqual(["/", "/me"]);
   });
 
+  it("kitchen only sees the kitchen screen besides home and their profile", () => {
+    expect(navPaths("kitchen")).toEqual(["/", "/me", "/kds"]);
+    expect(canOpenPath(seededUser("kitchen"), "/orders")).toBe(false);
+  });
+
+  it("cashier and branch manager reach the kitchen screen from the sidebar", () => {
+    expect(navPaths("cashier")).toContain("/kds");
+    expect(navPaths("branch_manager")).toContain("/kds");
+  });
+
   it("driver sees system settings but no POS", () => {
     expect(navPaths("driver")).toEqual(["/", "/me", "/pos-settings"]);
   });
@@ -62,7 +72,7 @@ describe("route access", () => {
 
   it("pages hidden from the sidebar stay reachable by URL", () => {
     const admin = seededUser("admin");
-    for (const path of ["/kds", "/loyalty", "/hr-payroll"]) {
+    for (const path of ["/loyalty", "/hr-payroll"]) {
       expect(navPaths("admin")).not.toContain(path);
       expect(canOpenPath(admin, path)).toBe(true);
     }
